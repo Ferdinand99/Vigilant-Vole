@@ -1,13 +1,17 @@
+mod auth;
 mod monitors;
+mod notifications;
 
 use askama::Template;
 use axum::{
     Router,
-    extract::{Path as AxumPath, State},
+    extract::{FromRef, Path as AxumPath, State},
     http::{StatusCode, header},
+    middleware,
     response::{Html, IntoResponse, Response},
     routing::get,
 };
+use axum_extra::extract::cookie::Key;
 use deadpool_sqlite::Pool;
 use rust_embed::Embed;
 
@@ -23,12 +27,18 @@ struct StaticAssets;
 pub struct AppState {
     pub db: Pool,
     pub scheduler: Scheduler,
+    pub session_key: Key,
+}
+
+impl FromRef<AppState> for Key {
+    fn from_ref(state: &AppState) -> Key {
+        state.session_key.clone()
+    }
 }
 
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
+    let protected = Router::new()
         .route("/", get(dashboard))
-        .route("/healthz", get(healthz))
         .route(
             "/monitors/new",
             get(monitors::new_form).post(monitors::create),
@@ -38,8 +48,24 @@ pub fn build_router(state: AppState) -> Router {
             get(monitors::edit_form).post(monitors::update),
         )
         .route("/monitors/{id}", axum::routing::delete(monitors::delete))
-        .route("/static/{*path}", get(static_asset))
-        .with_state(state)
+        .route(
+            "/settings/notifications",
+            get(notifications::list).post(notifications::create),
+        )
+        .route(
+            "/settings/notifications/{id}",
+            axum::routing::delete(notifications::delete),
+        )
+        .route("/logout", axum::routing::post(auth::logout))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth::require_auth));
+
+    let public = Router::new()
+        .route("/healthz", get(healthz))
+        .route("/setup", get(auth::setup_form).post(auth::setup_submit))
+        .route("/login", get(auth::login_form).post(auth::login_submit))
+        .route("/static/{*path}", get(static_asset));
+
+    protected.merge(public).with_state(state)
 }
 
 async fn healthz() -> &'static str {

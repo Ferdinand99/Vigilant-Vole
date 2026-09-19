@@ -10,6 +10,8 @@ use tokio::task::AbortHandle;
 
 use crate::db::models::{HeartbeatStatus, Monitor, MonitorType};
 use crate::db::monitors as db_monitors;
+use crate::db::notifications as db_notifications;
+use crate::notification;
 
 #[derive(Clone)]
 pub struct Scheduler {
@@ -62,6 +64,7 @@ impl Scheduler {
 
 async fn run_check_loop(pool: Pool, http_client: reqwest::Client, monitor: Monitor) {
     let mut consecutive_failures: i64 = 0;
+    let mut last_notified: Option<HeartbeatStatus> = None;
     let mut interval = tokio::time::interval(Duration::from_secs(monitor.interval_seconds.max(1) as u64));
 
     loop {
@@ -90,9 +93,10 @@ async fn run_check_loop(pool: Pool, http_client: reqwest::Client, monitor: Monit
             tracing::warn!(monitor_id = monitor.id, "skipped heartbeat: db pool unavailable");
             continue;
         };
+
         let monitor_id = monitor.id;
         let response_time_ms = outcome.response_time_ms;
-        let message = outcome.message;
+        let message = outcome.message.clone();
         if let Err(err) = conn
             .interact(move |conn| {
                 db_monitors::insert_heartbeat(conn, monitor_id, status, response_time_ms, message.as_deref())
@@ -100,6 +104,22 @@ async fn run_check_loop(pool: Pool, http_client: reqwest::Client, monitor: Monit
             .await
         {
             tracing::warn!(monitor_id, %err, "failed to record heartbeat");
+        }
+
+        // Only alert on settled up/down transitions - a "pending" (within the retry
+        // grace period) state never triggers a notification.
+        if status != HeartbeatStatus::Pending && Some(status) != last_notified {
+            last_notified = Some(status);
+            let channels = conn
+                .interact(|conn| db_notifications::list_active_channels(conn))
+                .await
+                .ok()
+                .and_then(|r| r.ok())
+                .unwrap_or_default();
+            if !channels.is_empty() {
+                notification::notify_all(&http_client, &channels, &monitor.name, status, outcome.message.as_deref())
+                    .await;
+            }
         }
     }
 }

@@ -4,6 +4,8 @@ use std::path::Path;
 
 pub mod models;
 pub mod monitors;
+pub mod notifications;
+pub mod users;
 
 #[derive(Embed)]
 #[folder = "migrations/"]

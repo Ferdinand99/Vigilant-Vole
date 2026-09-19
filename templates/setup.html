@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+
+{% block title %}Setup - Vigilant Vole{% endblock %}
+
+{% block content %}
+<h2>Create the admin account</h2>
+{% if let Some(err) = error %}
+<p class="error">{{ err }}</p>
+{% endif %}
+<form method="post" action="/setup">
+    <label>Username<br>
+        <input type="text" name="username" required autofocus>
+    </label><br>
+    <label>Password (min. 8 characters)<br>
+        <input type="password" name="password" required minlength="8">
+    </label><br>
+    <button type="submit">Create account</button>
+</form>
+{% endblock %}

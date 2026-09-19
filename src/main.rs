@@ -1,7 +1,9 @@
 mod api;
+mod auth;
 mod config;
 mod db;
 mod monitor;
+mod notification;
 
 use api::AppState;
 use config::Config;
@@ -20,7 +22,13 @@ async fn main() {
     let scheduler = Scheduler::new(pool.clone());
     scheduler.start_all().await;
 
-    let app = api::build_router(AppState { db: pool, scheduler });
+    let session_key = auth::load_or_create_key(&config.data_dir);
+
+    let app = api::build_router(AppState {
+        db: pool,
+        scheduler,
+        session_key,
+    });
 
     let listener = tokio::net::TcpListener::bind(&config.bind_addr)
         .await
