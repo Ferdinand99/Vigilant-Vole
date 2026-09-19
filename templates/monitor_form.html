@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ heading }} - Vigilant Vole{% endblock %}
+
+{% block content %}
+<h2>{{ heading }}</h2>
+<form method="post" action="{{ action }}">
+    <label>Name<br>
+        <input type="text" name="name" value="{{ name }}" required>
+    </label><br>
+    <label>Type<br>
+        <select name="monitor_type">
+            <option value="http" {% if monitor_type == "http" %}selected{% endif %}>HTTP(S)</option>
+            <option value="tcp" {% if monitor_type == "tcp" %}selected{% endif %}>TCP Port</option>
+            <option value="ping" {% if monitor_type == "ping" %}selected{% endif %}>Ping</option>
+        </select>
+    </label><br>
+    <label>Target<br>
+        <input type="text" name="target" value="{{ target }}" required
+               placeholder="https://example.com, host:port, or a hostname/IP">
+    </label><br>
+    <label>Interval (seconds)<br>
+        <input type="number" name="interval_seconds" value="{{ interval_seconds }}" min="5">
+    </label><br>
+    <label>Timeout (seconds)<br>
+        <input type="number" name="timeout_seconds" value="{{ timeout_seconds }}" min="1">
+    </label><br>
+    <label>Retries before down<br>
+        <input type="number" name="retries" value="{{ retries }}" min="0">
+    </label><br>
+    <button type="submit">Save</button>
+    <a href="/">Cancel</a>
+</form>
+{% endblock %}

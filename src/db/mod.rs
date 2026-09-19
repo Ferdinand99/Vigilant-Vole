@@ -2,6 +2,9 @@ use deadpool_sqlite::{Config as PoolConfig, Pool, Runtime};
 use rust_embed::Embed;
 use std::path::Path;
 
+pub mod models;
+pub mod monitors;
+
 #[derive(Embed)]
 #[folder = "migrations/"]
 struct Migrations;

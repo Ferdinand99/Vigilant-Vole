@@ -1,3 +1,5 @@
+mod monitors;
+
 use askama::Template;
 use axum::{
     Router,
@@ -9,6 +11,10 @@ use axum::{
 use deadpool_sqlite::Pool;
 use rust_embed::Embed;
 
+use crate::db::models::MonitorWithStatus;
+use crate::db::monitors as db_monitors;
+use crate::monitor::Scheduler;
+
 #[derive(Embed)]
 #[folder = "static/"]
 struct StaticAssets;
@@ -16,14 +22,24 @@ struct StaticAssets;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Pool,
+    pub scheduler: Scheduler,
 }
 
-pub fn build_router(db: Pool) -> Router {
+pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(dashboard))
         .route("/healthz", get(healthz))
+        .route(
+            "/monitors/new",
+            get(monitors::new_form).post(monitors::create),
+        )
+        .route(
+            "/monitors/{id}/edit",
+            get(monitors::edit_form).post(monitors::update),
+        )
+        .route("/monitors/{id}", axum::routing::delete(monitors::delete))
         .route("/static/{*path}", get(static_asset))
-        .with_state(AppState { db })
+        .with_state(state)
 }
 
 async fn healthz() -> &'static str {
@@ -33,10 +49,10 @@ async fn healthz() -> &'static str {
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
-    monitor_count: i64,
+    monitors: Vec<MonitorWithStatus>,
 }
 
-struct HtmlTemplate<T>(T);
+pub(crate) struct HtmlTemplate<T>(pub T);
 
 impl<T: Template> IntoResponse for HtmlTemplate<T> {
     fn into_response(self) -> Response {
@@ -53,13 +69,13 @@ impl<T: Template> IntoResponse for HtmlTemplate<T> {
 
 async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
     let conn = state.db.get().await.expect("failed to get db connection");
-    let monitor_count: i64 = conn
-        .interact(|conn| conn.query_row("SELECT COUNT(*) FROM monitors", [], |row| row.get(0)))
+    let monitors = conn
+        .interact(|conn| db_monitors::list_monitors_with_status(conn))
         .await
         .expect("db task panicked")
-        .expect("count query failed");
+        .expect("query failed");
 
-    HtmlTemplate(DashboardTemplate { monitor_count })
+    HtmlTemplate(DashboardTemplate { monitors })
 }
 
 async fn static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

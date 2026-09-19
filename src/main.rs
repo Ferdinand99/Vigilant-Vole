@@ -1,8 +1,11 @@
 mod api;
 mod config;
 mod db;
+mod monitor;
 
+use api::AppState;
 use config::Config;
+use monitor::Scheduler;
 
 #[tokio::main]
 async fn main() {
@@ -14,7 +17,10 @@ async fn main() {
     let pool = db::build_pool(&config.db_path());
     db::run_migrations(&pool).await;
 
-    let app = api::build_router(pool);
+    let scheduler = Scheduler::new(pool.clone());
+    scheduler.start_all().await;
+
+    let app = api::build_router(AppState { db: pool, scheduler });
 
     let listener = tokio::net::TcpListener::bind(&config.bind_addr)
         .await
