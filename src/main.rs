@@ -19,7 +19,9 @@ async fn main() {
     let pool = db::build_pool(&config.db_path());
     db::run_migrations(&pool).await;
 
-    let scheduler = Scheduler::new(pool.clone());
+    let (update_tx, _) = tokio::sync::broadcast::channel(16);
+
+    let scheduler = Scheduler::new(pool.clone(), update_tx.clone());
     scheduler.start_all().await;
 
     let session_key = auth::load_or_create_key(&config.data_dir);
@@ -28,6 +30,7 @@ async fn main() {
         db: pool,
         scheduler,
         session_key,
+        update_tx,
     });
 
     let listener = tokio::net::TcpListener::bind(&config.bind_addr)

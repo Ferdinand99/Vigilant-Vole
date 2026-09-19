@@ -98,6 +98,7 @@ pub async fn create(State(state): State<AppState>, Form(form): Form<MonitorForm>
     if let Some(monitor) = inserted {
         state.scheduler.spawn(monitor).await;
     }
+    let _ = state.update_tx.send(());
 
     Redirect::to("/")
 }
@@ -121,6 +122,7 @@ pub async fn update(
     if let Some(monitor) = updated {
         state.scheduler.respawn(monitor).await;
     }
+    let _ = state.update_tx.send(());
 
     Redirect::to("/")
 }
@@ -133,6 +135,7 @@ pub async fn delete(State(state): State<AppState>, Path(id): Path<i64>) -> impl 
         .expect("delete failed");
 
     state.scheduler.stop(id).await;
+    let _ = state.update_tx.send(());
 
     StatusCode::OK
 }

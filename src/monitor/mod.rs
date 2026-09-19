@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use deadpool_sqlite::Pool;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, broadcast};
 use tokio::task::AbortHandle;
 
 use crate::db::models::{HeartbeatStatus, Monitor, MonitorType};
@@ -18,14 +18,16 @@ pub struct Scheduler {
     pool: Pool,
     http_client: reqwest::Client,
     tasks: Arc<Mutex<HashMap<i64, AbortHandle>>>,
+    update_tx: broadcast::Sender<()>,
 }
 
 impl Scheduler {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: Pool, update_tx: broadcast::Sender<()>) -> Self {
         Self {
             pool,
             http_client: reqwest::Client::new(),
             tasks: Arc::new(Mutex::new(HashMap::new())),
+            update_tx,
         }
     }
 
@@ -46,7 +48,8 @@ impl Scheduler {
         let id = monitor.id;
         let pool = self.pool.clone();
         let http_client = self.http_client.clone();
-        let handle = tokio::spawn(run_check_loop(pool, http_client, monitor));
+        let update_tx = self.update_tx.clone();
+        let handle = tokio::spawn(run_check_loop(pool, http_client, monitor, update_tx));
         self.tasks.lock().await.insert(id, handle.abort_handle());
     }
 
@@ -62,7 +65,7 @@ impl Scheduler {
     }
 }
 
-async fn run_check_loop(pool: Pool, http_client: reqwest::Client, monitor: Monitor) {
+async fn run_check_loop(pool: Pool, http_client: reqwest::Client, monitor: Monitor, update_tx: broadcast::Sender<()>) {
     let mut consecutive_failures: i64 = 0;
     let mut last_notified: Option<HeartbeatStatus> = None;
     let mut interval = tokio::time::interval(Duration::from_secs(monitor.interval_seconds.max(1) as u64));
@@ -105,6 +108,9 @@ async fn run_check_loop(pool: Pool, http_client: reqwest::Client, monitor: Monit
         {
             tracing::warn!(monitor_id, %err, "failed to record heartbeat");
         }
+
+        // Wake up any connected dashboards so they refresh without a manual reload.
+        let _ = update_tx.send(());
 
         // Only alert on settled up/down transitions - a "pending" (within the retry
         // grace period) state never triggers a notification.

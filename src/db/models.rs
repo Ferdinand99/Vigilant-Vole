@@ -91,6 +91,10 @@ pub struct MonitorWithStatus {
     pub monitor: Monitor,
     pub status: Option<HeartbeatStatus>,
     pub response_time_ms: Option<i64>,
+    /// Fixed-length, oldest-first heartbeat history for the sparkline; `None`
+    /// entries are left-padding for monitors that don't have this much history yet.
+    pub recent: Vec<Option<HeartbeatStatus>>,
+    pub uptime_24h: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

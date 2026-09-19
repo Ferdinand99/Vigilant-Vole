@@ -7,7 +7,7 @@
 <h2>Notification channels</h2>
 
 {% if channels.is_empty() %}
-<p>No notification channels configured yet.</p>
+<p class="empty-state">No notification channels configured yet.</p>
 {% else %}
 <table>
     <thead>
@@ -20,6 +20,7 @@
             <td>{{ c.kind }}</td>
             <td>
                 <button
+                    class="btn btn-danger"
                     hx-delete="/settings/notifications/{{ c.id }}"
                     hx-target="#channel-row-{{ c.id }}"
                     hx-swap="outerHTML"
@@ -33,27 +34,29 @@
 {% endif %}
 
 <h3>Add a channel</h3>
-<form method="post" action="/settings/notifications">
-    <label>Name<br>
-        <input type="text" name="name" required>
-    </label><br>
-    <label>Kind<br>
-        <select name="kind">
-            <option value="discord">Discord webhook</option>
-            <option value="slack">Slack webhook</option>
-            <option value="telegram">Telegram bot</option>
-            <option value="webhook">Generic webhook</option>
-        </select>
-    </label><br>
-    <label>Webhook URL (Discord / Slack / generic webhook)<br>
-        <input type="text" name="url" placeholder="https://...">
-    </label><br>
-    <label>Telegram bot token (Telegram only)<br>
-        <input type="text" name="bot_token" placeholder="123456:ABC-token">
-    </label><br>
-    <label>Telegram chat ID (Telegram only)<br>
-        <input type="text" name="chat_id" placeholder="123456789">
-    </label><br>
-    <button type="submit">Add channel</button>
-</form>
+<div class="card">
+    <form method="post" action="/settings/notifications">
+        <label>Name
+            <input type="text" name="name" required>
+        </label>
+        <label>Kind
+            <select name="kind">
+                <option value="discord">Discord webhook</option>
+                <option value="slack">Slack webhook</option>
+                <option value="telegram">Telegram bot</option>
+                <option value="webhook">Generic webhook</option>
+            </select>
+        </label>
+        <label>Webhook URL (Discord / Slack / generic webhook)
+            <input type="text" name="url" placeholder="https://...">
+        </label>
+        <label>Telegram bot token (Telegram only)
+            <input type="text" name="bot_token" placeholder="123456:ABC-token">
+        </label>
+        <label>Telegram chat ID (Telegram only)
+            <input type="text" name="chat_id" placeholder="123456789">
+        </label>
+        <button type="submit" class="btn btn-primary">Add channel</button>
+    </form>
+</div>
 {% endblock %}

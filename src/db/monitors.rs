@@ -60,27 +60,56 @@ pub fn list_active_monitors(conn: &Connection) -> rusqlite::Result<Vec<Monitor>>
     rows.collect()
 }
 
+/// How many past heartbeats the dashboard sparkline shows per monitor.
+const SPARKLINE_LEN: usize = 20;
+
 pub fn list_monitors_with_status(conn: &Connection) -> rusqlite::Result<Vec<MonitorWithStatus>> {
     let mut stmt = conn.prepare(
         "SELECT m.id, m.name, m.monitor_type, m.target, m.interval_seconds, m.timeout_seconds, m.retries, m.active,
-                h.status, h.response_time_ms
+                h.status, h.response_time_ms,
+                (SELECT GROUP_CONCAT(status) FROM (
+                     SELECT status FROM heartbeats WHERE monitor_id = m.id ORDER BY checked_at DESC, id DESC LIMIT ?1
+                 )) AS recent_statuses,
+                (SELECT CASE WHEN COUNT(*) = 0 THEN NULL
+                             ELSE ROUND(100.0 * SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) / COUNT(*), 1)
+                        END
+                 FROM heartbeats WHERE monitor_id = m.id AND checked_at >= datetime('now', '-1 day')) AS uptime_24h
          FROM monitors m
          LEFT JOIN heartbeats h ON h.id = (
              SELECT id FROM heartbeats WHERE monitor_id = m.id ORDER BY checked_at DESC, id DESC LIMIT 1
          )
          ORDER BY m.name",
     )?;
-    let rows = stmt.query_map([], |row| {
+    let rows = stmt.query_map(params![SPARKLINE_LEN as i64], |row| {
         let monitor = row_to_monitor(row)?;
         let status: Option<String> = row.get(8)?;
         let response_time_ms: Option<i64> = row.get(9)?;
+        let recent_statuses: Option<String> = row.get(10)?;
+        let uptime_24h: Option<f64> = row.get(11)?;
         Ok(MonitorWithStatus {
             monitor,
             status: status.and_then(|s| HeartbeatStatus::parse(&s)),
             response_time_ms,
+            recent: parse_recent(recent_statuses),
+            uptime_24h,
         })
     })?;
     rows.collect()
+}
+
+/// `raw` is a comma-separated list of statuses, most-recent-first (as produced by
+/// the `ORDER BY checked_at DESC` subquery above). Returns a fixed-length,
+/// oldest-first vec, left-padded with `None` when there isn't SPARKLINE_LEN of
+/// history yet, so every monitor's sparkline renders the same width.
+fn parse_recent(raw: Option<String>) -> Vec<Option<HeartbeatStatus>> {
+    let mut statuses: Vec<Option<HeartbeatStatus>> = raw
+        .map(|s| s.split(',').map(HeartbeatStatus::parse).collect())
+        .unwrap_or_default();
+    statuses.reverse();
+    let missing = SPARKLINE_LEN.saturating_sub(statuses.len());
+    let mut padded = vec![None; missing];
+    padded.extend(statuses);
+    padded
 }
 
 pub fn insert_heartbeat(

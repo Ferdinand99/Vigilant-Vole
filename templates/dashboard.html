@@ -3,56 +3,12 @@
 {% block title %}Dashboard - Vigilant Vole{% endblock %}
 
 {% block content %}
-<p><a href="/monitors/new">+ Add monitor</a></p>
+<div class="section-header">
+    <h2>Monitors</h2>
+    <a href="/monitors/new" class="btn btn-primary">+ Add monitor</a>
+</div>
 
-{% if monitors.is_empty() %}
-<p>No monitors yet. Add your first one to start tracking uptime.</p>
-{% else %}
-<table>
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Target</th>
-            <th>Status</th>
-            <th>Response</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for m in monitors %}
-        <tr id="monitor-row-{{ m.monitor.id }}">
-            <td>{{ m.monitor.name }}</td>
-            <td>{{ m.monitor.monitor_type }}</td>
-            <td>{{ m.monitor.target }}</td>
-            <td>
-                {% match m.status %}
-                {% when Some(s) %}
-                <span class="status status-{{ s }}">{{ s }}</span>
-                {% when None %}
-                <span class="status status-pending">pending</span>
-                {% endmatch %}
-            </td>
-            <td>
-                {% match m.response_time_ms %}
-                {% when Some(ms) %}
-                {{ ms }} ms
-                {% when None %}
-                &mdash;
-                {% endmatch %}
-            </td>
-            <td>
-                <a href="/monitors/{{ m.monitor.id }}/edit">Edit</a>
-                <button
-                    hx-delete="/monitors/{{ m.monitor.id }}"
-                    hx-target="#monitor-row-{{ m.monitor.id }}"
-                    hx-swap="outerHTML"
-                    hx-confirm="Delete this monitor?"
-                >Delete</button>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endif %}
+<div id="monitor-list-target" hx-ext="sse" sse-connect="/events" sse-swap="monitors-updated" hx-swap="innerHTML">
+    {% include "monitor_list.html" %}
+</div>
 {% endblock %}

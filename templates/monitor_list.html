@@ -1,0 +1,83 @@
+<div class="stat-grid">
+    <div class="stat-tile">
+        <div class="stat-value">{{ data.total }}</div>
+        <div class="stat-label">Monitors</div>
+    </div>
+    <div class="stat-tile up">
+        <div class="stat-value">{{ data.up }}</div>
+        <div class="stat-label">Up</div>
+    </div>
+    <div class="stat-tile down">
+        <div class="stat-value">{{ data.down }}</div>
+        <div class="stat-label">Down</div>
+    </div>
+    <div class="stat-tile pending">
+        <div class="stat-value">{{ data.pending }}</div>
+        <div class="stat-label">Pending</div>
+    </div>
+</div>
+
+{% if data.monitors.is_empty() %}
+<p class="empty-state">No monitors yet. Add your first one to start tracking uptime.</p>
+{% else %}
+<div class="monitor-list">
+    {% for m in data.monitors %}
+    <div class="monitor-row" id="monitor-row-{{ m.monitor.id }}">
+        <div class="monitor-identity">
+            {% match m.status %}
+            {% when Some(s) %}
+            <span class="status-dot {{ s }}" title="{{ s }}"></span>
+            {% when None %}
+            <span class="status-dot pending" title="pending"></span>
+            {% endmatch %}
+            <div class="monitor-name-block">
+                <div class="monitor-name">{{ m.monitor.name }}</div>
+                <div class="monitor-target">{{ m.monitor.monitor_type }} &middot; {{ m.monitor.target }}</div>
+            </div>
+        </div>
+
+        <div class="sparkline">
+            {% for bar in m.recent %}
+            {% match bar %}
+            {% when Some(s) %}
+            <span class="bar {{ s }}"></span>
+            {% when None %}
+            <span class="bar"></span>
+            {% endmatch %}
+            {% endfor %}
+        </div>
+
+        <div class="monitor-metric">
+            {% match m.uptime_24h %}
+            {% when Some(pct) %}
+            <span class="metric-value">{{ pct }}%</span>
+            {% when None %}
+            <span class="metric-value">&mdash;</span>
+            {% endmatch %}
+            <span class="metric-label">24h uptime</span>
+        </div>
+
+        <div class="monitor-metric">
+            {% match m.response_time_ms %}
+            {% when Some(ms) %}
+            <span class="metric-value">{{ ms }} ms</span>
+            {% when None %}
+            <span class="metric-value">&mdash;</span>
+            {% endmatch %}
+            <span class="metric-label">Response</span>
+        </div>
+
+        <div class="monitor-actions">
+            <a href="/monitors/{{ m.monitor.id }}/edit" class="btn">Edit</a>
+            <button
+                class="btn btn-danger"
+                hx-delete="/monitors/{{ m.monitor.id }}"
+                hx-target="#monitor-row-{{ m.monitor.id }}"
+                hx-swap="outerHTML"
+                hx-confirm="Delete this monitor?"
+            >Delete</button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

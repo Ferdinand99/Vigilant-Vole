@@ -1,4 +1,5 @@
 mod auth;
+mod events;
 mod monitors;
 mod notifications;
 
@@ -14,8 +15,9 @@ use axum::{
 use axum_extra::extract::cookie::Key;
 use deadpool_sqlite::Pool;
 use rust_embed::Embed;
+use tokio::sync::broadcast;
 
-use crate::db::models::MonitorWithStatus;
+use crate::db::models::{HeartbeatStatus, MonitorWithStatus};
 use crate::db::monitors as db_monitors;
 use crate::monitor::Scheduler;
 
@@ -28,6 +30,7 @@ pub struct AppState {
     pub db: Pool,
     pub scheduler: Scheduler,
     pub session_key: Key,
+    pub update_tx: broadcast::Sender<()>,
 }
 
 impl FromRef<AppState> for Key {
@@ -57,6 +60,7 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::delete(notifications::delete),
         )
         .route("/logout", axum::routing::post(auth::logout))
+        .route("/events", get(events::stream))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::require_auth));
 
     let public = Router::new()
@@ -75,7 +79,45 @@ async fn healthz() -> &'static str {
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
-    monitors: Vec<MonitorWithStatus>,
+    data: DashboardData,
+}
+
+/// Shared by the full dashboard page and the SSE stream so both render the
+/// exact same `monitor_list.html` fragment from the exact same query.
+pub(crate) struct DashboardData {
+    pub monitors: Vec<MonitorWithStatus>,
+    pub total: usize,
+    pub up: usize,
+    pub down: usize,
+    pub pending: usize,
+}
+
+pub(crate) async fn load_dashboard_data(db: &Pool) -> DashboardData {
+    let conn = db.get().await.expect("failed to get db connection");
+    let monitors = conn
+        .interact(|conn| db_monitors::list_monitors_with_status(conn))
+        .await
+        .expect("db task panicked")
+        .expect("query failed");
+
+    let total = monitors.len();
+    let up = monitors
+        .iter()
+        .filter(|m| m.status == Some(HeartbeatStatus::Up))
+        .count();
+    let down = monitors
+        .iter()
+        .filter(|m| m.status == Some(HeartbeatStatus::Down))
+        .count();
+    let pending = total - up - down;
+
+    DashboardData {
+        monitors,
+        total,
+        up,
+        down,
+        pending,
+    }
 }
 
 pub(crate) struct HtmlTemplate<T>(pub T);
@@ -94,14 +136,8 @@ impl<T: Template> IntoResponse for HtmlTemplate<T> {
 }
 
 async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
-    let conn = state.db.get().await.expect("failed to get db connection");
-    let monitors = conn
-        .interact(|conn| db_monitors::list_monitors_with_status(conn))
-        .await
-        .expect("db task panicked")
-        .expect("query failed");
-
-    HtmlTemplate(DashboardTemplate { monitors })
+    let data = load_dashboard_data(&state.db).await;
+    HtmlTemplate(DashboardTemplate { data })
 }
 
 async fn static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResponse {

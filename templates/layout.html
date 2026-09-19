@@ -6,6 +6,7 @@
     <title>{% block title %}Vigilant Vole{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="/static/htmx.min.js" defer></script>
+    <script src="/static/sse.js" defer></script>
 </head>
 <body>
     <header>
@@ -15,7 +16,7 @@
             <a href="/settings/notifications">Settings</a>
         </nav>
         <form method="post" action="/logout" class="logout-form">
-            <button type="submit">Log out</button>
+            <button type="submit" class="btn">Log out</button>
         </form>
     </header>
     <main>
