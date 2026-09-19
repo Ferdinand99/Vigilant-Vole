@@ -1,0 +1,19 @@
+# Rust
+/target
+**/*.rs.bk
+
+# SQLite data (never commit persisted DB)
+/data
+*.db
+*.db-journal
+*.sqlite
+
+# Env / secrets
+.env
+.env.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - Vigilant Vole{% endblock %}
+
+{% block content %}
+<section id="monitor-summary">
+    {% if monitor_count == 0 %}
+    <p>No monitors yet. Add your first one to start tracking uptime.</p>
+    {% else %}
+    <p>{{ monitor_count }} monitor(s) configured.</p>
+    {% endif %}
+</section>
+{% endblock %}

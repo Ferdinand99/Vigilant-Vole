@@ -1,0 +1,14 @@
+services:
+  vigilant-vole:
+    build: .
+    image: vigilant-vole:latest
+    container_name: vigilant-vole
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/data # -> /mnt/user/appdata/vigilant-vole on Unraid
+    environment:
+      - DATA_DIR=/data
+    cap_add:
+      - NET_RAW # required for ICMP ping monitors

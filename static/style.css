@@ -1,0 +1,32 @@
+:root {
+    color-scheme: light dark;
+    --bg: #0f1115;
+    --fg: #e8e8e8;
+    --accent: #4f8cff;
+    --muted: #8a8f98;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #262a33;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+main {
+    padding: 1.5rem;
+}
