@@ -123,8 +123,15 @@ async fn run_check_loop(pool: Pool, http_client: reqwest::Client, monitor: Monit
                 .and_then(|r| r.ok())
                 .unwrap_or_default();
             if !channels.is_empty() {
-                notification::notify_all(&http_client, &channels, &monitor.name, status, outcome.message.as_deref())
-                    .await;
+                notification::notify_all(
+                    &http_client,
+                    &channels,
+                    &monitor.name,
+                    &monitor.target,
+                    status,
+                    outcome.message.as_deref(),
+                )
+                .await;
             }
         }
     }
