@@ -1,0 +1,3 @@
+{#- Inline error inside a tag sheet (htmx retarget). Expects `message`. -#}
+{% import "macros.html" as m %}
+{{ m::callout("danger", message.as_str()) }}

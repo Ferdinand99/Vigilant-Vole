@@ -1,0 +1,56 @@
+{#- Edit + reset-password sheets for one user. Expects `u: UserRow`, `roles`, `m`. -#}
+<dialog class="sheet" id="edit-user-{{ u.id }}" aria-labelledby="edit-user-{{ u.id }}-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="edit-user-{{ u.id }}-title">{{ tr1("monitor_form.edit_heading", "name", u.username) }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="edit-user-{{ u.id }}" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="edit-user-{{ u.id }}-form" class="form" method="post" action="/settings/users/{{ u.id }}">
+      <div class="field">
+        <label class="label" for="eu-{{ u.id }}-display">{{ tr("users.display_name") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <input id="eu-{{ u.id }}-display" name="display_name" type="text" maxlength="80" autocomplete="off" value="{{ u.display_name }}" placeholder="{{ u.username }}…">
+      </div>
+      {%- if u.is_self %}
+      <input type="hidden" name="role" value="{{ u.role.as_str() }}">
+      <p class="help">{{ tr1("users.your_role", "role", u.role.label()) }}</p>
+      {%- else %}
+      <div class="field">
+        <span class="label" id="eu-{{ u.id }}-role-label">{{ tr("users.role") }}</span>
+        <div class="segmented segmented-block" role="radiogroup" aria-labelledby="eu-{{ u.id }}-role-label">
+          {%- for r in roles %}
+          <label><input type="radio" name="role" value="{{ r.as_str() }}"{% if u.role_is(r.as_str()) %} checked{% endif %}><span>{{ r.label() }}</span></label>
+          {%- endfor %}
+        </div>
+      </div>
+      {%- endif %}
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="edit-user-{{ u.id }}" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="edit-user-{{ u.id }}-form">{{ tr("users.save") }}</button>
+  </footer>
+</dialog>
+
+{%- if !u.is_self %}
+<dialog class="sheet" id="reset-pw-{{ u.id }}" aria-labelledby="reset-pw-{{ u.id }}-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="reset-pw-{{ u.id }}-title">{{ tr1("users.reset_password_for", "name", u.username) }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="reset-pw-{{ u.id }}" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="reset-pw-{{ u.id }}-form" class="form" method="post" action="/settings/users/{{ u.id }}/password">
+      <div class="field">
+        <label class="label" for="rp-{{ u.id }}-password">{{ tr("users.temp_password") }}</label>
+        <input id="rp-{{ u.id }}-password" name="password" type="text" required minlength="10" maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" class="mono" aria-describedby="rp-{{ u.id }}-help">
+        <p class="help" id="rp-{{ u.id }}-help">{{ tr("users.reset_help") }}</p>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="reset-pw-{{ u.id }}" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="reset-pw-{{ u.id }}-form">{{ tr("users.reset_password") }}</button>
+  </footer>
+</dialog>
+{%- endif %}

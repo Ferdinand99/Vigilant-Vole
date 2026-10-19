@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{% call m::page_header(tr("nav.maintenance"), tr("mw.list_sub")) %}
+  {%- if ctx.can_edit() %}{{ m::link_button("/maintenance/new", tr("mw.schedule"), "primary", "plus") }}{% endif %}
+{% endcall %}
+
+<nav class="segmented" aria-label="{{ tr("mw.windows") }}">
+  <a href="/maintenance?tab=active"{% if tab == "active" %} aria-current="page"{% endif %}>{{ tr("mw.tab_active") }}{% if active_count > 0 %} <span class="badge status-maintenance">{{ active_count }}</span>{% endif %}</a>
+  <a href="/maintenance?tab=upcoming"{% if tab == "upcoming" %} aria-current="page"{% endif %}>{{ tr("mw.tab_upcoming") }}{% if upcoming_count > 0 %} <span class="badge">{{ upcoming_count }}</span>{% endif %}</a>
+  <a href="/maintenance?tab=past"{% if tab == "past" %} aria-current="page"{% endif %}>{{ tr("mw.tab_past") }}{% if past_count > 0 %} <span class="badge">{{ past_count }}</span>{% endif %}</a>
+</nav>
+
+{% if rows.is_empty() -%}
+<div class="empty-card">
+  {%- if tab == "active" %}
+  {%- if ctx.can_edit() %}
+  {{ m::empty_state("wrench", tr("mw.empty_active"), tr("mw.empty_active_text"), "/maintenance/new", tr("mw.schedule")) }}
+  {%- else %}
+  {{ m::empty_state("wrench", tr("mw.empty_active"), tr("mw.empty_active_viewer")) }}
+  {%- endif %}
+  {%- else if tab == "upcoming" %}
+  {{ m::empty_state("calendar", tr("mw.empty_upcoming"), tr("mw.empty_upcoming_text")) }}
+  {%- else %}
+  {{ m::empty_state("clock", tr("mw.empty_past"), tr("mw.empty_past_text")) }}
+  {%- endif %}
+</div>
+{%- else -%}
+<ul class="list" role="list">
+  {%- for r in rows %}
+  <li class="list-row" id="mw-{{ r.id }}">
+    <span class="list-icon status-{{ r.state.status_class() }}">{{ m::icon("wrench") }}</span>
+    <span class="list-main">
+      {%- if ctx.can_edit() %}
+      <a class="list-title list-title-wrap stretched" href="/maintenance/{{ r.id }}/edit">{{ r.title }}</a>
+      {%- else %}
+      <span class="list-title list-title-wrap">{{ r.title }}</span>
+      {%- endif %}
+      <span class="list-sub">{{ r.schedule }}</span>
+      <span class="list-sub">{{ r.monitors_label() }}{% if !r.next.is_empty() %} · {{ r.next }}{% endif %}</span>
+      <span class="show-sm"><span class="pill status-{{ r.state.status_class() }}"><span class="dot"></span>{{ r.state.label() }}</span></span>
+    </span>
+    <span class="list-trail">
+      <span class="pill status-{{ r.state.status_class() }} hide-sm"><span class="dot"></span>{{ r.state.label() }}</span>
+      {%- if ctx.can_edit() %}
+      <span class="list-actions">
+        <button type="button" class="btn btn-icon btn-plain" popovertarget="mw-menu-{{ r.id }}" aria-label="{{ tr1("detail.more_actions_for", "name", r.title) }}">{{ m::icon("more") }}</button>
+        <div class="menu" id="mw-menu-{{ r.id }}" popover>
+          <a class="menu-item" href="/maintenance/{{ r.id }}/edit">{{ m::icon("pencil") }}{{ tr("common.edit") }}</a>
+          {%- if r.can_start() %}
+          <button class="menu-item" type="button" hx-post="/maintenance/{{ r.id }}/start" hx-swap="none">{{ m::icon("play") }}{{ tr("mw.start_now") }}</button>
+          {%- endif %}
+          {%- if r.can_end() %}
+          <button class="menu-item" type="button" hx-post="/maintenance/{{ r.id }}/end" hx-swap="none">{{ m::icon("x-circle") }}{{ tr("mw.end_now") }}</button>
+          {%- endif %}
+          {%- if r.can_pause() %}
+          <button class="menu-item" type="button" hx-post="/maintenance/{{ r.id }}/pause" hx-swap="none">{{ m::icon("pause") }}{{ tr("detail.pause") }}</button>
+          {%- endif %}
+          {%- if r.can_resume() %}
+          <button class="menu-item" type="button" hx-post="/maintenance/{{ r.id }}/resume" hx-swap="none">{{ m::icon("play") }}{{ tr("detail.resume") }}</button>
+          {%- endif %}
+          <hr class="menu-sep">
+          <button class="menu-item menu-item-danger" type="button" hx-delete="/maintenance/{{ r.id }}" hx-swap="none"
+            hx-confirm="{{ tr1("detail.delete_q", "name", r.title) }}" data-confirm-message="{{ tr("mw.delete_msg") }}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+        </div>
+      </span>
+      {%- endif %}
+    </span>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{% endblock %}

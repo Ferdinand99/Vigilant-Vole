@@ -1,0 +1,15 @@
+{#- Body of the "Add monitors" sheet on the status page editor (or just the list when list_only). -#}
+{%- if list_only -%}
+{% include "partials/status_picker_list.html" %}
+{%- else -%}
+<form id="sp-picker-form" class="stack stack-sm" hx-post="/status-pages/{{ page_id }}/sections/{{ section_id }}/monitors" hx-target="#sp-sections" hx-swap="outerHTML">
+  <p class="muted">{{ tr1("sp.adding_to", "name", section_name) }}</p>
+  <label class="search">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+    <input type="search" name="q" placeholder="{{ tr("dashboard.search_placeholder") }}" aria-label="{{ tr("sp.search_monitors") }}" autocomplete="off"
+      hx-get="/status-pages/{{ page_id }}/sections/{{ section_id }}/picker?list=1" hx-trigger="input changed delay:200ms, search"
+      hx-target="#sp-picker-list" hx-swap="outerHTML" hx-include="closest form" data-no-progress>
+  </label>
+  {% include "partials/status_picker_list.html" %}
+</form>
+{%- endif %}

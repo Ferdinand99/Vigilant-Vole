@@ -1,0 +1,25 @@
+{#- Provider choices grouped by category. Choosing one loads its form. Needs: query, groups. -#}
+{%- import "macros.html" as m -%}
+<div class="stack" id="provider-grid">
+  {%- if groups.is_empty() %}
+  <div class="empty">
+    <div class="empty-icon">{{ m::icon("search") }}</div>
+    <p class="empty-title">{{ tr1("notif.no_match", "q", query) }}</p>
+    <p class="empty-text">{{ tr("notif.no_match_text") }}</p>
+  </div>
+  {%- endif %}
+  {%- for g in groups %}
+  <section class="stack-sm" aria-labelledby="{{ g.id }}">
+    <h3 id="{{ g.id }}">{{ g.label }}</h3>
+    <div class="choices" role="radiogroup" aria-labelledby="{{ g.id }}">
+      {%- for p in g.providers %}
+      <label class="choice">
+        <input type="radio" name="kind" value="{{ p.kind }}" hx-get="/settings/notifications/form" hx-trigger="change"
+          hx-target="#channel-sheet-body" hx-swap="outerHTML">
+        <span class="choice-body"><span class="provider-tile provider-{{ p.kind }}" aria-hidden="true">{{ m::icon(p.icon) }}</span><span class="choice-title">{{ p.label }}</span><span class="choice-sub">{{ p.description }}</span></span>
+      </label>
+      {%- endfor %}
+    </div>
+  </section>
+  {%- endfor %}
+</div>

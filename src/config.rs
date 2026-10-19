@@ -1,8 +1,13 @@
 use std::env;
 use std::path::PathBuf;
 
+/// Process-level configuration from environment variables. Runtime-editable
+/// options live in the `settings` table instead (see `db::settings`).
+#[derive(Debug, Clone)]
 pub struct Config {
+    /// `DATA_DIR` (default `./data`): database, session key.
     pub data_dir: PathBuf,
+    /// `0.0.0.0:$PORT` (default port 3001).
     pub bind_addr: String,
 }
 

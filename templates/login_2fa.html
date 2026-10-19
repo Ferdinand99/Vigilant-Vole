@@ -1,0 +1,18 @@
+{% extends "auth_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block subtitle %}<p class="auth-sub">{{ tr("login.code_subtitle") }}</p>{% endblock %}
+
+{% block content %}
+<form class="form" method="post" action="/login/2fa">
+  <div class="field">
+    <label class="label" for="f-code">{{ tr("login.code") }}</label>
+    <input id="f-code" name="code" type="text" required autofocus inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" placeholder="123456…" aria-describedby="f-code-help">
+    <p class="help" id="f-code-help">{{ tr("login.code_help") }}</p>
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg btn-block">{{ tr("login.verify") }}</button>
+</form>
+<form method="post" action="/logout">
+  <button type="submit" class="btn btn-plain btn-block">{{ tr("login.other_account") }}</button>
+</form>
+{% endblock %}

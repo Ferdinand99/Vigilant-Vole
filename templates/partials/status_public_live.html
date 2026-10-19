@@ -1,0 +1,125 @@
+{#- Live region of a public status page; re-fetched by htmx every refresh_seconds. -#}
+{%- import "macros.html" as m -%}
+<div class="stack" id="sp-live" hx-get="{{ v.fragment_url }}" hx-trigger="every {{ v.page.refresh_seconds }}s" hx-swap="outerHTML" data-no-progress>
+  <div class="banner status-{{ v.overall.class }}">
+    <span class="banner-icon">{{ m::icon(v.overall.icon) }}</span>
+    <div>
+      <p class="banner-title">{{ v.overall.title }}</p>
+      <p class="banner-sub">{{ v.overall.detail }} {{ tr("pub.updated") }} {{ m::time_ago(v.updated_at) }}.</p>
+    </div>
+  </div>
+
+  {%- for n in v.pinned %}
+  <article class="incident status-{{ n.class }}">
+    <div class="incident-head">
+      {{ m::icon(n.icon) }}
+      <div>
+        <h2 class="incident-title">{{ n.title }}</h2>
+        <p class="incident-meta">{{ n.meta }}</p>
+      </div>
+    </div>
+    {%- if !n.body_html.is_empty() %}
+    <div class="incident-body prose">{{ n.body_html|safe }}</div>
+    {%- endif %}
+  </article>
+  {%- endfor %}
+
+  {%- for n in v.maintenance %}
+  <article class="incident status-{{ n.class }}">
+    <div class="incident-head">
+      {{ m::icon(n.icon) }}
+      <div>
+        <h2 class="incident-title">{{ n.title }}</h2>
+        <p class="incident-meta">{{ n.meta }}</p>
+      </div>
+    </div>
+    {%- if !n.body_html.is_empty() %}
+    <div class="incident-body prose">{{ n.body_html|safe }}</div>
+    {%- endif %}
+  </article>
+  {%- endfor %}
+
+  {%- if !v.has_monitors() %}
+  <div class="empty-card">
+    {{ m::empty_state("pulse", tr("pub.empty_title"), tr("pub.empty_text")) }}
+  </div>
+  {%- endif %}
+
+  {%- for s in v.sections %}{% if !s.monitors.is_empty() %}
+  <section class="section" aria-labelledby="sp-sec-{{ loop.index }}">
+    <div class="section-head">
+      <div><h2 class="section-title" id="sp-sec-{{ loop.index }}">{{ s.name }}</h2></div>
+    </div>
+    <ul class="list" role="list">
+      {%- for mon in s.monitors %}
+      <li class="list-row list-row-wrap">
+        <span class="list-main">
+          <span class="list-title list-title-wrap">{{ mon.name }}</span>
+          {%- if !mon.tags.is_empty() %}
+          <span class="tags">{% for t in mon.tags %}{{ m::tag(&t.name, &t.color, value=&t.value) }}{% endfor %}</span>
+          {%- endif %}
+        </span>
+        <span class="list-trail">
+          {%- if let Some(ms) = mon.response_label() %}
+          <span class="list-value hide-sm"><strong>{{ ms }}</strong><small>{{ tr("dashboard.response") }}</small></span>
+          {%- endif %}
+          <span class="pill status-{{ mon.status.class() }}"><span class="dot"></span>{{ mon.status.label() }}</span>
+        </span>
+        {%- if v.page.show_uptime %}
+        <div class="list-full uptime">
+          <div class="uptime-days" role="img" aria-label="{{ tr1("detail.days_aria", "value", mon.uptime_label()) }}">
+            {%- for d in mon.days %}<span class="uptime-day {{ d.class }}" data-tip="{{ d.tip }}"></span>{% endfor -%}
+          </div>
+          <div class="uptime-legend"><span class="hide-sm">{{ tr("detail.days_ago_90") }}</span><span class="show-sm">{{ tr("detail.days_ago_45") }}</span><span>{{ mon.uptime_label() }}</span><span>{{ tr("common.today") }}</span></div>
+        </div>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+  </section>
+  {%- endif %}{% endfor %}
+
+  <section class="section" aria-labelledby="sp-past">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title" id="sp-past">{{ tr("pub.past_incidents") }}</h2>
+        <p class="section-sub">{{ tr("pub.last_14_days") }}</p>
+      </div>
+    </div>
+    <div class="card">
+      {%- if v.history.is_empty() %}
+      <p class="muted ta-center">{{ tr("pub.no_incidents") }}</p>
+      {%- else %}
+      <div class="stack">
+        {%- for day in v.history %}
+        <div class="stack stack-sm">
+          <h3 class="t-headline">{{ day.label }}</h3>
+          <ol class="timeline">
+            {%- for n in day.incidents %}
+            <li class="timeline-item status-{{ n.class }}">
+              <span class="timeline-dot" aria-hidden="true"></span>
+              <div>
+                <div class="timeline-head"><span class="timeline-title">{{ n.title }}</span><span class="timeline-time">{{ n.meta }}</span></div>
+                {%- if !n.body_html.is_empty() %}
+                <div class="timeline-text">{{ n.body_html|safe }}</div>
+                {%- endif %}
+              </div>
+            </li>
+            {%- endfor %}
+            {%- for o in day.outages %}
+            <li class="timeline-item status-down">
+              <span class="timeline-dot" aria-hidden="true"></span>
+              <div>
+                <div class="timeline-head"><span class="timeline-title">{{ o.monitor }}</span><span class="timeline-time">{{ o.time }}</span></div>
+                <p class="timeline-text">{{ o.text }}</p>
+              </div>
+            </li>
+            {%- endfor %}
+          </ol>
+        </div>
+        {%- endfor %}
+      </div>
+      {%- endif %}
+    </div>
+  </section>
+</div>

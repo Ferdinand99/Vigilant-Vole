@@ -1,0 +1,19 @@
+{#- Rows of the "Recent checks" table plus a "Show older" row. Expects `id`,
+    `rows` (Vec<HeartbeatView>) and `next_before` (Option<i64>). -#}
+{% import "macros.html" as m %}
+{%- for h in rows %}
+<tr>
+  <td data-label="{{ tr("detail.col_status") }}">{{ m::status_pill(h.status) }}</td>
+  <td data-label="{{ tr("detail.col_checked") }}">{{ m::time_ago(&h.checked_at) }}</td>
+  <td class="num" data-label="{{ tr("detail.response") }}">{{ h.response }}</td>
+  <td data-label="{{ tr("detail.col_message") }}">{% if h.message.is_empty() %}<span class="muted">—</span>{% else %}<span class="break">{{ h.message }}</span>{% endif %}</td>
+</tr>
+{%- endfor %}
+{%- if let Some(before) = next_before %}
+<tr id="hb-more">
+  <td colspan="4" class="ta-center">
+    <button type="button" class="btn btn-secondary btn-sm" hx-get="/monitors/{{ id }}/heartbeats?before={{ before }}"
+      hx-target="#hb-more" hx-swap="outerHTML">{{ tr("detail.show_older") }}</button>
+  </td>
+</tr>
+{%- endif %}

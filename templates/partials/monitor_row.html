@@ -1,0 +1,36 @@
+{#- One dashboard row. Expects `r` (api::dashboard::Row) and `data` in scope. -#}
+{%- if data.select_mode %}
+<li>
+  <label class="list-row" for="sel-{{ r.id }}">
+    <input type="checkbox" id="sel-{{ r.id }}" name="ids" value="{{ r.id }}" form="bulk-form">
+    <span class="dot status-{{ r.status }}" role="img" aria-label="{{ r.status_label }}"></span>
+    <span class="list-main">
+      <span class="list-title list-title-wrap">{{ r.name }}</span>
+      <span class="list-sub">{{ r.type_label }}{% if !r.target.is_empty() %} · {{ r.target }}{% endif %}{% if !r.group_name.is_empty() %} · {{ tr1("dashboard.in_group", "name", r.group_name) }}{% endif %}</span>
+    </span>
+    <span class="list-trail"><span class="pill status-{{ r.status }}"><span class="dot"></span>{{ r.status_label }}</span></span>
+  </label>
+</li>
+{%- else %}
+<li class="list-row" id="monitor-row-{{ r.id }}">
+  <span class="dot status-{{ r.status }}" role="img" aria-label="{{ r.status_label }}"></span>
+  <div class="list-main">
+    <a class="list-title list-title-wrap stretched" href="/monitors/{{ r.id }}">{{ r.name }}</a>
+    <span class="list-sub">{{ r.type_label }}{% if !r.target.is_empty() %} · {{ r.target }}{% endif %}{% if data.flat && !r.group_name.is_empty() %} · {{ tr1("dashboard.in_group", "name", r.group_name) }}{% endif %}</span>
+    {%- if !r.tags.is_empty() %}
+    <span class="tags">{% for t in r.tags %}{{ m::tag(&t.name, &t.color, &t.value) }}{% endfor %}
+      {%- if r.more_tags > 0 %}<span class="badge" data-tip="{{ r.more_tags_tip }}" aria-label="{{ tr2("dashboard.more_tags", "n", r.more_tags, "tags", r.more_tags_tip) }}">+{{ r.more_tags }}</span>{% endif %}</span>
+    {%- endif %}
+  </div>
+  <div class="list-beats">{{ m::heartbeat_bar(&r.recent, tr("dashboard.recent_checks_oldest")) }}</div>
+  <div class="list-value">
+    <strong>{{ r.uptime_label }}</strong>
+    <small>{{ tr("dashboard.h24") }}</small>
+  </div>
+  <div class="list-value hide-sm">
+    <strong>{{ m::ms(r.response_ms) }}</strong>
+    <small>{{ tr("dashboard.response") }}</small>
+  </div>
+  {{ m::icon("chevron-right", "list-chevron") }}
+</li>
+{%- endif %}

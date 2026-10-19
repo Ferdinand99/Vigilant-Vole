@@ -1,0 +1,117 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.api_tokens"), tr("tokens.sub")) %}
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-token" commandfor="new-token" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("tokens.new") }}</span></button>
+{% endcall %}
+
+{%- if let Some(token) = new_token %}
+<section class="section" aria-labelledby="created-title">
+  {% call m::section_head(tr("tokens.your_new"), "", "created-title") %}{% endcall %}
+  {{ m::callout("warning", tr("tokens.copy_now"), tr("sec.shown_once")) }}
+  <div class="card stack-sm">
+    <p class="muted">“{{ new_token_name }}”</p>
+    {{ m::copy_field("created-token", token) }}
+    <p class="help">{{ tr("tokens.send_bearer") }}</p>
+    <pre class="code"><code>curl -H "Authorization: Bearer {{ token }}" {% if base_url.is_empty() %}http://your-host{% else %}{{ base_url }}{% endif %}/api/v1/monitors</code></pre>
+    <p class="help">{{ tr("tokens.prom_1") }} <code>basic_auth</code> {{ tr("tokens.prom_2") }} <code>/metrics</code>.</p>
+  </div>
+</section>
+{%- endif %}
+
+<section class="section" aria-labelledby="tokens-title">
+  {% call m::section_head(tr("tokens.yours"), "", "tokens-title") %}{% endcall %}
+  {%- if tokens.is_empty() %}
+  <div class="card card-flush">
+    {{ m::empty_state("key", tr("tokens.empty_title"), tr("tokens.empty_text")) }}
+  </div>
+  {%- else %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("common.name") }}</th><th>{{ tr("tokens.access") }}</th><th>{{ tr("common.created") }}</th><th>{{ tr("tokens.last_used") }}</th><th>{{ tr("detail.expires") }}</th><th><span class="vh">{{ tr("common.actions") }}</span></th></tr></thead>
+        <tbody>
+          {%- for t in tokens %}
+          {% include "partials/user_token_row.html" %}
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {%- endif %}
+  <p class="section-foot">{{ tr("tokens.foot") }}</p>
+</section>
+
+{%- if ctx.is_admin() && !others.is_empty() %}
+<section class="section" aria-labelledby="others-title">
+  {% call m::section_head(tr("tokens.others"), tr("tokens.others_sub"), "others-title") %}{% endcall %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("common.name") }}</th><th>{{ tr("tokens.owner") }}</th><th>{{ tr("tokens.access") }}</th><th>{{ tr("tokens.last_used") }}</th><th>{{ tr("detail.expires") }}</th><th><span class="vh">{{ tr("common.actions") }}</span></th></tr></thead>
+        <tbody>
+          {%- for t in others %}
+          <tr id="token-{{ t.id }}">
+            <td class="td-primary">{{ t.name }} <span class="mono muted">{{ t.prefix }}…</span></td>
+            <td data-label="{{ tr("tokens.owner") }}">{{ t.username }}</td>
+            <td data-label="{{ tr("tokens.access") }}"><span class="badge{% if t.scope == "write" %} badge-brand{% endif %}">{{ t.scope_label }}</span></td>
+            <td data-label="{{ tr("tokens.last_used") }}">{% match t.last_used_at %}{% when Some(at) %}{{ m::time_ago(at) }}{% when None %}{{ tr("common.never") }}{% endmatch %}</td>
+            <td data-label="{{ tr("detail.expires") }}">{% if t.expired %}<span class="pill status-paused">{{ tr("tokens.expired") }}</span>{% else %}{% match t.expires_at %}{% when Some(at) %}{{ m::time_ago(at) }}{% when None %}{{ tr("common.never") }}{% endmatch %}{% endif %}</td>
+            <td class="td-actions">
+              <button type="button" class="btn btn-danger btn-sm" hx-delete="/settings/tokens/{{ t.id }}"
+                hx-target="#token-{{ t.id }}" hx-swap="outerHTML" hx-confirm="{{ tr1("tokens.revoke_q", "name", t.name) }}"
+                data-confirm-label="{{ tr("tokens.revoke") }}" data-confirm-message="{{ tr("tokens.revoke_msg") }}">{{ tr("tokens.revoke") }}</button>
+            </td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{%- endif %}
+
+<dialog class="sheet" id="new-token" aria-labelledby="new-token-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-token-title">{{ tr("tokens.new") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-token" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-token-form" class="form" method="post" action="/settings/tokens">
+      <div class="field">
+        <label class="label" for="nt-name">{{ tr("common.name") }}</label>
+        <input id="nt-name" name="name" type="text" required maxlength="80" autocomplete="off" placeholder="{{ tr("tokens.name_placeholder") }}" aria-describedby="nt-name-help">
+        <p class="help" id="nt-name-help">{{ tr("tokens.name_help") }}</p>
+      </div>
+      <div class="field">
+        <span class="label" id="nt-scope-label">{{ tr("tokens.access") }}</span>
+        <div class="choices" role="radiogroup" aria-labelledby="nt-scope-label">
+          <label class="choice">
+            <input type="radio" name="scope" value="read" checked>
+            <span class="choice-body">{{ m::icon("eye") }}<span class="choice-title">{{ tr("tokens.scope_read") }}</span><span class="choice-sub">{{ tr("tokens.scope_read_sub") }}</span></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="scope" value="write">
+            <span class="choice-body">{{ m::icon("pencil") }}<span class="choice-title">{{ tr("tokens.scope_write") }}</span><span class="choice-sub">{{ tr("tokens.scope_write_sub") }}</span></span>
+          </label>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="nt-expires">{{ tr("detail.expires") }}</label>
+        <select id="nt-expires" name="expires">
+          <option value="30">{{ tr("tokens.in_30") }}</option>
+          <option value="90" selected>{{ tr("tokens.in_90") }}</option>
+          <option value="365">{{ tr("tokens.in_365") }}</option>
+          <option value="never">{{ tr("common.never") }}</option>
+        </select>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-token" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="new-token-form">{{ tr("tokens.create") }}</button>
+  </footer>
+</dialog>
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.agents"), tr("agents.sub")) %}
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-agent" commandfor="new-agent" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("agents.new") }}</span></button>
+{% endcall %}
+
+{%- match shown %}
+{%- when Some(s) %}
+<section class="section" aria-labelledby="token-title">
+  {% call m::section_head(tr1("agents.connect", "name", s.agent_name), "", "token-title") %}{% endcall %}
+  <div class="card stack-sm">
+    {%- if s.rotated %}
+    {{ m::callout("warning", tr("agents.rotated_text"), tr("agents.rotated_title")) }}
+    {%- else %}
+    {{ m::callout("warning", tr("tokens.copy_now"), tr("sec.shown_once")) }}
+    {%- endif %}
+    {{ m::copy_field("agent-token", &s.token) }}
+    <div data-tabs>
+      <div class="tabs" role="tablist" aria-label="{{ tr("agents.how_to_run") }}">
+        <button class="tab" role="tab" type="button" id="t-run" aria-controls="p-run" aria-selected="true">Docker</button>
+        <button class="tab" role="tab" type="button" id="t-compose" aria-controls="p-compose" aria-selected="false">Compose</button>
+        <button class="tab" role="tab" type="button" id="t-bin" aria-controls="p-bin" aria-selected="false">{{ tr("agents.binary") }}</button>
+      </div>
+      <div class="tab-panel stack-sm" role="tabpanel" id="p-run" aria-labelledby="t-run">
+        <pre class="code"><code id="snippet-run">{{ s.docker_run }}</code></pre>
+        <div class="toolbar"><button type="button" class="btn btn-secondary btn-sm" data-copy="#snippet-run">{{ m::icon("copy") }}<span>{{ tr("agents.copy_command") }}</span></button></div>
+      </div>
+      <div class="tab-panel stack-sm" role="tabpanel" id="p-compose" aria-labelledby="t-compose" hidden>
+        <pre class="code"><code id="snippet-compose">{{ s.compose }}</code></pre>
+        <div class="toolbar"><button type="button" class="btn btn-secondary btn-sm" data-copy="#snippet-compose">{{ m::icon("copy") }}<span>{{ tr("agents.copy_compose") }}</span></button></div>
+      </div>
+      <div class="tab-panel stack-sm" role="tabpanel" id="p-bin" aria-labelledby="t-bin" hidden>
+        <pre class="code"><code id="snippet-bin">{{ s.binary }}</code></pre>
+        <div class="toolbar"><button type="button" class="btn btn-secondary btn-sm" data-copy="#snippet-bin">{{ m::icon("copy") }}<span>{{ tr("agents.copy_command") }}</span></button></div>
+      </div>
+    </div>
+  </div>
+  <p class="section-foot">{{ tr("agents.connect_foot_1") }} <code>--once</code> {{ tr("agents.connect_foot_2") }}</p>
+</section>
+{%- when None %}
+{%- endmatch %}
+
+{%- if !name_error.is_empty() %}
+<section class="section" aria-labelledby="create-title">
+  {% call m::section_head(tr("agents.new"), "", "create-title") %}{% endcall %}
+  <form class="card form" method="post" action="/settings/agents">
+    {{ m::field_text("name", tr("common.name"), value=&name_value, placeholder=tr("agents.name_placeholder"), required=true, error=&name_error) }}
+    {{ m::field_text("location", tr("agents.location"), value=&location_value, placeholder="eu-central…", help=tr("agents.location_help_optional")) }}
+    <div class="form-actions">
+      {{ m::link_button("/settings/agents", tr("common.cancel"), "secondary") }}
+      {{ m::button(tr("agents.create")) }}
+    </div>
+  </form>
+</section>
+{%- endif %}
+
+<section class="section" aria-labelledby="agents-title">
+  {% call m::section_head(tr("agents.agents"), "", "agents-title") %}{% endcall %}
+  {%- if agents.is_empty() %}
+  <div class="empty-card">
+    <div class="empty">
+      <div class="empty-icon">{{ m::icon("server") }}</div>
+      <p class="empty-title">{{ tr("agents.empty_title") }}</p>
+      <p class="empty-text">{{ tr("agents.empty_text") }}</p>
+      <div class="empty-actions"><button type="button" class="btn btn-primary" data-sheet-open="#new-agent" commandfor="new-agent" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("agents.new") }}</span></button></div>
+    </div>
+  </div>
+  {%- else %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("common.name") }}</th><th>{{ tr("detail.col_status") }}</th><th>{{ tr("agents.version") }}</th><th>{{ tr("agents.last_seen") }}</th><th class="num">{{ tr("agents.reporting") }}</th><th><span class="vh">{{ tr("common.actions") }}</span></th></tr></thead>
+        <tbody>
+          {%- for a in agents %}
+          <tr id="agent-{{ a.id }}">
+            <td class="td-primary">
+              <span class="stack-xs">
+                <span>{{ a.name }}</span>
+                <span class="muted t-footnote">{% if !a.location.is_empty() %}{{ a.location }} · {% endif %}<span class="mono">{{ a.prefix }}…</span></span>
+              </span>
+            </td>
+            <td data-label="{{ tr("detail.col_status") }}">
+              {%- if !a.active %}<span class="pill status-paused">{{ tr("users.disabled") }}</span>
+              {%- else if a.online %}<span class="pill status-up"><span class="dot"></span>{{ tr("agents.online") }}</span>
+              {%- else if a.last_seen_at.is_none() %}<span class="pill status-pending">{{ tr("agents.waiting") }}</span>
+              {%- else %}<span class="pill status-down"><span class="dot"></span>{{ tr("js.offline") }}</span>
+              {%- endif %}
+            </td>
+            <td data-label="{{ tr("agents.version") }}">{% if a.version.is_empty() %}<span class="muted">—</span>{% else %}<span class="num">{{ a.version }}</span>{% endif %}</td>
+            <td data-label="{{ tr("agents.last_seen") }}">{% match a.last_seen_at %}{% when Some(at) %}{{ m::time_ago(at) }}{% when None %}<span class="muted">{{ tr("common.never") }}</span>{% endmatch %}</td>
+            <td class="num" data-label="{{ tr("agents.reporting") }}">{{ trn("count.monitors", a.reporting) }}</td>
+            <td class="td-actions">
+              <button type="button" class="btn btn-icon btn-plain" popovertarget="agent-menu-{{ a.id }}" aria-label="{{ tr1("detail.more_actions_for", "name", a.name) }}">{{ m::icon("more") }}</button>
+              <div class="menu" id="agent-menu-{{ a.id }}" popover>
+                <form method="post" action="/settings/agents/{{ a.id }}/rotate" data-confirm="{{ tr1("agents.rotate_q", "name", a.name) }}" data-confirm-message="{{ tr("agents.rotate_msg") }}" data-confirm-label="{{ tr("agents.rotate") }}">
+                  <button class="menu-item" type="submit">{{ m::icon("refresh") }}{{ tr("agents.rotate") }}</button>
+                </form>
+                <form method="post" action="/settings/agents/{{ a.id }}/active">
+                  {%- if a.active %}
+                  <button class="menu-item" type="submit">{{ m::icon("pause") }}{{ tr("users.disable") }}</button>
+                  {%- else %}
+                  <input type="hidden" name="active" value="true">
+                  <button class="menu-item" type="submit">{{ m::icon("play") }}{{ tr("users.enable") }}</button>
+                  {%- endif %}
+                </form>
+                <hr class="menu-sep">
+                <button class="menu-item menu-item-danger" type="button" hx-delete="/settings/agents/{{ a.id }}"
+                  hx-target="#agent-{{ a.id }}" hx-swap="outerHTML" hx-confirm="{{ tr1("detail.delete_q", "name", a.name) }}"
+                  data-confirm-message="{{ tr("agents.delete_msg") }}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+              </div>
+            </td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {%- endif %}
+  <p class="section-foot">{{ tr("agents.online_foot") }}</p>
+</section>
+
+<section class="section" aria-labelledby="how-title">
+  {% call m::section_head(tr("agents.how"), "", "how-title") %}{% endcall %}
+  <div class="card">
+    <dl class="dl dl-stack">
+      <div class="dl-row"><dt>{{ tr("agents.how_count") }}</dt><dd class="num">{{ agent_monitors }}</dd></div>
+      <div class="dl-row"><dt>{{ tr("agents.how_choose") }}</dt><dd>{{ tr("agents.how_choose_text") }}</dd></div>
+      <div class="dl-row"><dt>{{ tr("agents.how_avoid") }}</dt><dd>{{ tr("agents.how_avoid_text") }}</dd></div>
+    </dl>
+  </div>
+  <p class="section-foot">{{ tr("agents.trust_foot") }}</p>
+</section>
+
+<dialog class="sheet" id="new-agent" aria-labelledby="new-agent-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-agent-title">{{ tr("agents.new") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-agent" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-agent-form" class="form" method="post" action="/settings/agents">
+      <div class="field">
+        <label class="label" for="na-name">{{ tr("common.name") }}</label>
+        <input id="na-name" name="name" type="text" placeholder="{{ tr("agents.name_placeholder") }}" maxlength="80" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label class="label" for="na-location">{{ tr("agents.location") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <input id="na-location" name="location" type="text" placeholder="eu-central…" maxlength="80" autocomplete="off" aria-describedby="na-location-help">
+        <p class="help" id="na-location-help">{{ tr("agents.location_help") }}</p>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-agent" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="new-agent-form">{{ tr("agents.create") }}</button>
+  </footer>
+</dialog>
+{% endblock %}

@@ -1,6 +1,30 @@
-/target
-/data
+# Build output and local state
+target/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+
+# VCS, editors, agent scratch
 .git
 .gitignore
+.gitattributes
 .github
+.claude
+.vscode
+.idea
+scratch/
+scratchpad/
+.env
+.env.*
+
+# Not needed to build the binary
+docs/
+deploy/
+assets/
 *.md
+docker-compose*.yml
+Dockerfile
+.dockerignore

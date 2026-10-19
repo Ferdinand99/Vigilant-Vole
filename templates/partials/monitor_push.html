@@ -1,0 +1,27 @@
+{#- Push URL card. Expects `id`, `push_url`, `can_edit`. The URL is a secret,
+    so viewers don't see it. -#}
+{% import "macros.html" as m %}
+<section class="card" id="push-card" aria-labelledby="push-title">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title" id="push-title">{{ tr("push.title") }}</h2>
+      <p class="card-sub">{{ tr("push.sub") }}</p>
+    </div>
+    <div class="toolbar">
+      {%- if can_edit %}
+      <button type="button" class="btn btn-secondary btn-sm" hx-post="/monitors/{{ id }}/push-token" hx-target="#push-card" hx-swap="outerHTML"
+        hx-confirm="{{ tr("push.new_q") }}" data-confirm-message="{{ tr("push.new_msg") }}"
+        data-confirm-label="{{ tr("push.new_confirm") }}" data-confirm-destructive="true">{{ m::icon("refresh") }}<span>{{ tr("push.new_url") }}</span></button>
+      {%- endif %}
+    </div>
+  </div>
+  {%- if can_edit %}
+  <div class="stack-sm">
+    {{ m::copy_field("push-url", push_url) }}
+    <pre class="code"><code>curl -fsS "{{ push_url }}"</code></pre>
+    <p class="help">{{ tr("push.help_1") }} <code>status=down</code> {{ tr("push.help_2") }} <code>msg=</code> {{ tr("push.help_3") }} <code>ping=</code> {{ tr("push.help_4") }}</p>
+  </div>
+  {%- else %}
+  <p class="muted">{{ tr("push.viewer") }}</p>
+  {%- endif %}
+</section>

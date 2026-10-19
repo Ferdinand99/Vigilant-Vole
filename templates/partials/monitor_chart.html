@@ -1,0 +1,50 @@
+{#- Response-time chart card. Expects `id`, `chart` (api::monitors::view::Chart)
+    and `ranges`. Swapped in place by the range control (htmx). -#}
+{% import "macros.html" as m %}
+<section class="card" id="chart-card" aria-labelledby="chart-title">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title" id="chart-title">{{ tr("detail.response_time") }}</h2>
+      <p class="card-sub">{% if chart.has_data %}{{ tr2("detail.chart_sub", "avg", chart.avg_label, "peak", chart.peak_label) }}{% else %}{{ tr("detail.chart_no_data") }}{% endif %}</p>
+    </div>
+    <div class="toolbar">
+      <nav class="segmented" aria-label="{{ tr("detail.time_range") }}">
+        {%- for r in ranges %}
+        <a id="range-{{ r.as_str() }}" href="/monitors/{{ id }}?range={{ r.as_str() }}" hx-get="/monitors/{{ id }}/chart?range={{ r.as_str() }}"
+          hx-target="#chart-card" hx-swap="outerHTML" hx-push-url="/monitors/{{ id }}?range={{ r.as_str() }}"
+          {%- if *r == chart.range %} aria-current="page"{% endif %}>{{ r.label() }}</a>
+        {%- endfor %}
+      </nav>
+    </div>
+  </div>
+  {%- if chart.has_data %}
+  <div class="chart">
+    <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" preserveAspectRatio="none" role="img" aria-label="{{ chart.aria_label }}">
+      <line class="chart-grid" x1="0" x2="{{ chart.width }}" y1="8" y2="8"></line>
+      <line class="chart-grid" x1="0" x2="{{ chart.width }}" y1="{{ chart.mid_y }}" y2="{{ chart.mid_y }}"></line>
+      <line class="chart-grid" x1="0" x2="{{ chart.width }}" y1="{{ chart.height }}" y2="{{ chart.height }}"></line>
+      {%- for b in chart.bands %}
+      <rect class="chart-band{% if b.maintenance %} status-maintenance{% endif %}" x="{{ b.x }}" y="0" width="{{ b.width }}" height="{{ chart.height }}"></rect>
+      {%- endfor %}
+      {%- for s in chart.segments %}
+      <polygon class="chart-area" points="{{ s.area }}"></polygon>
+      <polyline class="chart-line" points="{{ s.line }}"></polyline>
+      {%- endfor %}
+    </svg>
+    <div class="chart-scale" aria-hidden="true"><span>{{ chart.max_label }}</span><span>{{ millis(0) }}</span></div>
+  </div>
+  <div class="chart-axis" aria-hidden="true"><span>{{ chart.range.axis_start() }}</span><span>{{ tr("common.now") }}</span></div>
+  {%- if chart.has_down_band || chart.has_maintenance_band %}
+  <div class="legend">
+    {%- if chart.has_down_band %}
+    <span class="legend-item"><span class="legend-swatch status-down"></span>{{ tr("detail.downtime") }}</span>
+    {%- endif %}
+    {%- if chart.has_maintenance_band %}
+    <span class="legend-item"><span class="legend-swatch status-maintenance"></span>{{ tr("status.maintenance") }}</span>
+    {%- endif %}
+  </div>
+  {%- endif %}
+  {%- else %}
+  {{ m::empty_state("chart", tr("detail.chart_empty_title"), tr("detail.chart_empty_text")) }}
+  {%- endif %}
+</section>

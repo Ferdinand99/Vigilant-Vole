@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<!--
+  Unraid Community Applications template for Vigilant Vole.
+  Copy to /boot/config/plugins/dockerMan/templates-user/my-vigilant-vole.xml,
+  then Docker tab -> Add Container -> Template: vigilant-vole.
+
+  <Repository> is a placeholder: build the image on the server
+  (docker build -t vigilant-vole:latest .) or replace it with a published
+  image reference once one exists.
+-->
+<Container version="2">
+  <Name>vigilant-vole</Name>
+  <Repository>vigilant-vole:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Ferdinand99/Vigilant-Vole/issues</Support>
+  <Project>https://github.com/Ferdinand99/Vigilant-Vole</Project>
+  <Overview>Lightweight self-hosted uptime monitor written in Rust: HTTP(S), keyword, JSON query, TCP, ping, DNS, push, Docker, WebSocket, domain expiry, NTP and Steam monitors; 24 notification providers plus Apprise; status pages with custom domains, incidents and badges; maintenance windows; remote agents; REST API, config as code and Prometheus metrics. One static binary, one SQLite file. Open the WebUI after the first start to create the admin account.</Overview>
+  <Category>Network:Management Tools:Utilities Status:Stable</Category>
+  <WebUI>http://[IP]:[PORT:3001]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/assets/logo.jpg</Icon>
+  <ExtraParams>--user 99:100 --cap-add=NET_RAW</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>For Docker container monitors and label discovery: map the Docker socket below and add --group-add with the socket's GID (stat -c %g /var/run/docker.sock) to Extra Parameters.</Requires>
+  <Config Name="WebUI port" Target="3001" Default="3001" Mode="tcp" Description="Web interface, API, status pages and /metrics." Type="Port" Display="always" Required="true" Mask="false">3001</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/vigilant-vole" Mode="rw" Description="SQLite database, session key and backups. Must be writable by the container user (99:100 by default)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/vigilant-vole</Config>
+  <Config Name="Docker socket (optional)" Target="/var/run/docker.sock" Default="" Mode="ro" Description="Only needed for Docker container monitors and label auto-discovery. Leave empty to disable." Type="Path" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="VV_TRUST_PROXY" Target="VV_TRUST_PROXY" Default="0" Description="Set to 1 when the WebUI is only reachable through a reverse proxy (SWAG, Nginx Proxy Manager, Traefik) that sets X-Forwarded-* headers." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+  <Config Name="VV_CONFIG_FILE" Target="VV_CONFIG_FILE" Default="" Description="Optional path (inside the container, e.g. /data/vigilant.yml) to a YAML/JSON config file merged into the database on every start." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="RUST_LOG" Target="RUST_LOG" Default="info" Description="Log level filter." Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
+</Container>

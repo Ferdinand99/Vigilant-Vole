@@ -1,0 +1,66 @@
+{#- Provider fields rendered generically from the schema. Needs: form.fields (Vec<FieldView>). -#}
+{%- import "macros.html" as m -%}
+{%- for f in form.fields %}
+{%- if f.input == "bool" %}
+<div{% if !f.show_when.is_empty() %} data-show-when="{{ f.show_when }}"{% endif %}>
+  {{ m::switch(f.name.as_str(), f.label, f.checked, f.help) }}
+</div>
+{%- else %}
+<div class="field{% if !f.error.is_empty() %} is-invalid{% endif %}"{% if !f.show_when.is_empty() %} data-show-when="{{ f.show_when }}"{% endif %}>
+  {%- if f.input == "kv" %}
+  <span class="label" id="f-{{ f.name }}-label">{{ f.label }}{% if !f.required %} <span class="label-optional">{{ tr("common.optional") }}</span>{% endif %}</span>
+  <div class="kv-editor" data-kv role="group" aria-labelledby="f-{{ f.name }}-label">
+    <div class="kv-head" aria-hidden="true"><span>{{ tr("common.name") }}</span><span>{{ tr("form.value") }}</span><span></span></div>
+    <div class="kv-rows" data-kv-rows>
+      {%- for (k, v) in f.rows %}
+      <div class="kv-row">
+        <input type="text" name="{{ f.name }}__k" value="{{ k }}" aria-label="{{ tr("form.header_name") }}" placeholder="Authorization…" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <input type="text" name="{{ f.name }}__v" value="{{ v }}" aria-label="{{ tr("form.header_value") }}" placeholder="Bearer …" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("minus") }}</button>
+      </div>
+      {%- endfor %}
+    </div>
+    <template data-kv-template>
+      <div class="kv-row">
+        <input type="text" name="{{ f.name }}__k" aria-label="{{ tr("form.header_name") }}" placeholder="Authorization…" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <input type="text" name="{{ f.name }}__v" aria-label="{{ tr("form.header_value") }}" placeholder="Bearer …" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("minus") }}</button>
+      </div>
+    </template>
+    <div><button type="button" class="btn btn-plain btn-sm" data-kv-add>{{ m::icon("plus") }}<span>{{ tr("form.add_header") }}</span></button></div>
+  </div>
+  {%- else %}
+  <label class="label" for="f-{{ f.name }}">{{ f.label }}{% if !f.required && f.input != "select" %} <span class="label-optional">{{ tr("common.optional") }}</span>{% endif %}</label>
+  {%- if f.input == "select" %}
+  <select id="f-{{ f.name }}" name="{{ f.name }}"{% if !f.describedby().is_empty() %} aria-describedby="{{ f.describedby() }}"{% endif %}>
+    {%- for o in f.options %}
+    <option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>
+    {%- endfor %}
+  </select>
+  {%- else if f.input == "textarea" %}
+  <textarea id="f-{{ f.name }}" name="{{ f.name }}" rows="4" class="textarea-code" spellcheck="false"
+    {%- if !f.placeholder.is_empty() %} placeholder="{{ f.placeholder }}"{% endif %}
+    {%- if !f.describedby().is_empty() %} aria-describedby="{{ f.describedby() }}"{% endif %}
+    {%- if !f.error.is_empty() %} aria-invalid="true"{% endif %}>{{ f.value }}</textarea>
+  {%- else %}
+  <input id="f-{{ f.name }}" name="{{ f.name }}" type="{{ f.input }}" value="{{ f.value }}" autocomplete="{{ f.autocomplete }}"
+    {%- if f.input == "number" %} inputmode="numeric" step="1"{% endif %}
+    {%- if f.input != "number" %} autocapitalize="none" spellcheck="false"{% endif %}
+    {%- if !f.placeholder.is_empty() %} placeholder="{{ f.placeholder }}"{% endif %}
+    {%- if f.required && !f.saved %} required{% endif %}
+    {%- if !f.describedby().is_empty() %} aria-describedby="{{ f.describedby() }}"{% endif %}
+    {%- if !f.error.is_empty() %} aria-invalid="true"{% endif %}>
+  {%- endif %}
+  {%- endif %}
+  {%- if f.has_help() %}
+  <p class="help" id="f-{{ f.name }}-help">{% if f.saved %}{{ tr("notif.saved_help") }}{% if !f.help.is_empty() %} {% endif %}{% endif %}{{ f.help }}</p>
+  {%- endif %}
+  {%- if !f.error.is_empty() %}
+  <p class="field-error" id="f-{{ f.name }}-error">{{ m::icon("alert-circle") }}{{ f.error }}</p>
+  {%- endif %}
+  {%- if f.saved && !f.required %}
+  {{ m::checkbox(f.clear_name.as_str(), tr("notif.remove_saved"), false) }}
+  {%- endif %}
+</div>
+{%- endif %}
+{%- endfor %}

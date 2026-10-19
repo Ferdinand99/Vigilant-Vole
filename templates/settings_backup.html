@@ -1,0 +1,127 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.backup"), tr("backup.sub")) %}{% endcall %}
+
+{%- if restore_pending %}
+<section class="section" aria-labelledby="pending-title">
+  {% call m::section_head(tr("backup.pending"), "", "pending-title") %}{% endcall %}
+  {{ m::callout("warning", tr("backup.pending_text"), tr("backup.pending_title")) }}
+  <div class="cluster">
+    <button type="button" class="btn btn-secondary" hx-delete="/settings/backup/restore" hx-swap="none"
+      hx-confirm="{{ tr("backup.cancel_q") }}" data-confirm-label="{{ tr("backup.cancel_restore") }}" data-confirm-cancel="{{ tr("backup.keep_it") }}"
+      data-confirm-message="{{ tr("backup.cancel_msg") }}">{{ m::icon("x") }}<span>{{ tr("backup.cancel_restore") }}</span></button>
+  </div>
+</section>
+{%- endif %}
+
+<section class="section" aria-labelledby="full-title">
+  {% call m::section_head(tr("backup.full"), tr("backup.full_sub"), "full-title") %}{% endcall %}
+  <ul class="list" role="list">
+    <li class="list-row">
+      <span class="list-icon">{{ m::icon("archive") }}</span>
+      <span class="list-main">
+        <span class="list-title">{{ tr("backup.db_backup") }}</span>
+        <span class="list-sub">{{ trn("count.monitors", monitor_count) }} · {{ tr1("backup.on_disk", "size", db_size) }}</span>
+      </span>
+      <span class="list-trail">
+        <a class="btn btn-primary btn-sm" href="/settings/backup/database" download>{{ m::icon("download") }}<span>{{ tr("backup.download") }}</span></a>
+      </span>
+    </li>
+  </ul>
+  <p class="section-foot">{{ tr("backup.full_foot") }}</p>
+</section>
+
+<section class="section" aria-labelledby="export-title">
+  {% call m::section_head(tr("backup.config"), tr("backup.config_sub"), "export-title") %}{% endcall %}
+  <form class="card stack-sm" method="get" action="/api/v1/config">
+    <input type="hidden" name="download" value="1">
+    <div class="field">
+      <span class="label" id="export-format-label">{{ tr("backup.format") }}</span>
+      <div class="segmented" role="radiogroup" aria-labelledby="export-format-label">
+        <label><input type="radio" name="format" value="yaml" checked><span>YAML</span></label>
+        <label><input type="radio" name="format" value="json"><span>JSON</span></label>
+      </div>
+    </div>
+    {{ m::switch("secrets", tr("backup.secrets"), false, tr("backup.secrets_help")) }}
+    <div class="cluster">
+      <button type="submit" class="btn btn-secondary">{{ m::icon("download") }}<span>{{ tr("backup.export") }}</span></button>
+    </div>
+  </form>
+  <p class="section-foot">{{ tr("backup.git_1") }} <code>VV_CONFIG_FILE</code> {{ tr("backup.git_2") }} <a href="/api-docs#configuration">{{ tr("docs.title") }}</a>.</p>
+</section>
+
+<section class="section" aria-labelledby="import-title">
+  {% call m::section_head(tr("backup.import"), tr("backup.import_sub"), "import-title") %}{% endcall %}
+  <form id="import-form" class="card stack-sm" hx-post="/settings/backup/import/preview" hx-encoding="multipart/form-data"
+    hx-trigger="vv:sheet-open from:#import-sheet" hx-target="#import-plan" hx-swap="innerHTML">
+    <div class="field">
+      <label class="label" for="import-file">{{ tr("backup.file") }} <span class="label-optional">{{ tr("backup.yaml_or_json") }}</span></label>
+      <input id="import-file" name="file" type="file" accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml">
+    </div>
+    {{ m::field_textarea("document", tr("backup.paste"), "", 6, "version: 1 …", "", true) }}
+    <div class="field">
+      <span class="label" id="import-mode-label">{{ tr("backup.mode") }}</span>
+      <div class="segmented segmented-block" role="radiogroup" aria-labelledby="import-mode-label">
+        <label><input type="radio" name="mode" value="merge" checked><span>{{ tr("backup.merge") }}</span></label>
+        <label><input type="radio" name="mode" value="replace"><span>{{ tr("backup.replace") }}</span></label>
+      </div>
+      <p class="help">{{ tr("backup.mode_help") }}</p>
+    </div>
+    <div class="cluster">
+      <button type="button" class="btn btn-primary" data-sheet-open="#import-sheet" commandfor="import-sheet" command="show-modal">{{ m::icon("eye") }}<span>{{ tr("backup.preview") }}</span></button>
+    </div>
+  </form>
+</section>
+
+<section class="section" aria-labelledby="kuma-title">
+  {% call m::section_head(tr("backup.kuma"), tr("backup.kuma_sub"), "kuma-title") %}{% endcall %}
+  <form id="kuma-form" class="card stack-sm" hx-post="/settings/backup/kuma/preview" hx-encoding="multipart/form-data"
+    hx-trigger="vv:sheet-open from:#kuma-sheet" hx-target="#kuma-plan" hx-swap="innerHTML">
+    <div class="field">
+      <label class="label" for="kuma-file">{{ tr("backup.kuma_data") }}</label>
+      <input id="kuma-file" name="file" type="file" accept=".db,.sqlite,.json,application/json" aria-describedby="kuma-file-help">
+      <p class="help" id="kuma-file-help"><code>kuma.db</code> {{ tr("backup.kuma_help") }}</p>
+    </div>
+    <div class="cluster">
+      <button type="button" class="btn btn-secondary" data-sheet-open="#kuma-sheet" commandfor="kuma-sheet" command="show-modal">{{ m::icon("upload") }}<span>{{ tr("backup.preview_import") }}</span></button>
+    </div>
+  </form>
+  <p class="section-foot">{{ tr("backup.kuma_foot") }}</p>
+</section>
+
+<section class="section" aria-labelledby="restore-title">
+  {% call m::section_head(tr("backup.restore"), tr("backup.restore_sub"), "restore-title") %}{% endcall %}
+  <form class="card stack-sm" hx-post="/settings/backup/restore" hx-encoding="multipart/form-data" hx-swap="none"
+    hx-confirm="{{ tr("backup.restore_q") }}" data-confirm-label="{{ tr("backup.schedule_restore") }}"
+    data-confirm-message="{{ tr("backup.restore_msg") }}">
+    <div class="field">
+      <label class="label" for="restore-file">{{ tr("backup.backup_file") }}</label>
+      <input id="restore-file" name="file" type="file" accept=".db,.sqlite,application/vnd.sqlite3" required aria-describedby="restore-file-help">
+      <p class="help" id="restore-file-help">{{ tr("backup.restore_help_1") }} <code>vigilant-vole-backup-….db</code>{{ tr("backup.restore_help_2") }}</p>
+    </div>
+    <div class="cluster">
+      <button type="submit" class="btn btn-danger">{{ m::icon("refresh") }}<span>{{ tr("backup.restore_next") }}</span></button>
+    </div>
+  </form>
+</section>
+
+<dialog class="sheet sheet-lg" id="import-sheet" aria-labelledby="import-sheet-title" data-sheet-static>
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="import-sheet-title">{{ tr("backup.review") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="import-sheet" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body" id="import-plan" aria-live="polite">{{ m::skeleton_rows(4) }}</div>
+</dialog>
+
+<dialog class="sheet sheet-lg" id="kuma-sheet" aria-labelledby="kuma-sheet-title" data-sheet-static>
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="kuma-sheet-title">{{ tr("backup.review_kuma") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="kuma-sheet" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body" id="kuma-plan" aria-live="polite">{{ m::skeleton_rows(4) }}</div>
+</dialog>
+{% endblock %}

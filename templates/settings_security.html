@@ -1,0 +1,200 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.security"), tr("sec.sub")) %}{% endcall %}
+
+{%- if !new_codes.is_empty() %}
+<section class="section" aria-labelledby="codes-title">
+  {% call m::section_head(tr("sec.your_codes"), "", "codes-title") %}
+    <button type="button" class="btn btn-secondary btn-sm" data-copy="#recovery-codes">{{ m::icon("copy") }}<span>{{ tr("sec.copy_all") }}</span></button>
+  {% endcall %}
+  {{ m::callout("warning", tr("sec.codes_warning"), tr("sec.shown_once")) }}
+  <div class="card">
+    <pre class="code"><code id="recovery-codes" class="mono">{{ new_codes_text }}</code></pre>
+  </div>
+</section>
+{%- endif %}
+
+<section class="section" aria-labelledby="profile-title">
+  {% call m::section_head(tr("sec.profile"), "", "profile-title") %}{% endcall %}
+  <form class="card stack-sm" method="post" action="/settings/security/profile">
+    <dl class="dl">
+      <div class="dl-row"><dt>{{ tr("login.username") }}</dt><dd>{{ username }}</dd></div>
+      <div class="dl-row"><dt>{{ tr("users.role") }}</dt><dd>{% if let Some(u) = ctx.user %}{{ u.role.label() }}{% endif %}</dd></div>
+    </dl>
+    {{ m::field_text("display_name", tr("users.display_name"), value=&self.display_name, placeholder="Ada Lovelace…", help=tr("sec.display_name_help"), autocomplete="name") }}
+    <div class="field">
+      <label class="label" for="f-language">{{ tr("general.language") }}</label>
+      <select id="f-language" name="language" aria-describedby="f-language-help">
+        <option value=""{% if language.is_empty() %} selected{% endif %}>{{ tr1("sec.language_default", "lang", site_language_name) }}</option>
+        {%- for (code, label) in languages %}
+        <option value="{{ code }}"{% if language.as_str() == *code %} selected{% endif %}>{{ label }}</option>
+        {%- endfor %}
+      </select>
+      <p class="help" id="f-language-help">{{ tr("sec.language_help") }}</p>
+    </div>
+    <div class="cluster cluster-between">
+      <span></span>
+      {{ m::button(tr("sec.save_profile"), "secondary") }}
+    </div>
+  </form>
+</section>
+
+<section class="section" aria-labelledby="password-title">
+  {% call m::section_head(tr("login.password"), tr("sec.password_sub"), "password-title") %}{% endcall %}
+  <form class="card stack-sm" method="post" action="/settings/security/password">
+    <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden>
+    <div class="field">
+      <label class="label" for="f-current_password">{{ tr("sec.current_password") }}</label>
+      <input id="f-current_password" name="current_password" type="password" required maxlength="1024" autocomplete="current-password">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label class="label" for="f-new_password">{{ tr("sec.new_password") }}</label>
+        <input id="f-new_password" name="new_password" type="password" required minlength="10" maxlength="1024" autocomplete="new-password" data-password-strength aria-describedby="f-new_password-help">
+        <div class="meter" data-strength-meter aria-hidden="true"></div>
+        <p class="help" id="f-new_password-help" data-strength-label aria-live="polite">{{ tr("sec.min_10") }}</p>
+      </div>
+      <div class="field">
+        <label class="label" for="f-confirm_password">{{ tr("sec.confirm_new") }}</label>
+        <input id="f-confirm_password" name="confirm_password" type="password" required minlength="10" maxlength="1024" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="cluster cluster-between">
+      <span></span>
+      {{ m::button(tr("sec.change_password"), "secondary") }}
+    </div>
+  </form>
+</section>
+
+<section class="section" id="two-factor" aria-labelledby="tfa-title">
+  {% call m::section_head(tr("login.two_factor_title"), tr("sec.tfa_sub"), "tfa-title") %}{% endcall %}
+  {%- if totp_enabled %}
+  <ul class="list" role="list">
+    <li class="list-row">
+      <span class="list-icon status-up">{{ m::icon("shield-check") }}</span>
+      <span class="list-main">
+        <span class="list-title">{{ tr("common.on") }}</span>
+        <span class="list-sub">{{ tr("sec.authenticator_app") }} · {{ trn("sec.codes_left", recovery_remaining) }}</span>
+      </span>
+      <span class="list-actions cluster">
+        <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#new-codes" commandfor="new-codes" command="show-modal">{{ tr("sec.new_codes") }}</button>
+        <button type="button" class="btn btn-danger btn-sm" data-sheet-open="#disable-2fa" commandfor="disable-2fa" command="show-modal">{{ tr("sec.turn_off") }}</button>
+      </span>
+    </li>
+  </ul>
+  {%- if recovery_remaining < 3 %}
+  {{ m::callout("warning", tr("sec.codes_low")) }}
+  {%- endif %}
+  {%- else if let Some(e) = enrolment %}
+  <div class="card stack">
+    <div class="grid-2">
+      <div class="stack-sm">
+        <h3>{{ tr("sec.step_scan") }}</h3>
+        <p class="muted">{{ tr("sec.scan_help") }}</p>
+        <div class="qr"><img src="{{ e.qr }}" width="200" height="200" alt="{{ tr1("sec.qr_alt", "name", username) }}"></div>
+      </div>
+      <div class="stack-sm">
+        <h3>{{ tr("sec.cant_scan") }}</h3>
+        <p class="muted">{{ tr("sec.key_help") }}</p>
+        {{ m::copy_field("totp-secret", &e.secret_grouped) }}
+        <h3>{{ tr("sec.step_code") }}</h3>
+        <form class="stack-sm" method="post" action="/settings/security/2fa/enable">
+          <div class="field">
+            <label class="label" for="f-enable-code">{{ tr("sec.six_digit") }}</label>
+            <input id="f-enable-code" name="code" type="text" required inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="123456…">
+          </div>
+          <div class="cluster">
+            {{ m::button(tr("sec.turn_on"), "primary", "shield-check") }}
+          </div>
+        </form>
+      </div>
+    </div>
+    <form class="card-foot" method="post" action="/settings/security/2fa/cancel">
+      {{ m::button(tr("sec.cancel_setup"), "ghost", "", "submit", "sm") }}
+    </form>
+  </div>
+  {%- else %}
+  <div class="card">
+    <div class="empty">
+      <div class="empty-icon">{{ m::icon("shield") }}</div>
+      <p class="empty-title">{{ tr("sec.tfa_off_title") }}</p>
+      <p class="empty-text">{{ tr("sec.tfa_off_text") }}</p>
+      <div class="empty-actions">
+        <form method="post" action="/settings/security/2fa/setup">{{ m::button(tr("sec.setup_tfa"), "primary", "shield-check") }}</form>
+      </div>
+    </div>
+  </div>
+  {%- endif %}
+</section>
+
+<section class="section" aria-labelledby="sessions-title">
+  {% call m::section_head(tr("sec.sessions"), "", "sessions-title") %}{% endcall %}
+  <ul class="list" role="list">
+    <li class="list-row">
+      <span class="list-icon">{{ m::icon("lock") }}</span>
+      <span class="list-main">
+        <span class="list-title">{{ tr("sec.this_browser") }}</span>
+        <span class="list-sub">{{ tr("sec.last_login") }} {% match last_login_at %}{% when Some(at) %}{{ m::time_ago(at) }}{% when None %}{{ tr("sec.unknown_lc") }}{% endmatch %} · {{ tr("sec.stays_signed_in") }}</span>
+      </span>
+      <span class="list-actions">
+        <form method="post" action="/settings/security/sessions" data-confirm="{{ tr("sec.signout_q") }}" data-confirm-message="{{ tr("sec.signout_msg") }}" data-confirm-label="{{ tr("sec.signout") }}" data-confirm-destructive="false">
+          {{ m::button(tr("sec.signout_others"), "secondary", "logout", "submit", "sm") }}
+        </form>
+      </span>
+    </li>
+  </ul>
+  <p class="section-foot">{{ tr("sec.tokens_unaffected") }} <a href="/settings/tokens">{{ tr("nav.api_tokens") }}</a>.</p>
+</section>
+
+{%- if totp_enabled %}
+<dialog class="sheet" id="new-codes" aria-labelledby="new-codes-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-codes-title">{{ tr("sec.new_codes") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-codes" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-codes-form" class="form" method="post" action="/settings/security/2fa/recovery">
+      <p class="muted">{{ tr("sec.codes_stop") }}</p>
+      <div class="field">
+        <label class="label" for="f-codes-password">{{ tr("sec.current_password") }}</label>
+        <input id="f-codes-password" name="password" type="password" required maxlength="1024" autocomplete="current-password">
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-codes" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="new-codes-form">{{ tr("sec.create_codes") }}</button>
+  </footer>
+</dialog>
+
+<dialog class="sheet" id="disable-2fa" aria-labelledby="disable-2fa-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="disable-2fa-title">{{ tr("sec.disable_title") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="disable-2fa" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="disable-2fa-form" class="form" method="post" action="/settings/security/2fa/disable">
+      <p class="muted">{{ tr("sec.disable_text") }}</p>
+      <div class="field">
+        <label class="label" for="f-disable-password">{{ tr("sec.current_password") }}</label>
+        <input id="f-disable-password" name="password" type="password" required maxlength="1024" autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label class="label" for="f-disable-code">{{ tr("sec.disable_code") }}</label>
+        <input id="f-disable-code" name="code" type="text" required autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="32">
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="disable-2fa" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-danger-solid" form="disable-2fa-form">{{ tr("sec.turn_off") }}</button>
+  </footer>
+</dialog>
+{%- endif %}
+{% endblock %}
+
+

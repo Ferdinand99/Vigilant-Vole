@@ -1,0 +1,109 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{% call m::page_header(tr("dashboard.tags"), tr("tags.sub"), "/", tr("nav.dashboard")) %}
+  {%- if ctx.can_edit() %}
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-tag" commandfor="new-tag" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("form.new_tag") }}</span></button>
+  {%- endif %}
+{% endcall %}
+
+{%- if tags.is_empty() %}
+<div class="empty-card">
+  <div class="empty">
+    <div class="empty-icon">{{ m::icon("tag") }}</div>
+    <p class="empty-title">{{ tr("tags.empty_title") }}</p>
+    <p class="empty-text">{{ tr("tags.empty_text") }}</p>
+    {%- if ctx.can_edit() %}
+    <div class="empty-actions"><button type="button" class="btn btn-primary" data-sheet-open="#new-tag" commandfor="new-tag" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("form.new_tag") }}</span></button></div>
+    {%- endif %}
+  </div>
+</div>
+{%- else %}
+<ul class="list" role="list" id="tag-list">
+  {%- for t in tags %}
+  <li class="list-row" id="tag-{{ t.tag.id }}">
+    <span class="list-main">
+      <span class="list-title">{{ m::tag(&t.tag.name, &t.tag.color) }}</span>
+      <span class="list-sub">{% if t.monitors == 0 %}{{ tr("tags.unused") }}{% else %}{{ trn("tags.used_by", t.monitors) }}{% endif %}</span>
+    </span>
+    <div class="list-actions">
+      {%- if t.monitors > 0 %}
+      <a class="btn btn-plain btn-sm" href="/?tag={{ t.tag.id }}">{{ tr("dashboard.show_monitors") }}</a>
+      {%- endif %}
+      {%- if ctx.can_edit() %}
+      <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-open="#edit-tag-{{ t.tag.id }}" commandfor="edit-tag-{{ t.tag.id }}" command="show-modal"
+        aria-label="{{ tr1("tags.edit_aria", "name", t.tag.name) }}" data-tip="{{ tr("common.edit") }}">{{ m::icon("pencil") }}</button>
+      <button type="button" class="btn btn-icon btn-plain btn-sm" hx-delete="/tags/{{ t.tag.id }}" hx-target="#tag-{{ t.tag.id }}" hx-swap="outerHTML"
+        hx-confirm="{{ tr1("detail.delete_q", "name", t.tag.name) }}"
+        data-confirm-message="{% if t.monitors == 0 %}{{ tr("tags.delete_unused") }}{% else %}{{ trn("tags.delete_used", t.monitors) }}{% endif %}"
+        aria-label="{{ tr1("tags.delete_aria", "name", t.tag.name) }}" data-tip="{{ tr("common.delete") }}">{{ m::icon("trash") }}</button>
+      {%- endif %}
+    </div>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+
+{%- if ctx.can_edit() %}
+<dialog class="sheet" id="new-tag" aria-labelledby="new-tag-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-tag-title">{{ tr("form.new_tag") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-tag" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-tag-form" class="form" method="post" action="/tags" hx-post="/tags" hx-swap="none">
+      <div id="new-tag-errors" aria-live="polite"></div>
+      <div class="field">
+        <label class="label" for="new-tag-name">{{ tr("common.name") }}</label>
+        <input id="new-tag-name" name="name" type="text" required maxlength="40" autocomplete="off" placeholder="{{ tr("form.tag_name_placeholder") }}" autofocus>
+      </div>
+      <div class="field">
+        <span class="label" id="new-tag-color-label">{{ tr("form.color") }}</span>
+        <div class="chips" role="radiogroup" aria-labelledby="new-tag-color-label">
+          {%- for (c, label) in palette %}
+          <label class="chip"><input type="radio" name="color" value="{{ c }}"{% if loop.first %} checked{% endif %}><span class="tag-swatch tag-{{ c }}" aria-hidden="true"></span>{{ label }}</label>
+          {%- endfor %}
+        </div>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-tag" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="new-tag-form">{{ tr("tags.create") }}</button>
+  </footer>
+</dialog>
+
+{%- for t in tags %}
+<dialog class="sheet" id="edit-tag-{{ t.tag.id }}" aria-labelledby="edit-tag-{{ t.tag.id }}-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="edit-tag-{{ t.tag.id }}-title">{{ tr("tags.edit") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="edit-tag-{{ t.tag.id }}" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="edit-tag-{{ t.tag.id }}-form" class="form" method="post" action="/tags/{{ t.tag.id }}" hx-post="/tags/{{ t.tag.id }}" hx-swap="none">
+      <div id="edit-tag-{{ t.tag.id }}-errors" aria-live="polite"></div>
+      <div class="field">
+        <label class="label" for="edit-tag-{{ t.tag.id }}-name">{{ tr("common.name") }}</label>
+        <input id="edit-tag-{{ t.tag.id }}-name" name="name" type="text" required maxlength="40" autocomplete="off" value="{{ t.tag.name }}">
+      </div>
+      <div class="field">
+        <span class="label" id="edit-tag-{{ t.tag.id }}-color-label">{{ tr("form.color") }}</span>
+        <div class="chips" role="radiogroup" aria-labelledby="edit-tag-{{ t.tag.id }}-color-label">
+          {%- for (c, label) in palette %}
+          <label class="chip"><input type="radio" name="color" value="{{ c }}"{% if t.tag.color == **c %} checked{% endif %}><span class="tag-swatch tag-{{ c }}" aria-hidden="true"></span>{{ label }}</label>
+          {%- endfor %}
+        </div>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="edit-tag-{{ t.tag.id }}" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="edit-tag-{{ t.tag.id }}-form">{{ tr("tags.save") }}</button>
+  </footer>
+</dialog>
+{%- endfor %}
+{%- endif %}
+{% endblock %}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="{{ lang_code() }}" data-theme-lock{% if theme == "light" %} data-theme="light"{% else if theme == "dark" %} data-theme="dark"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {%- if theme == "light" %}
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f5f5f7">
+  {%- else if theme == "dark" %}
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0b0d">
+  {%- else %}
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  {%- endif %}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>{{ page_title }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  {% block head %}{% endblock %}
+  {%- if let Some(css) = custom_css %}
+  <style>{{ css|safe }}</style>
+  {%- endif %}
+</head>
+<body class="public-body">
+  <a class="skip" href="#main">{{ tr("common.skip_to_content") }}</a>
+  <header class="public-head container container-narrow">
+    {% block header %}<h1 class="public-title">{{ page_title }}</h1>{% endblock %}
+  </header>
+  <main id="main" class="public-main container container-narrow">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="public-foot container container-narrow">
+    {% block footer %}{{ tr("common.powered_by") }} <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a>{% endblock %}
+  </footer>
+  <div class="toaster" id="toaster" aria-live="polite"></div>
+  <script type="application/json" id="vv-i18n">{{ i18n_js()|safe }}</script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

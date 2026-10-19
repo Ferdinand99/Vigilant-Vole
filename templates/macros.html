@@ -1,0 +1,271 @@
+{#-
+  Vigilant Vole component macros. Import once per template:
+      {% import "macros.html" as m %}
+  Simple macros are expressions:            {{ m::icon("gear") }}
+  Macros with a slot (caller) are blocks:   {% call m::page_header("Monitors") %}…buttons…{% endcall %}
+
+  Askama gotchas (see docs/design-system.md → Macros):
+  * Pass String fields by reference: m::field_text("name", "Name", value=&monitor.name)
+  * An argument that is a bare identifier equal to one of the macro's own
+    parameter names resolves to that parameter. Write self.name, not name.
+-#}
+
+{#- An icon from /static/icons.svg. cls adds classes, e.g. "icon-sm". -#}
+{% macro icon(name, cls = "") -%}
+<svg class="icon{% if !cls.is_empty() %} {{ cls }}{% endif %}" aria-hidden="true"><use href="/static/icons.svg#{{ name }}"></use></svg>
+{%- endmacro %}
+
+{#- Status pill: up | down | pending | maintenance | paused. The first letter is raised by CSS (.cap). -#}
+{% macro status_pill(status, size = "") -%}
+<span class="pill status-{{ status }}{% if size == "lg" %} pill-lg{% endif %}"><span class="dot"></span><span class="cap">{{ status_text(status) }}</span></span>
+{%- endmacro %}
+
+{#- Status for an Option<status>: None renders as "pending". -#}
+{% macro status_pill_opt(status, size = "") -%}
+{% match status %}{% when Some(s) %}<span class="pill status-{{ s }}{% if size == "lg" %} pill-lg{% endif %}"><span class="dot"></span><span class="cap">{{ status_text(s) }}</span></span>{% when None %}<span class="pill status-pending{% if size == "lg" %} pill-lg{% endif %}"><span class="dot"></span>{{ tr("status.pending") }}</span>{% endmatch %}
+{%- endmacro %}
+
+{#- Bare coloured dot with an accessible name. Pulses only for "down". -#}
+{% macro status_dot(status) -%}
+<span class="dot status-{{ status }}" role="img" aria-label="{{ status_text(status) }}"></span>
+{%- endmacro %}
+
+{% macro status_dot_opt(status) -%}
+{% match status %}{% when Some(s) %}<span class="dot status-{{ s }}" role="img" aria-label="{{ status_text(s) }}"></span>{% when None %}<span class="dot status-pending" role="img" aria-label="{{ tr("status.pending") }}"></span>{% endmatch %}
+{%- endmacro %}
+
+{#- Heartbeat strip from an oldest-first list of Option<status>. -#}
+{% macro heartbeat_bar(beats, label = "", size = "") -%}
+<div class="beats{% if size == "sm" %} beats-sm{% endif %}" role="img" aria-label="{% if label.is_empty() %}{{ tr("common.recent_checks") }}{% else %}{{ label }}{% endif %}">
+  {%- for b in beats %}{% match b %}{% when Some(s) %}<span class="beat status-{{ s }}" title="{{ status_text(s) }}"></span>{% when None %}<span class="beat"></span>{% endmatch %}{% endfor -%}
+</div>
+{%- endmacro %}
+
+{#- Uptime percentage from Option<f64>: "99.95%" / "99,95 %" or an em dash. -#}
+{% macro uptime(value) -%}
+{{ pct(value) }}
+{%- endmacro %}
+
+{#- Milliseconds from Option<i64>: "120 ms" or an em dash. -#}
+{% macro ms(value) -%}
+{{ millis(value) }}
+{%- endmacro %}
+
+{#- Relative time for a UTC "YYYY-MM-DD HH:MM:SS" string (app.js keeps it fresh). -#}
+{% macro time_ago(datetime) -%}
+<time datetime="{{ datetime }}" data-relative title="{{ datetime }} UTC">{{ datetime }}</time>
+{%- endmacro %}
+
+{#- Page header. Actions go in the call body (may be empty). -#}
+{% macro page_header(title, subtitle = "", back_href = "", back_label = "") -%}
+<header class="page-head">
+  {%- if !back_href.is_empty() %}
+  <a class="page-back" href="{{ back_href }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-left"></use></svg>{% if back_label.is_empty() %}{{ tr("common.back") }}{% else %}{{ back_label }}{% endif %}</a>
+  {%- endif %}
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">{{ title }}</h1>
+      {%- if !subtitle.is_empty() %}
+      <p class="page-sub">{{ subtitle }}</p>
+      {%- endif %}
+    </div>
+    <div class="page-actions">{{ caller() }}</div>
+  </div>
+</header>
+{%- endmacro %}
+
+{#- Section heading above a card or list. Actions in the call body. -#}
+{% macro section_head(title, subtitle = "", id = "") -%}
+<div class="section-head">
+  <div>
+    <h2 class="section-title"{% if !id.is_empty() %} id="{{ id }}"{% endif %}>{{ title }}</h2>
+    {%- if !subtitle.is_empty() %}
+    <p class="section-sub">{{ subtitle }}</p>
+    {%- endif %}
+  </div>
+  <div class="toolbar">{{ caller() }}</div>
+</div>
+{%- endmacro %}
+
+{#- Card header. Actions in the call body. -#}
+{% macro card_head(title, subtitle = "") -%}
+<div class="card-head">
+  <div>
+    <h2 class="card-title">{{ title }}</h2>
+    {%- if !subtitle.is_empty() %}
+    <p class="card-sub">{{ subtitle }}</p>
+    {%- endif %}
+  </div>
+  <div class="toolbar">{{ caller() }}</div>
+</div>
+{%- endmacro %}
+
+{#- Empty state with an optional single link action. -#}
+{% macro empty_state(icon_name, title, text, action_href = "", action_label = "") -%}
+<div class="empty">
+  <div class="empty-icon"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#{{ icon_name }}"></use></svg></div>
+  <p class="empty-title">{{ title }}</p>
+  <p class="empty-text">{{ text }}</p>
+  {%- if !action_href.is_empty() %}
+  <div class="empty-actions"><a class="btn btn-primary" href="{{ action_href }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg>{{ action_label }}</a></div>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{#- Callout. kind: info | success | warning | danger -#}
+{% macro callout(kind, text, title = "") -%}
+<div class="callout status-{{ kind }}"{% if kind == "danger" || kind == "error" %} role="alert"{% endif %}>
+  <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#{% if kind == "danger" || kind == "error" %}alert-circle{% else if kind == "warning" %}alert{% else if kind == "success" %}check-circle{% else %}info{% endif %}"></use></svg>
+  <div class="callout-body">
+    {%- if !title.is_empty() %}<strong class="callout-title">{{ title }}</strong>{% endif -%}
+    {{ text }}
+  </div>
+</div>
+{%- endmacro %}
+
+{#- Text-like input field. kind = text | email | password | url | search | tel -#}
+{#- autocomplete defaults to "off"; pass e.g. "username" / "current-password" / "email" on auth fields. -#}
+{% macro field_text(name, label, value = "", kind = "text", placeholder = "", help = "", required = false, autocomplete = "off", error = "") -%}
+<div class="field{% if !error.is_empty() %} is-invalid{% endif %}">
+  <label class="label" for="f-{{ name }}">{{ label }}</label>
+  <input id="f-{{ name }}" name="{{ name }}" type="{{ kind }}" value="{{ value }}"
+    {%- if !placeholder.is_empty() %} placeholder="{{ placeholder }}"{% endif %}
+    {%- if !autocomplete.is_empty() %} autocomplete="{{ autocomplete }}"{% endif %}
+    {%- if kind == "url" || kind == "email" || autocomplete == "username" %} autocapitalize="none" spellcheck="false"{% endif %}
+    {%- if required %} required{% endif %}
+    {%- if !help.is_empty() || !error.is_empty() %} aria-describedby="{% if !help.is_empty() %}f-{{ name }}-help{% endif %}{% if !error.is_empty() %} f-{{ name }}-error{% endif %}"{% endif %}
+    {%- if !error.is_empty() %} aria-invalid="true"{% endif %}>
+  {%- if !help.is_empty() %}
+  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  {%- endif %}
+  {%- if !error.is_empty() %}
+  <p class="field-error" id="f-{{ name }}-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ error }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{#- Number with an optional unit suffix ("sec", "ms", "days"). -#}
+{% macro field_number(name, label, value, unit = "", min = "", max = "", step = "", help = "") -%}
+<div class="field">
+  <label class="label" for="f-{{ name }}">{{ label }}</label>
+  <div class="input-group">
+    <input id="f-{{ name }}" name="{{ name }}" type="number" inputmode="numeric" autocomplete="off" value="{{ value }}"
+      {%- if !min.is_empty() %} min="{{ min }}"{% endif %}
+      {%- if !max.is_empty() %} max="{{ max }}"{% endif %}
+      {%- if !step.is_empty() %} step="{{ step }}"{% endif %}
+      {%- if !help.is_empty() %} aria-describedby="f-{{ name }}-help"{% endif %}>
+    {%- if !unit.is_empty() %}<span class="input-addon" aria-hidden="true">{{ unit }}</span>{% endif %}
+  </div>
+  {%- if !help.is_empty() %}
+  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{% macro field_textarea(name, label, value = "", rows = 4, placeholder = "", help = "", code = false) -%}
+<div class="field">
+  <label class="label" for="f-{{ name }}">{{ label }}</label>
+  <textarea id="f-{{ name }}" name="{{ name }}" rows="{{ rows }}"{% if code %} class="textarea-code" spellcheck="false"{% endif %}
+    {%- if !placeholder.is_empty() %} placeholder="{{ placeholder }}"{% endif %}
+    {%- if !help.is_empty() %} aria-describedby="f-{{ name }}-help"{% endif %}>{{ value }}</textarea>
+  {%- if !help.is_empty() %}
+  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{#- iOS-style switch row. Submits name=true when on, nothing when off
+    (use #[serde(default)] bool on the Rust side). -#}
+{% macro switch(name, label, checked, help = "") -%}
+<label class="switch-row" for="f-{{ name }}">
+  <span class="switch-row-text">
+    <span class="switch-row-label">{{ label }}</span>
+    {%- if !help.is_empty() %}
+    <span class="help">{{ help }}</span>
+    {%- endif %}
+  </span>
+  <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-{{ name }}" name="{{ name }}" value="true"{% if checked %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
+</label>
+{%- endmacro %}
+
+{% macro checkbox(name, label, checked, help = "") -%}
+<label class="check">
+  <input type="checkbox" name="{{ name }}" value="true"{% if checked %} checked{% endif %}>
+  <span class="check-text">
+    <span class="check-label">{{ label }}</span>
+    {%- if !help.is_empty() %}
+    <span class="help">{{ help }}</span>
+    {%- endif %}
+  </span>
+</label>
+{%- endmacro %}
+
+{#- Buttons. kind = primary | secondary | ghost | plain | danger | danger-solid -#}
+{% macro button(label, kind = "primary", icon_name = "", type = "submit", size = "") -%}
+<button type="{{ type }}" class="btn btn-{{ kind }}{% if size == "sm" %} btn-sm{% endif %}">
+  {%- if !icon_name.is_empty() %}<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#{{ icon_name }}"></use></svg>{% endif -%}
+  <span>{{ label }}</span></button>
+{%- endmacro %}
+
+{% macro link_button(href, label, kind = "secondary", icon_name = "", size = "") -%}
+<a href="{{ href }}" class="btn btn-{{ kind }}{% if size == "sm" %} btn-sm{% endif %}">
+  {%- if !icon_name.is_empty() %}<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#{{ icon_name }}"></use></svg>{% endif -%}
+  <span>{{ label }}</span></a>
+{%- endmacro %}
+
+{#- Icon-only button; label is the accessible name and tooltip. -#}
+{% macro icon_button(icon_name, label, size = "") -%}
+<button type="button" class="btn btn-icon btn-plain{% if size == "sm" %} btn-sm{% endif %}" aria-label="{{ label }}" data-tip="{{ label }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#{{ icon_name }}"></use></svg></button>
+{%- endmacro %}
+
+{#- htmx delete with the confirm sheet. target/swap optional (e.g. "#row-3", "outerHTML"). -#}
+{% macro delete_button(url, question, message = "", target = "", swap = "", label = "", size = "sm") -%}
+<button type="button" class="btn btn-danger{% if size == "sm" %} btn-sm{% endif %}"
+  hx-delete="{{ url }}" hx-confirm="{{ question }}"
+  {%- if !message.is_empty() %} data-confirm-message="{{ message }}"{% endif %}
+  {%- if !target.is_empty() %} hx-target="{{ target }}"{% endif %}
+  {%- if !swap.is_empty() %} hx-swap="{{ swap }}"{% endif %}>
+  <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg><span>{% if label.is_empty() %}{{ tr("common.delete") }}{% else %}{{ label }}{% endif %}</span></button>
+{%- endmacro %}
+
+{% macro avatar(initials, size = "") -%}
+<span class="avatar{% if !size.is_empty() %} avatar-{{ size }}{% endif %}" aria-hidden="true">{{ initials }}</span>
+{%- endmacro %}
+
+{#- Read-only value with a copy button (API tokens shown once). -#}
+{% macro copy_field(id, value, label = "") -%}
+<div class="copy-field">
+  <code class="copy-value" id="{{ id }}">{{ value }}</code>
+  <button type="button" class="btn btn-secondary btn-sm" data-copy="#{{ id }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#copy"></use></svg><span>{% if label.is_empty() %}{{ tr("common.copy") }}{% else %}{{ label }}{% endif %}</span></button>
+</div>
+{%- endmacro %}
+
+{#- Tag chip. color is a palette name: red orange yellow green mint teal cyan blue indigo purple pink brown gray -#}
+{% macro tag(name, color, value = "") -%}
+<span class="tag tag-{{ color }}">{{ name }}{% if !value.is_empty() %}<span class="tag-value">{{ value }}</span>{% endif %}</span>
+{%- endmacro %}
+
+{#- SSE connection indicator (app.js updates it). -#}
+{% macro live() -%}
+<span class="live" data-state="connecting" data-label-live="{{ tr("js.live") }}" data-label-connecting="{{ tr("js.connecting") }}" data-label-reconnecting="{{ tr("js.reconnecting") }}" data-label-offline="{{ tr("js.offline") }}"><span class="dot" aria-hidden="true"></span><span class="live-label">{{ tr("js.connecting") }}</span></span>
+{%- endmacro %}
+
+{#- Stat tile; status adds a coloured dot (up/down/pending/maintenance). -#}
+{% macro stat(label, value, status = "", meta = "") -%}
+<div class="stat{% if !status.is_empty() %} status-{{ status }}{% endif %}">
+  <span class="stat-label">{% if !status.is_empty() %}<span class="stat-dot" aria-hidden="true"></span>{% endif %}{{ label }}</span>
+  <span class="stat-value">{{ value }}</span>
+  {%- if !meta.is_empty() %}
+  <span class="stat-meta">{{ meta }}</span>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{#- Skeleton rows for lazy-loaded lists. -#}
+{% macro skeleton_rows(count = 3) -%}
+<div class="list" aria-hidden="true">
+  {%- for _i in 0..count %}
+  <div class="skeleton-row"><span class="skeleton skeleton-circle"></span><div class="stack"><span class="skeleton skeleton-title"></span><span class="skeleton skeleton-text"></span></div></div>
+  {%- endfor %}
+</div>
+{%- endmacro %}

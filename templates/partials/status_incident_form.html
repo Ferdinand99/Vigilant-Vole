@@ -1,0 +1,29 @@
+{#- Incident form (new when incident_id == 0). Needs `page_id`, `incident_id`, `form`. -#}
+<form id="{% if incident_id == 0 %}incident-form-new{% else %}incident-form-edit{% endif %}" class="form" method="post"
+  action="/status-pages/{{ page_id }}/incidents{% if incident_id != 0 %}/{{ incident_id }}{% endif %}">
+  <div class="field">
+    <label class="label" for="inc-title-{{ incident_id }}">{{ tr("sp.title") }}</label>
+    <input id="inc-title-{{ incident_id }}" name="title" type="text" value="{{ form.title }}" placeholder="{{ tr("inc.title_placeholder") }}" required maxlength="200" autocomplete="off">
+  </div>
+  <div class="field">
+    <span class="label" id="inc-sev-{{ incident_id }}">{{ tr("inc.severity") }}</span>
+    <div class="segmented segmented-block" role="radiogroup" aria-labelledby="inc-sev-{{ incident_id }}">
+      <label><input type="radio" name="severity" value="info"{% if form.severity == "info" %} checked{% endif %}><span>{{ tr("inc.sev_info") }}</span></label>
+      <label><input type="radio" name="severity" value="warning"{% if form.severity == "warning" %} checked{% endif %}><span>{{ tr("inc.sev_warning") }}</span></label>
+      <label><input type="radio" name="severity" value="danger"{% if form.severity == "danger" %} checked{% endif %}><span>{{ tr("inc.sev_danger") }}</span></label>
+      <label><input type="radio" name="severity" value="success"{% if form.severity == "success" %} checked{% endif %}><span>{{ tr("inc.sev_success") }}</span></label>
+    </div>
+  </div>
+  <div class="field">
+    <label class="label" for="inc-body-{{ incident_id }}">{{ tr("inc.update") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+    <textarea id="inc-body-{{ incident_id }}" name="body" rows="6" placeholder="{{ tr("inc.body_placeholder") }}" aria-describedby="inc-body-help-{{ incident_id }}">{{ form.body }}</textarea>
+    <p class="help" id="inc-body-help-{{ incident_id }}">{{ tr("inc.body_help") }}</p>
+  </div>
+  <label class="switch-row" for="inc-pinned-{{ incident_id }}">
+    <span class="switch-row-text">
+      <span class="switch-row-label">{{ tr("inc.pin") }}</span>
+      <span class="help">{{ tr("inc.pin_help") }}</span>
+    </span>
+    <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="inc-pinned-{{ incident_id }}" name="pinned" value="true"{% if form.pinned %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
+  </label>
+</form>

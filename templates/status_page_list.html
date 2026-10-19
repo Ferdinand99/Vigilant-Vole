@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{% call m::page_header(tr("nav.status_pages"), tr("sp.list_sub")) %}
+  {%- if ctx.can_edit() %}{{ m::link_button("/status-pages/new", tr("sp.new"), "primary", "plus") }}{% endif %}
+{% endcall %}
+
+{% if pages.is_empty() -%}
+<div class="empty-card">
+  {%- if ctx.can_edit() %}
+  {{ m::empty_state("globe", tr("sp.empty_title"), tr("sp.empty_text"), "/status-pages/new", tr("sp.new")) }}
+  {%- else %}
+  {{ m::empty_state("globe", tr("sp.empty_title"), tr("sp.empty_viewer")) }}
+  {%- endif %}
+</div>
+{%- else -%}
+<ul class="list" role="list">
+  {%- for s in pages %}
+  <li>
+    <a class="list-row" href="{% if ctx.can_edit() %}/status-pages/{{ s.page.id }}/edit{% else %}/status/{{ s.page.slug }}{% endif %}">
+      <span class="list-icon">{{ m::icon("globe") }}</span>
+      <span class="list-main">
+        <span class="list-title">{{ s.page.title }}</span>
+        <span class="list-sub">{% match s.page.custom_domain %}{% when Some(d) %}{{ d }}{% when None %}/status/{{ s.page.slug }}{% endmatch %} · {{ trn("count.monitors", s.monitor_count) }}</span>
+      </span>
+      <span class="list-trail">{% if !s.page.published %}<span class="pill status-paused">{{ tr("sp.draft") }}</span>{% endif %}{{ m::icon("chevron-right", "list-chevron") }}</span>
+    </a>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{% endblock %}

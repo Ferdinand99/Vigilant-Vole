@@ -7,8 +7,56 @@ services:
     ports:
       - "3001:3001"
     volumes:
+      # Database, session key and backups. Must be writable by uid 1000
+      # (the image's `vole` user): `sudo chown -R 1000:1000 ./data` on Linux,
+      # or set `user:` below to the folder's owner.
       - ./data:/data # -> /mnt/user/appdata/vigilant-vole on Unraid
     environment:
       - DATA_DIR=/data
+      # - TZ=Europe/Oslo                 # log timestamps; display time zone is set in Settings → General
+      # - VV_TRUST_PROXY=1               # behind a reverse proxy (Caddy/Traefik/nginx) that sets X-Forwarded-*
+      # - VV_CONFIG_FILE=/config/vigilant.yml  # GitOps: merge this file into the database on every start
+      # - VV_MAX_CONCURRENT_CHECKS=64    # checks allowed to run at the same time
+      # - RUST_LOG=info,vigilant_vole=debug
     cap_add:
-      - NET_RAW # required for ICMP ping monitors
+      - NET_RAW # raw ICMP fallback for ping monitors (unprivileged ICMP is tried first)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3001/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    # Run as another uid:gid, e.g. Unraid's nobody:users.
+    # user: "99:100"
+
+    # --- Optional: Docker container monitors + label auto-discovery ---------
+    # Mount the Docker socket read-only and give the `vole` user the socket's
+    # group. Find the GID with: stat -c %g /var/run/docker.sock
+    # volumes:
+    #   - ./data:/data
+    #   - /var/run/docker.sock:/var/run/docker.sock:ro
+    # group_add:
+    #   - "999"  # the socket's GID
+    # A safer alternative is a socket proxy (e.g. tecnativa/docker-socket-proxy
+    # with CONTAINERS=1 EVENTS=1) and Docker host "tcp://docker-proxy:2375"
+    # in Settings → Integrations / on the monitor.
+
+    # --- Optional: config-as-code ---------------------------------------------
+    # volumes:
+    #   - ./data:/data
+    #   - ./vigilant.yml:/config/vigilant.yml:ro
+    # environment:
+    #   - VV_CONFIG_FILE=/config/vigilant.yml
+
+  # --- Optional: a remote probe agent ---------------------------------------
+  # Usually runs on another host/location. Create the agent in
+  # Settings → Remote agents to get its token (shown once).
+  # vigilant-vole-agent:
+  #   image: vigilant-vole:latest
+  #   container_name: vigilant-vole-agent
+  #   restart: unless-stopped
+  #   command: agent --server https://status.example.com --name "Frankfurt"
+  #   environment:
+  #     - VV_AGENT_TOKEN=vva_xxxxxxxxxxxxxxxx
+  #   cap_add:
+  #     - NET_RAW

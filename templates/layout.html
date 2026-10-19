@@ -1,26 +1,102 @@
-<!doctype html>
-<html lang="en">
+{% import "macros.html" as m %}<!doctype html>
+<html lang="{{ ctx.lang }}">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Vigilant Vole{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/htmx.min.js" defer></script>
-    <script src="/static/sse.js" defer></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>{{ ctx.title }} · {{ ctx.site_name }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="{{ ctx.site_name }}">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  {% block head %}{% endblock %}
 </head>
 <body>
-    <header>
-        <h1>Vigilant Vole</h1>
-        <nav>
-            <a href="/">Dashboard</a>
-            <a href="/settings/notifications">Settings</a>
-        </nav>
-        <form method="post" action="/logout" class="logout-form">
-            <button type="submit" class="btn">Log out</button>
-        </form>
-    </header>
-    <main>
-        {% block content %}{% endblock %}
-    </main>
+  <a class="skip" href="#main">{{ tr("common.skip_to_content") }}</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>{{ ctx.site_name }}</span>
+      </a>
+
+      <nav class="topnav" aria-label="{{ tr("nav.main") }}" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/"{% if ctx.nav == "dashboard" %} aria-current="page"{% endif %}>{{ tr("nav.dashboard") }}</a>
+        <a class="topnav-link" href="/status-pages"{% if ctx.nav == "status-pages" %} aria-current="page"{% endif %}>{{ tr("nav.status_pages") }}</a>
+        <a class="topnav-link" href="/maintenance"{% if ctx.nav == "maintenance" %} aria-current="page"{% endif %}>{{ tr("nav.maintenance") }}</a>
+        <a class="topnav-link" href="/settings"{% if ctx.nav == "settings" %} aria-current="page"{% endif %}>{{ tr("nav.settings") }}</a>
+      </nav>
+
+      <div class="topbar-end">
+        {%- if let Some(u) = ctx.user %}
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="{{ tr("nav.account_menu") }}">
+          {{ m::avatar(&u.initials) }}
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            {{ m::avatar(&u.initials, "lg") }}
+            <span>
+              <span class="user-card-name">{{ u.display_name }}</span>
+              <span class="user-card-meta">{{ u.username }} · {{ u.role.label() }}</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security">{{ m::icon("shield") }}{{ tr("nav.security") }}</a>
+          <a class="menu-item" href="/settings/tokens">{{ m::icon("key") }}{{ tr("nav.api_tokens") }}</a>
+          <a class="menu-item" href="/api-docs">{{ m::icon("code") }}{{ tr("nav.api_docs") }}</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">{{ tr("nav.appearance") }}</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto">{{ m::icon("theme-auto") }}<span>{{ tr("nav.theme_auto") }}</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light">{{ m::icon("sun") }}<span>{{ tr("nav.theme_light") }}</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark">{{ m::icon("moon") }}<span>{{ tr("nav.theme_dark") }}</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit">{{ m::icon("logout") }}{{ tr("nav.log_out") }}</button>
+          </form>
+        </div>
+        {%- else %}
+        <a class="btn btn-secondary btn-sm" href="/login">{{ tr("nav.log_in") }}</a>
+        {%- endif %}
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container {% block main_class %}{% endblock %}" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="tabbar" aria-label="{{ tr("nav.main") }}" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/"{% if ctx.nav == "dashboard" %} aria-current="page"{% endif %}>{{ m::icon("pulse") }}<span>{{ tr("nav.dashboard") }}</span></a>
+    <a class="tabbar-item" href="/status-pages"{% if ctx.nav == "status-pages" %} aria-current="page"{% endif %}>{{ m::icon("globe") }}<span>{{ tr("nav.status_short") }}</span></a>
+    <a class="tabbar-item" href="/maintenance"{% if ctx.nav == "maintenance" %} aria-current="page"{% endif %}>{{ m::icon("wrench") }}<span>{{ tr("nav.maintenance") }}</span></a>
+    <a class="tabbar-item" href="/settings"{% if ctx.nav == "settings" %} aria-current="page"{% endif %}>{{ m::icon("gear") }}<span>{{ tr("nav.settings") }}</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+    {%- if let Some(f) = ctx.flash %}
+    <div class="toast status-{{ f.kind }}" role="{% if f.kind == "error" %}alert{% else %}status{% endif %}" data-toast="{{ f.kind }}">
+      {%- if f.kind == "success" %}{{ m::icon("check-circle") }}{% else if f.kind == "error" %}{{ m::icon("alert-circle") }}{% else %}{{ m::icon("info") }}{% endif %}
+      <span class="toast-message">{{ f.message }}</span>
+      <button type="button" class="toast-close" data-toast-close aria-label="{{ tr("common.dismiss") }}">{{ m::icon("x") }}</button>
+    </div>
+    {%- endif %}
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{{ i18n_js()|safe }}</script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

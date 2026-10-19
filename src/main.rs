@@ -1,41 +1,44 @@
-mod api;
-mod auth;
-mod config;
-mod db;
-mod monitor;
-mod notification;
+use std::io::IsTerminal as _;
 
-use api::AppState;
-use config::Config;
-use monitor::Scheduler;
+use clap::{Parser, Subcommand};
+use tracing_subscriber::EnvFilter;
+use vigilant_vole::{agent, config::Config, server};
+
+#[derive(Parser)]
+#[command(name = "vigilant-vole", version, about = "Self-hosted uptime monitoring")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run the web server (default)
+    Serve,
+    /// Run as a remote probe agent reporting to a server
+    Agent(agent::AgentArgs),
+}
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    // Colours only on a terminal (logs go to stdout): `docker logs` and log
+    // files get plain text.
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_ansi(std::io::stdout().is_terminal())
+        .init();
 
-    let config = Config::from_env();
-    std::fs::create_dir_all(&config.data_dir).expect("failed to create data dir");
+    // Every TLS stack in the binary uses rustls; pin its crypto provider so a
+    // dependency enabling a second provider can't make rustls panic at runtime.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-    let pool = db::build_pool(&config.db_path());
-    db::run_migrations(&pool).await;
-
-    let (update_tx, _) = tokio::sync::broadcast::channel(16);
-
-    let scheduler = Scheduler::new(pool.clone(), update_tx.clone());
-    scheduler.start_all().await;
-
-    let session_key = auth::load_or_create_key(&config.data_dir);
-
-    let app = api::build_router(AppState {
-        db: pool,
-        scheduler,
-        session_key,
-        update_tx,
-    });
-
-    let listener = tokio::net::TcpListener::bind(&config.bind_addr)
-        .await
-        .expect("failed to bind listener");
-    tracing::info!("vigilant-vole listening on {}", config.bind_addr);
-    axum::serve(listener, app).await.expect("server error");
+    match Cli::parse().command.unwrap_or(Command::Serve) {
+        Command::Serve => server::run(Config::from_env()).await,
+        Command::Agent(args) => {
+            if let Err(err) = agent::run(args).await {
+                tracing::error!(%err, "agent stopped");
+                std::process::exit(1);
+            }
+        }
+    }
 }
