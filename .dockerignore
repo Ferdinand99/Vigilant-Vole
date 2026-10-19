@@ -28,3 +28,7 @@ assets/
 docker-compose*.yml
 Dockerfile
 .dockerignore
+
+# Test suites and their artifacts
+e2e/
+test-results/

@@ -57,19 +57,23 @@ LABEL org.opencontainers.image.title="Vigilant Vole" \
 
 # ca-certificates: TLS trust store for HTTPS checks and notifications.
 # tzdata: maintenance windows and display time zones.
-# Unprivileged user `vole` (uid/gid 1000) owns /data.
-RUN apk add --no-cache ca-certificates tzdata \
+# su-exec: the entrypoint drops from root to `vole` after fixing /data ownership.
+# Unprivileged user `vole` (uid/gid 1000) owns /data and runs the app.
+RUN apk add --no-cache ca-certificates tzdata su-exec \
     && addgroup -S -g 1000 vole \
     && adduser -S -D -H -u 1000 -G vole -h /data -s /sbin/nologin vole \
     && mkdir -p /data \
     && chown vole:vole /data
 
 COPY --from=builder /usr/local/bin/vigilant-vole /usr/local/bin/vigilant-vole
+COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 ENV DATA_DIR=/data \
     PORT=3001
 
-USER vole:vole
+# No `USER` here on purpose: the entrypoint starts as root only to chown /data
+# (so data from older root-run images stays writable), then runs the app as
+# `vole` via su-exec. Setting `user:` / `--user` skips that step entirely.
 WORKDIR /data
 VOLUME ["/data"]
 EXPOSE 3001
@@ -84,5 +88,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD if tr '\0' '\n' < /proc/1/cmdline | grep -qx agent; then exit 0; fi; \
         wget -q -O /dev/null "http://127.0.0.1:${PORT:-3001}/healthz" || exit 1
 
-ENTRYPOINT ["/usr/local/bin/vigilant-vole"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["serve"]

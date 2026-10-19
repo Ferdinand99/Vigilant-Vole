@@ -12,14 +12,18 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 [![Docker Image](https://img.shields.io/badge/docker%20image-~18MB-success.svg)](#-quick-start)
 [![Unraid Friendly](https://img.shields.io/badge/unraid-friendly-blueviolet.svg)](#-unraid)
 
-<!-- TODO: screenshot to be updated — assets/dashboard.png predates the redesign -->
-<img src="assets/dashboard.png" alt="Vigilant Vole dashboard" width="800">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dashboard-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="assets/screenshots/dashboard-light.png">
+  <img src="assets/screenshots/dashboard-dark.png" alt="Vigilant Vole dashboard with live monitor status, heartbeat bars and uptime" width="800">
+</picture>
 
 </div>
 
 ## Contents
 
 - [Features](#-features)
+- [Screenshots](#-screenshots)
 - [Vigilant Vole vs Uptime Kuma](#-vigilant-vole-vs-uptime-kuma)
 - [Quick start](#-quick-start)
 - [Unraid](#-unraid)
@@ -69,6 +73,18 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **English and Norwegian (bokmål)** interface, per-user language
 - **Live dashboard** over Server-Sent Events, Apple-style UI in light and dark, works on a phone, installable as a PWA
 - **Tiny** — one ~32 MB static binary, ~18 MB compressed image, a few MB of RAM idle
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="66%"><img src="assets/screenshots/monitor-dark.png" alt="Monitor detail with uptime tiles, 24-hour response-time chart, 90-day uptime bar, events and TLS certificate"></td>
+    <td width="34%"><img src="assets/screenshots/mobile-dark.png" alt="Dashboard on a phone"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/screenshots/status-page.png" alt="Public status page with an incident, sections and 90-day uptime bars" width="640"></td>
+  </tr>
+</table>
 
 ## 🆚 Vigilant Vole vs Uptime Kuma
 
@@ -142,7 +158,7 @@ services:
 
 Everything persistent — the SQLite database, the session key and automatic pre-migration backups — lives under `./data`. Deleting that folder resets the app to a blank slate.
 
-> **The container runs as the unprivileged user `vole` (uid 1000).** On Linux, make sure the data folder is writable by it: `mkdir -p data && sudo chown -R 1000:1000 data`. Or run as another user with `user: "uid:gid"`. Upgrading from an older image that ran as root? `chown` the folder once.
+> **The app runs as the unprivileged user `vole` (uid 1000).** On start, the container hands `/data` to that user and then drops root, so new folders and data from older root-run images just work. If you set `user: "uid:gid"` (e.g. `99:100` on Unraid), that step is skipped and the folder must already be writable by that user.
 
 Ping monitors work without root: the binary uses unprivileged ICMP sockets (enabled by Docker by default) and falls back to raw sockets.
 

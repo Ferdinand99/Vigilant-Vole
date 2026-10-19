@@ -7,9 +7,9 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      # Database, session key and backups. Must be writable by uid 1000
-      # (the image's `vole` user): `sudo chown -R 1000:1000 ./data` on Linux,
-      # or set `user:` below to the folder's owner.
+      # Database, session key and backups. The container hands this folder to
+      # its `vole` user (uid 1000) on start; with `user:` set below, it must
+      # already be writable by that user.
       - ./data:/data # -> /mnt/user/appdata/vigilant-vole on Unraid
     environment:
       - DATA_DIR=/data
