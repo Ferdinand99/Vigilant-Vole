@@ -95,7 +95,7 @@ Status: **Settings → Integrations** shows the last sync time, its summary and 
 The image runs as the unprivileged user `vole` (uid/gid 1000). Docker monitors and discovery only read from the
 Docker API (container list/inspect and the event stream). Pick one:
 
-**Option A — mount the socket read-only and add its group.**
+**Option A — mount the socket read-only.**
 
 ```yaml
 services:
@@ -103,12 +103,11 @@ services:
     volumes:
       - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    group_add:
-      - "999"   # stat -c %g /var/run/docker.sock
 ```
 
-The GID is the socket's group on the **host** (often the `docker` group, e.g. 999 or 998; on Docker Desktop the socket is `root:root`, so use `"0"`). Check from inside the container with
-`docker exec vigilant-vole stat -c %g /var/run/docker.sock`.
+On start, the container adds its `vole` user to the group that owns the socket (often `docker`, e.g. 999;
+on Docker Desktop the socket is `root:root`, gid 0), so no `group_add` is needed. Only if you override the
+user with `user:` / `--user` do you have to add that group yourself with `group_add`.
 `:ro` only stops the container from replacing the socket file; anyone who can talk to the socket can still
 control Docker. Only do this on hosts where that's acceptable.
 

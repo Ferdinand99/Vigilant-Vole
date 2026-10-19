@@ -26,17 +26,17 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
-    # Run as another uid:gid, e.g. Unraid's nobody:users.
-    # user: "99:100"
+    # Run the app as another uid:gid, e.g. Unraid's nobody:users (set under
+    # environment:). The container fixes /data ownership for it on start.
+    #   - PUID=99
+    #   - PGID=100
 
     # --- Optional: Docker container monitors + label auto-discovery ---------
-    # Mount the Docker socket read-only and give the `vole` user the socket's
-    # group. Find the GID with: stat -c %g /var/run/docker.sock
+    # Mount the Docker socket read-only; the container adds its `vole` user to
+    # the socket's group by itself (no group_add needed).
     # volumes:
     #   - ./data:/data
     #   - /var/run/docker.sock:/var/run/docker.sock:ro
-    # group_add:
-    #   - "999"  # the socket's GID
     # A safer alternative is a socket proxy (e.g. tecnativa/docker-socket-proxy
     # with CONTAINERS=1 EVENTS=1) and Docker host "tcp://docker-proxy:2375"
     # in Settings → Integrations / on the monitor.

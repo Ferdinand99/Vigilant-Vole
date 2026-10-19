@@ -158,17 +158,19 @@ services:
 
 Everything persistent — the SQLite database, the session key and automatic pre-migration backups — lives under `./data`. Deleting that folder resets the app to a blank slate.
 
-> **The app runs as the unprivileged user `vole` (uid 1000).** On start, the container hands `/data` to that user and then drops root, so new folders and data from older root-run images just work. If you set `user: "uid:gid"` (e.g. `99:100` on Unraid), that step is skipped and the folder must already be writable by that user.
+> **The app runs as the unprivileged user `vole`** — uid/gid 1000 by default, or whatever you set with `PUID`/`PGID` (Unraid: `99`/`100`). On start, the container hands `/data` to that user, picks up the group of a mounted Docker socket, and then drops root, so new folders and data from older root-run images just work. Setting `user:` / `--user` instead skips all of that: the folder must then already be writable, and socket access needs `group_add`.
 
 Ping monitors work without root: the binary uses unprivileged ICMP sockets (enabled by Docker by default) and falls back to raw sockets.
 
 ## 🐳 Unraid
 
-1. Add the container via the Docker tab (or use [`deploy/unraid-template.xml`](deploy/unraid-template.xml) as a Community Applications template)
+The easy way: install **Vigilant-Vole** from **Community Applications** (template in [Ferdinand99/unraid-templates](https://github.com/Ferdinand99/unraid-templates)); it already sets everything below. By hand:
+
+1. Add the container via the Docker tab (or copy [`deploy/unraid-template.xml`](deploy/unraid-template.xml) into `/boot/config/plugins/dockerMan/templates-user/`)
 2. Map a port: container `3001` → any host port
 3. Map a path: container `/data` → `/mnt/user/appdata/vigilant-vole`
-4. **Extra Parameters**: `--user 99:100` (Unraid's `nobody:users`, matching appdata permissions) — and optionally `--cap-add=NET_RAW`
-5. Optional, for Docker monitors and discovery: map `/var/run/docker.sock` → `/var/run/docker.sock` (read-only) and add `--group-add <socket gid>` (`stat -c %g /var/run/docker.sock` on the Unraid console)
+4. Variables `PUID=99` and `PGID=100` (Unraid's `nobody:users`, matching appdata permissions); optionally **Extra Parameters** `--cap-add=NET_RAW`
+5. Optional, for Docker monitors and discovery: map `/var/run/docker.sock` → `/var/run/docker.sock` (read-only); the container joins the socket's group by itself
 6. Start the container and open the WebUI
 
 For backups, Settings → Backup downloads a consistent snapshot; copying `/mnt/user/appdata/vigilant-vole` while the container is stopped works too.
@@ -181,6 +183,7 @@ Process settings come from environment variables; everything else (monitors, cha
 |---|---|---|
 | `DATA_DIR` | `./data` (`/data` in the image) | Database, session key and backups |
 | `PORT` | `3001` | HTTP port (listens on `0.0.0.0`) |
+| `PUID` / `PGID` | `1000` / `1000` | User and group id the app runs as (the container starts as root only to set these and fix `/data` ownership). Unraid: `99` / `100` |
 | `VV_TRUST_PROXY` | off | `1`/`true`: trust `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For` / `X-Real-IP` from a reverse proxy (secure cookies, client IPs for login rate limiting, generated URLs). Only enable when the proxy is the only way in. |
 | `VV_SETUP_TOKEN` | – | When set, the first-run setup page only opens as `/setup?token=<value>`, so nobody else can claim a fresh instance. Ignored once an admin exists |
 | `VV_CONFIG_FILE` | – | Path to a YAML/JSON [config document](docs/config-as-code.md) merged into the database on every start |
