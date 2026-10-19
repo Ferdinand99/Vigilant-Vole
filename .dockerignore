@@ -24,6 +24,7 @@ scratchpad/
 docs/
 deploy/
 assets/
+site/
 *.md
 docker-compose*.yml
 Dockerfile

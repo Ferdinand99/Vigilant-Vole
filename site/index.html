@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Vigilant Vole — lightweight, self-hosted uptime monitoring</title>
+    <meta
+      name="description"
+      content="Vigilant Vole is a lightweight, self-hosted uptime monitor written in Rust, an Uptime Kuma alternative. One ~18 MB image, SQLite, status pages, 24 alert providers and remote agents."
+    />
+    <script>document.documentElement.classList.add("js");</script>
+    <link rel="canonical" href="https://ferdinand99.github.io/Vigilant-Vole/" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.png" type="image/png" sizes="48x48" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0b0b0d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ferdinand99.github.io/Vigilant-Vole/" />
+    <meta property="og:site_name" content="Vigilant Vole" />
+    <meta property="og:title" content="Vigilant Vole — lightweight, self-hosted uptime monitoring" />
+    <meta
+      property="og:description"
+      content="An Uptime Kuma alternative written in Rust. One ~18 MB image. SQLite. Runs anywhere Docker does."
+    />
+    <meta property="og:image" content="https://ferdinand99.github.io/Vigilant-Vole/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Vigilant Vole: the monitor dashboard with live status, heartbeat bars and uptime, next to the tagline “Know the moment something goes down.”" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Vigilant Vole — lightweight, self-hosted uptime monitoring" />
+    <meta
+      name="twitter:description"
+      content="An Uptime Kuma alternative written in Rust. One ~18 MB image. SQLite. Runs anywhere Docker does."
+    />
+    <meta name="twitter:image" content="https://ferdinand99.github.io/Vigilant-Vole/og-image.png" />
+    <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Vigilant Vole",
+        "description": "A lightweight, self-hosted uptime monitor written in Rust, with status pages, 24 notification providers, remote agents and a REST API.",
+        "url": "https://ferdinand99.github.io/Vigilant-Vole/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux (Docker)",
+        "image": "https://ferdinand99.github.io/Vigilant-Vole/og-image.png",
+        "license": "https://github.com/Ferdinand99/Vigilant-Vole/blob/main/LICENSE",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "sameAs": ["https://github.com/Ferdinand99/Vigilant-Vole"]
+      }
+    </script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <svg width="0" height="0" class="vh" aria-hidden="true" focusable="false">
+      <symbol id="gh" viewBox="0 0 16 16">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+      </symbol>
+      <symbol id="star" viewBox="0 0 24 24">
+        <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+      </symbol>
+    </svg>
+
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="topbar" id="top">
+      <div class="wrap topbar-inner">
+        <a class="brand" href="#top">
+          <img src="favicon.svg" alt="" width="28" height="28" />
+          <span>Vigilant Vole</span>
+        </a>
+
+        <button class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="topnav" hidden>
+          <span></span><span></span>
+        </button>
+
+        <nav class="topnav" id="topnav" aria-label="Main">
+          <a class="topnav-link" href="#features">Features</a>
+          <a class="topnav-link" href="#screenshots">Screenshots</a>
+          <a class="topnav-link" href="#compare">Compare</a>
+          <a class="topnav-link" href="#install">Install</a>
+          <a class="topnav-link" href="https://github.com/Ferdinand99/Vigilant-Vole#readme">Docs</a>
+          <a class="btn btn-ghost btn-sm" href="https://github.com/Ferdinand99/Vigilant-Vole" aria-label="Star Vigilant Vole on GitHub">
+            <svg class="gh-mark" aria-hidden="true"><use href="#gh"></use></svg>
+            <span>Star on GitHub</span>
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- Hero ============================================================ -->
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="wrap">
+          <div class="hero-copy">
+            <a class="live-pill" href="https://github.com/Ferdinand99/Vigilant-Vole/releases/latest">
+              <span class="dot is-live" aria-hidden="true"></span>
+              Latest release on GitHub
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+            </a>
+            <h1 class="display" id="hero-title">Know the moment something goes down.</h1>
+            <p class="lead">
+              Vigilant Vole is a lightweight, self-hosted uptime monitor written in Rust. Status pages,
+              smart alerts and remote agents, in the spirit of Uptime Kuma.
+            </p>
+            <p class="hero-fine">One ~18&nbsp;MB image. SQLite. Runs anywhere Docker does.</p>
+            <div class="hero-actions">
+              <a class="btn btn-primary btn-lg" href="#install">Install</a>
+              <a class="btn btn-ghost btn-lg" href="https://github.com/Ferdinand99/Vigilant-Vole">
+                <svg class="gh-mark" aria-hidden="true"><use href="#gh"></use></svg>
+                View on GitHub
+              </a>
+            </div>
+            <p class="hero-meta"><span>MIT licensed</span><span>Built in Rust</span><span>Light and dark</span></p>
+          </div>
+
+          <div class="hero-shot">
+            <div class="frame">
+              <picture>
+                <source
+                  media="(prefers-color-scheme: light)"
+                  type="image/webp"
+                  srcset="assets/dashboard-light-960.webp 960w, assets/dashboard-light.webp 1600w"
+                  sizes="(max-width: 1168px) 100vw, 1120px"
+                />
+                <source media="(prefers-color-scheme: light)" srcset="assets/dashboard-light.png" />
+                <source
+                  type="image/webp"
+                  srcset="assets/dashboard-dark-960.webp 960w, assets/dashboard-dark.webp 1600w"
+                  sizes="(max-width: 1168px) 100vw, 1120px"
+                />
+                <img
+                  src="assets/dashboard-dark.png"
+                  width="1600"
+                  height="900"
+                  fetchpriority="high"
+                  alt="The Vigilant Vole dashboard: 10 monitors with live status, 24-hour heartbeat bars, uptime and response times, and counters for up, down, pending and maintenance."
+                />
+              </picture>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features ======================================================== -->
+      <section class="section" id="features" aria-labelledby="features-title">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <h2 class="headline" id="features-title">Watch everything you run.</h2>
+            <p class="sub">
+              Thirteen kinds of checks, alerts that don’t cry wolf, and status pages your users will
+              actually read, from one small container.
+            </p>
+          </header>
+
+          <div class="rows">
+            <!-- Monitor types -->
+            <article class="row" id="monitor-types">
+              <div class="row-copy reveal">
+                <h3 class="title">Thirteen ways to check</h3>
+                <p>
+                  HTTP(S) with status codes, headers, auth and proxies, plus keyword and JSONPath checks.
+                  TCP ports, ping, DNS with nine record types and your own resolver, push heartbeats for
+                  cron jobs, Docker containers, WebSockets, domain expiry over RDAP, NTP, Steam game
+                  servers, and groups.
+                </p>
+                <p>
+                  TLS certificates and domain registrations warn you before they expire. Tags, groups
+                  and maintenance windows keep a hundred monitors as calm as ten.
+                </p>
+                <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole#-monitor-types"
+                  >All monitor types <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg
+                ></a>
+              </div>
+              <div class="row-art reveal">
+                <div
+                  class="mock"
+                  role="img"
+                  aria-label="Illustration of the monitor list: Website (HTTP keyword) up, Public API (JSON query) up, Nightly backup (push) up, Edge gateway (ping) in maintenance, and Payments webhook (HTTP) down, each with a heartbeat bar and 24-hour uptime."
+                >
+                  <div class="mock-bar">
+                    <span class="mock-title">Monitors</span>
+                    <span class="pill status-up"><span class="dot"></span>Live</span>
+                  </div>
+                  <ul class="list">
+                    <li>
+                      <div class="list-row">
+                        <span class="dot status-up"></span>
+                        <span class="list-main"><span class="list-title">Website</span><span class="list-sub">HTTP(S) keyword · example.com</span></span>
+                        <span class="beats list-beats"><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i></span>
+                        <span class="list-value"><strong>100%</strong><small>24&nbsp;h</small></span>
+                      </div>
+                    </li>
+                    <li>
+                      <div class="list-row">
+                        <span class="dot status-up"></span>
+                        <span class="list-main"><span class="list-title">Public API</span><span class="list-sub">JSON query · $.status == "ok"</span></span>
+                        <span class="beats list-beats"><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i></span>
+                        <span class="list-value"><strong>100%</strong><small>24&nbsp;h</small></span>
+                      </div>
+                    </li>
+                    <li>
+                      <div class="list-row">
+                        <span class="dot status-up"></span>
+                        <span class="list-main"><span class="list-title">Nightly backup</span><span class="list-sub">Push</span></span>
+                        <span class="beats list-beats"><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-none"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i></span>
+                        <span class="list-value"><strong>100%</strong><small>24&nbsp;h</small></span>
+                      </div>
+                    </li>
+                    <li>
+                      <div class="list-row">
+                        <span class="dot status-maintenance"></span>
+                        <span class="list-main"><span class="list-title">Edge gateway</span><span class="list-sub">Ping · 1.1.1.1</span></span>
+                        <span class="beats list-beats"><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-maintenance"></i><i class="beat status-maintenance"></i><i class="beat status-maintenance"></i><i class="beat status-maintenance"></i><i class="beat status-maintenance"></i><i class="beat status-maintenance"></i></span>
+                        <span class="list-value"><strong>100%</strong><small>24&nbsp;h</small></span>
+                      </div>
+                    </li>
+                    <li>
+                      <div class="list-row">
+                        <span class="dot status-down"></span>
+                        <span class="list-main"><span class="list-title">Payments webhook</span><span class="list-sub">HTTP(S) · api.example.com</span></span>
+                        <span class="beats list-beats"><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-up"></i><i class="beat status-pending"></i><i class="beat status-down"></i><i class="beat status-down"></i><i class="beat status-down"></i><i class="beat status-down"></i></span>
+                        <span class="list-value"><strong>96.2%</strong><small>24&nbsp;h</small></span>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </article>
+
+            <!-- Alerting -->
+            <article class="row row-flip" id="alerting">
+              <div class="row-copy reveal">
+                <h3 class="title">Alerts that don’t cry wolf</h3>
+                <p>
+                  A failing check retries on its own interval before anyone hears about it. Alerts fire
+                  on settled changes only, recovery messages say how long it was down, and
+                  <strong>flapping</strong> monitors are called out instead of flooding your phone.
+                </p>
+                <p>
+                  Send reminders every few failed checks while it stays down, and
+                  <strong>escalate</strong> to a second channel, say PagerDuty, after a set number of
+                  minutes. Upside-down mode flips any check.
+                </p>
+                <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole#-notifications"
+                  >How notifications work <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg
+                ></a>
+              </div>
+              <div class="row-art reveal">
+                <div
+                  class="mock"
+                  role="img"
+                  aria-label="Illustration of a monitor’s events: Payments webhook went down at 21:04 with HTTP 503 and alerted Ops Discord; a reminder went out at 21:09; at 21:14 it escalated to PagerDuty after 10 minutes; at 21:16 it was back up after 12 minutes."
+                >
+                  <div class="mock-bar">
+                    <span class="mock-title">Payments webhook</span>
+                    <span class="pill status-up"><span class="dot"></span>Up</span>
+                  </div>
+                  <div class="card">
+                    <ol class="timeline">
+                      <li class="timeline-item status-up">
+                        <span class="timeline-dot"></span>
+                        <div>
+                          <div class="timeline-head"><span class="timeline-title">Up</span><span class="timeline-time">21:16</span></div>
+                          <p class="timeline-text">Back up after 12&nbsp;min · sent to Ops Discord and PagerDuty</p>
+                        </div>
+                      </li>
+                      <li class="timeline-item status-warning">
+                        <span class="timeline-dot"></span>
+                        <div>
+                          <div class="timeline-head"><span class="timeline-title">Escalated</span><span class="timeline-time">21:14</span></div>
+                          <p class="timeline-text">Down for 10&nbsp;min · sent to PagerDuty</p>
+                        </div>
+                      </li>
+                      <li class="timeline-item status-paused">
+                        <span class="timeline-dot"></span>
+                        <div>
+                          <div class="timeline-head"><span class="timeline-title">Reminder</span><span class="timeline-time">21:09</span></div>
+                          <p class="timeline-text">Still down after 5&nbsp;checks</p>
+                        </div>
+                      </li>
+                      <li class="timeline-item status-down">
+                        <span class="timeline-dot"></span>
+                        <div>
+                          <div class="timeline-head"><span class="timeline-title">Down</span><span class="timeline-time">21:04</span></div>
+                          <p class="timeline-text">HTTP 503 Service Unavailable · confirmed after 2&nbsp;retries</p>
+                        </div>
+                      </li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Status pages -->
+            <article class="row" id="status-pages">
+              <div class="row-copy reveal">
+                <h3 class="title">Status pages people actually read</h3>
+                <p>
+                  Public pages with sections, 90-day uptime bars, response times, incidents written in
+                  Markdown (pinned, with history) and scheduled maintenance. Light, dark or automatic,
+                  custom CSS, and your own domain.
+                </p>
+                <p>
+                  Every page is also JSON for embedding, and <strong>SVG badges</strong> put status,
+                  uptime, response time or certificate expiry in a README.
+                </p>
+                <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole#-status-pages-and-badges"
+                  >Status pages and badges <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg
+                ></a>
+              </div>
+              <div class="row-art reveal">
+                <div
+                  class="mock"
+                  role="img"
+                  aria-label="Illustration of a public status page: a green banner reads All systems operational. Below, Website shows Operational with 90 daily uptime bars, almost all green, and 99.98% uptime. Underneath, three badges: status up, uptime 99.98%, and response 16&nbsp;ms."
+                >
+                  <div class="banner status-up">
+                    <span class="banner-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg></span>
+                    <div>
+                      <p class="banner-title">All systems operational</p>
+                      <p class="banner-sub">Updated just now</p>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <div class="mock-split">
+                      <span class="list-title">Website</span>
+                      <span class="pill status-up"><span class="dot"></span>Operational</span>
+                    </div>
+                    <div class="uptime">
+                      <div class="uptime-days"><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-pending"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-pending"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-pending"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i><i class="uptime-day status-up"></i></div>
+                      <div class="uptime-legend">
+                        <span><span class="hide-sm">90&nbsp;days ago</span><span class="show-sm">45&nbsp;days ago</span></span>
+                        <span>99.98% uptime</span>
+                        <span>Today</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="badges">
+                    <svg viewBox="0 0 79 20" width="79" height="20" aria-hidden="true"><rect width="79" height="20" rx="3" fill="#555"/><rect x="53" width="26" height="20" rx="3" fill="#97ca00"/><rect x="53" width="4" height="20" fill="#97ca00"/><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="26.5" y="14" textLength="41">status</text><text x="66.0" y="14" textLength="14">up</text></g></svg>
+                    <svg viewBox="0 0 108 20" width="108" height="20" aria-hidden="true"><rect width="108" height="20" rx="3" fill="#555"/><rect x="54" width="54" height="20" rx="3" fill="#97ca00"/><rect x="54" width="4" height="20" fill="#97ca00"/><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="27.0" y="14" textLength="42">uptime</text><text x="81.0" y="14" textLength="42">99.98%</text></g></svg>
+                    <svg viewBox="0 0 114 20" width="114" height="20" aria-hidden="true"><rect width="114" height="20" rx="3" fill="#555"/><rect x="67" width="47" height="20" rx="3" fill="#007ec6"/><rect x="67" width="4" height="20" fill="#007ec6"/><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="33.5" y="14" textLength="55">response</text><text x="90.5" y="14" textLength="35">16&nbsp;ms</text></g></svg>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Remote agents -->
+            <article class="row row-flip" id="agents">
+              <div class="row-copy reveal">
+                <h3 class="title">Confirm outages from somewhere else</h3>
+                <p>
+                  Run the same binary in agent mode on another network, in another country. Agents pick
+                  up the monitors you mark, run them, and report back to your server.
+                </p>
+                <p>
+                  Turn on <strong>outage confirmation</strong> and a local failure only becomes down, and
+                  only alerts, when the agents agree. A flaky uplink at home no longer pages you at 3 a.m.
+                </p>
+                <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/remote-agents.md"
+                  >Remote agents guide <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg
+                ></a>
+              </div>
+              <div class="row-art reveal">
+                <div
+                  class="mock"
+                  role="img"
+                  aria-label="Illustration of outage confirmation: Website is pending, not down. The local check failed, but 2 of 3 remote agents report up: Frankfurt and Amsterdam got 200 OK, New York timed out."
+                >
+                  <div class="mock-bar">
+                    <span class="mock-title">Website</span>
+                    <span class="pill status-pending"><span class="dot"></span>Pending</span>
+                  </div>
+                  <div class="callout status-warning">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#alert"></use></svg>
+                    <div>
+                      <span class="callout-title">Local check failed; 2/3 remote agents report up</span>
+                      No alert yet. It only goes down when the agents agree.
+                    </div>
+                  </div>
+                  <ul class="list">
+                    <li>
+                      <div class="list-row">
+                        <span class="list-icon status-down"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg></span>
+                        <span class="list-main"><span class="list-title">This server</span><span class="list-sub">Connection timed out after 10&nbsp;s</span></span>
+                        <span class="dot status-down"></span>
+                      </div>
+                    </li>
+                    <li>
+                      <div class="list-row">
+                        <span class="list-icon status-up"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></span>
+                        <span class="list-main"><span class="list-title">Frankfurt</span><span class="list-sub">200 OK · 38&nbsp;ms</span></span>
+                        <span class="dot status-up"></span>
+                      </div>
+                    </li>
+                    <li>
+                      <div class="list-row">
+                        <span class="list-icon status-up"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></span>
+                        <span class="list-main"><span class="list-title">Amsterdam</span><span class="list-sub">200 OK · 41&nbsp;ms</span></span>
+                        <span class="dot status-up"></span>
+                      </div>
+                    </li>
+                    <li>
+                      <div class="list-row">
+                        <span class="list-icon status-paused"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></span>
+                        <span class="list-main"><span class="list-title">New York</span><span class="list-sub">Timed out</span></span>
+                        <span class="dot status-paused"></span>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </article>
+
+            <!-- Docker discovery -->
+            <article class="row" id="discovery">
+              <div class="row-copy reveal">
+                <h3 class="title">Label a container, get a monitor</h3>
+                <p>
+                  Mount the Docker socket, or a read-only socket proxy, switch on discovery, and add
+                  <code>vigilant.*</code> labels. Vigilant Vole creates the monitor and pauses it when the
+                  container goes away.
+                </p>
+                <p>Monitors you made by hand are never touched.</p>
+                <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/docker-discovery.md"
+                  >Docker discovery reference <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg
+                ></a>
+              </div>
+              <div class="row-art reveal">
+                <pre tabindex="0" role="region" translate="no" aria-label="Example docker-compose service with Vigilant Vole labels"><code><span class="k">services</span>:
+  <span class="k">payments</span>:
+    <span class="k">image</span>: ghcr.io/acme/payments:latest
+    <span class="k">labels</span>:
+      vigilant.enable: "true"
+      vigilant.name: "Payments API"
+      vigilant.type: "http"        <span class="c"># default: docker (running + healthy)</span>
+      vigilant.target: "http://payments:8080/health"
+      vigilant.interval: "30"
+      vigilant.group: "Production"
+      vigilant.tags: "prod,team:payments"
+      vigilant.notify: "Ops Discord"</code></pre>
+              </div>
+            </article>
+          </div>
+
+          <!-- Providers -->
+          <div class="providers">
+            <h3 class="title reveal">24 notification providers, plus Apprise for 90 more.</h3>
+            <p class="sub reveal">
+              Each channel has a Send test button. Mark one as default and new monitors get it
+              automatically.
+            </p>
+            <ul class="chips reveal" aria-label="Notification providers">
+              <li class="chip">Discord</li>
+              <li class="chip">Slack</li>
+              <li class="chip">Microsoft Teams</li>
+              <li class="chip">Google Chat</li>
+              <li class="chip">Mattermost</li>
+              <li class="chip">Rocket.Chat</li>
+              <li class="chip">Matrix</li>
+              <li class="chip">Webex</li>
+              <li class="chip">Feishu/Lark</li>
+              <li class="chip">DingTalk</li>
+              <li class="chip">Telegram</li>
+              <li class="chip">Signal</li>
+              <li class="chip">SMS via Twilio</li>
+              <li class="chip">ntfy</li>
+              <li class="chip">Pushover</li>
+              <li class="chip">Gotify</li>
+              <li class="chip">Pushbullet</li>
+              <li class="chip">Bark</li>
+              <li class="chip">Email (SMTP)</li>
+              <li class="chip">PagerDuty</li>
+              <li class="chip">Opsgenie</li>
+              <li class="chip">Webhook</li>
+              <li class="chip">Home Assistant</li>
+              <li class="chip chip-strong">Apprise</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Operate ========================================================= -->
+      <section class="section" id="operate" aria-labelledby="operate-title">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <h2 class="headline" id="operate-title">Built to be operated.</h2>
+            <p class="sub">An API for everything, your whole setup in git, and an easy way over from Uptime Kuma.</p>
+          </header>
+          <ul class="grid">
+            <li class="card feature reveal">
+              <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#code"></use></svg></span>
+              <h3>REST API</h3>
+              <p>Full CRUD for monitors, status pages, incidents, maintenance and settings. A browsable reference in the app, and an OpenAPI 3.1 document.</p>
+              <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/api.md">API docs <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg></a>
+            </li>
+            <li class="card feature reveal" style="--i: 1">
+              <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sliders"></use></svg></span>
+              <h3>Config as code</h3>
+              <p>Export the whole setup as one YAML or JSON file, keep it in git, and apply it back with a dry-run plan first. Merge, replace, or apply on every start.</p>
+              <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/config-as-code.md">Config schema <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg></a>
+            </li>
+            <li class="card feature reveal" style="--i: 2">
+              <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#upload"></use></svg></span>
+              <h3>Move from Uptime Kuma</h3>
+              <p>Upload <code>kuma.db</code> (1.23 or 2.x) or a JSON backup. Monitors, groups, tags, notifications, status pages and maintenance come across, and push tokens are kept.</p>
+              <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/migrating-from-uptime-kuma.md">Migration guide <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg></a>
+            </li>
+            <li class="card feature reveal">
+              <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chart"></use></svg></span>
+              <h3>Prometheus and Grafana</h3>
+              <p>A <code>/metrics</code> endpoint with Kuma-compatible metric names, so the Grafana dashboards you already have keep working.</p>
+              <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/metrics.md">Metrics reference <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg></a>
+            </li>
+            <li class="card feature reveal" style="--i: 1">
+              <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg></span>
+              <h3>Roles, 2FA and API tokens</h3>
+              <p>Admin, editor and viewer roles, TOTP with recovery codes, and expiring read or write tokens. Argon2 passwords and a strict Content-Security-Policy.</p>
+              <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole#-security">Security notes <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg></a>
+            </li>
+            <li class="card feature reveal" style="--i: 2">
+              <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#archive"></use></svg></span>
+              <h3>Backup and restore</h3>
+              <p>Download a consistent database snapshot while monitoring keeps running, and restore one on the next start. Upgrades take a snapshot first.</p>
+              <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole#-backup-and-restore">Backups <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg></a>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Footprint ======================================================= -->
+      <section class="section footprint" id="footprint" aria-labelledby="footprint-title">
+        <div class="wrap">
+          <header class="section-head center reveal">
+            <h2 class="headline" id="footprint-title">Small enough to forget about.</h2>
+            <p class="sub">
+              One static Rust binary serves server-rendered HTML. No Node.js, no external database, no
+              OpenSSL. Everything it keeps lives in one folder.
+            </p>
+          </header>
+          <ul class="stats">
+            <li class="stat reveal">
+              <span class="stat-label">Docker image</span>
+              <span class="stat-value">~18<small>MB</small></span>
+              <span class="stat-meta">Compressed, about 61&nbsp;MB on disk</span>
+            </li>
+            <li class="stat reveal" style="--i: 1">
+              <span class="stat-label">Binary</span>
+              <span class="stat-value">~32<small>MB</small></span>
+              <span class="stat-meta">Static, with everything compiled in</span>
+            </li>
+            <li class="stat reveal" style="--i: 2">
+              <span class="stat-label">Memory at idle</span>
+              <span class="stat-value">A few<small>MB</small></span>
+              <span class="stat-meta">Kuma typically uses 100&nbsp;MB or more</span>
+            </li>
+            <li class="stat reveal" style="--i: 3">
+              <span class="stat-label">To back up</span>
+              <span class="stat-value">1<small>folder</small></span>
+              <span class="stat-meta">SQLite, session key and backups in <code>/data</code></span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Screenshots ===================================================== -->
+      <section class="section" id="screenshots" aria-labelledby="screenshots-title">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <h2 class="headline" id="screenshots-title">Take a closer look.</h2>
+            <p class="sub">Calm in light and dark, live over Server-Sent Events, and just as at home on a phone.</p>
+          </header>
+
+          <div class="shots">
+            <figure class="shot reveal">
+              <div class="frame">
+                <picture>
+                  <source type="image/webp" srcset="assets/monitor-dark.webp" />
+                  <img
+                    src="assets/monitor-dark.png"
+                    width="1400"
+                    height="1291"
+                    loading="lazy"
+                    decoding="async"
+                    alt="Monitor detail for Website: up, uptime tiles from 24 hours to one year, a 24-hour response-time chart, a 90-day uptime bar, recent events and the TLS certificate with 67&nbsp;days left."
+                  />
+                </picture>
+              </div>
+              <figcaption><strong>Monitor detail.</strong> Uptime from a day to a year, response times, 90&nbsp;days of history, events and the certificate.</figcaption>
+            </figure>
+            <figure class="shot shot-phone reveal" style="--i: 1">
+              <div class="frame">
+                <picture>
+                  <source type="image/webp" srcset="assets/mobile-dark.webp" />
+                  <img
+                    src="assets/mobile-dark.png"
+                    width="600"
+                    height="1298"
+                    loading="lazy"
+                    decoding="async"
+                    alt="The dashboard on a phone: monitor counters, filter chips and the monitor list, with a tab bar at the bottom."
+                  />
+                </picture>
+              </div>
+              <figcaption><strong>On your phone.</strong> The whole app works on a small screen and installs as a PWA.</figcaption>
+            </figure>
+          </div>
+
+          <div class="shot-wide">
+            <div class="reveal">
+              <h3 class="title">Public status pages</h3>
+              <p class="sub">
+                An overall banner, incidents, sections and 90-day uptime bars, on its own URL or your own
+                domain. This one is in the light theme.
+              </p>
+              <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole#-status-pages-and-badges"
+                >Set up a status page <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg
+              ></a>
+            </div>
+            <figure class="shot reveal" style="--i: 1">
+              <div class="frame">
+                <picture>
+                  <source type="image/webp" srcset="assets/status-page.webp" />
+                  <img
+                    src="assets/status-page.png"
+                    width="1200"
+                    height="1394"
+                    loading="lazy"
+                    decoding="async"
+                    alt="A public status page in the light theme: a yellow Partial outage banner, an incident about delayed payment confirmations, and Website and API sections with 90-day uptime bars."
+                  />
+                </picture>
+              </div>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- Compare ========================================================= -->
+      <section class="section section-alt" id="compare" aria-labelledby="compare-title">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <h2 class="headline" id="compare-title">Vigilant Vole and Uptime Kuma.</h2>
+            <p class="sub">
+              Uptime Kuma is an excellent, mature project with a big community, and Vigilant Vole
+              borrows a lot of its ideas. Here’s an honest comparison with Kuma 1.23 and 2.0.
+            </p>
+          </header>
+
+          <div class="table-wrap reveal">
+            <table class="compare">
+              <caption class="vh">Feature comparison between Vigilant Vole and Uptime Kuma</caption>
+              <thead>
+                <tr>
+                  <th scope="col"><span class="vh">Feature</span></th>
+                  <th scope="col">Vigilant Vole</th>
+                  <th scope="col">Uptime Kuma</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="group"><th colspan="3" scope="rowgroup">Footprint</th></tr>
+                <tr><th scope="row">Runtime</th><td data-label="Vigilant Vole">One static Rust binary, server-rendered HTML (Askama + htmx)</td><td data-label="Uptime Kuma">Node.js + Vue SPA</td></tr>
+                <tr><th scope="row">Docker image</th><td data-label="Vigilant Vole">~18&nbsp;MB compressed (~61&nbsp;MB on disk)</td><td data-label="Uptime Kuma">Hundreds of MB</td></tr>
+                <tr><th scope="row">Idle memory</th><td data-label="Vigilant Vole">A few&nbsp;MB</td><td data-label="Uptime Kuma">Typically 100&nbsp;MB+</td></tr>
+                <tr><th scope="row">Database</th><td data-label="Vigilant Vole">SQLite (bundled)</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>SQLite, or MariaDB/MySQL in 2.0</span></td></tr>
+              </tbody>
+              <tbody>
+                <tr class="group"><th colspan="3" scope="rowgroup">Monitoring</th></tr>
+                <tr><th scope="row">HTTP(S), keyword, JSON query, TCP, ping, DNS, push, Docker, Steam, groups, WebSocket</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Domain expiry (RDAP), NTP monitors</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma">No NTP; domain expiry varies by version</td></tr>
+                <tr><th scope="row">Database monitors (PostgreSQL, MySQL/MariaDB, SQL Server, MongoDB, Redis)</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">MQTT, Kafka, RabbitMQ, gRPC, RADIUS, SNMP, SMTP, GameDig, Tailscale</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Real-browser (headless Chrome) monitor</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">HTTP auth</th><td data-label="Vigilant Vole">Basic auth</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Basic, NTLM, mTLS, OAuth2 client credentials</span></td></tr>
+              </tbody>
+              <tbody>
+                <tr class="group"><th colspan="3" scope="rowgroup">Alerting</th></tr>
+                <tr><th scope="row">Notification providers</th><td data-label="Vigilant Vole">24 native + Apprise (90+ services)</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>90+ native</span></td></tr>
+                <tr><th scope="row">Reminders (resend while down)</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Escalation channels after N minutes</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td></tr>
+                <tr><th scope="row">Flap detection</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td></tr>
+                <tr><th scope="row">Multi-location checks, outage confirmation</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Remote agents</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td></tr>
+              </tbody>
+              <tbody>
+                <tr class="group"><th colspan="3" scope="rowgroup">Status pages</th></tr>
+                <tr><th scope="row">Status pages, custom domains, badges</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Status page logo upload, analytics, password protection</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Incidents</th><td data-label="Vigilant Vole">Multiple per page, pinned, history</td><td data-label="Uptime Kuma">One active incident per page</td></tr>
+                <tr><th scope="row">Maintenance windows</th><td data-label="Vigilant Vole">Manual, once, daily, weekly</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Also cron, day-of-month, every N days</span></td></tr>
+              </tbody>
+              <tbody>
+                <tr class="group"><th colspan="3" scope="rowgroup">Running it</th></tr>
+                <tr><th scope="row">Multiple users with roles</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Admin, editor, viewer</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>Single user</span></td></tr>
+                <tr><th scope="row">2FA (TOTP)</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, with recovery codes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">REST API</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Full CRUD + OpenAPI</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No (socket.io; API keys for metrics only)</span></td></tr>
+                <tr><th scope="row">Config as code, GitOps</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>YAML/JSON, dry-run, merge or replace</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td></tr>
+                <tr><th scope="row">Docker label auto-discovery</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Built in</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No (third-party AutoKuma)</span></td></tr>
+                <tr><th scope="row">Prometheus metrics</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Kuma-compatible names + more</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Long-range uptime after retention</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Daily rollups</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Aggregate tables in 2.0</span></td></tr>
+                <tr><th scope="row">Import from the other one</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Reads <code>kuma.db</code></span></td><td data-label="Uptime Kuma">–</td></tr>
+                <tr><th scope="row">Interface languages</th><td data-label="Vigilant Vole">English, Norwegian</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>About 50&nbsp;languages</span></td></tr>
+                <tr><th scope="row">Built-in Cloudflare Tunnel, remote browsers</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout status-info compare-note reveal">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+            <p>
+              <span class="callout-title">When Kuma is the better fit</span>
+              If you need database, MQTT or browser monitors, or a language other than English or
+              Norwegian, Uptime Kuma is the better choice today. Already on Kuma? The
+              <a href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/migrating-from-uptime-kuma.md">importer</a>
+              brings your setup across.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Install ========================================================= -->
+      <section class="section" id="install" aria-labelledby="install-title">
+        <div class="wrap install">
+          <div class="install-intro reveal">
+            <h2 class="headline" id="install-title">Up in a minute.</h2>
+            <p class="sub">
+              Pull the image, map a port and a folder, and open
+              <code>http://localhost:3001</code>. A one-time setup wizard creates your admin account.
+            </p>
+            <div class="callout status-warning">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
+              <p>
+                <span class="callout-title">Finish setup right away</span>
+                Until the first admin exists, anyone who can reach the page can create one. Set
+                <code>VV_SETUP_TOKEN</code> to require a secret in the setup link.
+              </p>
+            </div>
+          </div>
+
+          <div class="install-steps">
+            <div class="step reveal">
+              <div class="step-head">
+                <h3>Docker</h3>
+                <button class="btn btn-ghost btn-sm copy-btn" type="button" data-copy="snippet-run" hidden>
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg>
+                  <span>Copy</span>
+                </button>
+              </div>
+              <pre tabindex="0" role="region" translate="no" aria-label="docker run command"><code id="snippet-run">docker run -d --name vigilant-vole --restart unless-stopped \
+  -p 3001:3001 \
+  -v "$PWD/data:/data" \
+  --cap-add NET_RAW \
+  ghcr.io/ferdinand99/vigilant-vole:latest</code></pre>
+            </div>
+
+            <div class="step reveal">
+              <div class="step-head">
+                <h3>Docker Compose</h3>
+                <button class="btn btn-ghost btn-sm copy-btn" type="button" data-copy="snippet-compose" hidden>
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg>
+                  <span>Copy</span>
+                </button>
+              </div>
+              <pre tabindex="0" role="region" translate="no" aria-label="docker-compose.yml"><code id="snippet-compose"><span class="k">services</span>:
+  <span class="k">vigilant-vole</span>:
+    <span class="k">image</span>: ghcr.io/ferdinand99/vigilant-vole:latest
+    <span class="k">container_name</span>: vigilant-vole
+    <span class="k">restart</span>: unless-stopped
+    <span class="k">ports</span>:
+      - "3001:3001"
+    <span class="k">volumes</span>:
+      - ./data:/data
+    <span class="k">cap_add</span>:
+      - NET_RAW <span class="c"># raw ICMP fallback for ping monitors</span></code></pre>
+              <p>
+                Save it as <code>docker-compose.yml</code> and run <code>docker compose up -d</code>. The
+                <a href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docker-compose.yml">full file</a>
+                has commented extras: the Docker socket, a config file and a remote agent.
+              </p>
+            </div>
+
+            <div class="step reveal">
+              <div class="step-head"><h3>Unraid</h3></div>
+              <div class="card unraid">
+                <picture>
+                  <source type="image/webp" srcset="assets/vole.webp" />
+                  <img src="assets/vole.png" width="56" height="56" loading="lazy" decoding="async" alt="" />
+                </picture>
+                <p>
+                  Search for <strong>Vigilant-Vole</strong> in Community Applications. The template
+                  sets the port, the appdata path and <code>PUID</code>/<code>PGID</code> for you.
+                  <a href="https://github.com/Ferdinand99/Vigilant-Vole#-unraid">Manual setup</a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Docs ============================================================ -->
+      <section class="section" id="docs" aria-labelledby="docs-title">
+        <div class="wrap">
+          <header class="section-head reveal">
+            <h2 class="headline" id="docs-title">Documentation.</h2>
+            <p class="sub">The guides live next to the code on GitHub.</p>
+          </header>
+          <div class="grid docs-grid reveal">
+            <ul class="list">
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole#-configuration">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#gear"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Configuration</span><span class="list-sub">Environment variables and settings</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/remote-agents.md">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Remote agents</span><span class="list-sub">Multi-location checks</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/docker-discovery.md">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#box"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Docker label discovery</span><span class="list-sub">Labels and socket permissions</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+            </ul>
+            <ul class="list">
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/api.md">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#code"></use></svg></span>
+                  <span class="list-main"><span class="list-title">REST API</span><span class="list-sub">Tokens, endpoints, OpenAPI</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/config-as-code.md">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sliders"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Config as code</span><span class="list-sub">Schema, dry-run, GitOps</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/metrics.md">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chart"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Prometheus metrics</span><span class="list-sub">Metric names and labels</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+            </ul>
+            <ul class="list">
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/migrating-from-uptime-kuma.md">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#upload"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Migrating from Uptime Kuma</span><span class="list-sub">What comes across, and how</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole#-security">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Security</span><span class="list-sub">HTTPS, roles, tokens, hardening</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+              <li>
+                <a class="list-row" href="https://github.com/Ferdinand99/Vigilant-Vole#-building-from-source">
+                  <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#wrench"></use></svg></span>
+                  <span class="list-main"><span class="list-title">Building from source</span><span class="list-sub">Docker or cargo</span></span>
+                  <svg class="icon list-chevron" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap">
+        <div class="footer-top">
+          <a class="brand" href="#top">
+            <img src="favicon.svg" alt="" width="24" height="24" loading="lazy" />
+            <span>Vigilant Vole</span>
+          </a>
+          <span>Made in Norway</span>
+        </div>
+        <nav aria-label="Project links">
+          <ul class="footer-links">
+          <li><a href="https://github.com/Ferdinand99/Vigilant-Vole">GitHub</a></li>
+          <li><a href="https://github.com/Ferdinand99/Vigilant-Vole/releases">Releases</a></li>
+          <li><a href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/CHANGELOG.md">Changelog</a></li>
+          <li><a href="https://github.com/Ferdinand99/Vigilant-Vole#readme">Documentation</a></li>
+          <li><a href="https://github.com/Ferdinand99/Vigilant-Vole/issues">Issues</a></li>
+          <li><a href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/LICENSE">MIT license</a></li>
+          </ul>
+        </nav>
+        <p>
+          Vigilant Vole is open source under the MIT license. Not affiliated with Uptime Kuma. This site
+          uses no cookies, analytics or third-party requests.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
