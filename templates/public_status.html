@@ -1,0 +1,45 @@
+{% extends "public_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block head %}
+  <meta name="description" content="{{ meta_description }}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ meta_description }}">
+  <meta property="og:site_name" content="{{ page_title }}">
+  <meta name="twitter:card" content="summary">
+  {%- if v.preview %}
+  <meta name="robots" content="noindex">
+  {%- endif %}
+  <link rel="alternate" type="application/json" href="/api/status-page/{{ v.page.slug }}">
+{% endblock %}
+
+{% block header %}
+<div class="stack stack-xs">
+  <h1 class="public-title">{{ v.page.title }}</h1>
+  {%- if !v.page.description.is_empty() %}
+  <p class="page-sub">{{ v.page.description }}</p>
+  {%- endif %}
+</div>
+{%- if v.can_edit %}
+<a class="btn btn-secondary btn-sm" href="/status-pages/{{ v.page.id }}/edit">{{ m::icon("pencil") }}<span>{{ tr("pub.edit_page") }}</span></a>
+{%- endif %}
+{% endblock %}
+
+{% block content %}
+{%- if v.preview %}
+{{ m::callout("warning", tr("pub.preview_text"), tr("pub.preview_title")) }}
+{%- endif %}
+{% include "partials/status_public_live.html" %}
+{% endblock %}
+
+{% block footer %}
+<div class="stack stack-xs">
+  {%- if !v.footer_html.is_empty() %}
+  <div>{{ v.footer_html|safe }}</div>
+  {%- endif %}
+  {%- if v.page.show_powered_by %}
+  <p>{{ tr("common.powered_by") }} <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a></p>
+  {%- endif %}
+</div>
+{% endblock %}

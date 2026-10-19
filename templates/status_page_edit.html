@@ -1,0 +1,148 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{% include "partials/status_page_head.html" %}
+
+{%- if tab == "content" %}
+<section class="section" aria-labelledby="sp-content-title">
+  {% call m::section_head(tr("sp.sections"), tr("sp.sections_sub"), "sp-content-title") %}{% endcall %}
+  {% include "partials/status_sections.html" %}
+</section>
+{%- else %}
+<form class="form form-narrow" method="post" action="/status-pages/{{ page.id }}/edit" data-warn-unsaved>
+  <section class="form-section" aria-labelledby="sec-basics">
+    <h2 class="form-section-title" id="sec-basics">{{ tr("sp.basics") }}</h2>
+    <div class="card">
+      {{ m::field_text("title", tr("sp.title"), value=&form.title, placeholder=tr("setup.site_name_placeholder"), required=true, error=&form.title_error) }}
+      <div class="field{% if !form.slug_error.is_empty() %} is-invalid{% endif %}">
+        <label class="label" for="f-slug">{{ tr("sp.address") }}</label>
+        <div class="input-group">
+          <span class="input-addon" aria-hidden="true">/status/</span>
+          <input id="f-slug" name="slug" type="text" value="{{ form.slug }}" required autocomplete="off" autocapitalize="none" spellcheck="false"
+            {%- if !form.slug_error.is_empty() %} aria-invalid="true" aria-describedby="f-slug-error"{% endif %}>
+        </div>
+        {%- if !form.slug_error.is_empty() %}
+        <p class="field-error" id="f-slug-error">{{ m::icon("alert-circle") }}{{ form.slug_error }}</p>
+        {%- endif %}
+      </div>
+      {{ m::field_textarea("description", tr("common.description"), &form.description, 2, tr("sp.description_placeholder"), tr("sp.description_help")) }}
+      {{ m::switch("published", tr("sp.published"), form.published, tr("sp.published_help")) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-look">
+    <h2 class="form-section-title" id="sec-look">{{ tr("nav.appearance") }}</h2>
+    <div class="card">
+      <div class="field">
+        <span class="label" id="theme-label">{{ tr("sp.theme") }}</span>
+        <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+          <label><input type="radio" name="theme" value="auto"{% if form.theme == "auto" %} checked{% endif %}><span>{{ tr("sp.theme_auto") }}</span></label>
+          <label><input type="radio" name="theme" value="light"{% if form.theme == "light" %} checked{% endif %}><span>{{ tr("nav.theme_light") }}</span></label>
+          <label><input type="radio" name="theme" value="dark"{% if form.theme == "dark" %} checked{% endif %}><span>{{ tr("nav.theme_dark") }}</span></label>
+        </div>
+      </div>
+      {{ m::switch("show_uptime", tr("sp.show_uptime"), form.show_uptime, tr("sp.show_uptime_help")) }}
+      {{ m::switch("show_response", tr("sp.show_response"), form.show_response) }}
+      {{ m::switch("show_tags", tr("sp.show_tags"), form.show_tags) }}
+      <div class="field{% if !form.refresh_error.is_empty() %} is-invalid{% endif %}">
+        <label class="label" for="f-refresh_seconds">{{ tr("sp.refresh") }}</label>
+        <div class="input-group">
+          <input id="f-refresh_seconds" name="refresh_seconds" type="number" inputmode="numeric" min="10" max="3600" value="{{ form.refresh_seconds }}" autocomplete="off"
+            aria-describedby="f-refresh-help{% if !form.refresh_error.is_empty() %} f-refresh-error{% endif %}"{% if !form.refresh_error.is_empty() %} aria-invalid="true"{% endif %}>
+          <span class="input-addon" aria-hidden="true">{{ tr("common.sec") }}</span>
+        </div>
+        <p class="help" id="f-refresh-help">{{ tr("sp.refresh_help") }}</p>
+        {%- if !form.refresh_error.is_empty() %}
+        <p class="field-error" id="f-refresh-error">{{ m::icon("alert-circle") }}{{ form.refresh_error }}</p>
+        {%- endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-footer">
+    <h2 class="form-section-title" id="sec-footer">{{ tr("sp.footer") }}</h2>
+    <div class="card">
+      {%- if form.footer_error.is_empty() %}
+      {{ m::field_textarea("footer_text", tr("sp.footer_text"), &form.footer_text, 2, tr("sp.footer_placeholder"), tr("sp.footer_help")) }}
+      {%- else %}
+      <div class="field is-invalid">
+        <label class="label" for="f-footer_text">{{ tr("sp.footer_text") }}</label>
+        <textarea id="f-footer_text" name="footer_text" rows="2" placeholder="{{ tr("sp.footer_placeholder") }}" aria-invalid="true" aria-describedby="f-footer_text-error">{{ form.footer_text }}</textarea>
+        <p class="field-error" id="f-footer_text-error">{{ m::icon("alert-circle") }}{{ form.footer_error }}</p>
+      </div>
+      {%- endif %}
+      {{ m::switch("show_powered_by", tr("sp.show_powered_by"), form.show_powered_by) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-domain">
+    <h2 class="form-section-title" id="sec-domain">{{ tr("sp.custom_domain") }}</h2>
+    <div class="card">
+      {{ m::field_text("custom_domain", tr("detail.domain"), value=&form.custom_domain, placeholder="status.example.com…", help=tr("sp.domain_help"), error=&form.domain_error) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-css">
+    <h2 class="form-section-title" id="sec-css">{{ tr("sp.custom_css") }}</h2>
+    <div class="card">
+      <div class="field{% if !form.css_error.is_empty() %} is-invalid{% endif %}">
+        <label class="label" for="f-custom_css">CSS <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <textarea id="f-custom_css" name="custom_css" rows="6" class="textarea-code" spellcheck="false" placeholder=".public-title { letter-spacing: 0; }…"
+          {%- if !form.css_error.is_empty() %} aria-invalid="true" aria-describedby="f-css-error"{% endif %}>{{ form.custom_css }}</textarea>
+        {%- if !form.css_error.is_empty() %}
+        <p class="field-error" id="f-css-error">{{ m::icon("alert-circle") }}{{ form.css_error }}</p>
+        {%- endif %}
+      </div>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    {{ m::link_button("/status-pages", tr("common.cancel"), "secondary") }}
+    {{ m::button(tr("monitor_form.save_changes")) }}
+  </div>
+</form>
+{%- endif %}
+
+<dialog class="sheet" id="sp-picker" aria-labelledby="sp-picker-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="sp-picker-title">{{ tr("sp.add_monitors") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="sp-picker" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body" id="sp-picker-body">{{ m::skeleton_rows(4) }}</div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="sp-picker" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="sp-picker-form">{{ tr("sp.add_selected") }}</button>
+  </footer>
+</dialog>
+
+<dialog class="sheet sheet-lg" id="sp-badges" aria-labelledby="sp-badges-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="sp-badges-title">{{ tr("sp.badges") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="sp-badges" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body stack">
+    <p class="muted">{{ tr("sp.badges_help_1") }} <code>?style=flat-square</code>, <code>?label=API</code> {{ tr("sp.badges_help_or") }} <code>?duration=7d</code> {{ tr("sp.badges_help_2") }} <code>/ping</code>, <code>/cert-exp</code>.</p>
+    {%- if !badges_live %}
+    {{ m::callout("info", tr("sp.badges_not_live"), tr("sp.not_live")) }}
+    {%- endif %}
+    {%- if badges.is_empty() %}
+    {{ m::empty_state("tag", tr("sp.badges_empty_title"), tr("sp.badges_empty_text")) }}
+    {%- endif %}
+    {%- for b in badges %}
+    <div class="stack stack-sm">
+      <div class="cluster cluster-between">
+        <strong class="truncate">{{ b.name }}</strong>
+        {%- if badges_live %}
+        <span class="cluster"><img src="{{ b.status_src }}" alt="{{ tr1("sp.badge_status_alt", "name", b.name) }}" height="20" loading="lazy"><img src="{{ b.uptime_src }}" alt="{{ tr1("sp.badge_uptime_alt", "name", b.name) }}" height="20" loading="lazy"></span>
+        {%- endif %}
+      </div>
+      {{ m::copy_field(&b.status_copy_id, &b.markdown) }}
+      {{ m::copy_field(&b.uptime_copy_id, &b.uptime_markdown) }}
+    </div>
+    {%- endfor %}
+  </div>
+</dialog>
+{% endblock %}

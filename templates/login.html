@@ -1,23 +1,22 @@
-{% extends "layout.html" %}
+{% extends "auth_layout.html" %}
+{% import "macros.html" as m %}
 
-{% block title %}Login - Vigilant Vole{% endblock %}
+{% block subtitle %}<p class="auth-sub">{{ tr("login.subtitle") }}</p>{% endblock %}
 
 {% block content %}
-<div class="auth-page">
-    <div class="card">
-        <h2>Log in</h2>
-        {% if let Some(err) = error %}
-        <p class="error">{{ err }}</p>
-        {% endif %}
-        <form method="post" action="/login">
-            <label>Username
-                <input type="text" name="username" required autofocus>
-            </label>
-            <label>Password
-                <input type="password" name="password" required>
-            </label>
-            <button type="submit" class="btn btn-primary">Log in</button>
-        </form>
-    </div>
-</div>
+{%- if let Some(msg) = notice %}
+{{ m::callout("info", msg) }}
+{%- endif %}
+<form class="form" method="post" action="/login">
+  <input type="hidden" name="next" value="{{ next }}">
+  <div class="field">
+    <label class="label" for="f-username">{{ tr("login.username") }}</label>
+    <input id="f-username" name="username" type="text" value="{{ username }}" required{% if username.is_empty() %} autofocus{% endif %} autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64">
+  </div>
+  <div class="field">
+    <label class="label" for="f-password">{{ tr("login.password") }}</label>
+    <input id="f-password" name="password" type="password" required{% if !username.is_empty() %} autofocus{% endif %} autocomplete="current-password" maxlength="1024">
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg btn-block">{{ tr("login.submit") }}</button>
+</form>
 {% endblock %}

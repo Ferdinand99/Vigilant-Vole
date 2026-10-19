@@ -1,0 +1,38 @@
+# Keeps a release PR open on main (version bump in Cargo.toml/Cargo.lock + CHANGELOG
+# from Conventional Commits). Merging it tags vX.Y.Z, creates the GitHub release and
+# publishes the Docker image for that tag.
+#
+# The image is built from this workflow (not from the tag push) because tags created
+# with GITHUB_TOKEN don't trigger other workflows.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  docker:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}

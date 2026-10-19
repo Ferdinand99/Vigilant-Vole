@@ -1,83 +1,151 @@
-<div class="stat-grid">
-    <div class="stat-tile">
-        <div class="stat-value">{{ data.total }}</div>
-        <div class="stat-label">Monitors</div>
-    </div>
-    <div class="stat-tile up">
-        <div class="stat-value">{{ data.up }}</div>
-        <div class="stat-label">Up</div>
-    </div>
-    <div class="stat-tile down">
-        <div class="stat-value">{{ data.down }}</div>
-        <div class="stat-label">Down</div>
-    </div>
-    <div class="stat-tile pending">
-        <div class="stat-value">{{ data.pending }}</div>
-        <div class="stat-label">Pending</div>
-    </div>
+{#- The dashboard's live region (stats + monitor lists). Rendered inside
+    partials/monitor_results.html and on its own for every SSE update.
+    Only `data` (api::dashboard::DashboardData) is in scope. -#}
+{% import "macros.html" as m %}
+{%- if data.total_all == 0 %}
+<div class="empty-card">
+  {%- if data.can_edit %}
+  {{ m::empty_state("pulse", tr("dashboard.empty_title"), tr("dashboard.empty_text"), "/monitors/new", tr("dashboard.empty_title")) }}
+  {%- else %}
+  {{ m::empty_state("pulse", tr("dashboard.empty_viewer_title"), tr("dashboard.empty_viewer_text")) }}
+  {%- endif %}
+</div>
+{%- else %}
+
+<div class="stats">
+  <a class="stat" href="{{ data.status_href("") }}">
+    <span class="stat-label">{{ tr("dashboard.title") }}</span>
+    <span class="stat-value num">{{ num(data.counts.total) }}</span>
+  </a>
+  <a class="stat status-up" href="{{ data.status_href("up") }}">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>{{ tr("status.up") }}</span>
+    <span class="stat-value num">{{ num(data.counts.up) }}</span>
+  </a>
+  <a class="stat status-down" href="{{ data.status_href("down") }}">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>{{ tr("status.down") }}</span>
+    <span class="stat-value num">{{ num(data.counts.down) }}</span>
+  </a>
+  <a class="stat status-pending" href="{{ data.status_href("pending") }}">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>{{ tr("status.pending") }}</span>
+    <span class="stat-value num">{{ num(data.counts.pending) }}</span>
+  </a>
+  {%- if data.counts.maintenance > 0 %}
+  <a class="stat status-maintenance" href="{{ data.status_href("maintenance") }}">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>{{ tr("status.maintenance") }}</span>
+    <span class="stat-value num">{{ num(data.counts.maintenance) }}</span>
+  </a>
+  {%- endif %}
+  {%- if data.counts.paused > 0 %}
+  <a class="stat status-paused" href="{{ data.status_href("paused") }}">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>{{ tr("status.paused") }}</span>
+    <span class="stat-value num">{{ num(data.counts.paused) }}</span>
+  </a>
+  {%- endif %}
 </div>
 
-{% if data.monitors.is_empty() %}
-<p class="empty-state">No monitors yet. Add your first one to start tracking uptime.</p>
-{% else %}
-<div class="monitor-list">
-    {% for m in data.monitors %}
-    <div class="monitor-row" id="monitor-row-{{ m.monitor.id }}">
-        <div class="monitor-identity">
-            {% match m.status %}
-            {% when Some(s) %}
-            <span class="status-dot {{ s }}" title="{{ s }}"></span>
-            {% when None %}
-            <span class="status-dot pending" title="pending"></span>
-            {% endmatch %}
-            <div class="monitor-name-block">
-                <div class="monitor-name">{{ m.monitor.name }}</div>
-                <div class="monitor-target">{{ m.monitor.monitor_type }} &middot; {{ m.monitor.target }}</div>
-            </div>
-        </div>
-
-        <div class="sparkline">
-            {% for bar in m.recent %}
-            {% match bar %}
-            {% when Some(s) %}
-            <span class="bar {{ s }}"></span>
-            {% when None %}
-            <span class="bar"></span>
-            {% endmatch %}
-            {% endfor %}
-        </div>
-
-        <div class="monitor-metric">
-            {% match m.uptime_24h %}
-            {% when Some(pct) %}
-            <span class="metric-value">{{ pct }}%</span>
-            {% when None %}
-            <span class="metric-value">&mdash;</span>
-            {% endmatch %}
-            <span class="metric-label">24h uptime</span>
-        </div>
-
-        <div class="monitor-metric">
-            {% match m.response_time_ms %}
-            {% when Some(ms) %}
-            <span class="metric-value">{{ ms }} ms</span>
-            {% when None %}
-            <span class="metric-value">&mdash;</span>
-            {% endmatch %}
-            <span class="metric-label">Response</span>
-        </div>
-
-        <div class="monitor-actions">
-            <a href="/monitors/{{ m.monitor.id }}/edit" class="btn">Edit</a>
-            <button
-                class="btn btn-danger"
-                hx-delete="/monitors/{{ m.monitor.id }}"
-                hx-target="#monitor-row-{{ m.monitor.id }}"
-                hx-swap="outerHTML"
-                hx-confirm="Delete this monitor?"
-            >Delete</button>
-        </div>
+{%- if data.flat %}
+<section class="section" aria-labelledby="results-title">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title" id="results-title">{{ trn("count.monitors", data.shown) }}</h2>
     </div>
-    {% endfor %}
-</div>
-{% endif %}
+    <div class="toolbar">
+      {%- if data.query.is_filtered() %}
+      <a class="btn btn-plain btn-sm" href="{{ data.clear_href }}">{{ m::icon("x") }}<span>{{ tr("dashboard.clear_filters") }}</span></a>
+      {%- endif %}
+    </div>
+  </div>
+  {%- if data.select_mode && data.shown > 0 %}
+  <div class="card">
+    <input type="hidden" name="filter" value="{{ data.qs }}" form="bulk-form">
+    <label class="check">
+      <input type="checkbox" name="all" value="true" form="bulk-form">
+      <span class="check-text">
+        <span class="check-label">{% if data.query.is_filtered() %}{{ tr("dashboard.apply_all_shown") }}{% else %}{{ tr("dashboard.apply_all") }}{% endif %}</span>
+        <span class="help">{% if data.query.is_filtered() %}{{ tr1("dashboard.apply_all_shown_help", "n", num(data.shown)) }}{% else %}{{ tr1("dashboard.apply_all_help", "n", num(data.shown)) }}{% endif %}</span>
+      </span>
+    </label>
+  </div>
+  {%- endif %}
+  {%- if data.rows.is_empty() %}
+  <div class="card card-flush">
+    <div class="empty">
+      <div class="empty-icon">{{ m::icon("search") }}</div>
+      <p class="empty-title">{{ tr("dashboard.no_match_title") }}</p>
+      <p class="empty-text">{{ tr("dashboard.no_match_text") }}</p>
+      <div class="empty-actions"><a class="btn btn-secondary" href="{{ data.clear_href }}">{{ tr("dashboard.clear_filters") }}</a></div>
+    </div>
+  </div>
+  {%- else %}
+  <ul class="list" role="list">
+    {%- for r in data.rows %}
+    {% include "partials/monitor_row.html" %}
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+</section>
+
+{%- else %}
+
+{%- if !data.rows.is_empty() %}
+<section class="section" aria-labelledby="ungrouped-title">
+  {%- if data.groups.is_empty() && data.paused.is_empty() %}
+  <h2 class="vh" id="ungrouped-title">{{ tr("dashboard.all_monitors") }}</h2>
+  {%- else %}
+  <div class="section-head"><div><h2 class="section-title" id="ungrouped-title">{% if data.groups.is_empty() %}{{ tr("common.active") }}{% else %}{{ tr("dashboard.not_in_group") }}{% endif %}</h2></div></div>
+  {%- endif %}
+  <ul class="list" role="list">
+    {%- for r in data.rows %}
+    {% include "partials/monitor_row.html" %}
+    {%- endfor %}
+  </ul>
+</section>
+{%- endif %}
+
+{%- for g in data.groups %}
+<section class="section" aria-labelledby="group-{{ g.id }}-title">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title" id="group-{{ g.id }}-title"><a href="/monitors/{{ g.id }}">{{ g.title }}</a></h2>
+      <p class="section-sub"><span class="text-status status-{{ g.status }}">{{ g.status_label }}</span> · {{ g.summary }}</p>
+    </div>
+    <div class="toolbar">
+      <a class="btn btn-icon btn-plain btn-sm" href="{{ g.toggle_href }}" hx-get="{{ g.toggle_href }}" hx-target="#dash-results"
+        hx-swap="innerHTML" hx-push-url="true" aria-expanded="{% if g.collapsed %}false{% else %}true{% endif %}"
+        {%- if !g.collapsed %} aria-controls="group-{{ g.id }}-list"{% endif %}
+        aria-label="{% if g.collapsed %}{{ tr1("dashboard.show_in_group", "name", g.title) }}{% else %}{{ tr1("dashboard.hide_in_group", "name", g.title) }}{% endif %}"
+        data-tip="{% if g.collapsed %}{{ tr("dashboard.show_monitors") }}{% else %}{{ tr("dashboard.hide_monitors") }}{% endif %}">
+        {%- if g.collapsed %}{{ m::icon("chevron-down") }}{% else %}{{ m::icon("chevron-up") }}{% endif -%}
+      </a>
+    </div>
+  </div>
+  {%- if !g.collapsed %}
+  <ul class="list" role="list" id="group-{{ g.id }}-list">
+    {%- for r in g.children %}
+    {% include "partials/monitor_row.html" %}
+    {%- else %}
+    <li class="list-empty">{{ tr("dashboard.group_empty") }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+</section>
+{%- endfor %}
+
+{%- if !data.paused.is_empty() %}
+<section class="section" aria-labelledby="paused-title">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title" id="paused-title">{{ tr("status.paused") }}</h2>
+      <p class="section-sub">{{ tr("dashboard.paused_sub") }}</p>
+    </div>
+  </div>
+  <ul class="list" role="list">
+    {%- for r in data.paused %}
+    {% include "partials/monitor_row.html" %}
+    {%- endfor %}
+  </ul>
+</section>
+{%- endif %}
+
+{%- endif %}
+{%- endif %}

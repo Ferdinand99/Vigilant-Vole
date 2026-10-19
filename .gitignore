@@ -17,3 +17,17 @@
 .idea/
 .DS_Store
 Thumbs.db
+
+# SQLite WAL side files
+*.db-wal
+*.db-shm
+
+# Claude Code local state (never publish)
+.claude/
+
+# e2e / Playwright artifacts
+test-results/
+playwright-report/
+__pycache__/
+.pytest_cache/
+*.pyc

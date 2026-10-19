@@ -1,38 +1,198 @@
 {% extends "layout.html" %}
-
-{% block title %}{{ heading }} - Vigilant Vole{% endblock %}
+{% import "macros.html" as m %}
+{% import "partials/monitor_form_macros.html" as fm %}
 
 {% block content %}
-<h2>{{ heading }}</h2>
-<div class="card">
-    <form method="post" action="{{ action }}">
-        <label>Name
-            <input type="text" name="name" value="{{ name }}" required>
-        </label>
-        <label>Type
-            <select name="monitor_type">
-                <option value="http" {% if monitor_type == "http" %}selected{% endif %}>HTTP(S)</option>
-                <option value="tcp" {% if monitor_type == "tcp" %}selected{% endif %}>TCP Port</option>
-                <option value="ping" {% if monitor_type == "ping" %}selected{% endif %}>Ping</option>
-            </select>
-        </label>
-        <label>Target
-            <input type="text" name="target" value="{{ target }}" required
-                   placeholder="https://example.com, host:port, or a hostname/IP">
-        </label>
-        <label>Interval (seconds)
-            <input type="number" name="interval_seconds" value="{{ interval_seconds }}" min="5">
-        </label>
-        <label>Timeout (seconds)
-            <input type="number" name="timeout_seconds" value="{{ timeout_seconds }}" min="1">
-        </label>
-        <label>Retries before down
-            <input type="number" name="retries" value="{{ retries }}" min="0">
-        </label>
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Save</button>
-            <a href="/" class="btn">Cancel</a>
+{%- if f.is_edit %}
+{% call m::page_header(f.heading.as_str(), "", f.cancel_href.as_str(), tr("form.back_monitor")) %}{% endcall %}
+{%- else %}
+{% call m::page_header(f.heading.as_str(), tr("form.new_sub"), f.cancel_href.as_str()) %}{% endcall %}
+{%- endif %}
+
+<form class="form form-narrow" method="post" action="{{ f.action }}" data-warn-unsaved novalidate>
+  {%- if !f.errors.is_empty() %}
+  {{ m::callout("danger", &f.summary, tr("form.not_saved")) }}
+  {%- endif %}
+
+  <section class="form-section" aria-labelledby="sec-type">
+    <h2 class="form-section-title" id="sec-type">{{ tr("form.what_to_monitor") }}</h2>
+    <div class="card">
+      <fieldset class="field{% if f.has_err("monitor_type") %} is-invalid{% endif %}">
+        <legend class="vh">{{ tr("form.monitor_type") }}</legend>
+        <div class="choices">
+          {%- for t in f.types %}
+          <label class="choice">
+            <input type="radio" name="monitor_type" value="{{ t.value }}"{% if f.is_type(t.value) %} checked{% endif %}>
+            <span class="choice-body">{{ m::icon(t.icon) }}<span class="choice-title">{{ t.label }}</span><span class="choice-sub">{{ t.sub }}</span></span>
+          </label>
+          {%- endfor %}
         </div>
-    </form>
-</div>
+        {{ fm::error_line("monitor_type", f.err("monitor_type")) }}
+      </fieldset>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-general">
+    <h2 class="form-section-title" id="sec-general">{{ tr("form.general") }}</h2>
+    <div class="card">
+      {{ m::field_text("name", tr("common.name"), value=&f.v.name, placeholder=tr("form.name_placeholder"), required=true, error=f.err("name")) }}
+
+      {%- for t in f.targets %}
+      <div class="field{% if f.shows(t.types) && f.has_err("target") %} is-invalid{% endif %}" data-show-when="monitor_type={{ t.types }}"{% if !f.shows(t.types) %} hidden{% endif %}>
+        <label class="label" for="f-{{ t.field }}">{{ t.tr_label() }}</label>
+        <input id="f-{{ t.field }}" name="{{ t.field }}" type="{% if t.url %}url{% else %}text{% endif %}" value="{{ f.v.target }}"
+          placeholder="{{ t.tr_placeholder() }}" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="2048"
+          aria-describedby="f-{{ t.field }}-help{% if f.shows(t.types) && f.has_err("target") %} f-{{ t.field }}-error{% endif %}"
+          {%- if f.shows(t.types) && f.has_err("target") %} aria-invalid="true"{% endif %}>
+        <p class="help" id="f-{{ t.field }}-help">{{ t.tr_help() }}</p>
+        {%- if f.shows(t.types) %}{{ fm::error_line(t.field, f.err("target")) }}{% endif %}
+      </div>
+      {%- endfor %}
+
+      {%- if !f.groups.is_empty() %}
+      <div class="field{% if f.has_err("parent_id") %} is-invalid{% endif %}">
+        <label class="label" for="f-parent_id">{{ tr("form.group") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <select id="f-parent_id" name="parent_id" aria-describedby="f-parent_id-help">
+          <option value="">{{ tr("form.no_group") }}</option>
+          {%- for (gid, gname) in f.groups %}
+          <option value="{{ gid }}"{% if f.parent_selected(gid) %} selected{% endif %}>{{ gname }}</option>
+          {%- endfor %}
+        </select>
+        <p class="help" id="f-parent_id-help">{{ tr("form.group_help") }}</p>
+        {{ fm::error_line("parent_id", f.err("parent_id")) }}
+      </div>
+      {%- endif %}
+
+      <details class="disclosure"{% if !f.v.description.is_empty() || f.has_err("description") %} open{% endif %}>
+        <summary>{{ tr("common.description") }} <span class="disclosure-sub">{{ tr("form.description_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+        <div class="disclosure-body">
+          {{ fm::area("description", tr("common.description"), &f.v.description, 3, tr("form.description_placeholder"), "", f.err("description")) }}
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-checks" data-show-when="monitor_type!=group"{% if f.is_type("group") %} hidden{% endif %}>
+    <h2 class="form-section-title" id="sec-checks">{{ tr("form.checks") }}</h2>
+    <div class="card">
+      <div class="field-row">
+        {{ fm::num("interval_seconds", tr("detail.check_every"), &f.v.interval, tr("common.sec"), "10", "86400", "", f.err("interval_seconds")) }}
+        {{ fm::num("retries", tr("form.retries"), &f.v.retries, "", "0", "20", tr("form.retries_help"), f.err("retries")) }}
+      </div>
+      <p class="help" data-show-when="monitor_type=push"{% if !f.is_type("push") %} hidden{% endif %}>{{ tr("form.push_interval_help") }}</p>
+      <div class="field-row" data-show-when="monitor_type!=push,group"{% if f.is_type("push") || f.is_type("group") %} hidden{% endif %}>
+        {{ fm::num("timeout_seconds", tr("detail.timeout"), &f.v.timeout, tr("common.sec"), "1", "300", "", f.err("timeout_seconds")) }}
+        {{ fm::num("retry_interval_seconds", tr("detail.retry_every"), &f.v.retry_interval, tr("common.sec"), "10", "86400", tr("form.retry_help"), f.err("retry_interval_seconds"), tr("form.same")) }}
+      </div>
+      <details class="disclosure"{% if f.v.upside_down %} open{% endif %}>
+        <summary>{{ tr("form.advanced") }} <span class="disclosure-sub">{{ tr("form.upside_down") }}</span>{{ m::icon("chevron-down") }}</summary>
+        <div class="disclosure-body">
+          {{ m::switch("upside_down", tr("form.upside_down"), f.v.upside_down, tr("form.upside_down_help")) }}
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <div class="form" id="type-fields">
+    {% include "monitor_form_fields.html" %}
+  </div>
+
+  <section class="form-section" aria-labelledby="sec-alerts">
+    <h2 class="form-section-title" id="sec-alerts">{{ tr("detail.alerts") }}</h2>
+    <p class="form-section-sub">{{ tr("form.alerts_sub") }}</p>
+    {%- if f.channels.is_empty() %}
+    <div class="card card-flush">
+      <div class="empty">
+        <div class="empty-icon">{{ m::icon("bell") }}</div>
+        <p class="empty-title">{{ tr("form.no_channels_title") }}</p>
+        <p class="empty-text">{{ tr("form.no_channels_text") }}</p>
+        <div class="empty-actions"><a class="btn btn-secondary" href="/settings/notifications">{{ tr("form.setup_notifications") }}</a></div>
+      </div>
+    </div>
+    {%- else %}
+    <ul class="list" role="list">
+      {%- for c in f.channels %}
+      <li class="list-row list-row-wrap">
+        <span class="provider-tile provider-{{ c.kind }}" aria-hidden="true">
+          {%- if c.kind == "email" %}{{ m::icon("mail") }}{% else if c.kind == "webhook" %}{{ m::icon("link") }}{% else if c.kind == "telegram" || c.kind == "signal" %}{{ m::icon("send") }}{% else if c.kind == "homeassistant" %}{{ m::icon("server") }}{% else %}{{ m::icon("bell") }}{% endif -%}
+        </span>
+        <span class="list-main">
+          <span class="list-title">{{ c.name }}</span>
+          <span class="list-sub">{{ c.kind_label }}{% if !c.active %} · {{ tr("form.channel_off") }}{% endif %}</span>
+        </span>
+        <div class="segmented" role="radiogroup" aria-label="{{ tr1("form.alerts_to", "name", c.name) }}">
+          <label><input type="radio" name="channel_{{ c.id }}" value="off"{% if f.channel_mode(c.id) == "off" %} checked{% endif %}><span>{{ tr("common.off") }}</span></label>
+          <label><input type="radio" name="channel_{{ c.id }}" value="alert"{% if f.channel_mode(c.id) == "alert" %} checked{% endif %}><span>{{ tr("detail.alerts") }}</span></label>
+          <label><input type="radio" name="channel_{{ c.id }}" value="escalation"{% if f.channel_mode(c.id) == "escalation" %} checked{% endif %}><span>{{ tr("form.escalation") }}</span></label>
+        </div>
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <div class="card">
+      <div class="field-row">
+        {{ fm::num("resend_interval", tr("form.remind_every"), &f.v.resend_interval, tr("form.checks_unit"), "0", "10000", tr("form.remind_help"), f.err("resend_interval")) }}
+        {{ fm::num("escalation_minutes", tr("form.escalate_after"), &f.v.escalation_minutes, tr("common.min"), "0", "100000", tr("form.escalate_help"), f.err("escalation_minutes")) }}
+      </div>
+      {{ m::switch("flap_detection", tr("form.flap"), f.v.flap_detection, tr("form.flap_help")) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-agents" data-show-when="monitor_type!=push,group"{% if f.is_type("push") || f.is_type("group") %} hidden{% endif %}>
+    <h2 class="form-section-title" id="sec-agents">{{ tr("nav.agents") }}</h2>
+    <div class="card">
+      {{ m::switch("run_on_agents", tr("form.run_on_agents"), f.v.run_on_agents, tr("form.run_on_agents_help")) }}
+      {{ m::switch("confirm_with_agents", tr("form.confirm_agents"), f.v.confirm_with_agents, tr("form.confirm_agents_help")) }}
+      {%- if !f.has_agents %}
+      <p class="help">{{ tr("form.no_agents") }} <a href="/settings/agents">{{ tr("form.add_agent_link") }}</a>.</p>
+      {%- endif %}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-tags">
+    <h2 class="form-section-title" id="sec-tags">{{ tr("dashboard.tags") }}</h2>
+    <p class="form-section-sub">{{ tr("form.tags_sub") }}</p>
+    {%- if !f.tags.is_empty() %}
+    <ul class="list" role="list">
+      {%- for t in f.tags %}
+      <li class="list-row list-row-wrap">
+        <label class="check">
+          <input type="checkbox" name="tag_{{ t.id }}" value="true"{% if f.tag_checked(t.id) %} checked{% endif %}>
+          <span class="check-text"><span class="check-label">{{ m::tag(&t.name, &t.color) }}</span></span>
+        </label>
+        <div class="list-full" data-show-when="tag_{{ t.id }}=true"{% if !f.tag_checked(t.id) %} hidden{% endif %}>
+          <input type="text" name="tag_value_{{ t.id }}" value="{{ f.tag_value(t.id) }}" maxlength="60" autocomplete="off"
+            placeholder="{{ tr("form.tag_value_placeholder") }}" aria-label="{{ tr1("form.tag_value_for", "name", t.name) }}">
+        </div>
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <div class="card">
+      <details class="disclosure"{% if !f.v.new_tag_name.is_empty() || f.tags.is_empty() %} open{% endif %}>
+        <summary>{{ tr("form.new_tag") }} <span class="disclosure-sub">{{ tr("form.new_tag_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+        <div class="disclosure-body">
+          <div class="field-row">
+            {{ m::field_text("new_tag_name", tr("common.name"), value=&f.v.new_tag_name, placeholder=tr("form.tag_name_placeholder"), error=f.err("new_tag_name")) }}
+            {{ m::field_text("new_tag_value", tr("form.value"), value=&f.v.new_tag_value, placeholder=tr("form.optional_placeholder")) }}
+          </div>
+          <div class="field">
+            <span class="label" id="new-tag-color-label">{{ tr("form.color") }}</span>
+            <div class="chips" role="radiogroup" aria-labelledby="new-tag-color-label">
+              {%- for (value, label) in f.palette %}
+              <label class="chip"><input type="radio" name="new_tag_color" value="{{ value }}"{% if f.v.new_tag_color == **value %} checked{% endif %}><span class="tag-swatch tag-{{ value }}" aria-hidden="true"></span>{{ label }}</label>
+              {%- endfor %}
+            </div>
+          </div>
+        </div>
+      </details>
+      {{ fm::error_line("tags", f.err("tags")) }}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    {{ m::link_button(f.cancel_href.as_str(), tr("common.cancel"), "secondary") }}
+    {{ m::button(f.submit_label) }}
+  </div>
+</form>
 {% endblock %}

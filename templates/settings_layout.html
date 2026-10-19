@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+<div class="settings">
+  <aside class="settings-side">
+    <p class="settings-heading" aria-hidden="true">{{ tr("nav.settings") }}</p>
+    <nav class="settings-nav" aria-label="{{ tr("nav.settings") }}" hx-boost="true" hx-swap="innerHTML transition:true">
+      {%- if ctx.is_admin() %}
+      <a class="settings-link" href="/settings/general"{% if ctx.subnav == "general" %} aria-current="page"{% endif %}>{{ m::icon("sliders") }}{{ tr("nav.general") }}</a>
+      {%- endif %}
+      {%- if ctx.can_edit() %}
+      <a class="settings-link" href="/settings/notifications"{% if ctx.subnav == "notifications" %} aria-current="page"{% endif %}>{{ m::icon("bell") }}{{ tr("nav.notifications") }}</a>
+      {%- endif %}
+      {%- if ctx.is_admin() %}
+      <a class="settings-link" href="/settings/users"{% if ctx.subnav == "users" %} aria-current="page"{% endif %}>{{ m::icon("users") }}{{ tr("nav.users") }}</a>
+      {%- endif %}
+      <a class="settings-link" href="/settings/security"{% if ctx.subnav == "security" %} aria-current="page"{% endif %}>{{ m::icon("shield") }}{{ tr("nav.security") }}</a>
+      <a class="settings-link" href="/settings/tokens"{% if ctx.subnav == "tokens" %} aria-current="page"{% endif %}>{{ m::icon("key") }}{{ tr("nav.api_tokens") }}</a>
+      {%- if ctx.is_admin() %}
+      <a class="settings-link" href="/settings/agents"{% if ctx.subnav == "agents" %} aria-current="page"{% endif %}>{{ m::icon("server") }}{{ tr("nav.agents") }}</a>
+      <a class="settings-link" href="/settings/integrations"{% if ctx.subnav == "integrations" %} aria-current="page"{% endif %}>{{ m::icon("plug") }}{{ tr("nav.integrations") }}</a>
+      <a class="settings-link" href="/settings/backup"{% if ctx.subnav == "backup" %} aria-current="page"{% endif %}>{{ m::icon("archive") }}{{ tr("nav.backup") }}</a>
+      {%- endif %}
+    </nav>
+  </aside>
+  <div class="settings-content" id="settings-content">
+    {% block settings_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.integrations"), tr("integ.sub")) %}{% endcall %}
+
+<form class="form" method="post" action="/settings/integrations" data-warn-unsaved>
+  <section class="form-section" aria-labelledby="sec-docker">
+    <h2 class="form-section-title" id="sec-docker">{{ tr("integ.docker") }}</h2>
+    <p class="form-section-sub">{{ tr("integ.docker_sub_1") }} <code>vigilant.enable=true</code> {{ tr("integ.docker_sub_2") }}</p>
+    <div class="card">
+      {{ m::switch("discovery_enabled", tr("integ.discover"), discovery_enabled, tr("integ.discover_help")) }}
+      <div class="field">
+        <label class="label" for="f-docker-host">{{ tr("form.docker_host") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <input id="f-docker-host" name="discovery_docker_host" type="text" value="{{ docker_host }}" placeholder="unix:///var/run/docker.sock…" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="f-docker-host-help">
+        <p class="help" id="f-docker-host-help">{{ tr("integ.host_help_1") }} <code>/var/run/docker.sock</code> {{ tr("integ.host_help_2") }} <code>tcp://docker-proxy:2375</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-prom">
+    <h2 class="form-section-title" id="sec-prom">Prometheus</h2>
+    <p class="form-section-sub">{{ tr("integ.prom_sub") }} <code>/metrics</code>.</p>
+    <div class="card">
+      {{ m::switch("metrics_enabled", tr("integ.enable_metrics"), metrics_enabled, tr("integ.enable_metrics_help")) }}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    {{ m::button(tr("integ.save")) }}
+  </div>
+</form>
+
+<section class="section" aria-labelledby="sync-title">
+  {% call m::section_head(tr("integ.status"), "", "sync-title") %}
+    {%- if discovery_enabled %}
+    <form method="post" action="/settings/integrations/sync">
+      <button type="submit" class="btn btn-secondary btn-sm">{{ m::icon("refresh") }}<span>{{ tr("integ.sync_now") }}</span></button>
+    </form>
+    {%- endif %}
+  {% endcall %}
+  <div class="card stack-sm">
+    {%- match discovery.last_error %}
+    {%- when Some(err) %}
+    {{ m::callout("danger", err, tr("integ.last_failed")) }}
+    {%- when None %}
+    {%- endmatch %}
+    <dl class="dl">
+      <div class="dl-row"><dt>{{ tr("detail.col_status") }}</dt><dd>
+        {%- if !discovery_enabled %}<span class="pill status-paused">{{ tr("common.off") }}</span>
+        {%- else if discovery.last_error.is_some() %}<span class="pill status-down"><span class="dot"></span>{{ tr("status.error") }}</span>
+        {%- else if last_sync_at.is_empty() %}<span class="pill status-pending">{{ tr("integ.waiting") }}</span>
+        {%- else %}<span class="pill status-up"><span class="dot"></span>{{ tr("integ.working") }}</span>
+        {%- endif %}</dd></div>
+      <div class="dl-row"><dt>{{ tr("integ.last_sync") }}</dt><dd>{% if last_sync_at.is_empty() %}<span class="muted">{{ tr("common.never") }}</span>{% else %}{{ m::time_ago(&last_sync_at) }}{% endif %}</dd></div>
+      <div class="dl-row"><dt>{{ tr("integ.result") }}</dt><dd>{% match discovery.last_summary %}{% when Some(s) %}{{ s }}{% when None %}<span class="muted">—</span>{% endmatch %}</dd></div>
+      <div class="dl-row"><dt>{{ tr("integ.discovered") }}</dt><dd class="num">{{ discovery.managed }}</dd></div>
+      <div class="dl-row"><dt>{{ tr("integ.events") }}</dt><dd>{% if discovery.events_connected %}{{ tr("integ.connected") }}{% else %}<span class="muted">{{ tr("integ.not_connected") }}</span>{% endif %}</dd></div>
+    </dl>
+    {%- if !discovery.warnings.is_empty() %}
+    <details class="disclosure">
+      <summary>{{ tr("integ.label_problems") }} <span class="disclosure-sub">{{ tr1("integ.from_last_sync", "n", discovery.warnings.len()) }}</span>{{ m::icon("chevron-down") }}</summary>
+      <div class="disclosure-body">
+        <ul class="list" role="list">
+          {%- for w in discovery.warnings %}
+          <li class="list-row"><span class="list-icon status-warning">{{ m::icon("alert") }}</span><span class="list-main"><span class="list-title break">{{ w }}</span></span></li>
+          {%- endfor %}
+        </ul>
+      </div>
+    </details>
+    {%- endif %}
+  </div>
+  <p class="section-foot">{{ tr("integ.disappears") }}</p>
+</section>
+
+<section class="section" aria-labelledby="labels-title">
+  {% call m::section_head(tr("integ.labels"), "", "labels-title") %}{% endcall %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("integ.label") }}</th><th>{{ tr("integ.example") }}</th><th>{{ tr("integ.what") }}</th></tr></thead>
+        <tbody>
+          {%- for (name, example, help) in labels %}
+          <tr>
+            <td class="td-primary"><code>{{ name }}</code></td>
+            <td data-label="{{ tr("integ.example") }}"><code>{{ example }}</code></td>
+            <td class="td-block" data-label="{{ tr("integ.what") }}">{{ help }}</td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card stack-sm">
+    {% call m::card_head(tr("integ.compose_example")) %}
+      <button type="button" class="btn btn-secondary btn-sm" data-copy="#compose-example">{{ m::icon("copy") }}<span>{{ tr("common.copy") }}</span></button>
+    {% endcall %}
+    <pre class="code"><code id="compose-example">{{ compose_example }}</code></pre>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="prom-title">
+  {% call m::section_head(tr("integ.prom_grafana"), "", "prom-title") %}{% endcall %}
+  <div class="card stack-sm">
+    <div class="field">
+      <span class="label" id="metrics-url-label">{{ tr("integ.endpoint") }}</span>
+      {{ m::copy_field("metrics-url", &metrics_url) }}
+    </div>
+    {% call m::card_head(tr("integ.scrape_config")) %}
+      <button type="button" class="btn btn-secondary btn-sm" data-copy="#scrape-config">{{ m::icon("copy") }}<span>{{ tr("common.copy") }}</span></button>
+    {% endcall %}
+    <pre class="code"><code id="scrape-config">{{ scrape_config }}</code></pre>
+    <p class="help">{{ tr("integ.replace_1") }} <code>vv_YOUR_API_TOKEN</code> {{ tr("integ.replace_2") }} <a href="/settings/tokens">{{ tr("integ.create_token") }}</a></p>
+    {{ m::callout("info", tr("integ.kuma_text"), tr("integ.kuma_title")) }}
+  </div>
+  {%- if !metrics_enabled %}
+  <p class="section-foot">{{ tr("integ.endpoint_off") }}</p>
+  {%- endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,72 @@
+{#-
+  Form helpers for the monitor form (fields that need inline errors, which the
+  shared macros don't offer for numbers/selects). Import with
+      {% import "partials/monitor_form_macros.html" as fm %}
+  Composed only from design-system classes.
+-#}
+
+{#- Field error line (renders nothing when `error` is empty). -#}
+{% macro error_line(name, error) -%}
+{%- if !error.is_empty() %}
+<p class="field-error" id="f-{{ name }}-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ error }}</p>
+{%- endif %}
+{%- endmacro %}
+
+{#- Number input with unit suffix, help and error. -#}
+{% macro num(name, label, value, unit = "", min = "", max = "", help = "", error = "", placeholder = "") -%}
+<div class="field{% if !error.is_empty() %} is-invalid{% endif %}">
+  <label class="label" for="f-{{ name }}">{{ label }}</label>
+  <div class="input-group">
+    <input id="f-{{ name }}" name="{{ name }}" type="number" inputmode="numeric" autocomplete="off" value="{{ value }}"
+      {%- if !placeholder.is_empty() %} placeholder="{{ placeholder }}"{% endif %}
+      {%- if !min.is_empty() %} min="{{ min }}"{% endif %}
+      {%- if !max.is_empty() %} max="{{ max }}"{% endif %}
+      {%- if !help.is_empty() || !error.is_empty() %} aria-describedby="{% if !help.is_empty() %}f-{{ name }}-help{% endif %}{% if !error.is_empty() %} f-{{ name }}-error{% endif %}"{% endif %}
+      {%- if !error.is_empty() %} aria-invalid="true"{% endif %}>
+    {%- if !unit.is_empty() %}<span class="input-addon" aria-hidden="true">{{ unit }}</span>{% endif %}
+  </div>
+  {%- if !help.is_empty() %}
+  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  {%- endif %}
+  {%- if !error.is_empty() %}
+  <p class="field-error" id="f-{{ name }}-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ error }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{#- Select from `(value, label)` pairs. -#}
+{% macro select(name, label, options, selected, help = "", error = "") -%}
+<div class="field{% if !error.is_empty() %} is-invalid{% endif %}">
+  <label class="label" for="f-{{ name }}">{{ label }}</label>
+  <select id="f-{{ name }}" name="{{ name }}"
+    {%- if !help.is_empty() || !error.is_empty() %} aria-describedby="{% if !help.is_empty() %}f-{{ name }}-help{% endif %}{% if !error.is_empty() %} f-{{ name }}-error{% endif %}"{% endif %}
+    {%- if !error.is_empty() %} aria-invalid="true"{% endif %}>
+    {%- for (value, text) in options %}
+    <option value="{{ value }}"{% if *value == selected %} selected{% endif %}>{{ text }}</option>
+    {%- endfor %}
+  </select>
+  {%- if !help.is_empty() %}
+  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  {%- endif %}
+  {%- if !error.is_empty() %}
+  <p class="field-error" id="f-{{ name }}-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ error }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{#- Textarea with error. -#}
+{% macro area(name, label, value, rows = 4, placeholder = "", help = "", error = "", code = false) -%}
+<div class="field{% if !error.is_empty() %} is-invalid{% endif %}">
+  <label class="label" for="f-{{ name }}">{{ label }}</label>
+  <textarea id="f-{{ name }}" name="{{ name }}" rows="{{ rows }}"{% if code %} class="textarea-code" spellcheck="false"{% endif %}
+    {%- if !placeholder.is_empty() %} placeholder="{{ placeholder }}"{% endif %}
+    {%- if !help.is_empty() || !error.is_empty() %} aria-describedby="{% if !help.is_empty() %}f-{{ name }}-help{% endif %}{% if !error.is_empty() %} f-{{ name }}-error{% endif %}"{% endif %}
+    {%- if !error.is_empty() %} aria-invalid="true"{% endif %}>{{ value }}</textarea>
+  {%- if !help.is_empty() %}
+  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  {%- endif %}
+  {%- if !error.is_empty() %}
+  <p class="field-error" id="f-{{ name }}-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ error }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}

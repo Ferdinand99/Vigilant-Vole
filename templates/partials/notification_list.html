@@ -1,0 +1,58 @@
+{#- Channel list; swapped whole (#channels) after create/delete. Needs: rows, can_edit. -#}
+{%- import "macros.html" as m -%}
+<section class="section" id="channels" aria-labelledby="channels-title">
+{%- if rows.is_empty() %}
+  <h2 class="vh" id="channels-title">{{ tr("notif.channels") }}</h2>
+  <div class="empty-card">
+    <div class="empty">
+      <div class="empty-icon">{{ m::icon("bell") }}</div>
+      <p class="empty-title">{{ tr("notif.empty_title") }}</p>
+      <p class="empty-text">{{ tr("notif.empty_text") }}</p>
+      {%- if can_edit %}
+      <div class="empty-actions">
+        <button type="button" class="btn btn-primary" data-sheet-open="#add-channel" commandfor="add-channel" command="show-modal"
+          hx-get="/settings/notifications/providers" hx-target="#channel-sheet-body" hx-swap="outerHTML">{{ m::icon("plus") }}<span>{{ tr("notif.add_channel") }}</span></button>
+      </div>
+      {%- endif %}
+    </div>
+  </div>
+{%- else %}
+  {% call m::section_head(tr("notif.channels"), "", "channels-title") %}{% endcall %}
+  <ul class="list" role="list">
+    {%- for c in rows %}
+    <li class="list-row" id="channel-{{ c.id }}">
+      <span class="provider-tile provider-{{ c.kind }}" aria-hidden="true">{{ m::icon(c.icon) }}</span>
+      <span class="list-main">
+        {%- if can_edit %}
+        <a class="list-title stretched" href="/settings/notifications/{{ c.id }}/edit">{{ c.name }}</a>
+        {%- else %}
+        <span class="list-title">{{ c.name }}</span>
+        {%- endif %}
+        <span class="list-sub">{{ c.kind_label }} · {{ c.links_label }}{% if c.is_default %}<span class="show-sm"> · {{ tr("notif.default") }}</span>{% endif %}</span>
+      </span>
+      <span class="list-trail">
+        {%- if c.is_default %}<span class="badge hide-sm" data-tip="{{ tr("notif.default_tip") }}">{{ tr("notif.default") }}</span>{% endif %}
+        {%- if !can_edit && !c.active %}<span class="pill status-paused">{{ tr("status.paused") }}</span>{% endif %}
+      </span>
+      {%- if can_edit %}
+      <div class="list-actions">
+        <span class="switch"><input class="switch-input" type="checkbox" role="switch" name="active" value="true"
+          aria-label="{{ tr1("notif.send_alerts_to", "name", c.name) }}" data-tip="{% if c.active %}{{ tr("common.on") }}{% else %}{{ tr("status.paused") }}{% endif %}"
+          hx-post="/settings/notifications/{{ c.id }}/active" hx-trigger="change" hx-swap="none"{% if c.active %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
+        <button type="button" class="btn btn-icon btn-plain" popovertarget="channel-menu-{{ c.id }}" aria-label="{{ tr1("detail.more_actions_for", "name", c.name) }}">{{ m::icon("more") }}</button>
+        <div class="menu" id="channel-menu-{{ c.id }}" popover>
+          <button class="menu-item" type="button" hx-post="/settings/notifications/{{ c.id }}/test" hx-swap="none">{{ m::icon("send") }}{{ tr("notif.send_test") }}</button>
+          <a class="menu-item" href="/settings/notifications/{{ c.id }}/edit">{{ m::icon("pencil") }}{{ tr("common.edit") }}</a>
+          <hr class="menu-sep">
+          <button class="menu-item menu-item-danger" type="button" hx-delete="/settings/notifications/{{ c.id }}"
+            hx-target="#channels" hx-swap="outerHTML" hx-confirm="{{ tr1("detail.delete_q", "name", c.name) }}"
+            data-confirm-message="{{ tr("notif.delete_msg") }}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+        </div>
+      </div>
+      {%- endif %}
+    </li>
+    {%- endfor %}
+  </ul>
+  <p class="section-foot">{{ tr("notif.foot") }}</p>
+{%- endif %}
+</section>

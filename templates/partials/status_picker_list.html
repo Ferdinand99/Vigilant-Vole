@@ -1,0 +1,17 @@
+{#- Monitor multi-select list. Needs `picker` (list_id, items). Checked items come first. -#}
+<ul class="list" role="list" id="{{ picker.list_id }}" aria-label="{{ tr("dashboard.title") }}">
+  {%- for it in picker.items %}
+  <li>
+    <label class="list-row">
+      <input type="checkbox" name="monitor_id" value="{{ it.id }}"{% if it.checked %} checked{% endif %}{% if it.disabled %} disabled{% endif %}>
+      <span class="list-main">
+        <span class="list-title">{{ it.name }}</span>
+        <span class="list-sub">{{ it.sub }}</span>
+      </span>
+    </label>
+  </li>
+  {%- endfor %}
+  {%- if picker.items.is_empty() %}
+  <li class="list-empty">{% if picker.query.is_empty() %}{{ tr("sp.picker_none") }}{% else %}{{ tr1("sp.picker_no_match", "q", picker.query) }}{% endif %}</li>
+  {%- endif %}
+</ul>

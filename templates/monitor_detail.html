@@ -1,0 +1,261 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+<header class="page-head">
+  {%- if let Some(p) = parent %}
+  <a class="page-back" href="/monitors/{{ p.id }}">{{ m::icon("chevron-left") }}<span class="truncate">{{ p.name }}</span></a>
+  {%- else %}
+  <a class="page-back" href="/">{{ m::icon("chevron-left") }}{{ tr("nav.dashboard") }}</a>
+  {%- endif %}
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <div class="page-title-group">
+        <h1 class="page-title break">{{ monitor.name }}</h1>
+        <span class="pill pill-lg status-{{ status }}"><span class="dot"></span>{{ status_label }}</span>
+        {%- if flapping %}<span class="badge status-warning">{{ tr("detail.flapping") }}</span>{% endif %}
+      </div>
+      <p class="page-sub">{{ monitor.monitor_type.label() }}{% if !monitor.target.is_empty() %} · <span class="break">{{ monitor.target }}</span>{% endif %}</p>
+      {%- if since.is_some() || last_check.is_some() %}
+      <p class="page-sub">
+        {%- if let Some(s) = since %}{{ tr("detail.status_changed") }} {{ m::time_ago(s) }}{% endif %}
+        {%- if since.is_some() && last_check.is_some() %} · {% endif %}
+        {%- if let Some(lc) = last_check %}{% if since.is_some() %}{{ tr("detail.last_checked_lc") }}{% else %}{{ tr("detail.last_checked") }}{% endif %} {{ m::time_ago(lc) }}{% endif -%}
+      </p>
+      {%- endif %}
+      {%- if !tags.is_empty() %}
+      <div class="tags">{% for t in tags %}{{ m::tag(&t.name, &t.color, &t.value) }}{% endfor %}</div>
+      {%- endif %}
+    </div>
+    {%- if ctx.can_edit() %}
+    <div class="page-actions">
+      {%- if monitor.active && monitor.monitor_type.is_active_check() %}
+      <form method="post" action="/monitors/{{ monitor.id }}/check">
+        <button type="submit" class="btn btn-secondary btn-collapse" aria-label="{{ tr("detail.check_now") }}" data-tip="{{ tr("detail.check_now") }}">{{ m::icon("refresh") }}<span>{{ tr("detail.check_now") }}</span></button>
+      </form>
+      {%- endif %}
+      {%- if monitor.active %}
+      <form method="post" action="/monitors/{{ monitor.id }}/pause">
+        <button type="submit" class="btn btn-secondary">{{ m::icon("pause") }}<span>{{ tr("detail.pause") }}</span></button>
+      </form>
+      {%- else %}
+      <form method="post" action="/monitors/{{ monitor.id }}/resume">
+        <button type="submit" class="btn btn-primary">{{ m::icon("play") }}<span>{{ tr("detail.resume") }}</span></button>
+      </form>
+      {%- endif %}
+      <a class="btn btn-secondary" href="/monitors/{{ monitor.id }}/edit">{{ m::icon("pencil") }}<span>{{ tr("common.edit") }}</span></a>
+      <button type="button" class="btn btn-icon btn-secondary" popovertarget="monitor-menu" aria-label="{{ tr1("detail.more_actions_for", "name", monitor.name) }}">{{ m::icon("more") }}</button>
+      <div class="menu" id="monitor-menu" popover>
+        <a class="menu-item" href="/monitors/{{ monitor.id }}/clone">{{ m::icon("copy") }}{{ tr("detail.clone") }}</a>
+        {%- if self.is_type("group") %}
+        <a class="menu-item" href="/monitors/new?parent={{ monitor.id }}">{{ m::icon("plus") }}{{ tr("detail.add_to_group") }}</a>
+        {%- endif %}
+        <hr class="menu-sep">
+        <button class="menu-item menu-item-danger" type="button" hx-delete="/monitors/{{ monitor.id }}" hx-swap="none"
+          hx-confirm="{{ tr1("detail.delete_q", "name", monitor.name) }}" data-confirm-message="{{ tr("detail.delete_msg") }}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+      </div>
+    </div>
+    {%- endif %}
+  </div>
+</header>
+
+{%- if !monitor.active %}
+{{ m::callout("info", tr("detail.paused_text"), tr("status.paused")) }}
+{%- else if status == "down" && !last_message.is_empty() %}
+{{ m::callout("danger", last_message.as_str(), tr("detail.latest_failed")) }}
+{%- else if status == "pending" && !last_message.is_empty() %}
+{{ m::callout("warning", last_message.as_str(), tr("detail.retrying")) }}
+{%- endif %}
+
+<div class="stats">
+  {{ m::stat(tr("detail.response"), response_label.as_str(), "", tr("detail.latest_check")) }}
+  {%- for u in uptime %}
+  <div class="stat{% if !u.status.is_empty() %} status-{{ u.status }}{% endif %}">
+    <span class="stat-label">{% if !u.status.is_empty() %}<span class="stat-dot" aria-hidden="true"></span>{% endif %}{{ u.label }}</span>
+    <span class="stat-value num">{{ u.value }}</span>
+    <span class="stat-meta">{{ tr("detail.uptime") }}</span>
+  </div>
+  {%- endfor %}
+</div>
+
+{{ chart|safe }}
+
+<section class="card" aria-labelledby="days-title">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title" id="days-title">{{ tr("detail.last_90_days") }}</h2>
+      <p class="card-sub">{{ tr("detail.days_sub") }}</p>
+    </div>
+  </div>
+  <div class="uptime">
+    <div class="uptime-days" role="img" aria-label="{{ tr1("detail.days_aria", "value", days_label) }}">
+      {%- for d in days %}<span class="uptime-day {{ d.class }}" data-tip="{{ d.tip }}"></span>{% endfor -%}
+    </div>
+    <div class="uptime-legend"><span class="hide-sm">{{ tr("detail.days_ago_90") }}</span><span class="show-sm">{{ tr("detail.days_ago_45") }}</span><span>{{ days_label }}</span><span>{{ tr("common.today") }}</span></div>
+  </div>
+</section>
+
+{%- if let Some(p) = push %}
+{{ p|safe }}
+{%- endif %}
+
+{%- if self.is_type("group") %}
+<section class="section" aria-labelledby="children-title">
+  {% call m::section_head(tr("detail.children_title"), tr("detail.children_sub"), "children-title") %}
+    {%- if ctx.can_edit() %}<a class="btn btn-secondary btn-sm" href="/monitors/new?parent={{ monitor.id }}">{{ m::icon("plus") }}<span>{{ tr("detail.add_monitor") }}</span></a>{% endif %}
+  {% endcall %}
+  <ul class="list" role="list">
+    {%- for c in children %}
+    <li>
+      <a class="list-row" href="/monitors/{{ c.id }}">
+        <span class="dot status-{{ c.status }}" role="img" aria-label="{{ c.status_label }}"></span>
+        <span class="list-main">
+          <span class="list-title list-title-wrap">{{ c.name }}</span>
+          <span class="list-sub">{{ c.type_label }}</span>
+        </span>
+        <span class="list-trail">{{ c.status_label }}{{ m::icon("chevron-right", "list-chevron") }}</span>
+      </a>
+    </li>
+    {%- else %}
+    <li class="list-empty">{{ tr("detail.children_empty") }}</li>
+    {%- endfor %}
+  </ul>
+</section>
+{%- endif %}
+
+<div class="grid-2">
+  <section class="card" aria-labelledby="events-title">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title" id="events-title">{{ tr("detail.events") }}</h2>
+        <p class="card-sub">{{ tr("detail.events_sub") }}</p>
+      </div>
+    </div>
+    {%- if events.is_empty() %}
+    {{ m::empty_state("clock", tr("detail.events_empty_title"), tr("detail.events_empty_text")) }}
+    {%- else %}
+    <ol class="timeline">
+      {%- for e in events %}
+      <li class="timeline-item {{ e.class }}">
+        <span class="timeline-dot" aria-hidden="true"></span>
+        <div>
+          <div class="timeline-head">
+            <span class="timeline-title">{{ e.title }}</span>
+            <span class="timeline-time">{{ m::time_ago(&e.started_at) }}</span>
+          </div>
+          {%- if !e.text.is_empty() || !e.duration.is_empty() %}
+          <p class="timeline-text"><span class="break">{{ e.text }}</span>{% if !e.text.is_empty() && !e.duration.is_empty() %} · {% endif %}{{ e.duration }}</p>
+          {%- endif %}
+        </div>
+      </li>
+      {%- endfor %}
+    </ol>
+    {%- endif %}
+  </section>
+
+  <div class="stack">
+    {%- for x in expiry %}
+    <section class="card" aria-labelledby="expiry-{{ loop.index }}-title">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title" id="expiry-{{ loop.index }}-title">{{ x.title }}</h2>
+          <p class="card-sub">{{ tr("detail.checked") }} {{ m::time_ago(&x.checked_at) }}</p>
+        </div>
+        <div class="toolbar"><span class="badge status-{{ x.status }}">{{ x.remaining }}</span></div>
+      </div>
+      <dl class="dl">
+        <div class="dl-row"><dt>{{ tr("detail.expires") }}</dt><dd>{{ x.expires }}</dd></div>
+        {%- if !x.subject.is_empty() %}<div class="dl-row"><dt>{% if x.is_cert %}{{ tr("detail.subject") }}{% else %}{{ tr("detail.domain") }}{% endif %}</dt><dd class="break">{{ x.subject }}</dd></div>{% endif %}
+        {%- if !x.issuer.is_empty() %}<div class="dl-row"><dt>{% if x.is_cert %}{{ tr("detail.issuer") }}{% else %}{{ tr("detail.registrar") }}{% endif %}</dt><dd class="break">{{ x.issuer }}</dd></div>{% endif %}
+      </dl>
+    </section>
+    {%- endfor %}
+
+    {%- if !agents.is_empty() %}
+    <section class="section" aria-labelledby="agents-title">
+      {% call m::section_head(tr("nav.agents"), tr("detail.agents_sub"), "agents-title") %}{% endcall %}
+      <ul class="list" role="list">
+        {%- for a in agents %}
+        <li class="list-row">
+          <span class="dot status-{{ a.status }}" role="img" aria-label="{{ status_text(a.status) }}"></span>
+          <span class="list-main">
+            <span class="list-title">{{ a.agent_name }}</span>
+            <span class="list-sub">{% if !a.location.is_empty() %}{{ a.location }} · {% endif %}{{ m::time_ago(&a.checked_at) }}{% if let Some(msg) = a.message %} · {{ msg }}{% endif %}</span>
+          </span>
+          <span class="list-value"><strong>{{ m::ms(a.response_time_ms) }}</strong><small>{{ status_text(a.status) }}</small></span>
+        </li>
+        {%- endfor %}
+      </ul>
+    </section>
+    {%- endif %}
+
+    <section class="card" aria-labelledby="config-title">
+      <div class="card-head"><h2 class="card-title" id="config-title">{{ tr("detail.configuration") }}</h2></div>
+      {%- if !monitor.description.is_empty() %}
+      <p class="prose break">{{ monitor.description }}</p>
+      {%- endif %}
+      <dl class="dl">
+        <div class="dl-row"><dt>{{ tr("detail.type") }}</dt><dd>{{ monitor.monitor_type.label() }}</dd></div>
+        {%- if !monitor.target.is_empty() %}
+        <div class="dl-row"><dt>{{ tr("detail.target") }}</dt><dd class="break">{{ monitor.target }}</dd></div>
+        {%- endif %}
+        {%- if !self.is_type("group") %}
+        <div class="dl-row"><dt>{% if self.is_type("push") %}{{ tr("detail.expect_push_every") }}{% else %}{{ tr("detail.check_every") }}{% endif %}</dt><dd class="num">{{ interval_label }}</dd></div>
+        {%- endif %}
+        {%- if monitor.monitor_type.is_active_check() %}
+        <div class="dl-row"><dt>{{ tr("detail.retry_every") }}</dt><dd class="num">{{ retry_label }}</dd></div>
+        <div class="dl-row"><dt>{{ tr("detail.timeout") }}</dt><dd class="num">{{ timeout_label }}</dd></div>
+        {%- endif %}
+        {%- if !self.is_type("group") %}
+        <div class="dl-row"><dt>{{ tr("detail.retries_before_down") }}</dt><dd class="num">{{ monitor.retries }}</dd></div>
+        {%- endif %}
+        {%- if monitor.monitor_type.is_http_family() %}
+        <div class="dl-row"><dt>{{ tr("detail.request") }}</dt><dd>{{ monitor.http_method }} · {{ tr1("detail.accepts", "codes", monitor.accepted_status_codes) }}</dd></div>
+        {%- endif %}
+        {%- if let Some(k) = monitor.keyword %}{% if self.is_type("keyword") %}
+        <div class="dl-row"><dt>{% if monitor.keyword_invert %}{{ tr("detail.must_not_contain") }}{% else %}{{ tr("detail.must_contain") }}{% endif %}</dt><dd class="break">“{{ k }}”</dd></div>
+        {%- endif %}{% endif %}
+        {%- if self.is_type("json_query") %}
+        <div class="dl-row"><dt>{{ tr("detail.json_query") }}</dt><dd class="break"><code>{% if let Some(p) = monitor.json_path %}{{ p }}{% endif %} {{ monitor.json_operator }} {% if let Some(x) = monitor.json_expected %}{{ x }}{% endif %}</code></dd></div>
+        {%- endif %}
+        {%- if self.is_type("dns") %}
+        <div class="dl-row"><dt>{{ tr("detail.record") }}</dt><dd>{{ monitor.dns_record_type }}{% if let Some(r) = monitor.dns_resolver %} {{ tr1("detail.via", "resolver", r) }}{% endif %}</dd></div>
+        {%- endif %}
+        {%- if monitor.upside_down %}
+        <div class="dl-row"><dt>{{ tr("form.upside_down") }}</dt><dd>{{ tr("common.on") }}</dd></div>
+        {%- endif %}
+        <div class="dl-row"><dt>{{ tr("detail.alerts") }}</dt><dd>{% if channels.is_empty() %}<span class="muted">{{ tr("common.none") }}</span>{% else %}{{ channels|join(", ") }}{% endif %}</dd></div>
+        {%- if monitor.run_on_agents || monitor.confirm_with_agents %}
+        <div class="dl-row"><dt>{{ tr("nav.agents") }}</dt><dd>{% if monitor.run_on_agents %}{{ tr("detail.checks_from_agents") }}{% endif %}{% if monitor.run_on_agents && monitor.confirm_with_agents %} · {% endif %}{% if monitor.confirm_with_agents %}{{ tr("detail.confirms_outages") }}{% endif %}</dd></div>
+        {%- endif %}
+        {%- if monitor.source == "docker" %}
+        <div class="dl-row"><dt>{{ tr("detail.source") }}</dt><dd>{{ tr("detail.source_docker") }}</dd></div>
+        {%- else if monitor.source == "config" %}
+        <div class="dl-row"><dt>{{ tr("detail.source") }}</dt><dd>{{ tr("detail.source_imported") }}</dd></div>
+        {%- endif %}
+        <div class="dl-row"><dt>{{ tr("common.created") }}</dt><dd>{{ m::time_ago(&monitor.created_at) }}</dd></div>
+      </dl>
+    </section>
+  </div>
+</div>
+
+<section class="section" aria-labelledby="checks-title">
+  {% call m::section_head(tr("common.recent_checks"), tr("detail.newest_first"), "checks-title") %}{% endcall %}
+  {%- if heartbeats.rows.is_empty() %}
+  <div class="card card-flush">
+    {{ m::empty_state("pulse", tr("detail.checks_empty_title"), tr("detail.checks_empty_text")) }}
+  </div>
+  {%- else %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("detail.col_status") }}</th><th>{{ tr("detail.col_checked") }}</th><th class="num">{{ tr("detail.response") }}</th><th>{{ tr("detail.col_message") }}</th></tr></thead>
+        <tbody>
+          {{ heartbeats|safe }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {%- endif %}
+</section>
+{% endblock %}

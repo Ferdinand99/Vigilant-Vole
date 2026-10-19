@@ -1,0 +1,54 @@
+{#- Status page sections editor. Re-rendered (outerHTML) after every structural change.
+    Needs `page`, `sections`. Drag results post to /order via the vv:reorder event. -#}
+{%- import "macros.html" as m -%}
+<div class="stack" id="sp-sections">
+  <form class="stack" hx-post="/status-pages/{{ page.id }}/order" hx-trigger="vv:reorder, submit" hx-swap="none" data-no-progress>
+    {%- if sections.is_empty() %}
+    <div class="empty-card">
+      {{ m::empty_state("dashboard", tr("sp.sections_empty_title"), tr("sp.sections_empty_text")) }}
+    </div>
+    {%- endif %}
+    <div class="stack" data-sortable data-sortable-name="sections[]">
+      {%- for s in sections %}
+      <section class="card card-flush" data-sortable-item data-id="{{ s.id }}" data-sortable-label="{{ s.name }}" aria-label="{{ tr1("sp.section_aria", "name", s.name) }}">
+        <div class="list-row">
+          <button type="button" class="drag-handle" data-sortable-handle aria-label="{{ tr1("sp.reorder_section", "name", s.name) }}">{{ m::icon("grip") }}</button>
+          <input class="grow" type="text" name="name_{{ s.id }}" value="{{ s.name }}" aria-label="{{ tr("sp.section_name") }}" placeholder="{{ tr("sp.section_name_placeholder") }}" maxlength="80" autocomplete="off"
+            hx-post="/status-pages/{{ page.id }}/sections/{{ s.id }}" hx-trigger="change" hx-swap="none" hx-params="name_{{ s.id }}">
+          <span class="list-actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#sp-picker" commandfor="sp-picker" command="show-modal"
+              hx-get="/status-pages/{{ page.id }}/sections/{{ s.id }}/picker" hx-target="#sp-picker-body" hx-swap="innerHTML" aria-label="{{ tr1("sp.add_monitors_to", "name", s.name) }}">{{ m::icon("plus") }}<span class="hide-sm">{{ tr("sp.add_monitors") }}</span></button>
+            <button type="button" class="btn btn-icon btn-plain btn-sm" hx-delete="/status-pages/{{ page.id }}/sections/{{ s.id }}" hx-params="none" hx-target="#sp-sections" hx-swap="outerHTML"
+              hx-confirm="{{ tr1("sp.delete_section_q", "name", s.name) }}" data-confirm-message="{{ tr("sp.delete_section_msg") }}" aria-label="{{ tr1("sp.delete_section_aria", "name", s.name) }}" data-tip="{{ tr("sp.delete_section") }}">{{ m::icon("trash") }}</button>
+          </span>
+        </div>
+        <ul class="list" role="list" data-sortable data-sortable-group="sp-monitors" data-sortable-name="section_{{ s.id }}[]" aria-label="{{ tr1("sp.monitors_in", "name", s.name) }}">
+          {%- for mon in s.monitors %}
+          <li class="list-row" data-sortable-item data-id="{{ mon.monitor_id }}">
+            <button type="button" class="drag-handle" data-sortable-handle aria-label="{{ tr1("sp.reorder_item", "name", mon.name) }}">{{ m::icon("grip") }}</button>
+            <span class="list-main">
+              <span class="list-title list-title-wrap">{{ mon.name }}</span>
+              <span class="list-sub">{{ mon.type_label() }}{% if !mon.active %} · {{ tr("status.paused") }}{% endif %}</span>
+            </span>
+            <span class="list-actions">
+              <button type="button" class="btn btn-icon btn-plain btn-sm" hx-delete="/status-pages/{{ page.id }}/sections/{{ s.id }}/monitors/{{ mon.monitor_id }}" hx-params="none"
+                hx-target="#sp-sections" hx-swap="outerHTML" aria-label="{{ tr1("sp.remove_from_page", "name", mon.name) }}" data-tip="{{ tr("common.remove") }}">{{ m::icon("x") }}</button>
+            </span>
+          </li>
+          {%- endfor %}
+        </ul>
+        {%- if s.monitors.is_empty() %}
+        <p class="list-empty">{{ tr("sp.section_empty") }}</p>
+        {%- endif %}
+      </section>
+      {%- endfor %}
+    </div>
+  </form>
+
+  <form class="list" hx-post="/status-pages/{{ page.id }}/sections" hx-target="#sp-sections" hx-swap="outerHTML">
+    <div class="list-row">
+      <input class="grow" type="text" name="name" aria-label="{{ tr("sp.new_section_name") }}" placeholder="{{ tr("sp.new_section_placeholder") }}" maxlength="80" autocomplete="off">
+      <button type="submit" class="btn btn-secondary btn-collapse" aria-label="{{ tr("sp.add_section") }}">{{ m::icon("plus") }}<span>{{ tr("sp.add_section") }}</span></button>
+    </div>
+  </form>
+</div>

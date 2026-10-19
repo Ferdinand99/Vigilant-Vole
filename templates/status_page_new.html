@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{% call m::page_header(tr("sp.new"), tr("sp.new_sub"), "/status-pages", tr("nav.status_pages")) %}{% endcall %}
+
+<form class="form form-narrow" method="post" action="/status-pages/new" data-warn-unsaved>
+  <section class="form-section" aria-labelledby="sec-basics">
+    <h2 class="form-section-title" id="sec-basics">{{ tr("sp.basics") }}</h2>
+    <div class="card">
+      {{ m::field_text("title", tr("sp.title"), value=&self.title, placeholder=tr("setup.site_name_placeholder"), required=true, error=&self.title_error) }}
+      <div class="field{% if !slug_error.is_empty() %} is-invalid{% endif %}">
+        <label class="label" for="f-slug">{{ tr("sp.address") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <div class="input-group">
+          <span class="input-addon" aria-hidden="true">/status/</span>
+          <input id="f-slug" name="slug" type="text" value="{{ slug }}" placeholder="acme…" autocomplete="off" autocapitalize="none" spellcheck="false"
+            aria-describedby="f-slug-help{% if !slug_error.is_empty() %} f-slug-error{% endif %}"{% if !slug_error.is_empty() %} aria-invalid="true"{% endif %}>
+        </div>
+        <p class="help" id="f-slug-help">{{ tr("sp.slug_help") }}</p>
+        {%- if !slug_error.is_empty() %}
+        <p class="field-error" id="f-slug-error">{{ m::icon("alert-circle") }}{{ slug_error }}</p>
+        {%- endif %}
+      </div>
+      {{ m::field_textarea("description", tr("common.description"), &self.description, 2, tr("sp.description_placeholder")) }}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    {{ m::link_button("/status-pages", tr("common.cancel"), "secondary") }}
+    {{ m::button(tr("sp.create")) }}
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,124 @@
+{#- Type-specific sections of the monitor form. Included by monitor_form.html
+    and served alone by /monitors/form-fields?type=…. Expects `f`
+    (api::monitors::FormData). Sections toggle with data-show-when on the
+    monitor_type radios; the server pre-hides the ones that don't apply. -#}
+{% import "macros.html" as m %}
+{% import "partials/monitor_form_macros.html" as fm %}
+
+<section class="form-section" aria-labelledby="sec-keyword" data-show-when="monitor_type=keyword"{% if !f.shows("keyword") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-keyword">{{ tr("form.keyword") }}</h2>
+  <div class="card">
+    {{ m::field_text("keyword", tr("form.look_for"), value=&f.v.keyword, placeholder=tr("form.keyword_placeholder"), help=tr("form.keyword_help"), error=f.err("keyword")) }}
+    {{ m::switch("keyword_invert", tr("form.invert"), f.v.keyword_invert, tr("form.invert_help")) }}
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-json" data-show-when="monitor_type=json_query"{% if !f.shows("json_query") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-json">{{ tr("detail.json_query") }}</h2>
+  <div class="card">
+    {{ m::field_text("json_path", "JSONPath", value=&f.v.json_path, placeholder="$.status…", help=tr("form.json_path_help"), error=f.err("json_path")) }}
+    <div class="field-row">
+      {{ fm::select("json_operator", tr("form.condition"), &f.operators, f.v.json_operator.as_str(), "", f.err("json_operator")) }}
+      {{ m::field_text("json_expected", tr("form.expected_value"), value=&f.v.json_expected, placeholder="ok…", error=f.err("json_expected")) }}
+    </div>
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-http" data-show-when="monitor_type=http,keyword,json_query"{% if !f.shows("http,keyword,json_query") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-http">{{ tr("detail.request") }}</h2>
+  <div class="card">
+    <div class="field-row">
+      {{ fm::select("http_method", tr("form.method"), &f.methods, f.v.http_method.as_str(), "", f.err("http_method")) }}
+      {{ m::field_text("accepted_status_codes", tr("form.accepted_codes"), value=&f.v.accepted_status_codes, placeholder="200-299…", help=tr("form.accepted_codes_help"), error=f.err("accepted_status_codes")) }}
+    </div>
+
+    <details class="disclosure"{% if !f.v.http_headers.is_empty() || !f.v.http_body.is_empty() || f.has_err("http_headers") || f.has_err("http_body") || f.has_err("http_body_encoding") %} open{% endif %}>
+      <summary>{{ tr("form.headers_body") }} <span class="disclosure-sub">{{ tr("form.headers_body_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+      <div class="disclosure-body">
+        <div class="field{% if f.has_err("http_headers") %} is-invalid{% endif %}">
+          <span class="label" id="headers-label">{{ tr("form.headers") }}</span>
+          <div class="kv-editor" data-kv data-kv-json="#f-http_headers" role="group" aria-labelledby="headers-label">
+            <div class="kv-head" aria-hidden="true"><span>{{ tr("common.name") }}</span><span>{{ tr("form.value") }}</span><span></span></div>
+            <div class="kv-rows" data-kv-rows>
+              {%- for (k, val) in f.header_rows %}
+              <div class="kv-row">
+                <input type="text" value="{{ k }}" placeholder="Authorization…" aria-label="{{ tr("form.header_name") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <input type="text" value="{{ val }}" placeholder="Bearer …" aria-label="{{ tr("form.header_value") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("x") }}</button>
+              </div>
+              {%- endfor %}
+            </div>
+            <template data-kv-template>
+              <div class="kv-row">
+                <input type="text" placeholder="Authorization…" aria-label="{{ tr("form.header_name") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <input type="text" placeholder="Bearer …" aria-label="{{ tr("form.header_value") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("x") }}</button>
+              </div>
+            </template>
+            <div class="cluster"><button type="button" class="btn btn-plain btn-sm" data-kv-add>{{ m::icon("plus") }}<span>{{ tr("form.add_header") }}</span></button></div>
+            <input type="hidden" id="f-http_headers" name="http_headers" value="{{ f.v.http_headers }}" disabled>
+            <noscript><textarea name="http_headers" rows="3" class="textarea-code" spellcheck="false" aria-label="{{ tr("form.headers_json") }}">{{ f.v.http_headers }}</textarea></noscript>
+          </div>
+          {{ fm::error_line("http_headers", f.err("http_headers")) }}
+        </div>
+        {{ fm::area("http_body", tr("form.body"), &f.v.http_body, 4, tr("form.body_placeholder"), "", f.err("http_body"), true) }}
+        {{ fm::select("http_body_encoding", tr("form.body_encoding"), &f.encodings, f.v.http_body_encoding.as_str(), tr("form.body_encoding_help"), f.err("http_body_encoding")) }}
+      </div>
+    </details>
+
+    <details class="disclosure"{% if !f.v.basic_auth_user.is_empty() || !f.v.proxy_url.is_empty() || f.v.ignore_tls || f.v.max_redirects != "10" || f.has_err("basic_auth_user") || f.has_err("basic_auth_pass") || f.has_err("proxy_url") || f.has_err("max_redirects") %} open{% endif %}>
+      <summary>{{ tr("form.auth_network") }} <span class="disclosure-sub">{{ tr("form.auth_network_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+      <div class="disclosure-body">
+        <div class="field-row">
+          {{ m::field_text("basic_auth_user", tr("form.user_name"), value=&f.v.basic_auth_user, placeholder=tr("form.optional_placeholder"), error=f.err("basic_auth_user")) }}
+          {{ m::field_text("basic_auth_pass", tr("login.password"), value=&f.v.basic_auth_pass, kind="password", autocomplete="new-password", error=f.err("basic_auth_pass")) }}
+        </div>
+        {{ m::field_text("proxy_url", tr("form.proxy"), value=&f.v.proxy_url, kind="url", placeholder="http://proxy.internal:3128…", help=tr("form.proxy_help"), error=f.err("proxy_url")) }}
+        {{ fm::num("max_redirects", tr("form.follow_redirects"), &f.v.max_redirects, tr("form.max"), "0", "30", tr("form.redirects_help"), f.err("max_redirects")) }}
+        {{ m::switch("ignore_tls", tr("form.ignore_tls"), f.v.ignore_tls, tr("form.ignore_tls_help")) }}
+      </div>
+    </details>
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-dns" data-show-when="monitor_type=dns"{% if !f.shows("dns") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-dns">DNS</h2>
+  <div class="card">
+    <div class="field-row">
+      {{ fm::select("dns_record_type", tr("form.record_type"), &f.record_types, f.v.dns_record_type.as_str(), "", f.err("dns_record_type")) }}
+      {{ m::field_text("dns_resolver", tr("form.resolver"), value=&f.v.dns_resolver, placeholder="1.1.1.1…", help=tr("form.resolver_help"), error=f.err("dns_resolver")) }}
+    </div>
+    {{ m::field_text("dns_expected", tr("form.expected_answer"), value=&f.v.dns_expected, placeholder=tr("form.optional_placeholder"), help=tr("form.expected_answer_help")) }}
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-docker" data-show-when="monitor_type=docker"{% if !f.shows("docker") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-docker">Docker</h2>
+  <div class="card">
+    {{ m::field_text("docker_host", tr("form.docker_host"), value=&f.v.docker_host, placeholder="unix:///var/run/docker.sock…", help=tr("form.docker_host_help"), error=f.err("docker_host")) }}
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-push" data-show-when="monitor_type=push"{% if !f.shows("push") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-push">{{ tr("push.title") }}</h2>
+  <div class="card">
+    {%- match f.push_url %}
+    {%- when Some(url) %}
+    <div class="field">
+      <span class="label">{{ tr("form.push_call") }}</span>
+      {{ m::copy_field("push-url", url) }}
+      <p class="help">{{ tr("form.push_help_1") }} <code>status=down</code> {{ tr("form.push_help_2") }} <code>ping=</code> {{ tr("form.push_help_3") }}</p>
+    </div>
+    {%- when None %}
+    <p class="help">{{ tr("form.push_pending") }}</p>
+    {%- endmatch %}
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-expiry" data-show-when="monitor_type=http,keyword,json_query,domain_expiry"{% if !f.shows("http,keyword,json_query,domain_expiry") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-expiry">{{ tr("form.expiry_alerts") }}</h2>
+  <div class="card">
+    {{ m::switch("expiry_notify", tr("form.expiry_notify"), f.v.expiry_notify, tr("form.expiry_notify_help")) }}
+    {{ fm::num("expiry_days", tr("form.expiry_days"), &f.v.expiry_days, tr("common.days"), "1", "365", tr("form.expiry_days_help"), f.err("expiry_days")) }}
+  </div>
+</section>

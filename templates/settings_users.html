@@ -1,0 +1,61 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.users"), tr("users.sub")) %}
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-user" commandfor="new-user" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("users.new") }}</span></button>
+{% endcall %}
+
+<section class="section" aria-labelledby="users-title">
+  {% call m::section_head(tr("users.people"), "", "users-title") %}{% endcall %}
+  <ul class="list" role="list">
+    {%- for u in users %}
+    {% include "partials/user_row.html" %}
+    {%- endfor %}
+  </ul>
+  <p class="section-foot">{{ tr("users.roles_help") }}</p>
+</section>
+
+<dialog class="sheet" id="new-user" aria-labelledby="new-user-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-user-title">{{ tr("users.new") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-user" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-user-form" class="form" method="post" action="/settings/users">
+      <div class="field-row">
+        <div class="field">
+          <label class="label" for="nu-username">{{ tr("login.username") }}</label>
+          <input id="nu-username" name="username" type="text" required maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="ada…">
+        </div>
+        <div class="field">
+          <label class="label" for="nu-display">{{ tr("users.display_name") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+          <input id="nu-display" name="display_name" type="text" maxlength="80" autocomplete="off" placeholder="Ada Lovelace…">
+        </div>
+      </div>
+      <div class="field">
+        <span class="label" id="nu-role-label">{{ tr("users.role") }}</span>
+        <div class="segmented segmented-block" role="radiogroup" aria-labelledby="nu-role-label">
+          {%- for r in roles %}
+          <label><input type="radio" name="role" value="{{ r.as_str() }}"{% if r.as_str() == "viewer" %} checked{% endif %}><span>{{ r.label() }}</span></label>
+          {%- endfor %}
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="nu-password">{{ tr("users.temp_password") }}</label>
+        <input id="nu-password" name="password" type="text" required minlength="10" maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" class="mono" aria-describedby="nu-password-help">
+        <p class="help" id="nu-password-help">{{ tr("users.temp_password_help") }}</p>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-user" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="new-user-form">{{ tr("users.add") }}</button>
+  </footer>
+</dialog>
+
+{%- for u in users %}
+{% include "partials/user_sheets.html" %}
+{%- endfor %}
+{% endblock %}

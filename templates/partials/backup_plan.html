@@ -1,0 +1,114 @@
+{% import "macros.html" as m %}
+{%- if !problem.is_empty() %}
+<div class="stack-sm">
+  {{ m::callout("danger", problem, tr("backup.cant_preview")) }}
+  {%- if !token.is_empty() %}
+  <form class="stack-sm" hx-post="/settings/backup/import/apply" hx-target="closest .sheet-body" hx-swap="innerHTML">
+    <input type="hidden" name="token" value="{{ token }}">
+    {{ m::checkbox("confirm", tr("backup.confirm_delete"), false) }}
+    <div class="form-actions">
+      <button type="submit" class="btn btn-danger">{{ m::icon("check") }}<span>{{ tr("backup.apply_changes") }}</span></button>
+    </div>
+  </form>
+  {%- endif %}
+</div>
+{%- else %}
+<div class="stack">
+  <p class="muted">{{ label }} · {% if mode == "replace" %}{{ tr("backup.replace") }}{% else %}{{ tr("backup.merge") }}{% endif %}</p>
+
+  <div class="stats">
+    {{ m::stat(tr("backup.new"), create, "up") }}
+    {{ m::stat(tr("backup.changed"), update, "info") }}
+    {{ m::stat(tr("backup.deleted"), delete, "down") }}
+    {{ m::stat(tr("backup.unchanged"), unchanged, "") }}
+  </div>
+
+  {%- if !errors.is_empty() %}
+  {{ m::callout("danger", tr("backup.problems_text"), tr("backup.problems_title")) }}
+  <ul class="list" role="list">
+    {%- for e in errors %}
+    <li class="list-row">
+      <span class="list-icon status-down">{{ m::icon("alert-circle") }}</span>
+      <span class="list-main"><span class="list-title">{{ e.what }}</span><span class="list-sub">{{ e.message }}</span></span>
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+
+  {%- if !skipped.is_empty() %}
+  <details class="disclosure card" open>
+    <summary>{{ tr("backup.not_imported") }} <span class="disclosure-sub">{{ trn("backup.items", skipped.len()) }}</span>{{ m::icon("chevron-down") }}</summary>
+    <div class="disclosure-body">
+      <ul class="list" role="list">
+        {%- for s in skipped %}
+        <li class="list-row">
+          <span class="list-icon status-warning">{{ m::icon("minus") }}</span>
+          <span class="list-main"><span class="list-title">{{ s.name }}</span><span class="list-sub">{{ s.reason }}</span></span>
+          <span class="list-trail"><span class="badge">{{ s.kind.replace("_", " ") }}</span></span>
+        </li>
+        {%- endfor %}
+      </ul>
+    </div>
+  </details>
+  {%- endif %}
+
+  {%- if !warnings.is_empty() %}
+  <details class="disclosure card">
+    <summary>{{ tr("backup.notes") }} <span class="disclosure-sub">{{ tr1("backup.notes_sub", "n", warnings.len()) }}</span>{{ m::icon("chevron-down") }}</summary>
+    <div class="disclosure-body">
+      <ul class="stack-xs" role="list">
+        {%- for w in warnings %}
+        <li class="t-footnote">{{ w }}</li>
+        {%- endfor %}
+      </ul>
+    </div>
+  </details>
+  {%- endif %}
+
+  {%- if !changes.is_empty() %}
+  <section class="section" aria-labelledby="plan-changes">
+    {% call m::section_head(tr("backup.what_changes"), "", "plan-changes") %}{% endcall %}
+    <ul class="list" role="list">
+      {%- for i in changes %}
+      <li class="list-row">
+        <span class="list-main">
+          <span class="list-title">{{ i.key }}</span>
+          <span class="list-sub">{{ i.kind }}{% if !i.detail.is_empty() %} · {{ i.detail }}{% endif %}</span>
+        </span>
+        <span class="list-trail"><span class="pill {{ i.action.status_class() }}">{{ i.action.label() }}</span></span>
+      </li>
+      {%- endfor %}
+    </ul>
+  </section>
+  {%- else if errors.is_empty() %}
+  {{ m::callout("success", tr("backup.up_to_date_text"), tr("backup.up_to_date")) }}
+  {%- endif %}
+
+  {%- if !same.is_empty() %}
+  <details class="disclosure card">
+    <summary>{{ tr("backup.unchanged") }} <span class="disclosure-sub">{{ trn("backup.items", same.len()) }}</span>{{ m::icon("chevron-down") }}</summary>
+    <div class="disclosure-body">
+      <ul class="list" role="list">
+        {%- for i in same %}
+        <li class="list-row"><span class="list-main"><span class="list-title">{{ i.key }}</span><span class="list-sub">{{ i.kind }}</span></span></li>
+        {%- endfor %}
+      </ul>
+    </div>
+  </details>
+  {%- endif %}
+
+  {%- if !token.is_empty() && self.has_changes() %}
+  <form class="stack-sm" hx-post="/settings/backup/import/apply" hx-target="closest .sheet-body" hx-swap="innerHTML"
+    {%- if delete > 0 %} hx-confirm="{{ trn("backup.delete_items_q", delete) }}" data-confirm-label="{{ tr("backup.apply") }}" data-confirm-message="{{ tr("backup.delete_items_msg") }}"{% endif %}>
+    <input type="hidden" name="token" value="{{ token }}">
+    {%- if mode == "replace" %}
+    {{ m::checkbox("confirm", tr("backup.confirm_delete"), false, tr("backup.required_replace")) }}
+    {%- endif %}
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" data-sheet-close>{{ tr("common.cancel") }}</button>
+      <button type="submit" class="btn btn-primary">{{ m::icon("check") }}<span>{{ trn("backup.apply_n", create + update + delete) }}</span></button>
+    </div>
+  </form>
+  {%- endif %}
+</div>
+{%- endif %}

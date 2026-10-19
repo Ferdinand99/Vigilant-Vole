@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{% include "partials/status_page_head.html" %}
+
+<section class="section" aria-labelledby="inc-title">
+  {% call m::section_head(tr("sp.incidents"), tr("inc.list_sub"), "inc-title") %}
+    <button type="button" class="btn btn-primary" data-sheet-open="#new-incident" commandfor="new-incident" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("inc.new") }}</span></button>
+  {% endcall %}
+
+  {%- if incidents.is_empty() %}
+  <div class="empty-card">
+    {{ m::empty_state("megaphone", tr("inc.empty_title"), tr("inc.empty_text")) }}
+  </div>
+  {%- else %}
+  <div class="stack stack-sm">
+    {%- for row in incidents %}
+    <article class="incident status-{{ row.incident.severity }}" id="incident-{{ row.incident.id }}">
+      <div class="incident-head">
+        {{ m::icon(row.incident.icon()) }}
+        <div>
+          <h3 class="incident-title">{{ row.incident.title }}</h3>
+          <p class="incident-meta">{{ row.incident.severity_label() }} · {{ row.meta }}{% if row.incident.pinned && !row.incident.is_resolved() %} · {{ tr("inc.pinned") }}{% endif %}</p>
+        </div>
+      </div>
+      {%- if !row.body_html.is_empty() %}
+      <div class="incident-body prose">{{ row.body_html|safe }}</div>
+      {%- endif %}
+      <div class="incident-actions">
+        <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#edit-incident" commandfor="edit-incident" command="show-modal"
+          hx-get="/status-pages/{{ page.id }}/incidents/{{ row.incident.id }}/edit" hx-target="#edit-incident-body" hx-swap="innerHTML">{{ m::icon("pencil") }}<span>{{ tr("common.edit") }}</span></button>
+        {%- if row.incident.is_resolved() %}
+        <button type="button" class="btn btn-secondary btn-sm" hx-post="/status-pages/{{ page.id }}/incidents/{{ row.incident.id }}/reopen" hx-swap="none">{{ m::icon("refresh") }}<span>{{ tr("inc.reopen") }}</span></button>
+        {%- else %}
+        <button type="button" class="btn btn-secondary btn-sm" hx-post="/status-pages/{{ page.id }}/incidents/{{ row.incident.id }}/resolve" hx-swap="none">{{ m::icon("check") }}<span>{{ tr("inc.resolve") }}</span></button>
+        {%- endif %}
+        <button type="button" class="btn btn-danger btn-sm" hx-delete="/status-pages/{{ page.id }}/incidents/{{ row.incident.id }}" hx-swap="none"
+          hx-confirm="{{ tr1("detail.delete_q", "name", row.incident.title) }}" data-confirm-message="{{ tr("inc.delete_msg") }}">{{ m::icon("trash") }}<span>{{ tr("common.delete") }}</span></button>
+      </div>
+    </article>
+    {%- endfor %}
+  </div>
+  {%- endif %}
+</section>
+
+<dialog class="sheet" id="new-incident" aria-labelledby="new-incident-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-incident-title">{{ tr("inc.new") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-incident" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    {% include "partials/status_incident_form.html" %}
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-incident" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="incident-form-new">{{ tr("inc.post") }}</button>
+  </footer>
+</dialog>
+
+<dialog class="sheet" id="edit-incident" aria-labelledby="edit-incident-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="edit-incident-title">{{ tr("inc.edit") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="edit-incident" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body" id="edit-incident-body">{{ m::skeleton_rows(3) }}</div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="edit-incident" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="incident-form-edit">{{ tr("inc.save") }}</button>
+  </footer>
+</dialog>
+{% endblock %}

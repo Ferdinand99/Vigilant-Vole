@@ -1,0 +1,74 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.general"), tr("general.sub")) %}{% endcall %}
+
+<form class="form" method="post" action="/settings/general" data-warn-unsaved novalidate>
+  <section class="form-section" aria-labelledby="sec-site">
+    <h2 class="form-section-title" id="sec-site">{{ tr("general.site") }}</h2>
+    <div class="card">
+      {{ m::field_text("site_name", tr("setup.site_name"), value=&self.site_name, placeholder="Vigilant Vole…", help=tr("general.site_name_help"), error=&self.site_name_error) }}
+      {{ m::field_text("base_url", tr("general.base_url"), value=&self.base_url, kind="url", placeholder="https://status.example.com…", help=tr("general.base_url_help"), error=&self.base_url_error) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-region">
+    <h2 class="form-section-title" id="sec-region">{{ tr("general.region") }}</h2>
+    <div class="card">
+      <div class="field-row">
+        <div class="field{% if !timezone_error.is_empty() %} is-invalid{% endif %}">
+          <label class="label" for="f-timezone">{{ tr("mw.timezone") }}</label>
+          <select id="f-timezone" name="timezone"{% if !timezone_error.is_empty() %} aria-invalid="true" aria-describedby="f-timezone-error"{% endif %}>
+            {%- for tz in timezones %}
+            <option value="{{ tz }}"{% if tz.as_str() == timezone.as_str() %} selected{% endif %}>{{ tz }}</option>
+            {%- endfor %}
+          </select>
+          {%- if !timezone_error.is_empty() %}
+          <p class="field-error" id="f-timezone-error">{{ m::icon("alert-circle") }}{{ timezone_error }}</p>
+          {%- endif %}
+        </div>
+        <div class="field">
+          <label class="label" for="f-language">{{ tr("general.language") }}</label>
+          <select id="f-language" name="language">
+            {%- for (code, label) in languages %}
+            <option value="{{ code }}"{% if self.is_language(code) %} selected{% endif %}>{{ label }}</option>
+            {%- endfor %}
+          </select>
+          <p class="help">{{ tr("general.language_help") }}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-data">
+    <h2 class="form-section-title" id="sec-data">{{ tr("general.data") }}</h2>
+    <div class="card">
+      <div class="field{% if !retention_error.is_empty() %} is-invalid{% endif %}">
+        <label class="label" for="f-retention_days">{{ tr("general.retention") }}</label>
+        <div class="input-group">
+          <input id="f-retention_days" name="retention_days" type="number" inputmode="numeric" min="1" max="3650" step="1" autocomplete="off" value="{{ retention_days }}"
+            aria-describedby="f-retention-help{% if !retention_error.is_empty() %} f-retention-error{% endif %}"{% if !retention_error.is_empty() %} aria-invalid="true"{% endif %}>
+          <span class="input-addon" aria-hidden="true">{{ tr("common.days") }}</span>
+        </div>
+        <p class="help" id="f-retention-help">{{ tr("general.retention_help") }} {{ tr("general.db_is") }} <span class="num">{{ db_size }}</span> {{ tr("general.db_holds") }} <span class="num">{{ heartbeat_count }}</span> {{ tr("general.db_checks") }}</p>
+        {%- if !retention_error.is_empty() %}
+        <p class="field-error" id="f-retention-error">{{ m::icon("alert-circle") }}{{ retention_error }}</p>
+        {%- endif %}
+      </div>
+      {{ m::switch("badges_public", tr("general.badges_public"), badges_public, tr("general.badges_public_help")) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-monitoring">
+    <h2 class="form-section-title" id="sec-monitoring">{{ tr("general.monitoring") }}</h2>
+    <div class="card">
+      {{ m::switch("agent_confirmation_default", tr("general.agent_confirmation"), agent_confirmation_default, tr("general.agent_confirmation_help")) }}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    {{ m::button(tr("general.save")) }}
+  </div>
+</form>
+{% endblock %}

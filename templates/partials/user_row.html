@@ -1,0 +1,40 @@
+{#- One row of the user list. Expects `u: UserRow` and the `m` macro import. -#}
+<li class="list-row" id="user-{{ u.id }}">
+  {{ m::avatar(&u.initials) }}
+  <span class="list-main">
+    <span class="list-title">{{ u.name }}{% if u.is_self %} <span class="muted">{{ tr("users.you") }}</span>{% endif %}</span>
+    <span class="list-sub">{{ u.username }} · {% match u.last_login_at %}{% when Some(at) %}{{ tr("sec.last_login") }} {{ m::time_ago(at) }}{% when None %}{{ tr("users.never_logged_in") }}{% endmatch %}</span>
+  </span>
+  <span class="list-trail cluster">
+    {%- if !u.active %}<span class="pill status-paused">{{ tr("users.disabled") }}</span>{% endif %}
+    {%- if u.totp_enabled %}<span class="badge status-up" data-tip="{{ tr("users.tfa_on") }}">2FA</span>{% endif %}
+    <span class="badge{% if u.role_is("admin") %} badge-brand{% endif %}">{{ u.role.label() }}</span>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" popovertarget="user-menu-{{ u.id }}" aria-label="{{ tr1("users.actions_for", "name", u.username) }}">{{ m::icon("more") }}</button>
+  </span>
+  <div class="menu" id="user-menu-{{ u.id }}" popover>
+    <button class="menu-item" type="button" data-sheet-open="#edit-user-{{ u.id }}" commandfor="edit-user-{{ u.id }}" command="show-modal">{{ m::icon("pencil") }}{{ tr("common.edit") }}</button>
+    {%- if !u.is_self %}
+    <button class="menu-item" type="button" data-sheet-open="#reset-pw-{{ u.id }}" commandfor="reset-pw-{{ u.id }}" command="show-modal">{{ m::icon("key") }}{{ tr("users.reset_password") }}</button>
+    {%- endif %}
+    {%- if u.totp_enabled %}
+    <form method="post" action="/settings/users/{{ u.id }}/2fa/reset" data-confirm="{{ tr1("users.reset_tfa_q", "name", u.username) }}" data-confirm-message="{{ tr("users.reset_tfa_msg") }}" data-confirm-label="{{ tr("users.reset") }}">
+      <button class="menu-item" type="submit">{{ m::icon("shield") }}{{ tr("users.reset_tfa") }}</button>
+    </form>
+    {%- endif %}
+    {%- if !u.is_self %}
+    <hr class="menu-sep">
+    {%- if u.active %}
+    <form method="post" action="/settings/users/{{ u.id }}/disable" data-confirm="{{ tr1("users.disable_q", "name", u.username) }}" data-confirm-message="{{ tr("users.disable_msg") }}" data-confirm-label="{{ tr("users.disable") }}">
+      <button class="menu-item menu-item-danger" type="submit">{{ m::icon("pause") }}{{ tr("users.disable") }}</button>
+    </form>
+    {%- else %}
+    <form method="post" action="/settings/users/{{ u.id }}/enable">
+      <button class="menu-item" type="submit">{{ m::icon("play") }}{{ tr("users.enable") }}</button>
+    </form>
+    {%- endif %}
+    <form method="post" action="/settings/users/{{ u.id }}/delete" data-confirm="{{ tr1("users.delete_q", "name", u.username) }}" data-confirm-message="{{ tr("users.delete_msg") }}" data-confirm-label="{{ tr("common.delete") }}">
+      <button class="menu-item menu-item-danger" type="submit">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+    </form>
+    {%- endif %}
+  </div>
+</li>

@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{% call m::page_header(tr("docs.title"), tr("docs.sub")) %}
+  <a class="btn btn-secondary" href="/api/v1/openapi.json" download="vigilant-vole-openapi.json">{{ m::icon("download") }}<span>OpenAPI 3.1</span></a>
+  <a class="btn btn-primary" href="/settings/tokens">{{ m::icon("key") }}<span>{{ tr("docs.create_token") }}</span></a>
+{% endcall %}
+
+<nav class="chips chips-scroll" aria-label="{{ tr("docs.sections") }}">
+  <a class="chip" href="#getting-started">{{ tr("docs.getting_started") }}</a>
+  {%- for g in groups %}
+  <a class="chip" href="#{{ g.anchor }}">{{ g.name }} <span class="badge">{{ g.routes.len() }}</span></a>
+  {%- endfor %}
+</nav>
+
+<section class="section" id="getting-started" aria-labelledby="start-title">
+  {% call m::section_head(tr("docs.getting_started"), tr("docs.getting_started_sub"), "start-title") %}{% endcall %}
+  <div class="grid-2">
+    <div class="card stack-sm">
+      <h3>{{ tr("docs.authenticate") }}</h3>
+      <pre class="code"><code id="curl-example">curl -H "Authorization: Bearer vv_…" {{ base_url }}/api/v1/monitors</code></pre>
+      <div class="cluster">
+        <button type="button" class="btn btn-secondary btn-sm" data-copy="#curl-example">{{ m::icon("copy") }}<span>{{ tr("common.copy") }}</span></button>
+      </div>
+      <p class="help">{{ tr("docs.session_help") }}</p>
+    </div>
+    <div class="card stack-sm">
+      <h3>{{ tr("docs.conventions") }}</h3>
+      <dl class="dl">
+        <div class="dl-row"><dt>{{ tr("docs.base_url") }}</dt><dd class="break mono">{{ base_url }}/api/v1</dd></div>
+        <div class="dl-row"><dt>{{ tr("docs.lists") }}</dt><dd><code>?limit=&amp;cursor=</code> → <code>next_cursor</code></dd></div>
+        <div class="dl-row"><dt>{{ tr("docs.caching") }}</dt><dd>{{ tr("docs.caching_text") }} <code>ETag</code></dd></div>
+        <div class="dl-row"><dt>{{ tr("docs.times") }}</dt><dd>UTC, <code>YYYY-MM-DD HH:MM:SS</code></dd></div>
+        <div class="dl-row"><dt>{{ tr("docs.secrets") }}</dt><dd>{{ tr("docs.secrets_1") }} <code>••••••</code>{{ tr("docs.secrets_2") }}</dd></div>
+      </dl>
+    </div>
+  </div>
+  <details class="disclosure card">
+    <summary>{{ tr("docs.errors") }} <span class="disclosure-sub">{{ tr("docs.errors_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+    <div class="disclosure-body stack-sm">
+      <pre class="code"><code>{{ error_example }}</code></pre>
+      <p class="help">{{ tr("docs.codes") }} <code>bad_request</code> 400, <code>unauthorized</code> 401, <code>forbidden</code> 403, <code>not_found</code> 404, <code>conflict</code> 409, <code>validation_failed</code> 422, <code>delivery_failed</code> 502.</p>
+    </div>
+  </details>
+</section>
+
+{%- for g in groups %}
+<section class="section" id="{{ g.anchor }}" aria-labelledby="{{ g.anchor }}-title">
+  {% call m::section_head(g.name, "", &g.title_id) %}{% endcall %}
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      {%- for route in g.routes %}
+      <li class="list-row list-row-wrap" id="{{ route.anchor() }}">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">{{ route.method }}</span> <code class="break">{{ route.path }}</code></span>
+          <span class="list-sub">{{ route.summary }}</span>
+        </span>
+        <span class="list-trail"><span class="badge {{ route.access_class() }}">{{ route.access }}</span></span>
+        {%- if !route.query.is_empty() || !route.request.is_empty() || !route.response.is_empty() %}
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>{{ tr("docs.details") }} <span class="disclosure-sub">{% if !route.query.is_empty() %}{{ tr("docs.parameters") }}{% if !route.request.is_empty() || !route.response.is_empty() %}, {{ tr("docs.examples_lc") }}{% endif %}{% else %}{{ tr("docs.examples") }}{% endif %}</span>{{ m::icon("chevron-down") }}</summary>
+            <div class="disclosure-body stack-sm">
+              {%- if !route.query.is_empty() %}
+              <dl class="dl">
+                {%- for q in route.query %}
+                {%- if let Some((name, desc)) = q.split_once(':') %}
+                <div class="dl-row"><dt><code>{{ name }}</code></dt><dd>{{ desc.trim() }}</dd></div>
+                {%- endif %}
+                {%- endfor %}
+              </dl>
+              {%- endif %}
+              {%- if !route.request.is_empty() %}
+              <p class="t-footnote muted">{{ tr("detail.request") }}</p>
+              <pre class="code"><code>{{ route.request }}</code></pre>
+              {%- endif %}
+              {%- if !route.response.is_empty() %}
+              <p class="t-footnote muted">{{ tr("dashboard.response") }}</p>
+              <pre class="code"><code>{{ route.response }}</code></pre>
+              {%- endif %}
+            </div>
+          </details>
+        </div>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+  </div>
+</section>
+{%- endfor %}
+{% endblock %}

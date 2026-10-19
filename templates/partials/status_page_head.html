@@ -1,0 +1,28 @@
+{#- Header + tabs shared by the status page editor screens. Needs `page`, `tab`. -#}
+<header class="page-head">
+  <a class="page-back" href="/status-pages">{{ m::icon("chevron-left") }}{{ tr("nav.status_pages") }}</a>
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <div class="page-title-group">
+        <h1 class="page-title">{{ page.title }}</h1>
+        {%- if !page.published %}<span class="pill status-paused pill-lg">{{ tr("sp.draft") }}</span>{% endif %}
+      </div>
+      <p class="page-sub"><span class="break">/status/{{ page.slug }}</span>{% match page.custom_domain %}{% when Some(d) %} · <span class="break">{{ d }}</span>{% when None %}{% endmatch %}</p>
+    </div>
+    <div class="page-actions">
+      <a class="btn btn-secondary" href="/status/{{ page.slug }}" target="_blank" rel="noopener">{{ m::icon("external") }}<span>{% if page.published %}{{ tr("sp.view_page") }}{% else %}{{ tr("sp.preview") }}{% endif %}</span></a>
+      {%- if tab != "incidents" %}
+      <button type="button" class="btn btn-secondary" data-sheet-open="#sp-badges" commandfor="sp-badges" command="show-modal">{{ m::icon("tag") }}<span>{{ tr("sp.badges") }}</span></button>
+      {%- endif %}
+      <button type="button" class="btn btn-icon btn-danger" hx-delete="/status-pages/{{ page.id }}" hx-swap="none"
+        hx-confirm="{{ tr1("detail.delete_q", "name", page.title) }}" data-confirm-message="{{ tr("sp.delete_msg") }}"
+        aria-label="{{ tr("sp.delete_aria") }}" data-tip="{{ tr("common.delete") }}">{{ m::icon("trash") }}</button>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="{{ tr("sp.tabs_aria") }}">
+  <a class="tab" href="/status-pages/{{ page.id }}/edit"{% if tab == "content" %} aria-current="page"{% endif %}>{{ tr("sp.tab_content") }}</a>
+  <a class="tab" href="/status-pages/{{ page.id }}/edit?tab=settings"{% if tab == "settings" %} aria-current="page"{% endif %}>{{ tr("nav.settings") }}</a>
+  <a class="tab" href="/status-pages/{{ page.id }}/incidents"{% if tab == "incidents" %} aria-current="page"{% endif %}>{{ tr("sp.incidents") }}</a>
+</nav>

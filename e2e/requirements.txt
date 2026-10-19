@@ -1,0 +1,5 @@
+playwright>=1.50
+pytest>=8
+pytest-playwright>=0.6
+pytest-timeout>=2.3
+pyotp>=2.9

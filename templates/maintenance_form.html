@@ -1,0 +1,172 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+{%- if window_id == 0 %}
+{% call m::page_header(tr("mw.schedule"), "", "/maintenance", tr("nav.maintenance")) %}{% endcall %}
+{%- else %}
+{% call m::page_header(tr("mw.edit"), "", "/maintenance", tr("nav.maintenance")) %}
+  <button type="button" class="btn btn-danger" hx-delete="/maintenance/{{ window_id }}" hx-swap="none" hx-confirm="{{ tr1("detail.delete_q", "name", form.title) }}"
+    data-confirm-message="{{ tr("mw.delete_msg") }}">{{ m::icon("trash") }}<span>{{ tr("common.delete") }}</span></button>
+{% endcall %}
+{%- endif %}
+
+{#- Lets Enter in the monitor search refresh the list instead of submitting the window. -#}
+<form id="mw-search-form" hx-get="/maintenance/monitor-picker" hx-target="#mw-monitors" hx-swap="outerHTML" hx-include="#mw-monitors" data-no-progress></form>
+
+<form class="form form-narrow" method="post" action="{% if window_id == 0 %}/maintenance/new{% else %}/maintenance/{{ window_id }}/edit{% endif %}" data-warn-unsaved>
+  <section class="form-section" aria-labelledby="sec-basics">
+    <h2 class="form-section-title" id="sec-basics">{{ tr("sp.basics") }}</h2>
+    <div class="card">
+      {{ m::field_text("title", tr("sp.title"), value=&form.title, placeholder=tr("mw.title_placeholder"), required=true, error=&form.title_error) }}
+      {%- if form.description_error.is_empty() %}
+      {{ m::field_textarea("description", tr("common.description"), &form.description, 3, tr("mw.description_placeholder"), tr("mw.description_help")) }}
+      {%- else %}
+      <div class="field is-invalid">
+        <label class="label" for="f-description">{{ tr("common.description") }}</label>
+        <textarea id="f-description" name="description" rows="3" placeholder="{{ tr("mw.description_placeholder") }}" aria-invalid="true" aria-describedby="f-description-error">{{ form.description }}</textarea>
+        <p class="field-error" id="f-description-error">{{ m::icon("alert-circle") }}{{ form.description_error }}</p>
+      </div>
+      {%- endif %}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-schedule">
+    <h2 class="form-section-title" id="sec-schedule">{{ tr("mw.schedule_section") }}</h2>
+    <div class="card">
+      <div class="field">
+        <span class="label" id="strategy-label">{{ tr("mw.repeats") }}</span>
+        <div class="segmented segmented-block" role="radiogroup" aria-labelledby="strategy-label">
+          <label><input type="radio" name="strategy" value="manual"{% if form.strategy == "manual" %} checked{% endif %}><span>{{ tr("mw.manual") }}</span></label>
+          <label><input type="radio" name="strategy" value="once"{% if form.strategy == "once" %} checked{% endif %}><span>{{ tr("mw.once") }}</span></label>
+          <label><input type="radio" name="strategy" value="daily"{% if form.strategy == "daily" %} checked{% endif %}><span>{{ tr("mw.daily") }}</span></label>
+          <label><input type="radio" name="strategy" value="weekly"{% if form.strategy == "weekly" %} checked{% endif %}><span>{{ tr("mw.weekly") }}</span></label>
+        </div>
+      </div>
+
+      <div data-show-when="strategy=manual">
+        <label class="switch-row" for="f-active-manual">
+          <span class="switch-row-text">
+            <span class="switch-row-label">{{ tr("mw.in_effect") }}</span>
+            <span class="help">{{ tr("mw.in_effect_help") }}</span>
+          </span>
+          <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-active-manual" name="active" value="true"{% if form.active %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
+        </label>
+      </div>
+
+      <div class="field-row" data-show-when="strategy=once">
+        <div class="field">
+          <label class="label" for="f-start_at">{{ tr("mw.starts") }}</label>
+          <input id="f-start_at" name="start_at" type="datetime-local" value="{{ form.start_at }}">
+        </div>
+        <div class="field">
+          <label class="label" for="f-end_at">{{ tr("mw.ends") }}</label>
+          <input id="f-end_at" name="end_at" type="datetime-local" value="{{ form.end_at }}">
+        </div>
+      </div>
+
+      <div class="field" data-show-when="strategy=weekly">
+        <span class="label" id="weekday-label">{{ tr("mw.on_days") }}</span>
+        <div class="chips" role="group" aria-labelledby="weekday-label">
+          {%- for d in weekdays %}
+          <label class="chip"><input type="checkbox" name="weekday" value="{{ d.value }}"{% if d.checked %} checked{% endif %}><span>{{ d.label }}</span></label>
+          {%- endfor %}
+        </div>
+      </div>
+
+      <div class="field-row" data-show-when="strategy=daily,weekly">
+        <div class="field">
+          <label class="label" for="f-time_from">{{ tr("mw.from") }}</label>
+          <input id="f-time_from" name="time_from" type="time" value="{{ form.time_from }}">
+        </div>
+        <div class="field">
+          <label class="label" for="f-time_to">{{ tr("mw.until") }}</label>
+          <input id="f-time_to" name="time_to" type="time" value="{{ form.time_to }}" aria-describedby="f-time-help">
+          <p class="help" id="f-time-help">{{ tr("mw.time_help") }}</p>
+        </div>
+      </div>
+
+      {%- if !form.schedule_error.is_empty() %}
+      <p class="field-error" role="alert">{{ m::icon("alert-circle") }}{{ form.schedule_error }}</p>
+      {%- endif %}
+
+      <div class="field{% if !form.timezone_error.is_empty() %} is-invalid{% endif %}" data-show-when="strategy!=manual">
+        <label class="label" for="f-timezone">{{ tr("mw.timezone") }}</label>
+        <select id="f-timezone" name="timezone"{% if !form.timezone_error.is_empty() %} aria-invalid="true" aria-describedby="f-timezone-error"{% endif %}>
+          {%- for tz in timezones %}
+          <option{% if tz.as_str() == form.timezone.as_str() %} selected{% endif %}>{{ tz }}</option>
+          {%- endfor %}
+        </select>
+        {%- if !form.timezone_error.is_empty() %}
+        <p class="field-error" id="f-timezone-error">{{ m::icon("alert-circle") }}{{ form.timezone_error }}</p>
+        {%- endif %}
+      </div>
+
+      <details class="disclosure" data-show-when="strategy=daily,weekly"{% if !form.valid_from.is_empty() || !form.valid_until.is_empty() %} open{% endif %}>
+        <summary>{{ tr("mw.date_range") }} <span class="disclosure-sub">{{ tr("mw.date_range_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+        <div class="disclosure-body">
+          <div class="field-row">
+            <div class="field">
+              <label class="label" for="f-valid_from">{{ tr("mw.first_day") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+              <input id="f-valid_from" name="valid_from" type="date" value="{{ form.valid_from }}">
+            </div>
+            <div class="field">
+              <label class="label" for="f-valid_until">{{ tr("mw.last_day") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+              <input id="f-valid_until" name="valid_until" type="date" value="{{ form.valid_until }}">
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div data-show-when="strategy!=manual">
+        <label class="switch-row" for="f-active-scheduled">
+          <span class="switch-row-text">
+            <span class="switch-row-label">{{ tr("mw.enabled") }}</span>
+            <span class="help">{{ tr("mw.enabled_help") }}</span>
+          </span>
+          <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-active-scheduled" name="active" value="true"{% if form.active %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-monitors">
+    <h2 class="form-section-title" id="sec-monitors">{{ tr("mw.affected") }}</h2>
+    <p class="form-section-sub">{{ tr("mw.affected_sub") }}</p>
+    <div class="card card-flush">
+      <div class="card-body">
+        <label class="search">
+          {{ m::icon("search") }}
+          <input type="search" name="q" form="mw-search-form" placeholder="{{ tr("dashboard.search_placeholder") }}" aria-label="{{ tr("sp.search_monitors") }}" autocomplete="off"
+            hx-get="/maintenance/monitor-picker" hx-trigger="input changed delay:200ms, search" hx-target="#mw-monitors" hx-swap="outerHTML" hx-include="#mw-monitors" data-no-progress>
+        </label>
+      </div>
+      {% include "partials/status_picker_list.html" %}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-pages">
+    <h2 class="form-section-title" id="sec-pages">{{ tr("nav.status_pages") }}</h2>
+    <p class="form-section-sub">{{ tr("mw.pages_sub") }}</p>
+    {%- if pages.is_empty() %}
+    <div class="card">{{ m::empty_state("globe", tr("mw.no_pages"), tr("mw.no_pages_text")) }}</div>
+    {%- else %}
+    <ul class="list" role="list">
+      {%- for p in pages %}
+      <li>
+        <label class="list-row">
+          <input type="checkbox" name="status_page_id" value="{{ p.id }}"{% if p.checked %} checked{% endif %}>
+          <span class="list-main"><span class="list-title">{{ p.title }}</span></span>
+        </label>
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </section>
+
+  <div class="form-actions">
+    {{ m::link_button("/maintenance", tr("common.cancel"), "secondary") }}
+    {{ m::button(tr("mw.save")) }}
+  </div>
+</form>
+{% endblock %}

@@ -1,23 +1,45 @@
-{% extends "layout.html" %}
+{% extends "auth_layout.html" %}
+{% import "macros.html" as m %}
 
-{% block title %}Setup - Vigilant Vole{% endblock %}
+{% block subtitle %}<p class="auth-sub">{{ tr("setup.subtitle") }}</p>{% endblock %}
 
 {% block content %}
-<div class="auth-page">
-    <div class="card">
-        <h2>Create the admin account</h2>
-        {% if let Some(err) = error %}
-        <p class="error">{{ err }}</p>
-        {% endif %}
-        <form method="post" action="/setup">
-            <label>Username
-                <input type="text" name="username" required autofocus>
-            </label>
-            <label>Password (min. 8 characters)
-                <input type="password" name="password" required minlength="8">
-            </label>
-            <button type="submit" class="btn btn-primary">Create account</button>
-        </form>
-    </div>
-</div>
+{%- if !locked %}
+<form class="form" method="post" action="/setup" novalidate>
+  {%- if !token.is_empty() %}
+  <input type="hidden" name="token" value="{{ token }}">
+  {%- endif %}
+  {{ m::field_text("username", tr("setup.username"), value=&self.username, required=true, autocomplete="username", error=&self.username_error) }}
+
+  <div class="field{% if !password_error.is_empty() %} is-invalid{% endif %}">
+    <label class="label" for="f-password">{{ tr("setup.password") }}</label>
+    <input id="f-password" name="password" type="password" required minlength="10" maxlength="1024" autocomplete="new-password"
+      data-password-strength aria-describedby="f-password-help{% if !password_error.is_empty() %} f-password-error{% endif %}"
+      {%- if !password_error.is_empty() %} aria-invalid="true"{% endif %}>
+    <div class="meter" data-strength-meter aria-hidden="true"></div>
+    <p class="help" id="f-password-help" data-strength-label aria-live="polite">{{ tr("setup.password_help") }}</p>
+    {%- if !password_error.is_empty() %}
+    <p class="field-error" id="f-password-error">{{ m::icon("alert-circle") }}{{ password_error }}</p>
+    {%- endif %}
+  </div>
+
+  <div class="field{% if !confirm_error.is_empty() %} is-invalid{% endif %}">
+    <label class="label" for="f-confirm">{{ tr("setup.confirm") }}</label>
+    <input id="f-confirm" name="confirm" type="password" required minlength="10" maxlength="1024" autocomplete="new-password"
+      {%- if !confirm_error.is_empty() %} aria-invalid="true" aria-describedby="f-confirm-error"{% endif %}>
+    {%- if !confirm_error.is_empty() %}
+    <p class="field-error" id="f-confirm-error">{{ m::icon("alert-circle") }}{{ confirm_error }}</p>
+    {%- endif %}
+  </div>
+
+  {{ m::field_text("site_name", tr("setup.site_name"), value=&self.site_name, placeholder=tr("setup.site_name_placeholder"), help=tr("setup.site_name_help"), error=&self.site_name_error) }}
+
+  <input type="hidden" name="timezone" value="{{ timezone }}" data-detect-timezone>
+  <p class="help">{{ tr("setup.tz_before") }} <strong data-timezone-label>{{ timezone }}</strong>{{ tr("setup.tz_after") }}</p>
+
+  <button type="submit" class="btn btn-primary btn-lg btn-block">{{ tr("setup.submit") }}</button>
+</form>
+{%- endif %}
 {% endblock %}
+
+

@@ -1,0 +1,16 @@
+{#- Content of #dash-results: rendered inside dashboard.html and on its own for
+    htmx filter requests. Only `data` is in scope. The SSE connection carries the
+    same query string, so live updates keep the current filters. -#}
+{%- for id in data.query.collapsed %}
+<input type="hidden" name="collapsed" value="{{ id }}">
+{%- endfor %}
+{%- if data.select_mode %}
+<input type="hidden" name="select" value="1">
+<div class="stack">
+  {% include "monitor_list.html" %}
+</div>
+{%- else %}
+<div class="stack" hx-ext="sse" sse-connect="/events{% if !data.qs.is_empty() %}?{{ data.qs }}{% endif %}" sse-swap="monitors-updated" hx-swap="innerHTML">
+  {% include "monitor_list.html" %}
+</div>
+{%- endif %}

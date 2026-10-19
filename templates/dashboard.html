@@ -1,14 +1,109 @@
 {% extends "layout.html" %}
-
-{% block title %}Dashboard - Vigilant Vole{% endblock %}
+{% import "macros.html" as m %}
 
 {% block content %}
-<div class="section-header">
-    <h2>Monitors</h2>
-    <a href="/monitors/new" class="btn btn-primary">+ Add monitor</a>
-</div>
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">{{ tr("dashboard.title") }}</h1>
+      {%- if data.select_mode %}
+      <p class="page-sub">{{ tr("dashboard.select_sub") }}</p>
+      {%- else if data.total_all > 0 %}
+      <p class="page-sub">{{ m::live() }}</p>
+      {%- endif %}
+    </div>
+    <div class="page-actions">
+      {%- if data.select_mode %}
+      <a class="btn btn-secondary" href="{{ data.exit_select_href() }}">{{ tr("common.done") }}</a>
+      {%- else %}
+      {{ m::link_button("/tags", tr("dashboard.tags"), "secondary", "tag") }}
+      {%- if ctx.can_edit() && data.total_all > 0 %}
+      <a class="btn btn-secondary" href="/?{{ data.qs }}{% if !data.qs.is_empty() %}&amp;{% endif %}select=1">{{ m::icon("check-circle") }}<span>{{ tr("dashboard.select") }}</span></a>
+      {%- endif %}
+      {%- if ctx.can_edit() %}
+      {{ m::link_button("/monitors/new", tr("dashboard.new_monitor"), "primary", "plus") }}
+      {%- endif %}
+      {%- endif %}
+    </div>
+  </div>
+</header>
 
-<div id="monitor-list-target" hx-ext="sse" sse-connect="/events" sse-swap="monitors-updated" hx-swap="innerHTML">
-    {% include "monitor_list.html" %}
+{%- if data.total_all > 0 %}
+<form id="dash-filters" class="stack-sm" method="get" action="/" role="search" aria-label="{{ tr("dashboard.filter_aria") }}"
+  hx-get="/" hx-target="#dash-results" hx-swap="innerHTML" hx-push-url="true" hx-trigger="change, submit"
+  hx-include="#dash-results [name=collapsed], #dash-results [name=select]" data-no-progress>
+  <label class="search">{{ m::icon("search") }}<input id="dash-q" type="search" name="q" value="{{ data.query.q }}"
+    placeholder="{{ tr("dashboard.search_placeholder") }}" aria-label="{{ tr("dashboard.search_aria") }}" autocomplete="off" spellcheck="false"
+    hx-get="/" hx-trigger="input changed delay:250ms, search" hx-target="#dash-results" hx-swap="innerHTML"
+    hx-include="#dash-filters, #dash-results [name=collapsed], #dash-results [name=select]" hx-push-url="true"></label>
+  <div class="popover" id="dash-filter-menu" popover>
+    <div class="stack-sm">
+      {%- if filters.types.len() > 1 %}
+      <div class="field">
+        <label class="label" for="dash-type">{{ tr("dashboard.type") }}</label>
+        <select id="dash-type" name="type">
+          <option value="">{{ tr("dashboard.all_types") }}</option>
+          {%- for (value, label) in filters.types %}
+          <option value="{{ value }}"{% if data.query.kind == **value %} selected{% endif %}>{{ label }}</option>
+          {%- endfor %}
+        </select>
+      </div>
+      {%- endif %}
+      {%- if !filters.tags.is_empty() %}
+      <div class="field">
+        <label class="label" for="dash-tag">{{ tr("dashboard.tag") }}</label>
+        <select id="dash-tag" name="tag">
+          <option value="">{{ tr("dashboard.all_tags") }}</option>
+          {%- for t in filters.tags %}
+          <option value="{{ t.id }}"{% if data.tag_selected(t.id) %} selected{% endif %}>{{ t.name }}</option>
+          {%- endfor %}
+        </select>
+      </div>
+      {%- endif %}
+      <div class="field">
+        <label class="label" for="dash-sort">{{ tr("dashboard.sort_by") }}</label>
+        <select id="dash-sort" name="sort">
+          {%- for s in sorts %}
+          <option value="{{ s.as_str() }}"{% if data.query.sort == *s %} selected{% endif %}>{{ s.label() }}</option>
+          {%- endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="chips chips-scroll">
+    <button type="button" class="chip" popovertarget="dash-filter-menu">
+      {{- m::icon("sliders", "icon-sm") }}{{ tr("dashboard.filter_and_sort") }}
+      {%- if data.extra_filter_count() > 0 %}<span class="badge">{{ data.extra_filter_count() }}</span>{% endif -%}
+    </button>
+    <span class="vh" id="status-filter-label">{{ tr("dashboard.status") }}</span>
+    {%- for (value, label) in statuses %}
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="{{ value }}"{% if data.query.status == **value %} checked{% endif %}>
+      {%- if !value.is_empty() %}<span class="dot status-{{ value }}" aria-hidden="true"></span>{{ status_text(value) }}{% else %}{{ tr("common.all") }}{% endif %}</label>
+    {%- endfor %}
+  </div>
+  <noscript><div class="cluster">{{ m::button(tr("dashboard.apply_filters"), "secondary", "filter", "submit", "sm") }}</div></noscript>
+</form>
+{%- endif %}
+
+{%- if data.select_mode %}
+<form id="bulk-form" method="post" action="/monitors/bulk">
+  <input type="hidden" name="return_to" value="{{ data.exit_select_href() }}">
+  <div class="card">
+    <div class="cluster cluster-between">
+      <p class="muted">{{ tr("dashboard.tick_hint") }}</p>
+      <div class="toolbar">
+        <button type="submit" name="action" value="pause" class="btn btn-secondary btn-sm">{{ m::icon("pause") }}<span>{{ tr("dashboard.pause") }}</span></button>
+        <button type="submit" name="action" value="resume" class="btn btn-secondary btn-sm">{{ m::icon("play") }}<span>{{ tr("dashboard.resume") }}</span></button>
+        <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm"
+          data-confirm="{{ tr("dashboard.bulk_delete_q") }}" data-confirm-message="{{ tr("dashboard.bulk_delete_msg") }}"
+          data-confirm-label="{{ tr("common.delete") }}">{{ m::icon("trash") }}<span>{{ tr("common.delete") }}</span></button>
+      </div>
+    </div>
+  </div>
+</form>
+{%- endif %}
+
+<div id="dash-results" class="stack">
+  {% include "partials/monitor_results.html" %}
 </div>
 {% endblock %}
