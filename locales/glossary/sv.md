@@ -68,6 +68,8 @@
 | appearance | utseende | |
 | recent | senaste | |
 | rotate token | byt token | |
+| broker (MQTT, Kafka) | broker | inte "mäklare" |
+| token | token (en) | bestämd form "tokenen"; plural oförändrat "token" |
 
 ## Stil
 - Tilltal: informellt "du", naturliga imperativ ("Ange ett namn"). Aldrig "ni".

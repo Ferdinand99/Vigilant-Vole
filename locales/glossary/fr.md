@@ -5,7 +5,9 @@
 - Guillemets « texte » avec espace fine insécable (U+202F) à l’intérieur ; espace fine insécable (U+202F) avant ; ! ? et espace insécable (U+00A0) avant :. Apostrophe typographique ’.
 - Casse de phrase : majuscule initiale seulement (pas de majuscules de titre).
 - Pluriels : `.one` (0 et 1), `.many` (multiples exacts de 1 000 000 : « {n} de moniteurs »), `.other`.
-- Abréviations : s, min, h, j.
+- Abréviations : s, min, h, j (avec espace insécable U+00A0 devant l’unité). Chiffres groupés par U+202F à partir de 4 chiffres (« 3 650 »), sauf ports, identifiants et numéros.
+- « (vous) » évité : `users.you` = « (moi) ».
+- Les nombres d’éléments sans pronom : « Prévenir à l’avance » etc.
 
 ## Termes
 
@@ -42,7 +44,7 @@
 | editor | Éditeur | |
 | admin | Admin | |
 | certificate | certificat | |
-| expiry | expiration | |
+| expiry | expiration | « Certificat expirant » pour *expiring* |
 | retention | conservation | |
 | paused | en pause | |
 | up | en ligne | comme Kuma |

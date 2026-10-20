@@ -72,7 +72,8 @@ Español neutro internacional. Kuma no se pudo consultar (sin acceso al archivo)
 ## Estilo
 - Tratamiento: tuteo informal mediante imperativos («Introduce…», «Elige…») o frases impersonales; nunca «usted», «vosotros» ni «vos».
 - Comillas: « » (y “ ” dentro); signos ¿? y ¡! de apertura donde corresponda.
-- Mayúscula solo inicial (frase); los meses y días en minúscula.
+- Mayúscula solo inicial (frase); los meses y días en minúscula; septiembre abreviado «sep».
+- Evitar el masculino genérico con «a ti mismo»: usar «tu propia cuenta».
 - Nombres de producto y términos técnicos sin traducir (HTTP, TLS, DNS, SMTP, OAuth2, Docker, Prometheus…).
 - Plurales: `.one`, `.many` (múltiplos exactos de 1.000.000, «de monitores») y `.other`.
 - Textos de botones y pestañas cortos; sin signos de exclamación salvo en el original.

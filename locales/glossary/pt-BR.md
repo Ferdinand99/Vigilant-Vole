@@ -77,6 +77,8 @@ Aspas: “…” (e ‘…’ dentro). Maiúscula só no início da frase (sente
 | slug | slug | |
 | owner | proprietário | |
 | read only / read and write | somente leitura / leitura e gravação | |
+| check-in (push) | enviar sinal | não "se apresentar" |
+| powered by | Com tecnologia | |
 
 ## Estilo
 - Plurais: `.one` para 0 e 1 ("{n} monitor"), `.many` para múltiplos exatos de 1.000.000 ("{n} de monitores"), `.other` nos demais ("{n} monitores").

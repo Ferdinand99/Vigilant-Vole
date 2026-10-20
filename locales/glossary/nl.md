@@ -26,7 +26,7 @@ Informeel “je/jouw”, korte gebiedende wijs. Termen komen als woordenlijst de
 | tag | tag | Kuma: Labels; verschil bewust (label = Docker-label) |
 | badge | badge | |
 | API token | API-token | |
-| two-factor authentication | tweestapsverificatie | |
+| two-factor authentication | tweestapsverificatie | in knoppen/menu’s “2FA” (instellen/resetten) |
 | recovery code | herstelcode | |
 | backup | back-up | |
 | restore | herstellen | |

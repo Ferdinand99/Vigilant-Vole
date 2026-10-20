@@ -91,3 +91,4 @@ Termini fissati per la traduzione di Vigilant Vole. Il lessico di Uptime Kuma (i
 - Plurali: categorie `one` (esattamente 1), `many` (multipli esatti di 1.000.000, con «di»: «{n} di monitor») e `other` (tutti gli altri, anche 0).
 - Termini tecnici e nomi di prodotto invariati (HTTP, TLS, SMTP, OAuth2, JSONPath, DNS, Docker, Prometheus, ...).
 - Durate: «s», «min», «h», «g».
+- Revisione: «Region» = «Regione»; colonna agenti «Reporting» = «Monitor» (conteggio dei monitor che riportano); «API docs» = «Riferimento API», come il titolo della pagina.

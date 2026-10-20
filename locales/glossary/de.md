@@ -24,9 +24,9 @@ Anrede: informelles „du“ (Imperative wie „Gib einen Namen ein“), nie „
 | push monitor | Push-Monitor | |
 | remote agent | Remote-Agent | |
 | group | Gruppe | |
-| tag | Tag | wie Kuma |
+| tag | Tag | wie Kuma; sächlich: das Tag |
 | badge | Badge | |
-| API token | API-Token | |
+| API token | API-Token | sächlich: das Token (Duden), also „Neues Token“, „es“ |
 | two-factor authentication | Zwei-Faktor-Authentifizierung | kurz: Zwei-Faktor |
 | authenticator app | Authenticator-App | |
 | recovery code | Wiederherstellungscode | |
@@ -79,4 +79,5 @@ Anrede: informelles „du“ (Imperative wie „Gib einen Namen ein“), nie „
 - Großschreibung nach deutscher Norm (Substantive groß, Labels im Satzstil).
 - Schreibweise: „E-Mail“, „Passwort“, „Benutzername“, „Zeitzone“, „Zwei-Faktor“.
 - Lange Komposita auf Buttons, Tabs und Pills werden gekürzt.
+- Genus: „das Token“, „das Tag“ durchgehend sächlich.
 - Plural: `.one` (genau 1) und `.other` (alles andere, auch 0).
