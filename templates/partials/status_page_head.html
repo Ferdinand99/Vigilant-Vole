@@ -8,7 +8,7 @@
         {%- if !page.published %}<span class="pill status-paused pill-lg">{{ tr("sp.draft") }}</span>{% endif %}
         {%- if page.is_protected() %}<span class="pill status-info pill-lg">{{ tr("spx.protected_pill") }}</span>{% endif %}
       </div>
-      <p class="page-sub"><span class="break">/status/{{ page.slug }}</span>{% match page.custom_domain %}{% when Some(d) %} · <span class="break">{{ d }}</span>{% when None %}{% endmatch %}</p>
+      <p class="page-sub"><bdi class="break">/status/{{ page.slug }}</bdi>{% match page.custom_domain %}{% when Some(d) %} · <bdi class="break">{{ d }}</bdi>{% when None %}{% endmatch %}</p>
     </div>
     <div class="page-actions">
       <a class="btn btn-secondary" href="/status/{{ page.slug }}" target="_blank" rel="noopener">{{ m::icon("external") }}<span>{% if page.published %}{{ tr("sp.view_page") }}{% else %}{{ tr("sp.preview") }}{% endif %}</span></a>

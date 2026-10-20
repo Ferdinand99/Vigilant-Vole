@@ -159,6 +159,12 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
 
+  /* Writing direction: --dir flips translateX(); --x-start/--x-end stand in for
+     left/right where CSS has no logical keyword (flipped under [dir="rtl"]). */
+  --dir: 1;
+  --x-start: left;
+  --x-end: right;
+
   /* Motion */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -175,6 +181,11 @@
   --z-toast: 100;
   --z-tooltip: 110;
   --z-skip: 120;
+}
+[dir="rtl"] {
+  --dir: -1;
+  --x-start: right;
+  --x-end: left;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -236,6 +247,44 @@ html {
     scroll-behavior: smooth;
   }
 }
+/* CJK typography (ja, ko, zh-CN, zh-TW). Inter has no CJK glyphs, so Latin stays in Inter and CJK
+   falls back to the platform's regional font; the lang attribute on <html> picks the glyph variant. */
+:root:lang(ja) {
+  --font: "InterVariable", "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", "IPAexGothic", "IPAPGothic", system-ui, sans-serif;
+}
+:root:lang(ko) {
+  --font: "InterVariable", "Inter", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic", system-ui, sans-serif;
+}
+:root:lang(zh-CN) {
+  --font: "InterVariable", "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", system-ui, sans-serif;
+}
+:root:lang(zh-TW) {
+  --font: "InterVariable", "Inter", "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", "Noto Sans TC", "WenQuanYi Zen Hei", system-ui, sans-serif;
+}
+/* Tracking tuned for Latin looks cramped on ideographs: reset it everywhere, including descendants. */
+:is(:lang(ja), :lang(ko), :lang(zh)),
+:is(:lang(ja), :lang(ko), :lang(zh)) * {
+  letter-spacing: 0 !important;
+}
+/* Han/kana/hangul need more leading than Latin; the Latin-tuned headline heights are too tight. */
+:is(:lang(ja), :lang(ko), :lang(zh)) h1,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-large-title { line-height: 1.3; }
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-title1 { line-height: 1.35; }
+:is(:lang(ja), :lang(ko), :lang(zh)) h2,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-title2 { line-height: 1.4; }
+:is(:lang(ja), :lang(ko), :lang(zh)) h3,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-title3 { line-height: 1.45; }
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-callout,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-footnote,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-caption { line-height: 1.55; }
+/* Japanese and Chinese break between any two characters; use the strict kinsoku rules. */
+:is(:lang(ja), :lang(zh)) body { line-break: strict; }
+/* Japanese: break at phrase boundaries (Chromium 119+), so "継続中" is not split. Ignored elsewhere. */
+:lang(ja) body { word-break: auto-phrase; }
+/* Korean separates words with spaces: break there, not inside a word (overflow-wrap is the safety net). */
+:lang(ko) body { word-break: keep-all; overflow-wrap: anywhere; }
+/* CJK has no italic; keep the upright glyphs instead of a synthesised slant. */
+:is(:lang(ja), :lang(ko), :lang(zh)) :is(em, i, cite, address, dfn) { font-style: normal; }
 body {
   margin: 0;
   min-height: 100dvh;
@@ -449,7 +498,7 @@ h4,
   white-space: nowrap;
 }
 .ta-right {
-  text-align: right;
+  text-align: end;
 }
 .ta-center {
   text-align: center;
@@ -477,7 +526,7 @@ h4,
 
 .skip {
   position: fixed;
-  left: 16px;
+  inset-inline-start: 16px;
   top: -100px;
   z-index: var(--z-skip);
   padding: 10px 16px;
@@ -496,8 +545,8 @@ h4,
   width: 100%;
   max-width: calc(var(--wrap) + 2 * var(--gutter));
   margin-inline: auto;
-  padding-left: max(var(--gutter), var(--safe-left));
-  padding-right: max(var(--gutter), var(--safe-right));
+  padding-left: max(var(--gutter), var(--safe-left)); /* rtl-ok: safe-area insets are physical */
+  padding-right: max(var(--gutter), var(--safe-right)); /* rtl-ok: safe-area insets are physical */
 }
 .container-narrow {
   max-width: calc(var(--wrap-narrow) + 2 * var(--gutter));
@@ -589,14 +638,14 @@ h4,
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .user-button {
   display: inline-grid;
   place-items: center;
   width: 44px;
   height: 44px;
-  margin-right: -6px;
+  margin-inline-end: -6px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -654,8 +703,9 @@ h4,
   gap: 2px;
   align-self: flex-start;
   min-height: 32px;
-  margin-left: -8px;
-  padding: 0 10px 0 2px;
+  margin-inline-start: -8px;
+  padding-block: 0;
+  padding-inline: 2px 10px;
   border-radius: var(--r-sm);
   color: var(--brand);
   font-size: 0.9375rem;
@@ -829,8 +879,9 @@ html:has(> .error-page) {
   display: grid;
   place-items: center;
   min-height: 100dvh;
-  padding: calc(var(--safe-top) + var(--sp-8)) max(16px, var(--safe-right)) calc(var(--safe-bottom) + var(--sp-8))
-    max(16px, var(--safe-left));
+  padding-block: calc(var(--safe-top) + var(--sp-8)) calc(var(--safe-bottom) + var(--sp-8));
+  padding-left: max(16px, var(--safe-left)); /* rtl-ok: safe-area insets are physical */
+  padding-right: max(16px, var(--safe-right)); /* rtl-ok: safe-area insets are physical */
 }
 .auth-card {
   display: flex;
@@ -1162,12 +1213,12 @@ form.htmx-request button[type="submit"]::after {
   content: "";
   position: absolute;
   top: 50%;
-  left: 50%;
+  left: 50%; /* rtl-ok: centred on the box, symmetric in both directions */
   width: 16px;
   height: 16px;
-  margin: -8px 0 0 -8px;
+  margin: -8px 0 0 -8px; /* rtl-ok: spinner centring offsets pair with left: 50% */
   border: 2px solid var(--btn-fg, currentColor);
-  border-right-color: transparent;
+  border-right-color: transparent; /* rtl-ok: the spinner's gap just rotates; direction-neutral */
   border-radius: 50%;
   animation: vv-spin 700ms linear infinite;
 }
@@ -1211,13 +1262,19 @@ form.htmx-request button[type="submit"]::after {
   border-radius: 0;
 }
 .btn-group > .btn:first-child {
-  border-radius: var(--r-full) 0 0 var(--r-full);
+  border-start-start-radius: var(--r-full);
+  border-end-start-radius: var(--r-full);
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
 }
 .btn-group > .btn:last-child {
-  border-radius: 0 var(--r-full) var(--r-full) 0;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  border-start-end-radius: var(--r-full);
+  border-end-end-radius: var(--r-full);
 }
 .btn-group > .btn + .btn {
-  box-shadow: inset 1px 0 0 var(--line-strong);
+  box-shadow: inset calc(1px * var(--dir)) 0 0 var(--line-strong);
 }
 
 /* 9. Cards, inset lists, definition lists -------------------------------- */
@@ -1312,8 +1369,7 @@ form.htmx-request button[type="submit"]::after {
   content: "";
   position: absolute;
   top: 0;
-  left: var(--sep-inset);
-  right: 0;
+  inset-inline: var(--sep-inset) 0;
   height: 1px;
   background: var(--line);
 }
@@ -1408,7 +1464,7 @@ a.list-row:focus-visible {
   flex: none;
   align-items: center;
   gap: var(--sp-2);
-  margin-left: auto;
+  margin-inline-start: auto;
   color: var(--muted);
   font-size: 0.9375rem;
 }
@@ -1425,7 +1481,7 @@ a.list-row:focus-visible {
   align-items: flex-end;
   min-width: 4.75rem;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: end;
 }
 .list-value strong {
   font-weight: 500;
@@ -1443,7 +1499,7 @@ a.list-row:focus-visible {
   gap: 2px;
 }
 .list-actions > .switch {
-  margin-right: var(--sp-1);
+  margin-inline-end: var(--sp-1);
 }
 .list-beats {
   flex: 0 1 15rem;
@@ -1460,7 +1516,7 @@ a.list-row:focus-visible {
 }
 .list-row-wrap > .segmented {
   flex: none;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .list-row > .check {
   min-height: 0;
@@ -1532,7 +1588,7 @@ a.list-row:focus-visible {
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
-  text-align: right;
+  text-align: end;
 }
 /* Values that are sentences: on phones the value goes under its label */
 @media (max-width: 560px) {
@@ -1541,7 +1597,7 @@ a.list-row:focus-visible {
     align-items: flex-start;
   }
   .dl-stack dd {
-    text-align: left;
+    text-align: start;
   }
 }
 
@@ -1574,7 +1630,8 @@ a.list-row:focus-visible {
   align-items: center;
   gap: 6px;
   height: 24px;
-  padding: 0 10px 0 9px;
+  padding-block: 0;
+  padding-inline: 9px 10px;
   border-radius: var(--r-full);
   background: var(--status-fill, var(--fill));
   color: var(--status-text, var(--muted));
@@ -1590,7 +1647,8 @@ a.list-row:focus-visible {
 }
 .pill-lg {
   height: 28px;
-  padding: 0 12px 0 10px;
+  padding-block: 0;
+  padding-inline: 10px 12px;
   font-size: 0.8125rem;
 }
 .badge {
@@ -1661,7 +1719,7 @@ a.list-row:focus-visible {
   line-height: 1.1;
 }
 .stat-value small {
-  margin-left: 2px;
+  margin-inline-start: 2px;
   color: var(--muted);
   font-size: 0.9375rem;
   font-weight: 500;
@@ -1695,6 +1753,7 @@ a.stat:active {
 
 /* Heartbeat bar: newest on the right. Narrow screens clip the oldest. */
 .beats {
+  direction: ltr; /* newest beat on the right in every language */
   display: flex;
   justify-content: flex-end;
   align-items: stretch;
@@ -1727,6 +1786,7 @@ a.stat:active {
   min-width: 0;
 }
 .uptime-days {
+  direction: ltr; /* oldest day on the left in every language */
   display: flex;
   justify-content: flex-end;
   gap: 2px;
@@ -1839,7 +1899,7 @@ a.stat:active {
 }
 .incident-body {
   margin-top: var(--sp-2);
-  padding-left: 34px;
+  padding-inline-start: 34px;
   overflow-wrap: anywhere;
   text-wrap: pretty;
 }
@@ -1848,7 +1908,7 @@ a.stat:active {
   flex-wrap: wrap;
   gap: var(--sp-2);
   margin-top: var(--sp-3);
-  padding-left: 34px;
+  padding-inline-start: 34px;
 }
 
 /* Callout — inline notice inside a page or form */
@@ -1899,7 +1959,7 @@ a.stat:active {
   position: absolute;
   top: 22px;
   bottom: 2px;
-  left: 9.5px;
+  inset-inline-start: 9.5px;
   width: 1px;
   background: var(--line-strong);
 }
@@ -1980,6 +2040,7 @@ a.stat:active {
 
 /* 11. Charts ---------------------------------------------------------------- */
 .chart {
+  direction: ltr; /* time axis runs left to right in every language */
   position: relative;
   height: 11rem;
   min-width: 0;
@@ -2012,7 +2073,8 @@ a.stat:active {
 }
 .chart-scale {
   position: absolute;
-  inset: 0 0 0 auto;
+  inset-block: 0;
+  inset-inline: auto 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -2028,7 +2090,8 @@ a.stat:active {
   letter-spacing: 0.005em;
 }
 .chart-scale span {
-  padding: 0 0 0 6px;
+  padding-block: 0;
+  padding-inline: 6px 0;
   background: var(--card);
   line-height: 1;
 }
@@ -2077,7 +2140,7 @@ a.stat:active {
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 600;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
 }
 .table td {
@@ -2090,12 +2153,12 @@ a.stat:active {
 }
 .table .num,
 .table .ta-right {
-  text-align: right;
+  text-align: end;
 }
 .table .td-actions {
   width: 1%;
   white-space: nowrap;
-  text-align: right;
+  text-align: end;
 }
 .td-primary {
   font-weight: 500;
@@ -2135,7 +2198,7 @@ a.stat:active {
     gap: var(--sp-4);
     padding: 3px 0;
     border: 0;
-    text-align: right;
+    text-align: end;
     overflow-wrap: anywhere;
   }
   .table-stack td::before {
@@ -2143,7 +2206,7 @@ a.stat:active {
     flex: none;
     color: var(--muted);
     font-size: 0.8125rem;
-    text-align: left;
+    text-align: start;
   }
   .table-stack td:not([data-label])::before,
   .table-stack td[data-label=""]::before {
@@ -2152,13 +2215,13 @@ a.stat:active {
   .table-stack td.td-primary {
     padding-bottom: 6px;
     font-size: 0.9375rem;
-    text-align: left;
+    text-align: start;
   }
   /* Sentence values: label above, text left-aligned */
   .table-stack td.td-block {
     flex-direction: column;
     gap: 2px;
-    text-align: left;
+    text-align: start;
   }
   .table-stack .td-actions {
     width: auto;
@@ -2227,7 +2290,7 @@ a.stat:active {
   letter-spacing: -0.006em;
 }
 .label-optional {
-  margin-left: 4px;
+  margin-inline-start: 4px;
   color: var(--muted);
   font-weight: 400;
 }
@@ -2306,15 +2369,15 @@ textarea {
 }
 select,
 .select {
-  padding-right: 40px;
+  padding-inline-end: 40px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 9.5L12 5.5l4 4M8 14.5l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 12px center;
+  background-position: var(--x-end) 12px center;
   background-size: 18px;
   cursor: pointer;
 }
 select[multiple] {
-  padding-right: 14px;
+  padding-inline-end: 14px;
   background-image: none;
 }
 textarea,
@@ -2393,22 +2456,23 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .input-addon {
   flex: none;
-  padding-right: 14px;
+  padding-inline-end: 14px;
   color: var(--muted);
   font-size: 0.9375rem;
   white-space: nowrap;
 }
 .input-addon:first-child {
-  padding: 0 0 0 14px;
+  padding-block: 0;
+  padding-inline: 14px 0;
 }
 .input-group > .input-addon:first-child + input {
-  padding-left: 6px;
+  padding-inline-start: 6px;
 }
 .input-group > input + .input-addon {
-  margin-left: -4px;
+  margin-inline-start: -4px;
 }
 .input-group > .btn {
-  margin-right: 4px;
+  margin-inline-end: 4px;
 }
 
 /* Password strength meter: <div class="meter" data-strength-meter> under a
@@ -2433,7 +2497,7 @@ input[type="number"]::-webkit-outer-spin-button {
   inset: 0;
   background: var(--bad);
   transform: scaleX(calc(var(--value) / 4));
-  transform-origin: left;
+  transform-origin: var(--x-start);
   transition:
     transform 260ms var(--ease-out),
     background-color var(--dur-ui) ease;
@@ -2578,7 +2642,7 @@ input[type="radio"]:focus-visible {
   content: "";
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -2592,7 +2656,7 @@ input[type="radio"]:focus-visible {
   background: var(--ok);
 }
 .switch-input:checked + .switch-ui::after {
-  transform: translateX(18px);
+  transform: translateX(calc(18px * var(--dir)));
 }
 .switch-input:focus-visible + .switch-ui {
   outline: 2px solid var(--brand);
@@ -2766,13 +2830,13 @@ input[type="radio"]:focus-visible {
   position: absolute;
   top: 2px;
   bottom: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   z-index: 0;
   width: calc((100% - 4px) / var(--n));
   border-radius: 8px;
   background: var(--seg-thumb);
   box-shadow: var(--seg-shadow);
-  transform: translateX(calc(var(--i) * 100%));
+  transform: translateX(calc(var(--i) * 100% * var(--dir)));
   transition: transform 260ms var(--ease-drawer);
 }
 .segmented[data-thumb] > label:has(input:checked),
@@ -2862,7 +2926,7 @@ input[type="radio"]:focus-visible {
   transform: rotate(180deg);
 }
 .disclosure-sub {
-  margin-right: auto;
+  margin-inline-end: auto;
   color: var(--muted);
   font-size: 0.8125rem;
   font-weight: 400;
@@ -2898,7 +2962,7 @@ input[type="radio"]:focus-visible {
 }
 .search > .icon {
   position: absolute;
-  left: 11px;
+  inset-inline-start: 11px;
   width: 18px;
   height: 18px;
   color: var(--muted);
@@ -2906,7 +2970,7 @@ input[type="radio"]:focus-visible {
 }
 .search > input {
   min-height: 44px;
-  padding-left: 38px;
+  padding-inline-start: 38px;
   border-color: transparent;
   border-radius: 12px;
   background-color: var(--fill);
@@ -2934,7 +2998,7 @@ input[type="radio"]:focus-visible {
   box-shadow: var(--shadow-pop);
   color: var(--text);
   overscroll-behavior: contain;
-  transform-origin: var(--origin, top right);
+  transform-origin: var(--origin, top var(--x-end));
   opacity: 1;
   transform: none;
   transition:
@@ -2975,7 +3039,7 @@ input[type="radio"]:focus-visible {
   font: inherit;
   font-size: 0.875rem;
   font-weight: 500;
-  text-align: left;
+  text-align: start;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
@@ -3006,7 +3070,7 @@ input[type="radio"]:focus-visible {
   content: "";
   width: 16px;
   height: 16px;
-  margin-left: auto;
+  margin-inline-start: auto;
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")
     center / contain no-repeat;
@@ -3077,8 +3141,7 @@ input[type="radio"]:focus-visible {
 .tab[aria-current="page"]::after {
   content: "";
   position: absolute;
-  left: 12px;
-  right: 12px;
+  inset-inline: 12px;
   bottom: -1px;
   height: 2px;
   border-radius: 2px;
@@ -3100,7 +3163,7 @@ input[type="radio"]:focus-visible {
 .tooltip {
   position: fixed;
   top: 0;
-  left: 0;
+  left: 0; /* rtl-ok: app.js positions the tooltip with pixel transforms from the viewport's left edge */
   z-index: var(--z-tooltip);
   max-width: min(16rem, calc(100vw - 16px));
   padding: 6px 10px;
@@ -3185,7 +3248,8 @@ input[type="radio"]:focus-visible {
   letter-spacing: -0.013em;
 }
 .sheet-head .btn-icon {
-  margin: -6px -8px -6px 0;
+  margin-block: -6px;
+  margin-inline: 0 -8px;
 }
 .sheet-body {
   display: flex;
@@ -3303,7 +3367,7 @@ html.has-sheet {
 .toaster {
   position: fixed;
   top: calc(var(--safe-top) + 10px);
-  left: 50%;
+  left: 50%; /* rtl-ok: centred with translateX(-50%), symmetric in both directions */
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
@@ -3311,7 +3375,7 @@ html.has-sheet {
   gap: var(--sp-2);
   width: max-content;
   max-width: calc(100vw - 32px);
-  transform: translateX(-50%);
+  transform: translateX(-50%); /* rtl-ok: pairs with left: 50% */
   pointer-events: none;
 }
 .toast {
@@ -3320,7 +3384,8 @@ html.has-sheet {
   gap: 10px;
   max-width: 26rem;
   min-height: 44px;
-  padding: 10px 8px 10px 14px;
+  padding-block: 10px;
+  padding-inline: 14px 8px;
   border: 1px solid var(--line);
   border-radius: 22px;
   background: var(--material);
@@ -3353,7 +3418,7 @@ html.has-sheet {
   flex: none;
   width: 28px;
   height: 28px;
-  margin-left: 2px;
+  margin-inline-start: 2px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -3437,8 +3502,8 @@ html.has-sheet {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, var(--shimmer), transparent);
-  transform: translateX(-100%);
+  background: linear-gradient(calc(90deg * var(--dir)), transparent, var(--shimmer), transparent);
+  transform: translateX(calc(-100% * var(--dir)));
   animation: vv-shimmer 1.4s var(--ease-in-out) infinite;
 }
 .skeleton-text {
@@ -3479,7 +3544,7 @@ html.has-sheet {
   width: 16px;
   height: 16px;
   border: 2px solid currentColor;
-  border-right-color: transparent;
+  border-right-color: transparent; /* rtl-ok: the spinner's gap just rotates; direction-neutral */
   border-radius: 50%;
   opacity: 0.75;
   animation: vv-spin 700ms linear infinite;
@@ -3493,13 +3558,12 @@ html.has-sheet {
 .progress-bar {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   z-index: var(--z-toast);
   height: 2px;
   background: var(--brand);
   transform: scaleX(0);
-  transform-origin: left;
+  transform-origin: var(--x-start);
   opacity: 0;
   pointer-events: none;
 }
@@ -3594,7 +3658,8 @@ kbd {
   align-items: center;
   gap: var(--sp-2);
   min-width: 0;
-  padding: 6px 6px 6px 14px;
+  padding-block: 6px;
+  padding-inline: 14px 6px;
   border-radius: 12px;
   background: var(--fill);
 }
@@ -3686,7 +3751,7 @@ kbd {
   place-items: center;
   width: 16px;
   height: 16px;
-  margin-right: -4px;
+  margin-inline-end: -4px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -3786,7 +3851,7 @@ kbd {
 .chip .badge {
   height: 18px;
   min-width: 18px;
-  margin-right: -6px;
+  margin-inline-end: -6px;
   background: var(--fill);
   color: inherit;
 }
@@ -3852,7 +3917,8 @@ kbd {
   flex: none;
   width: 28px;
   height: 44px;
-  margin: -6px 0 -6px -8px;
+  margin-block: -6px;
+  margin-inline: -8px 0;
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -4079,14 +4145,15 @@ html.is-sorting * {
   }
   .tabbar {
     position: fixed;
-    left: 0;
-    right: 0;
+    inset-inline: 0;
     bottom: 0;
     z-index: var(--z-tabbar);
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    padding: 0 max(8px, var(--safe-right)) var(--safe-bottom) max(8px, var(--safe-left));
+    padding-block: 0 var(--safe-bottom);
+    padding-left: max(8px, var(--safe-left)); /* rtl-ok: safe-area insets are physical */
+    padding-right: max(8px, var(--safe-right)); /* rtl-ok: safe-area insets are physical */
     border-top: 1px solid var(--line);
     background: var(--bar);
     -webkit-backdrop-filter: var(--blur-bar);
@@ -4155,7 +4222,7 @@ html.is-sorting * {
   }
   .incident-body,
   .incident-actions {
-    padding-left: 0;
+    padding-inline-start: 0;
   }
   .hide-sm {
     display: none !important;
@@ -4188,7 +4255,7 @@ html.is-sorting * {
     order: 10;
     flex: 1 1 100%;
     min-width: 0;
-    margin-left: calc(var(--sep-inset) - 16px);
+    margin-inline-start: calc(var(--sep-inset) - 16px);
   }
   .list-value {
     min-width: 0;
@@ -4228,7 +4295,7 @@ html.is-sorting * {
   .list-row-wrap > .segmented {
     flex: 1 1 100%;
     display: grid;
-    margin-left: calc(var(--sep-inset) - 16px);
+    margin-inline-start: calc(var(--sep-inset) - 16px);
   }
   /* Radio cards: denser so 13 monitor types don't fill two screens */
   .choices {
@@ -4252,7 +4319,7 @@ html.is-sorting * {
   }
   .disclosure > summary > .icon {
     order: 2;
-    margin-left: auto;
+    margin-inline-start: auto;
   }
   .disclosure-sub {
     order: 3;
@@ -4295,7 +4362,7 @@ html.is-sorting * {
 }
 @keyframes vv-shimmer {
   to {
-    transform: translateX(100%);
+    transform: translateX(calc(100% * var(--dir)));
   }
 }
 
@@ -4439,4 +4506,61 @@ html.is-sorting * {
   .stat {
     box-shadow: none;
   }
+}
+
+/* RTL: directional icons mirror with the writing direction ------------------ */
+[dir="rtl"] .page-back .icon,
+[dir="rtl"] .list-chevron,
+[dir="rtl"] .btn[hx-get="/settings/notifications/providers"] > .icon,
+[dir="rtl"] .icon-flip {
+  transform: scaleX(-1);
+}
+
+/* RTL scripts: fonts, joining and bidi isolation ------------------------------ */
+/* Inter stays first for Latin; Arabic/Hebrew glyphs fall through to system fonts. */
+:lang(ar),
+:lang(fa) {
+  --font: "InterVariable", "Inter", "Segoe UI", "Noto Sans Arabic", "Noto Naskh Arabic", Tahoma, "Geeza Pro", "SF Arabic", system-ui, -apple-system, Arial, sans-serif;
+}
+:lang(he) {
+  --font: "InterVariable", "Inter", "Segoe UI", "Arial Hebrew", "Noto Sans Hebrew", system-ui, -apple-system, Arial, sans-serif;
+}
+/* Any letter-spacing (negative or positive) breaks Arabic letter joining. */
+:lang(ar) *,
+:lang(fa) *,
+:lang(he) * {
+  letter-spacing: 0 !important;
+}
+:lang(ar) body,
+:lang(fa) body {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+/* Technical strings stay left-to-right inside right-to-left text. */
+code,
+kbd,
+samp,
+.mono,
+.textarea-code,
+input[type="url"],
+input[type="email"],
+input[type="number"],
+input[type="password"] {
+  unicode-bidi: isolate;
+}
+[dir="rtl"] input[type="url"],
+[dir="rtl"] input[type="email"],
+[dir="rtl"] input[type="number"],
+[dir="rtl"] input[type="password"],
+[dir="rtl"] .textarea-code {
+  direction: ltr;
+  text-align: end;
+}
+/* Latin placeholders ("Ada Lovelace…") keep their trailing ellipsis on the right. */
+[dir="rtl"] ::placeholder {
+  unicode-bidi: plaintext;
+}
+/* The strips above run oldest to newest, left to right; keep their captions in step. */
+.uptime-legend {
+  direction: ltr;
 }

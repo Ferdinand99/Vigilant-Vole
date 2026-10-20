@@ -43,12 +43,12 @@
 
 {#- Uptime percentage from Option<f64>: "99.95%" / "99,95 %" or an em dash. -#}
 {% macro uptime(value) -%}
-{{ pct(value) }}
+<bdi>{{ pct(value) }}</bdi>
 {%- endmacro %}
 
 {#- Milliseconds from Option<i64>: "120 ms" or an em dash. -#}
 {% macro ms(value) -%}
-{{ millis(value) }}
+<bdi>{{ millis(value) }}</bdi>
 {%- endmacro %}
 
 {#- Relative time for a UTC "YYYY-MM-DD HH:MM:SS" string (app.js keeps it fresh). -#}
@@ -254,7 +254,7 @@
 {% macro stat(label, value, status = "", meta = "") -%}
 <div class="stat{% if !status.is_empty() %} status-{{ status }}{% endif %}">
   <span class="stat-label">{% if !status.is_empty() %}<span class="stat-dot" aria-hidden="true"></span>{% endif %}{{ label }}</span>
-  <span class="stat-value">{{ value }}</span>
+  <span class="stat-value"><bdi>{{ value }}</bdi></span>
   {%- if !meta.is_empty() %}
   <span class="stat-meta">{{ meta }}</span>
   {%- endif %}

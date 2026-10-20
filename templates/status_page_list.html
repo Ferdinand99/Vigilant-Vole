@@ -22,7 +22,7 @@
       <span class="list-icon">{{ m::icon("globe") }}</span>
       <span class="list-main">
         <span class="list-title">{{ s.page.title }}</span>
-        <span class="list-sub">{% match s.page.custom_domain %}{% when Some(d) %}{{ d }}{% when None %}/status/{{ s.page.slug }}{% endmatch %} · {{ trn("count.monitors", s.monitor_count) }}</span>
+        <span class="list-sub">{% match s.page.custom_domain %}{% when Some(d) %}<bdi>{{ d }}</bdi>{% when None %}<bdi>/status/{{ s.page.slug }}</bdi>{% endmatch %} · {{ trn("count.monitors", s.monitor_count) }}</span>
       </span>
       <span class="list-trail">{% if !s.page.published %}<span class="pill status-paused">{{ tr("sp.draft") }}</span>{% endif %}{{ m::icon("chevron-right", "list-chevron") }}</span>
     </a>

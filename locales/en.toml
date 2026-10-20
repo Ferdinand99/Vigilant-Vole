@@ -114,6 +114,31 @@ connecting = "Connecting…"
 reconnecting = "Reconnecting…"
 offline = "Offline"
 
+[fmt]
+# Dates, durations and relative times. Lists are separated by "|" and must
+# have exactly 12 months and 7 weekdays (Monday first).
+months_short = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
+months_long = "January|February|March|April|May|June|July|August|September|October|November|December"
+weekdays_short = "Mon|Tue|Wed|Thu|Fri|Sat|Sun"
+weekdays_long = "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday"
+day_month = "{month} {day}"
+day_month_long = "{month} {day}"
+date = "{day_month}, {year}"
+datetime = "{date}, {time}"
+short_datetime = "{day_month}, {time}"
+weekday_day_month = "{weekday}, {day_month}"
+just_now = "just now"
+ago = "{span} ago"
+future = "in {span}"
+dur_sec = "{n} sec"
+dur_min = "{n} min"
+dur_hour = "{n} h"
+dur_day = "{n} d"
+compact_sec = "{n}s"
+compact_min = "{n}m"
+compact_hour = "{n}h"
+compact_day = "{n}d"
+
 [count]
 monitors.one = "{n} monitor"
 monitors.other = "{n} monitors"
@@ -793,6 +818,7 @@ err_footer_long = "Keep the footer to {max} characters or fewer."
 err_css = "Custom CSS can’t contain “</style”, “<script” or HTML comments."
 err_css_long = "Keep custom CSS under 64 KB."
 default_section = "Services"
+already_here = "Already on this section"
 
 [spx]
 # Status page extras: logo and icon, password protection, analytics.
@@ -1669,9 +1695,9 @@ online_foot = "An agent is online when it checked in within the last 90 seconds.
 how = "How agents work"
 how_count = "Monitors run on agents"
 how_choose = "Choose monitors"
-how_choose_text = "Turn on “Run on remote agents” in a monitor’s settings"
+how_choose_text = "Turn on “Check from remote agents too” in a monitor’s settings"
 how_avoid = "Avoid false alarms"
-how_avoid_text = "Turn on “Confirm with agents” so a monitor only goes down when agents agree"
+how_avoid_text = "Turn on “Confirm outages with agents” so a monitor only goes down when agents agree"
 trust_foot = "An agent token can read the full settings of monitors that run on agents, including their headers and passwords, because the agent needs them to run the check. It can report results for those monitors only and can’t change anything. Only run agents on machines you trust."
 err_name = "Enter a name, like “Frankfurt probe”"
 err_name_long = "Use at most {max} characters"

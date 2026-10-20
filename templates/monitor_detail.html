@@ -91,7 +91,7 @@
     <div class="uptime-days" role="img" aria-label="{{ tr1("detail.days_aria", "value", days_label) }}">
       {%- for d in days %}<span class="uptime-day {{ d.class }}" data-tip="{{ d.tip }}"></span>{% endfor -%}
     </div>
-    <div class="uptime-legend"><span class="hide-sm">{{ tr("detail.days_ago_90") }}</span><span class="show-sm">{{ tr("detail.days_ago_45") }}</span><span>{{ days_label }}</span><span>{{ tr("common.today") }}</span></div>
+    <div class="uptime-legend"><span class="hide-sm">{{ tr("detail.days_ago_90") }}</span><span class="show-sm">{{ tr("detail.days_ago_45") }}</span><span><bdi>{{ days_label }}</bdi></span><span>{{ tr("common.today") }}</span></div>
   </div>
 </section>
 
@@ -212,7 +212,7 @@
         <div class="dl-row"><dt>{{ tr("detail.retries_before_down") }}</dt><dd class="num">{{ monitor.retries }}</dd></div>
         {%- endif %}
         {%- if monitor.monitor_type.is_http_family() %}
-        <div class="dl-row"><dt>{{ tr("detail.request") }}</dt><dd>{{ monitor.http_method }} · {{ tr1("detail.accepts", "codes", monitor.accepted_status_codes) }}</dd></div>
+        <div class="dl-row"><dt>{{ tr("detail.request") }}</dt><dd>{{ monitor.http_method }} · {% if ctx.dir == "rtl" %}{% let codes = "\u{2066}" ~ monitor.accepted_status_codes ~ "\u{2069}" %}{{ tr1("detail.accepts", "codes", codes) }}{% else %}{{ tr1("detail.accepts", "codes", monitor.accepted_status_codes) }}{% endif %}</dd></div>
         {%- endif %}
         {%- if let Some(k) = monitor.keyword %}{% if self.is_type("keyword") %}
         <div class="dl-row"><dt>{% if monitor.keyword_invert %}{{ tr("detail.must_not_contain") }}{% else %}{{ tr("detail.must_contain") }}{% endif %}</dt><dd class="break">“{{ k }}”</dd></div>

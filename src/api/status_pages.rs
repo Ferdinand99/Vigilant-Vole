@@ -159,10 +159,10 @@ pub fn build_picker(
             sub = crate::i18n::tn("sp.group_covers", children);
         }
         if !active {
-            sub.push_str(" · Paused");
+            sub.push_str(&format!(" · {}", crate::i18n::t("common.paused")));
         }
         if is_disabled {
-            sub.push_str(" · Already on this section");
+            sub.push_str(&format!(" · {}", crate::i18n::t("sp.already_here")));
         }
         let item = PickerItem {
             id,

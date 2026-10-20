@@ -114,6 +114,31 @@ connecting = "Kobler til…"
 reconnecting = "Kobler til på nytt…"
 offline = "Frakoblet"
 
+[fmt]
+# Dates, durations and relative times. Lists are separated by "|" and must
+# have exactly 12 months and 7 weekdays (Monday first).
+months_short = "jan.|feb.|mars|apr.|mai|juni|juli|aug.|sep.|okt.|nov.|des."
+months_long = "januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember"
+weekdays_short = "man.|tir.|ons.|tor.|fre.|lør.|søn."
+weekdays_long = "mandag|tirsdag|onsdag|torsdag|fredag|lørdag|søndag"
+day_month = "{day}. {month}"
+day_month_long = "{day}. {month}"
+date = "{day_month} {year}"
+datetime = "{date}, {time}"
+short_datetime = "{day_month}, {time}"
+weekday_day_month = "{weekday} {day_month}"
+just_now = "akkurat nå"
+ago = "for {span} siden"
+future = "om {span}"
+dur_sec = "{n} sek"
+dur_min = "{n} min"
+dur_hour = "{n} t"
+dur_day = "{n} d"
+compact_sec = "{n}s"
+compact_min = "{n}m"
+compact_hour = "{n}t"
+compact_day = "{n}d"
+
 [count]
 monitors.one = "{n} overvåking"
 monitors.other = "{n} overvåkinger"
@@ -793,6 +818,7 @@ err_footer_long = "Bunnteksten kan ha høyst {max} tegn."
 err_css = "Egen CSS kan ikke inneholde «</style», «<script» eller HTML-kommentarer."
 err_css_long = "Egen CSS må være under 64 KB."
 default_section = "Tjenester"
+already_here = "Allerede i denne seksjonen"
 
 [spx]
 # Statusside-tillegg: logo og ikon, passordbeskyttelse, analyse.

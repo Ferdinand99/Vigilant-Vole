@@ -1245,7 +1245,7 @@ fn plan_settings(cur: &db_settings::Settings, s: &SettingsDoc, plan: &mut Plan, 
         }
     }
     if let Some(lang) = &s.language {
-        if crate::api::settings::LANGUAGES.iter().any(|(code, _)| *code == lang.as_str()) {
+        if crate::i18n::Lang::from_exact_code(lang).is_some() {
             push(plan, db_settings::LANGUAGE, cur.language.clone(), Some(lang.clone()), Some(lang.clone()));
         } else {
             plan.error(KIND_SETTING, db_settings::LANGUAGE, None, "Unsupported language.");

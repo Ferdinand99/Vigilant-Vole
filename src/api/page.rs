@@ -29,6 +29,8 @@ pub struct PageCtx {
     pub flash: Option<Flash>,
     /// `<html lang>`: the request's language (`i18n::current()`).
     pub lang: String,
+    /// `<html dir>`: `ltr` or `rtl`.
+    pub dir: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +77,7 @@ impl PageCtx {
         };
         // Chosen per request by `i18n::layer` and the auth middleware.
         let lang = crate::i18n::current().code().to_string();
+        let dir = crate::i18n::current().dir().as_str();
 
         let (flash, jar) = take_flash(jar.clone());
         let ctx = PageCtx {
@@ -85,6 +88,7 @@ impl PageCtx {
             site_name,
             flash,
             lang,
+            dir,
         };
         (ctx, jar)
     }

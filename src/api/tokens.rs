@@ -218,6 +218,7 @@ mod tests {
                 site_name: "Vigilant Vole".into(),
                 flash: None,
                 lang: "en".into(),
+                dir: "ltr",
             },
             tokens: Vec::new(),
             others: Vec::new(),
