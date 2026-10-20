@@ -48,7 +48,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 ## ✨ Features
 
 **Monitoring**
-- **13 monitor types** — HTTP(S), HTTP keyword, HTTP JSON query (JSONPath), TCP port, ICMP ping, DNS (9 record types, custom resolver), push/heartbeat, Docker container, WebSocket, domain expiry (RDAP), NTP, Steam game server, and groups
+- **24 monitor types** — HTTP(S), HTTP keyword, HTTP JSON query (JSONPath), TCP port, ICMP ping, DNS (9 record types, custom resolver), push/heartbeat, Docker container, WebSocket, domain expiry (RDAP), NTP, Steam game server, **TLS handshake, SMTP, Redis, PostgreSQL, MySQL/MariaDB, MQTT, Kafka, RabbitMQ, gRPC, RADIUS, SNMP**, and groups
 - **TLS certificate and domain expiry** warnings, configurable per monitor
 - **Groups and tags** — nest monitors under group monitors (status = worst child), colour-coded tags with values, search and filters, bulk actions, clone
 - **Maintenance windows** — manual, one-off, daily or weekly (any time zone, across midnight); monitors record *maintenance* and stay quiet
@@ -99,8 +99,10 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | **Database** | SQLite (bundled) | SQLite, or MariaDB/MySQL in 2.0 ✅ |
 | HTTP(S), keyword, JSON query, TCP, ping, DNS, push, Docker, Steam, groups, WebSocket | ✅ | ✅ |
 | Domain expiry (RDAP), NTP monitors | ✅ | NTP ❌ · domain expiry varies by version |
-| Database monitors (PostgreSQL, MySQL/MariaDB, SQL Server, MongoDB, Redis) | ❌ | ✅ |
-| MQTT, Kafka, RabbitMQ, gRPC, RADIUS, SNMP, SMTP, GameDig, Tailscale | ❌ | ✅ |
+| Database monitors: PostgreSQL, MySQL/MariaDB, Redis | ✅ | ✅ |
+| Database monitors: SQL Server, MongoDB | ❌ | ✅ |
+| MQTT, Kafka, RabbitMQ, gRPC health checks, RADIUS, SNMP v1/v2c, SMTP, TLS handshake | ✅ | ✅ (no TLS-handshake type) |
+| gRPC keyword calls, SNMPv3, GameDig, Tailscale | ❌ | ✅ |
 | Real-browser (headless Chrome) monitor | ❌ | ✅ |
 | HTTP auth | Basic auth | Basic, NTLM, mTLS, OAuth2 client credentials ✅ |
 | Notification providers | 24 native + Apprise (90+ services) | **90+ native** ✅ |
@@ -123,7 +125,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Interface languages | English, Norwegian | **~50 languages** ✅ |
 | Built-in Cloudflare Tunnel, remote browsers | ❌ | ✅ |
 
-If you need database/MQTT/browser monitors or a language other than English/Norwegian, Kuma is the better fit today.
+If you need SQL Server/MongoDB/browser monitors or a language other than English/Norwegian, Kuma is the better fit today.
 
 ## 🚀 Quick start
 
@@ -212,7 +214,7 @@ Settings → General (admins): site name, public base URL (used in notification 
 
 | Type | Target | Checks |
 |---|---|---|
-| HTTP(S) | URL | Status code (`200-399` by default, e.g. `200-299,301,2xx`), method, headers, body (JSON/form/raw), basic auth, proxy (HTTP/SOCKS5), redirects, ignore TLS errors, TLS certificate expiry |
+| HTTP(S) | URL | Status code (`200-399` by default, e.g. `200-299,301,2xx`), method, headers, body (JSON/form/raw), basic auth, OAuth2 client credentials, mTLS client certificates, proxy (HTTP/SOCKS5), redirects, ignore TLS errors, TLS certificate expiry |
 | HTTP(S) keyword | URL | Response contains (or doesn't contain) a case-sensitive keyword; shows a snippet on failure |
 | HTTP(S) JSON query | URL | RFC 9535 JSONPath compared with `==`, `!=`, `contains`, `<`, `<=`, `>`, `>=` |
 | TCP port | `host:port` | Connection succeeds |
@@ -224,6 +226,17 @@ Settings → General (admins): site name, public base URL (used in notification 
 | Domain expiry | domain | Registration expiry via RDAP (IANA bootstrap) |
 | NTP | `host[:port]` | SNTP response, reports clock offset |
 | Steam game server | `host:port` | A2S_INFO query; players and map in the message |
+| TLS handshake | `host[:port]` | Handshake and certificate for any service that speaks TLS from the first byte (HTTPS, IMAPS, LDAPS, …); certificate expiry warnings |
+| SMTP | `host[:port]` | Greeting and `EHLO`; port 465 uses implicit TLS, other ports are upgraded with `STARTTLS` when offered, and the certificate is checked |
+| Redis | `redis[s]://host[:port][/db]` | `AUTH` (password or ACL user), `SELECT`, `PING`; shows the server version |
+| PostgreSQL | `postgres://host[:port]/db[?sslmode=…]` | Login (cleartext, MD5 or SCRAM-SHA-256) and `SELECT 1`; TLS when the server offers it |
+| MySQL / MariaDB | `mysql://host[:port][/db][?sslmode=…]` | Server greeting; with a user name also the login (`mysql_native_password`, `caching_sha2_password`) and a ping |
+| MQTT | `mqtt[s]://host[:port][/topic]` | Connect with optional login; with a topic it subscribes, and with a keyword waits for a matching message |
+| Kafka | `kafka[s]://host[:port][/topic]` | Broker answers (`ApiVersions`, `Metadata`); with a topic, that it exists and every partition has a leader. Nothing is produced or created |
+| RabbitMQ | `amqp[s]://host[:port][/vhost]` | AMQP 0-9-1 greeting; with a user name, login and opening the virtual host |
+| gRPC | `grpc[s]://host[:port][/service]` | Standard `grpc.health.v1.Health/Check` over HTTP/2; up only when `SERVING` |
+| RADIUS | `radius://host[:port]` | `Access-Request` with a user name and password (or `Status-Server` without), verified with the shared secret |
+| SNMP | `snmp://host[:port][/oid][?version=1\|2c]` | GET of one OID with the community string; optional text the value must contain |
 | Group | – | Worst status of its children (down > pending > up) |
 
 Every type has interval (10 s – 24 h), timeout, retries, retry interval, upside-down mode, tags, description and per-monitor notification channels.
@@ -427,7 +440,7 @@ src/
 ├── auth/                # sessions, CSRF, login rate limit, TOTP, API tokens, roles
 ├── db/                  # SQLite (rusqlite + deadpool), migrations, queries, daily rollups
 ├── monitor/             # scheduler, pure alerting state machine, retention, engine metrics
-│   └── checkers/        # http, tcp, ping, dns, docker, websocket, domain (RDAP), ntp, steam, tls
+│   └── checkers/        # http, tcp, ping, dns, docker, websocket, domain (RDAP), ntp, steam, tls, smtp, redis, postgres, mysql, mqtt, kafka, rabbitmq, grpc, radius, snmp
 ├── notification/        # 24 providers behind one schema-driven registry
 ├── agent/               # remote probe agent + its wire protocol
 ├── discovery.rs         # Docker label discovery
@@ -454,7 +467,7 @@ Done:
 - [x] Multi-user, roles, 2FA, API tokens
 - [x] Tags and monitor groups
 - [x] Monitor pause/resume, clone, bulk actions
-- [x] 13 monitor types, 24 notification providers + Apprise
+- [x] 24 monitor types, 24 notification providers + Apprise
 - [x] Escalation, reminders, flap detection
 - [x] Remote agents with outage confirmation
 - [x] REST API + OpenAPI, config as code, backup/restore

@@ -107,7 +107,7 @@ References use these keys: a monitor's `parent` (a group's key), `tags`, `notifi
 ## Secrets
 
 Exports mask secrets as `••••••` unless an admin asks for them (`secrets=1` / *Include secrets*): channel
-credentials, monitors' `basic_auth_pass`, sensitive HTTP header values (names containing `authorization`, `cookie`,
+credentials, monitors' `basic_auth_pass`, `oauth_client_secret` and `tls_client_key`, sensitive HTTP header values (names containing `authorization`, `cookie`,
 `token`, `secret`, `key`, `password`, `auth`, `session`, `signature`) and push tokens. **Importing a masked value
 keeps the value already stored**, so a masked export round-trips safely and can live in git. For a new object a
 masked secret is an error — supply the real value (e.g. by templating the file in CI).
@@ -198,8 +198,8 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 |---|---|---|---|
 | `key` | string | `name` | Stable identity, see above. |
 | `name` | string | – | Required. |
-| `monitor_type` | string | – | `http`, `keyword`, `json_query`, `tcp`, `ping`, `dns`, `push`, `docker`, `websocket`, `domain_expiry`, `ntp`, `steam`, `group`. |
-| `target` | string | `""` | URL (`http`, `keyword`, `json_query`; `ws://`/`wss://` for `websocket`), `host:port` (`tcp`, `steam`; `ntp` port optional), host (`ping`, `dns`), domain (`domain_expiry`), container name or id (`docker`); empty for `push` and `group`. |
+| `monitor_type` | string | – | `http`, `keyword`, `json_query`, `tcp`, `ping`, `dns`, `push`, `docker`, `websocket`, `domain_expiry`, `ntp`, `steam`, `tls`, `smtp`, `redis`, `postgres`, `mysql`, `mqtt`, `kafka`, `rabbitmq`, `grpc`, `radius`, `snmp`, `group`. |
+| `target` | string | `""` | URL (`http`, `keyword`, `json_query`; `ws://`/`wss://` for `websocket`), `host:port` (`tcp`, `steam`; `ntp` port optional), host (`ping`, `dns`), domain (`domain_expiry`), container name or id (`docker`); `host[:port]` for `tls` and `smtp`; `scheme://host[:port][/path]` for the service types (`redis://`, `rediss://`, `postgres://`, `mysql://`, `mqtt://`, `mqtts://`, `kafka://`, `kafkas://`, `amqp://`, `amqps://`, `grpc://`, `grpcs://`, `radius://`, `snmp://`), where the path is the database, topic, virtual host, gRPC service or OID. Credentials never go into the target: use `basic_auth_user` / `basic_auth_pass`, and `secret` for the RADIUS shared secret and the SNMP community. Empty for `push` and `group`. |
 | `parent` | string | – | Key of a `group` monitor. |
 | `tags` | list | keep | `["production", {name: env, value: prod}]`. Unknown tag names are created. |
 | `notifications` | list | keep (new: default channels) | Channel names: `["Ops Discord", {name: PagerDuty, escalation: true}]`. Escalation channels are only used after `escalation_minutes`. |
@@ -218,7 +218,14 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 | `accepted_status_codes` | string | `200-399` | e.g. `200-299,301,2xx`. |
 | `max_redirects` | int | `10` | 0–30. |
 | `ignore_tls` | bool | `false` | Don't verify certificates. |
-| `basic_auth_user` / `basic_auth_pass` | string | – | Password is a secret. |
+| `auth_method` | string | `none` | HTTP family: `none`, `basic`, `oauth2` or `mtls`. A document that sets `basic_auth_user` without `auth_method` means `basic`. Only the chosen method's fields below are kept; the others are cleared. |
+| `basic_auth_user` / `basic_auth_pass` | string | – | `basic`. The password is a secret. |
+| `oauth_token_url` | string | – | `oauth2` (client credentials grant): the token endpoint, `http://` or `https://`. |
+| `oauth_client_id` / `oauth_client_secret` | string | – | `oauth2`. The client secret is a secret; a masked value is only kept while `oauth_token_url` and `proxy_url` are unchanged. |
+| `oauth_scope` / `oauth_audience` | string | – | `oauth2`, optional. Scopes are separated by spaces. |
+| `oauth_client_auth` | string | `client_secret_basic` | `oauth2`: how the client authenticates, `client_secret_basic` (Authorization header) or `client_secret_post` (request body). |
+| `tls_client_cert` / `tls_client_key` | string | – | `mtls`: PEM client certificate (chain) and its unencrypted PEM private key (a secret; a masked key is only kept while `target` and `proxy_url` are unchanged). The target must be `https://`. Use a YAML block scalar (`\|`) for the PEM text. |
+| `tls_ca_cert` | string | – | `mtls`, optional: extra PEM CA certificate(s) to trust for the monitored server. |
 | `proxy_url` | string | – | `http://`, `https://`, `socks5://` or `socks5h://` proxy. |
 | `keyword` | string | – | `keyword` type: text to find (case-sensitive). |
 | `keyword_invert` | bool | `false` | Down when the keyword *is* found. |

@@ -51,10 +51,22 @@ Afterwards:
 | Docker Container | `docker` |
 | Push | `push` (token kept) |
 | Steam Game Server | `steam` |
+| PostgreSQL, MySQL/MariaDB, Redis | `postgres`, `mysql`, `redis` (the login moves out of the connection string into the user name and password; a custom query isn't run) |
+| MQTT | `mqtt` (topic in the address, success message as the keyword; WebSocket brokers aren't supported) |
+| Kafka Producer | `kafka` (first broker; checks the topic exists, no message is produced; SASL isn't supported) |
+| RabbitMQ | `http` against the management API's alarms endpoint, like Kuma does |
+| RADIUS | `radius` |
+| SNMP (v1/v2c) | `snmp` (community string and expected value kept; SNMPv3 is skipped) |
+| SMTP | `smtp` |
+| SQL Server, MongoDB, gRPC keyword, GameDig, Tailscale ping | Not supported: skipped with a reason |
 | Group | `group` (hierarchy kept) |
 | WebSocket upgrade | `websocket` |
 | Interval, retry interval, timeout, retries, resend interval, upside-down, paused state | Same fields |
-| Method, headers, body, body encoding, accepted status codes, max redirects, ignore TLS, basic auth, proxy | Same fields (basic auth only; NTLM, mTLS and OAuth2 client credentials need to be set up again) |
+| Method, headers, body, body encoding, accepted status codes, max redirects, ignore TLS, proxy | Same fields |
+| Authentication method `basic` (or a user name without a method, as in older Kuma) | `auth_method: basic` with the user name and password |
+| Authentication method `oauth2-cc` (token URL, client ID and secret, scopes, audience, client authentication method) | `auth_method: oauth2` with `oauth_token_url`, `oauth_client_id`, `oauth_client_secret`, `oauth_scope`, `oauth_audience` and `oauth_client_auth` (`client_secret_basic` / `client_secret_post`) |
+| Authentication method `mtls` (CA, client certificate and key) | `auth_method: mtls` with `tls_ca_cert`, `tls_client_cert` and `tls_client_key` (the key must not be passphrase-protected, and the URL must be `https://`) |
+| Authentication method `ntlm` | Not supported: the monitor is imported without authentication and the import lists a warning; it will report the server’s 401 until you change what it checks or put an authenticating proxy in front |
 | Tags (with values and colours) | Tags (colours mapped to the nearest palette colour) |
 | Notifications and per-monitor links | Notification channels and links |
 | Status pages (sections, monitors, description, footer, custom CSS, domain) | Status pages (password-protected pages are imported as drafts) |

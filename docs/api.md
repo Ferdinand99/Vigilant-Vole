@@ -96,3 +96,50 @@ curl -s -H "$AUTH" -H "Content-Type: application/json" -X POST "$BASE/api/v1/sta
 # Push monitor heartbeat from a cron job
 curl -fsS "$BASE/api/push/AbCdEf0123456789AbCdEf0123456789?status=up&msg=backup%20ok&ping=" > /dev/null
 ```
+
+## Service monitors
+
+`monitor_type` also accepts `tls`, `smtp`, `redis`, `postgres`, `mysql`, `mqtt`, `kafka`, `rabbitmq`, `grpc`,
+`radius` and `snmp`. Their `target` is `host[:port]` (`tls`, `smtp`) or `scheme://host[:port][/path]` where the path
+is the database (`redis`, `postgres`, `mysql`), topic (`mqtt`, `kafka`), virtual host (`rabbitmq`), gRPC service
+or OID (`snmp`). Credentials never go into the target:
+
+| Field | Used by |
+|---|---|
+| `basic_auth_user`, `basic_auth_pass` | `redis` (password alone is fine), `postgres` (user required), `mysql`, `mqtt`, `rabbitmq`, `radius` |
+| `secret` | `radius` (shared secret, required), `snmp` (community, default `public`) |
+| `keyword`, `keyword_invert` | `mqtt` (message payload, needs a topic), `snmp` (value text) |
+| `ignore_tls` | every type that can use TLS |
+
+`secret` is masked like the other secrets: responses carry `"••••••"`, sending that value back keeps the stored one
+while the host and port of `target` are unchanged.
+
+## HTTP monitor authentication
+
+HTTP, keyword and JSON query monitors take an `auth_method`: `none` (default), `basic`, `oauth2` or `mtls`. Only
+the chosen method's fields are kept (the others are cleared). A request that sets `basic_auth_user` without
+`auth_method` means `basic`, as before.
+
+| Method | Fields |
+|---|---|
+| `basic` | `basic_auth_user` (required), `basic_auth_pass` |
+| `oauth2` | OAuth2 client credentials grant: `oauth_token_url`, `oauth_client_id`, `oauth_client_secret` (required), `oauth_scope` (space-separated, optional), `oauth_audience` (optional), `oauth_client_auth` (`client_secret_basic` = Authorization header, default, or `client_secret_post` = request body). Each check sends `Authorization: Bearer <token>`; the token is cached per monitor until shortly before it expires. A failing token endpoint makes the check *down* with the endpoint's error, never the secret. |
+| `mtls` | `tls_client_cert` (PEM, chain allowed), `tls_client_key` (unencrypted PEM), `tls_ca_cert` (optional extra PEM CA). `target` must be `https://`. |
+
+`basic_auth_pass`, `oauth_client_secret` and `tls_client_key` are never returned: responses carry `"••••••"` instead.
+Send that value back (or leave the field out on `PATCH`) to keep the stored secret; it is only kept while the
+destination is unchanged (`target` and `proxy_url` for the password and the key, `oauth_token_url` and `proxy_url`
+for the client secret). Otherwise the request is refused with a field error asking for the secret again.
+
+```bash
+curl -s -H "$AUTH" -H "Content-Type: application/json" -X POST "$BASE/api/v1/monitors" -d '{
+  "name": "Partner API",
+  "monitor_type": "http",
+  "target": "https://api.example.com/health",
+  "auth_method": "oauth2",
+  "oauth_token_url": "https://login.example.com/oauth/token",
+  "oauth_client_id": "vigilant-vole",
+  "oauth_client_secret": "…",
+  "oauth_scope": "health.read"
+}'
+```
