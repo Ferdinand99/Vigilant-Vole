@@ -568,3 +568,153 @@ fn coverage_report() {
         assert_eq!(done, total, "{lang} is only {pct:.1}% translated: run `cargo test --lib coverage_report -- --nocapture` and see docs/translating.md");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Right-to-left readiness
+// ---------------------------------------------------------------------------
+
+/// Splits a CSS value on top-level whitespace (`calc(…)`, `var(…)` stay whole).
+fn css_tokens(value: &str) -> Vec<&str> {
+    let (mut out, mut depth, mut start) = (Vec::new(), 0usize, None);
+    for (i, c) in value.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            c if c.is_whitespace() && depth == 0 => {
+                if let Some(s) = start.take() {
+                    out.push(&value[s..i]);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        start.get_or_insert(i);
+    }
+    if let Some(s) = start {
+        out.push(&value[s..]);
+    }
+    out
+}
+
+/// Physical (left/right) declarations in the stylesheet that aren't marked
+/// `/* rtl-ok: reason */`. Shorthands with different left and right values
+/// count too. Returns `(line number, line)`.
+fn physical_declarations(css: &str) -> Vec<(usize, String)> {
+    let mut found = Vec::new();
+    for (i, raw) in css.lines().enumerate() {
+        let line = raw.trim();
+        if line.contains("rtl-ok") || line.starts_with("/*") || line.starts_with('*') {
+            continue;
+        }
+        let Some((prop, value)) = line.split_once(':') else { continue };
+        let (prop, value) = (prop.trim(), value.trim().trim_end_matches(';').trim());
+        let has_side = |v: &str| v.split(|c: char| !c.is_ascii_alphabetic() && c != '-').any(|w| w == "left" || w == "right");
+        let physical = match prop {
+            "left" | "right" | "float" | "clear" => prop != "float" && prop != "clear" || has_side(value),
+            p if p.starts_with("margin-") || p.starts_with("padding-") || p.starts_with("scroll-margin-") || p.starts_with("scroll-padding-") => {
+                p.ends_with("-left") || p.ends_with("-right")
+            }
+            p if p.starts_with("border-") => {
+                p.starts_with("border-left") || p.starts_with("border-right") || (p.ends_with("-radius") && (p.contains("-left") || p.contains("-right")))
+            }
+            "text-align" => has_side(value),
+            "transform-origin" | "background-position" => has_side(value),
+            "transform" => value.contains("translateX(") && !value.contains("--dir") && !value.contains("translateX(-50%)") && !value.contains("translateX(0"),
+            "margin" | "padding" | "border-width" | "border-color" | "border-style" => {
+                let t = css_tokens(value);
+                t.len() == 4 && t[1] != t[3]
+            }
+            _ => false,
+        };
+        if physical {
+            found.push((i + 1, line.to_string()));
+        }
+    }
+    found
+}
+
+#[test]
+#[ignore = "enabled by the change that converts style.css to logical properties"]
+fn the_stylesheet_has_no_unmarked_physical_left_right_properties() {
+    let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/style.css")).expect("style.css");
+    let found = physical_declarations(&css);
+    assert!(
+        found.is_empty(),
+        "use logical properties (margin-inline-start, inset-inline-end, text-align: start, …) or add `/* rtl-ok: reason */`:\n{}",
+        found.iter().map(|(n, l)| format!("  style.css:{n}: {l}")).collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn the_physical_property_lint_recognises_what_it_should() {
+    let flagged = |css: &str| physical_declarations(css).len();
+    assert_eq!(flagged("a { margin-left: 4px; }\n.b {\n  margin-left: 4px;\n}"), 1, "only declaration lines count");
+    for bad in [
+        "margin-left: auto;",
+        "margin-right: -6px;",
+        "padding-left: 38px;",
+        "text-align: right;",
+        "text-align: left;",
+        "left: 12px;",
+        "right: 0;",
+        "float: right;",
+        "border-right-color: transparent;",
+        "border-top-left-radius: 4px;",
+        "transform-origin: left;",
+        "background-position: right 12px center;",
+        "transform: translateX(18px);",
+        "transform: translateX(100%);",
+        "padding: 0 10px 0 2px;",
+        "margin: -8px 0 0 -8px;",
+        "padding: 0 max(8px, var(--safe-right)) 4px max(8px, var(--safe-left));",
+    ] {
+        assert_eq!(flagged(bad), 1, "{bad}");
+    }
+    for ok in [
+        "margin-inline-start: auto;",
+        "padding-inline: 4px 8px;",
+        "text-align: start;",
+        "text-align: center;",
+        "inset-inline-start: 12px;",
+        "left: 0; /* rtl-ok: symmetric */",
+        "transform: translateX(calc(18px * var(--dir)));",
+        "transform: translateX(-50%);",
+        "transform: translateX(0);",
+        "padding: 0 10px 0 10px;",
+        "margin: 0 auto;",
+        "padding: 4px 8px;",
+        "border-inline-end-color: transparent;",
+        "background-position: center;",
+        "background-position: var(--x-end) 12px center;",
+        "transform-origin: top;",
+        "float: none;",
+    ] {
+        assert_eq!(flagged(ok), 0, "{ok}");
+    }
+}
+
+/// Renders a page in the test-only right-to-left language and checks the
+/// document direction reaches the markup.
+#[tokio::test]
+async fn pages_carry_the_language_direction() {
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt as _;
+
+    let state = crate::api::agents::test_support::test_state().await;
+    let app = crate::api::build_router(state);
+    let page = |accept: &'static str| {
+        let app = app.clone();
+        async move {
+            let res = app.oneshot(Request::get("/setup").header("accept-language", accept).body(Body::empty()).unwrap()).await.unwrap();
+            let bytes = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap();
+            String::from_utf8_lossy(&bytes).into_owned()
+        }
+    };
+    let rtl = page("ar").await;
+    assert!(rtl.contains("<html lang=\"ar\" dir=\"rtl\""), "{}", &rtl[..rtl.len().min(200)]);
+    let ltr = page("de-AT,de;q=0.9").await;
+    assert!(ltr.contains("<html lang=\"de\" dir=\"ltr\""), "{}", &ltr[..ltr.len().min(200)]);
+    assert!(page("en-GB").await.contains("<html lang=\"en\" dir=\"ltr\""));
+    assert!(page("pt-PT").await.contains("<html lang=\"pt-BR\" dir=\"ltr\""));
+}
