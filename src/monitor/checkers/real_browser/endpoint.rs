@@ -181,7 +181,7 @@ async fn discover(url: &Url, timeout: Duration) -> Result<Target, String> {
     let mut version = url.clone();
     version.set_path("/json/version");
     version.set_fragment(None);
-    let client = reqwest::Client::builder()
+    let client = crate::tls_roots::http_client()
         .timeout(timeout)
         .redirect(reqwest::redirect::Policy::none())
         .user_agent(crate::server::USER_AGENT)

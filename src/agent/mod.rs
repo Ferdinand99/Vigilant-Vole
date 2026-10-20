@@ -66,6 +66,7 @@ pub type AgentError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Run the agent until it is stopped.
 pub async fn run(args: AgentArgs) -> Result<(), AgentError> {
+    crate::tls_roots::init();
     let client = Client::new(&args)?;
     if args.once {
         let summary = run_once(&client, args.concurrency).await?;
@@ -162,7 +163,7 @@ impl Client {
         if let Ok(v) = HeaderValue::from_str(name.trim()) {
             headers.insert(NAME_HEADER, v);
         }
-        let http = reqwest::Client::builder()
+        let http = crate::tls_roots::http_client()
             .user_agent(concat!("VigilantVoleAgent/", env!("CARGO_PKG_VERSION")))
             .default_headers(headers)
             .connect_timeout(Duration::from_secs(10))

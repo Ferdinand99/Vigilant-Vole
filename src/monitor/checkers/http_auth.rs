@@ -158,11 +158,11 @@ pub fn mtls_problems(cert: &str, key: &str, ca: Option<&str>) -> Vec<MtlsError> 
 /// Builds a throwaway client from the material, so a bad pair is reported in
 /// the form instead of at the first check.
 pub fn validate_mtls(cert: &str, key: &str, ca: Option<&str>) -> Result<(), MtlsError> {
-    apply_mtls(reqwest::Client::builder(), cert, key, None)?
+    apply_mtls(crate::tls_roots::http_client(), cert, key, None)?
         .build()
         .map_err(|e| MtlsError::Rejected(util::root_cause(&e)))?;
     if let Some(ca) = ca.map(str::trim).filter(|c| !c.is_empty()) {
-        apply_mtls(reqwest::Client::builder(), cert, key, Some(ca))?
+        apply_mtls(crate::tls_roots::http_client(), cert, key, Some(ca))?
             .build()
             .map_err(|e| MtlsError::CaRejected(util::root_cause(&e)))?;
     }

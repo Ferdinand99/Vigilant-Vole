@@ -15,3 +15,4 @@ pub mod maintenance;
 pub mod monitor;
 pub mod notification;
 pub mod server;
+pub mod tls_roots;

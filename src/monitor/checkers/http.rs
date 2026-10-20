@@ -253,7 +253,7 @@ fn client_for(key: &ClientKey, mtls: Option<(&str, &str, Option<&str>)>) -> Resu
     } else {
         reqwest::redirect::Policy::limited(key.max_redirects as usize)
     };
-    let mut builder = reqwest::Client::builder()
+    let mut builder = crate::tls_roots::http_client()
         .user_agent(crate::server::USER_AGENT)
         .redirect(redirect)
         .tls_info(true)

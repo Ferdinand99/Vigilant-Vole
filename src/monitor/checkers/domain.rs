@@ -223,7 +223,7 @@ pub fn outcome_for(domain: &str, record: &DomainRecord, now_unix: i64) -> CheckO
 fn http() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        crate::tls_roots::http_client()
             .user_agent(crate::server::USER_AGENT)
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))

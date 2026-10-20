@@ -206,9 +206,19 @@ pub async fn send(config: &Value, event: &NotificationEvent) -> Result<(), Strin
         .port(port)
         .timeout(Some(Duration::from_secs(10)));
     if security != "none" {
-        let params = TlsParameters::builder(host.to_string())
+        let mut params = TlsParameters::builder(host.to_string())
             .dangerous_accept_invalid_certs(flag(config, "ignore_tls"))
-            .dangerous_accept_invalid_hostnames(flag(config, "ignore_tls"))
+            .dangerous_accept_invalid_hostnames(flag(config, "ignore_tls"));
+        // A system without CA certificates can't build the platform verifier
+        // on its own; give it the bundled roots.
+        if !crate::tls_roots::system_store_available() {
+            for der in webpki_root_certs::TLS_SERVER_ROOT_CERTS {
+                if let Ok(cert) = lettre::transport::smtp::client::Certificate::from_der(der.to_vec()) {
+                    params = params.add_root_certificate(cert);
+                }
+            }
+        }
+        let params = params
             .build_rustls()
             .map_err(|e| format!("TLS setup failed: {e}"))?;
         builder = builder.tls(if security == "tls" {

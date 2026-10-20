@@ -20,7 +20,7 @@ pub(super) fn client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            reqwest::Client::builder()
+            crate::tls_roots::http_client()
                 .user_agent(crate::server::USER_AGENT)
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())

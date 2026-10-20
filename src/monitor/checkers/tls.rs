@@ -82,18 +82,18 @@ fn provider() -> Arc<CryptoProvider> {
         .clone()
 }
 
-/// The OS trust store, loaded once. `None` if it holds no certificates.
+/// The OS trust store, loaded once; the bundled Mozilla roots if the system
+/// holds no certificates (see [`crate::tls_roots`]).
 fn native_roots() -> Option<Arc<RootCertStore>> {
     static ROOTS: OnceLock<Option<Arc<RootCertStore>>> = OnceLock::new();
     ROOTS
         .get_or_init(|| {
+            if !crate::tls_roots::system_store_available() {
+                return Some(crate::tls_roots::bundled_store());
+            }
             let loaded = rustls_native_certs::load_native_certs();
             let mut roots = RootCertStore::empty();
-            let (added, _) = roots.add_parsable_certificates(loaded.certs);
-            if added == 0 {
-                tracing::warn!("no native root certificates found for TLS checks");
-                return None;
-            }
+            roots.add_parsable_certificates(loaded.certs);
             Some(Arc::new(roots))
         })
         .clone()
