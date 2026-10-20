@@ -634,7 +634,6 @@ fn physical_declarations(css: &str) -> Vec<(usize, String)> {
 }
 
 #[test]
-#[ignore = "enabled by the change that converts style.css to logical properties"]
 fn the_stylesheet_has_no_unmarked_physical_left_right_properties() {
     let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/style.css")).expect("style.css");
     let found = physical_declarations(&css);
