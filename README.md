@@ -193,11 +193,11 @@ No Docker needed: every release has static binaries for **x86_64** and **aarch64
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)"
 ```
 
-The [script](deploy/install.sh) downloads the latest release, checks it against `SHA256SUMS`, creates the `vigilant-vole` user and starts `vigilant-vole.service` (sandboxed, with only `CAP_NET_RAW` for ping), then prints the URL. Running it again is safe. Options go after `--`:
+It asks whether this machine should run the **server** (web UI, database; the default) or a **remote agent** that runs checks for another Vigilant Vole server; for an agent it then asks for the server URL, the `vva_…` token (hidden) and a name. The [script](deploy/install.sh) downloads the latest release, checks it against `SHA256SUMS`, creates the `vigilant-vole` user and starts `vigilant-vole.service` (sandboxed, with only `CAP_NET_RAW` for ping) or `vigilant-vole-agent.service`, then prints the URL. Running it again is safe. Options go after `--`; `--server` or `--agent` skip the question (without a terminal it installs the server):
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- update               # new release, data and settings kept
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- --port 8080 --version v0.3.0
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- update               # new release for the server and/or agent, data and settings kept
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- --server --port 8080 --version v0.3.0
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- uninstall            # keeps data; add --purge to delete it
 ```
 
@@ -207,7 +207,14 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vol
 | `/var/lib/vigilant-vole` | data: database, session key, backups |
 | `/etc/vigilant-vole/vigilant-vole.env` | settings (`PORT`, `VV_*` …); `systemctl restart vigilant-vole` after editing |
 
-The same script installs a [remote agent](#-remote-agents) as a service (`--agent --server URL`, token in `VV_AGENT_TOKEN`). Reverse proxy, backups, Docker socket access and doing it by hand: **[docs/install-linux.md](docs/install-linux.md)**.
+A [remote agent](#-remote-agents) without questions (token in the environment, so it stays out of `ps`):
+
+```bash
+export VV_AGENT_TOKEN=vva_xxxxxxxxxxxxxxxx
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- --agent --server https://status.example.com --name Frankfurt
+```
+
+Reverse proxy, backups, Docker socket access and doing it by hand: **[docs/install-linux.md](docs/install-linux.md)**.
 
 ## 🧰 Proxmox VE (LXC)
 
@@ -218,7 +225,7 @@ export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/Ferdinand99/Vigi
 bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vole.sh")"
 ```
 
-Open `http://<container-ip>:3001` when it's done. To update, run `update` in the container's console. Paths are the same as above (data `/var/lib/vigilant-vole`, settings `/etc/vigilant-vole/vigilant-vole.env`), and ping monitors work in the unprivileged container. The scripts live in [`deploy/proxmox/`](deploy/proxmox/) and use the community-scripts engine; they're meant for submission to community-scripts once the project meets their requirements.
+It first asks whether the container runs the **server** or a **remote agent** (an agent container gets 256 MB RAM and a 1 GB disk by default and asks for the server URL and token). For the server, open `http://<container-ip>:3001` when it's done; an agent shows up on its server under Settings → Remote agents. Unattended: `var_mode=agent var_agent_server=https://status.example.com var_agent_token=vva_… mode=default bash -c "$(curl …)"`. To update, run `update` in the container's console. Paths are the same as above (data `/var/lib/vigilant-vole`, settings `/etc/vigilant-vole/vigilant-vole.env`), and ping monitors work in the unprivileged container. The scripts live in [`deploy/proxmox/`](deploy/proxmox/) and use the community-scripts engine; they're meant for submission to community-scripts once the project meets their requirements.
 
 ## 🔧 Configuration
 
@@ -337,7 +344,7 @@ docker run -d --name vigilant-vole-agent --restart unless-stopped \
   vigilant-vole:latest agent --server https://status.example.com --name Frankfurt
 ```
 
-Or with Compose (see the commented service in [`docker-compose.yml`](docker-compose.yml)), or the plain binary: `VV_AGENT_TOKEN=vva_… vigilant-vole agent --server …` (prefer the environment variable over `--token`, which other users on the host can see in `ps`). Use `--once` to test. Full guide: [docs/remote-agents.md](docs/remote-agents.md).
+Or as a systemd service with the [Linux installer](#-linux-systemd) or in a [Proxmox container](#-proxmox-ve-lxc) (both ask "server or remote agent?"), with Compose (see the commented service in [`docker-compose.yml`](docker-compose.yml)), or the plain binary: `VV_AGENT_TOKEN=vva_… vigilant-vole agent --server …` (prefer the environment variable over `--token`, which other users on the host can see in `ps`). Use `--once` to test. Full guide: [docs/remote-agents.md](docs/remote-agents.md).
 
 ## 📦 Docker label discovery
 

@@ -11,6 +11,8 @@ Use agents to:
 - **confirm outages** before alerting, so a problem with the server's own network doesn't page you.
 
 Agents only need outbound HTTPS to the server. They have no web UI, no database and no inbound port.
+Run one with Docker, as a systemd service from the Linux installer, in a Proxmox container, or as a plain
+binary (see [3. Start the agent](#3-start-the-agent)).
 
 ## 1. Create the agent (server)
 
@@ -75,6 +77,51 @@ default). Add `cap_add: [NET_RAW]` only if your runtime disables them. Docker-co
 check the agent host's Docker, so mount its socket the same way as on the server
 (see [Docker discovery](docker-discovery.md#permissions)). Tailscale ping monitors use the agent host's
 `tailscaled` the same way: mount its socket ([Tailscale ping](tailscale-ping.md#giving-the-container-the-socket)).
+
+### Linux service (installer)
+
+On any 64-bit Linux with systemd (Debian, Ubuntu, a VM, a Raspberry Pi), as root, run the
+[installer](install-linux.md) and pick **2) Remote agent**; it asks for the server URL, the token (hidden)
+and a name:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)"
+```
+
+Non-interactive (for automation; the environment variable keeps the token out of `ps`):
+
+```bash
+export VV_AGENT_TOKEN=vva_xxxxxxxxxxxxxxxx
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- \
+  --agent --server https://status.example.com --name Frankfurt
+```
+
+(`VV_INSTALL_MODE=agent`, `VV_AGENT_SERVER` and `VV_AGENT_NAME` work as well.) The installer checks that the
+server answers and accepts the token, writes `/etc/vigilant-vole/agent.env` (mode 0600) and starts
+`vigilant-vole-agent.service`. `-- update` updates it, `-- uninstall --agent` removes it. Details:
+[install-linux.md → Remote agent](install-linux.md#remote-agent).
+
+### Proxmox VE container
+
+The [Proxmox LXC script](install-linux.md#proxmox-ve-lxc) asks whether to install the server or a remote
+agent; an agent container gets 1 CPU, 256 MB RAM and a 1 GB disk by default. In the **Proxmox VE shell**:
+
+```bash
+export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/proxmox"
+bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vole.sh")"     # choose "agent"
+```
+
+Unattended, with the answers given up front:
+
+```bash
+export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/proxmox"
+export var_mode=agent var_agent_server=https://status.example.com var_agent_name=Proxmox
+read -rsp "Agent token: " var_agent_token && export var_agent_token && echo
+mode=default bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vole.sh")"
+unset var_agent_token
+```
+
+Run `update` in the container console to update the agent.
 
 ### Plain binary
 

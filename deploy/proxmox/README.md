@@ -6,12 +6,13 @@ Until then they run straight from this repository.
 
 | File | Goes to (DevScripts) | Does |
 |---|---|---|
-| [`ct/vigilant-vole.sh`](ct/vigilant-vole.sh) | `ct/vigilant-vole.sh` | Runs on the Proxmox host: container wizard (Debian 13, 1 CPU, 512 MB, 2 GB, unprivileged, amd64 + arm64), and `update_script` for the `update` command inside the container |
-| [`install/vigilant-vole-install.sh`](install/vigilant-vole-install.sh) | `install/vigilant-vole-install.sh` | Runs inside the new container: downloads the release binary, writes the env file and `vigilant-vole.service` |
-| [`json/vigilant-vole.json`](json/vigilant-vole.json) | `json/vigilant-vole.json` | Website metadata (category *Monitoring & Analytics*, port 3001, no default credentials) |
+| [`ct/vigilant-vole.sh`](ct/vigilant-vole.sh) | `ct/vigilant-vole.sh` | Runs on the Proxmox host: asks **server or remote agent** (`var_mode`), container wizard (Debian 13, unprivileged, amd64 + arm64; server 1 CPU, 512 MB, 2 GB; agent 1 CPU, 256 MB, 1 GB), and `update_script` for the `update` command inside the container (updates whichever service is there) |
+| [`install/vigilant-vole-install.sh`](install/vigilant-vole-install.sh) | `install/vigilant-vole-install.sh` | Runs inside the new container: downloads the release binary; server: writes the env file and `vigilant-vole.service`; agent: asks for the server URL, token and name unless `var_agent_*` gave them, writes `agent.env` (0600) and `vigilant-vole-agent.service` |
+| [`json/vigilant-vole.json`](json/vigilant-vole.json) | `json/vigilant-vole.json` | Website metadata (category *Monitoring & Analytics*, port 3001, no default credentials, `app_vars` for the mode and agent settings) |
 
 Inside the container: binary `/opt/vigilant-vole/vigilant-vole`, data `/var/lib/vigilant-vole`, settings
-`/etc/vigilant-vole/vigilant-vole.env`, service `vigilant-vole`. The same paths as
+`/etc/vigilant-vole/vigilant-vole.env`, service `vigilant-vole`; in agent mode only the binary,
+`/etc/vigilant-vole/agent.env` (mode 0600) and `vigilant-vole-agent`. The same paths as
 [`deploy/install.sh`](../install.sh), except that the service runs as root: community-scripts rejects
 dedicated service users in LXC scripts (the container is the isolation boundary), and root in an
 unprivileged container may open raw ICMP sockets, so ping monitors work with no extra setup.
@@ -46,13 +47,17 @@ dev_mode=keep,logs bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vol
 `/var/log/community-scripts/`. Drop `dev_mode=…` for a run that looks like a normal install. Choose
 **Default** settings first, then try **Advanced** once (other storage, static IP, privileged off/on).
 
-Unattended, with a setup token (the variable is exported into the container by the ct script):
+The first question is **server or agent** (`msg_menu`, the same prompt `docker.sh` uses for its OS choice;
+it picks `server` after 10 seconds). Choose `server` here; the agent has its own test below.
+
+With a setup token, skipping the mode question (the variables are exported into the container by the ct
+script):
 
 ```bash
-export var_setup_token="$(openssl rand -hex 16)"
+export var_mode=server var_setup_token="$(openssl rand -hex 16)"
 echo "setup token: $var_setup_token"
 bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vole.sh")"
-unset var_setup_token
+unset var_mode var_setup_token
 ```
 
 Then check, with `<ctid>` the new container's ID:
@@ -86,6 +91,44 @@ pct exec <ctid> -- cat /root/.vigilant-vole                            # install
    host; set it to `no` or comment the line out if you'd rather not claim it).
 5. Clean up: `pct stop <ctid> && pct destroy <ctid>`.
 
+## Test 1b: agent mode on your Proxmox host
+
+You need a reachable Vigilant Vole server (the container from Test 1 works): **Settings → Remote agents →
+New agent**, copy the `vva_…` token.
+
+1. **Interactive.** Run the same one-liner, answer `agent` to the first question and take **Default**
+   settings. During the install it asks for the server URL (try `status.example.com` first: it must ask
+   again), the token (input hidden; try `abc` first: it must ask again) and a name (Enter = hostname).
+   The final message says the agent is running and points at Settings → Remote agents instead of printing
+   a URL.
+2. Check, with `<ctid>` the new container's ID:
+
+   ```bash
+   pct config <ctid> | grep -E '^(memory|rootfs|cores)'                       # 256 MB, 1 GB, 1 core
+   pct exec <ctid> -- systemctl is-active vigilant-vole-agent                  # active
+   pct exec <ctid> -- ls /etc/systemd/system/ | grep vigilant                  # only the agent unit
+   pct exec <ctid> -- stat -c '%a %U' /etc/vigilant-vole/agent.env              # 600 root
+   pct exec <ctid> -- journalctl -u vigilant-vole-agent -o cat | grep 'connected to server'
+   grep -rF '<the token>' /var/log/community-scripts/ 2>/dev/null || echo "token not in the logs"
+   ```
+
+   On the server, **Settings → Remote agents** shows the agent online with version 0.3.0.
+3. **Unattended.** The token from the environment, no questions at all:
+
+   ```bash
+   export var_mode=agent var_agent_server="http://<server-ip>:3001" var_agent_name=pve-test
+   read -rsp "Agent token: " var_agent_token && export var_agent_token && echo
+   mode=default bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vole.sh")"
+   unset var_mode var_agent_server var_agent_name var_agent_token
+   ```
+
+   Then `mode=default var_mode=agent bash -c "$(curl …)"` without the server and token must stop with
+   "var_agent_server and var_agent_token are required for unattended agent installs." before a container
+   is created, and `var_mode=agent var_ram=512 …` must keep the 512 MB.
+4. **Update path**: `pct exec <ctid> -- bash -c 'echo 0.2.0 > /root/.vigilant-vole'`, then `update` in the
+   container: it stops, deploys and starts `vigilant-vole-agent` without warning about too little RAM.
+5. Clean up both containers, and delete the test agents on the server.
+
 ## Test 2: only the install script, in a Debian 13 container you made
 
 Useful for iterating on `install/vigilant-vole-install.sh` without the wizard. Create a plain
@@ -97,6 +140,14 @@ export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/Ferdinand99/Vigi
 export app=vigilant-vole
 export FUNCTIONS_FILE_PATH="$(curl -fsSL https://raw.githubusercontent.com/community-scripts/core/main/lxc/install.func)"
 bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/install/vigilant-vole-install.sh")"
+```
+
+For the agent, add these before the last line (leave out `var_agent_server`/`var_agent_token` to get the
+prompts instead):
+
+```bash
+export var_mode=agent var_agent_server="http://<server-ip>:3001" var_agent_name=pve-test
+read -rsp "Agent token: " var_agent_token && export var_agent_token && echo
 ```
 
 `FUNCTIONS_FILE_PATH` (the engine's `lxc/install.func`), `app` and `COMMUNITY_SCRIPTS_URL` are what the
@@ -147,7 +198,8 @@ Fill in the [pull request template](https://github.com/community-scripts/DevScri
 - **Type of change**: 🆕 New script.
 - **Prerequisites**: self-review, tested (say which Proxmox VE version), no breaking changes, no
   security risks (no credentials in the scripts; the setup token is optional and only read from
-  `var_setup_token`).
+  `var_setup_token`; the agent token only from `var_agent_token` or a hidden prompt, and only written to
+  `/etc/vigilant-vole/agent.env` with mode 0600).
 - **arm64**: "arm64 supported" only if you ran Test 1 on an arm64 host, otherwise "arm64 not tested".
 - **Tested on**: Proxmox VE (Incus only if you tried it).
 - **Code & security review**: follows `CODE-AUDIT.md`/`CONTRIBUTING.md`; correct structure

@@ -824,7 +824,8 @@
               <pre tabindex="0" role="region" translate="no" aria-label="Linux install command"><code id="snippet-linux">bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)"</code></pre>
               <p>
                 No Docker needed: a static binary for x86_64 or aarch64, checksum-verified and run as a
-                sandboxed systemd service on Debian, Ubuntu and friends. Add <code>-- update</code> to update.
+                sandboxed systemd service on Debian, Ubuntu and friends. It asks whether to set up the server
+                or a remote agent for another server. Add <code>-- update</code> to update.
                 <a href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/install-linux.md">Linux guide</a>
               </p>
             </div>
@@ -841,7 +842,8 @@
 bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vole.sh")"</code></pre>
               <p>
                 Run it in the Proxmox VE shell. It creates an unprivileged Debian 13 container with
-                Vigilant Vole inside, community-scripts style; run <code>update</code> in the container to update.
+                Vigilant Vole inside, community-scripts style: the server, or a small remote agent container.
+                Run <code>update</code> in the container to update.
               </p>
             </div>
           </div>

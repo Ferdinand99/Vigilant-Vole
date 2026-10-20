@@ -8,19 +8,29 @@
 # Commands:
 #   install            (default) install or repair; safe to run again
 #   update             replace the binary with the latest (or --version) release,
-#                      keep data and settings, restart
-#   uninstall          remove the program and the services; keep data and settings
-#   uninstall --purge  also delete /var/lib/vigilant-vole, /etc/vigilant-vole and the user
+#                      keep data and settings, restart whichever services are installed
+#   uninstall          remove the program and the services; keep data and settings.
+#                      With both a server and an agent installed it asks which one
+#                      to remove (or pass --server / --agent; no terminal: both)
+#   uninstall --purge  also delete their data and settings (and the user, once
+#                      nothing is left)
+#
+# Mode: run in a terminal without a mode and the installer asks whether to set
+# up the server (web UI, database) or a remote agent (runs checks for another
+# Vigilant Vole server), then asks for the agent's server URL, token and name.
+# Without a terminal it installs the server, as before.
+#   --server           install the server (no questions)
+#   --agent            install a remote probe agent (vigilant-vole-agent.service)
+#   VV_INSTALL_MODE=server|agent   the same, from the environment
 #
 # Options:
 #   --version vX.Y.Z   install this release instead of the latest
-#   --port N           HTTP port (default 3001; written to the env file)
-#   --agent            install a remote probe agent (vigilant-vole-agent.service)
-#                      instead of the server; needs --server and a token
-#   --server URL       agent: URL of your Vigilant Vole server
-#   --token T          agent: agent token (or set VV_AGENT_TOKEN, which stays out of `ps`)
-#   --name NAME        agent: display name (default: hostname)
-#   --yes              don't ask before deleting data (uninstall --purge)
+#   --port N           server: HTTP port (default 3001; written to the env file)
+#   --server URL       agent: URL of your Vigilant Vole server (implies --agent;
+#                      or VV_AGENT_SERVER)
+#   --token T          agent: agent token vva_... (or VV_AGENT_TOKEN, which stays out of `ps`)
+#   --name NAME        agent: display name (or VV_AGENT_NAME; default: hostname)
+#   --yes              don't ask (uninstall: remove everything; --purge: delete data)
 #
 # Layout:
 #   /opt/vigilant-vole/vigilant-vole        binary (+ /usr/local/bin/vigilant-vole)
@@ -47,14 +57,20 @@ readonly SERVICE="vigilant-vole"
 readonly AGENT_SERVICE="vigilant-vole-agent"
 readonly SVC_USER="vigilant-vole"
 readonly DEFAULT_PORT="3001"
+# Characters the agent settings may not contain (they're written in quotes to
+# a systemd EnvironmentFile).
+readonly BAD_CHARS='["\\$`[:cntrl:]]'
 
 command_name="install"
 want_version=""
 port=""
-agent_mode=0
-agent_server=""
+# server | agent | "" (ask in a terminal, else server)
+install_mode=""
+mode_flag=""
+server_url_flag=0
+agent_server="${VV_AGENT_SERVER:-}"
 agent_token="${VV_AGENT_TOKEN:-}"
-agent_name=""
+agent_name="${VV_AGENT_NAME:-}"
 purge=0
 assume_yes=0
 tmp_dir=""
@@ -82,7 +98,14 @@ trap cleanup EXIT
 
 usage() {
   sed -n '2,/^set -euo pipefail/{/^set -euo/d;s/^# \{0,1\}//;p}' "${BASH_SOURCE[0]}" 2>/dev/null ||
-    echo "usage: install.sh [install|update|uninstall [--purge]] [--version vX.Y.Z] [--port N] [--agent --server URL --token T]"
+    echo "usage: install.sh [install|update|uninstall [--purge]] [--server | --agent [--server URL --token T --name N]] [--version vX.Y.Z] [--port N]"
+}
+
+set_mode_flag() {
+  if [[ -n "$mode_flag" && "$mode_flag" != "$1" ]]; then
+    die "--agent and --server (without a URL) contradict each other; pick one"
+  fi
+  mode_flag="$1"
 }
 
 parse_args() {
@@ -101,13 +124,21 @@ parse_args() {
       shift
       ;;
     --port=*) port="${1#*=}" ;;
-    --agent) agent_mode=1 ;;
+    --agent) set_mode_flag agent ;;
     --server)
-      [[ $# -ge 2 ]] || die "--server needs a URL"
-      agent_server="$2"
-      shift
+      # `--server URL` is the agent's server; a bare `--server` picks server mode.
+      if [[ $# -ge 2 && "$2" != -* && "$2" != install && "$2" != update && "$2" != uninstall ]]; then
+        agent_server="$2"
+        server_url_flag=1
+        shift
+      else
+        set_mode_flag server
+      fi
       ;;
-    --server=*) agent_server="${1#*=}" ;;
+    --server=*)
+      agent_server="${1#*=}"
+      server_url_flag=1
+      ;;
     --token)
       [[ $# -ge 2 ]] || die "--token needs a value"
       agent_token="$2"
@@ -145,14 +176,169 @@ parse_args() {
   if [[ "$purge" == 1 && "$command_name" != "uninstall" ]]; then
     die "--purge only goes with uninstall"
   fi
-  if [[ "$agent_mode" == 1 && "$command_name" == "install" ]]; then
-    [[ -n "$agent_server" ]] || die "--agent needs --server https://your-vigilant-vole-server"
-    [[ "$agent_server" =~ ^https?:// ]] || die "--server must start with http:// or https://"
-    [[ -n "$agent_token" ]] || die "--agent needs a token: set VV_AGENT_TOKEN=vva_... or pass --token"
-    case "$agent_server$agent_token$agent_name" in
-    *$'\n'* | *\"* | *\\*) die "--server, --token and --name must not contain quotes, backslashes or newlines" ;;
-    esac
+
+  # Flags win over VV_INSTALL_MODE; `--server URL` alone means an agent.
+  local env_mode="${VV_INSTALL_MODE:-}"
+  env_mode="${env_mode,,}"
+  case "$env_mode" in
+  "" | server | agent) ;;
+  *) die "VV_INSTALL_MODE must be server or agent (got ${VV_INSTALL_MODE})" ;;
+  esac
+  install_mode="${mode_flag:-$env_mode}"
+  if [[ -z "$install_mode" && "$server_url_flag" == 1 ]]; then
+    install_mode="agent"
   fi
+  if [[ "$command_name" == "install" && "$install_mode" == "server" && "$server_url_flag" == 1 ]]; then
+    die "--server URL belongs to an agent install (--agent); for the server itself use --server without a URL"
+  fi
+}
+
+# Prints what is wrong with the agent settings, or nothing. They end up quoted
+# in a systemd EnvironmentFile, so quotes, backslashes, $ and backticks are out.
+agent_setting_error() {
+  if [[ -z "$agent_server" ]]; then
+    echo "the agent needs the URL of your Vigilant Vole server: --server https://status.example.com (or VV_AGENT_SERVER)"
+  elif ! [[ "$agent_server" =~ ^https?://[^[:space:]/]+ ]] || [[ "$agent_server" =~ [[:space:]] || "$agent_server" =~ $BAD_CHARS ]]; then
+    echo "the server URL must start with http:// or https:// and contain no spaces, quotes, backslashes, \$ or backticks"
+  elif [[ -z "$agent_token" ]]; then
+    echo "the agent needs its token: set VV_AGENT_TOKEN=vva_... or pass --token (create one under Settings -> Remote agents on the server)"
+  elif [[ "$agent_token" != vva_?* || "$agent_token" =~ [[:space:]] || "$agent_token" =~ $BAD_CHARS ]]; then
+    echo "that is not an agent token: agent tokens start with vva_ (Settings -> Remote agents on the server)"
+  elif [[ "$agent_name" =~ $BAD_CHARS ]]; then
+    echo "the agent name must not contain quotes, backslashes, \$, backticks or control characters"
+  fi
+}
+
+validate_agent_settings() {
+  local err
+  err="$(agent_setting_error)"
+  [[ -z "$err" ]] || die "$err"
+}
+
+# Questions only go to a person at a terminal. `bash -c "$(curl ...)"` keeps
+# stdin on the terminal; `curl ... | bash` and automation don't, and get the
+# server (or whatever the flags and VV_* variables say) without being asked.
+interactive() {
+  [[ -t 0 ]]
+}
+
+ask() {
+  # ask <prompt> <var> [-s]: reads one line into <var>; EOF is an error.
+  local _answer=""
+  if [[ "${3:-}" == "-s" ]]; then
+    IFS= read -r -s -p "$1" _answer || die "no answer (input closed)"
+    echo >&2
+  else
+    IFS= read -r -p "$1" _answer || die "no answer (input closed)"
+  fi
+  # Trim surrounding whitespace (pasted tokens often bring a newline or space).
+  _answer="${_answer#"${_answer%%[![:space:]]*}"}"
+  _answer="${_answer%"${_answer##*[![:space:]]}"}"
+  printf -v "$2" '%s' "$_answer"
+}
+
+choose_mode() {
+  [[ -n "$install_mode" ]] && return 0
+  if ! interactive; then
+    install_mode="server"
+    return 0
+  fi
+  local default=1 answer=""
+  if unit_exists "$AGENT_SERVICE" && ! unit_exists "$SERVICE"; then
+    default=2
+  fi
+  {
+    echo
+    printf '%sWhat should this machine run?%s\n' "$c_bold" "$c_reset"
+    echo "  1) Server        (web UI, database)"
+    echo "  2) Remote agent  (runs checks for another Vigilant Vole server)"
+  } >&2
+  while true; do
+    ask "Choose 1 or 2 [$default]: " answer
+    case "${answer,,}" in
+    "") [[ "$default" == 2 ]] && install_mode="agent" || install_mode="server" ;;
+    1 | s | server) install_mode="server" ;;
+    2 | a | agent) install_mode="agent" ;;
+    *)
+      warn "answer 1 (server) or 2 (remote agent)"
+      continue
+      ;;
+    esac
+    break
+  done
+}
+
+# Asks for whatever agent setting the flags and VV_AGENT_* didn't provide.
+prompt_agent_settings() {
+  interactive || return 0
+  local err asked=0
+  if [[ -z "$agent_server" || -z "$agent_token" ]]; then
+    {
+      echo
+      echo "Create the agent on your Vigilant Vole server first: Settings -> Remote agents -> New agent."
+      echo "It shows the token (vva_...) once."
+    } >&2
+  fi
+  if [[ -z "$agent_server" ]]; then
+    asked=1
+    while true; do
+      ask "Server URL (e.g. https://status.example.com): " agent_server
+      if [[ -z "$agent_server" ]]; then
+        warn "enter the URL of your Vigilant Vole server"
+        continue
+      fi
+      err="$(agent_setting_error)"
+      [[ "$err" == "the server URL"* ]] || break
+      warn "$err"
+      agent_server=""
+    done
+  fi
+  if [[ -z "$agent_token" ]]; then
+    asked=1
+    while true; do
+      ask "Agent token (vva_..., input hidden): " agent_token -s
+      if [[ "$agent_token" == vva_?* && ! "$agent_token" =~ [[:space:]] && ! "$agent_token" =~ $BAD_CHARS ]]; then
+        break
+      fi
+      warn "that is not an agent token: they start with vva_ (Settings -> Remote agents on the server)"
+      agent_token=""
+    done
+  fi
+  if [[ "$asked" == 1 && -z "$agent_name" ]]; then
+    local host
+    host="$(hostname 2>/dev/null || echo agent)"
+    while true; do
+      ask "Agent name [$host]: " agent_name
+      [[ "$agent_name" =~ $BAD_CHARS ]] || break
+      warn "the name must not contain quotes, backslashes, \$ or backticks"
+      agent_name=""
+    done
+  fi
+}
+
+# Warnings only: the agent retries until the server is reachable, and a wrong
+# token can be fixed in the env file afterwards. The token goes to curl on
+# stdin (-K -), not on its command line.
+check_server_reachable() {
+  local base="${agent_server%/}" code=""
+  if ! curl -fsS --max-time 5 -o /dev/null "$base/healthz" 2>/dev/null; then
+    warn "could not reach $base/healthz from this machine. Installing anyway; the agent keeps retrying. Check the URL, DNS and firewall if it stays offline."
+    return 0
+  fi
+  code="$(printf 'header = "Authorization: Bearer %s"\n' "$agent_token" |
+    curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -K - "$base/api/agent/v1/monitors" 2>/dev/null)" || code=""
+  case "$code" in
+  200 | 304) ok "Reached $base, which accepts the agent token" ;;
+  401)
+    agent_state="refused"
+    warn "$base rejected this agent token (mistyped, rotated or deleted). Installing anyway; put the right token in $AGENT_ENV_FILE afterwards and run: systemctl restart $AGENT_SERVICE"
+    ;;
+  403)
+    agent_state="refused"
+    warn "this agent is disabled on $base; enable it under Settings -> Remote agents"
+    ;;
+  *) ok "Reached $base" ;;
+  esac
 }
 
 require_root() {
@@ -482,14 +668,64 @@ wait_healthy() {
   die "Vigilant Vole did not answer on port $p. Check: journalctl -u $SERVICE"
 }
 
+# Waits up to ~15 s for the agent's first contact with the server. Sets
+# agent_state to connected, refused or waiting; dies if the service stopped.
+agent_state=""
 wait_agent() {
-  sleep 3
-  if systemctl is-active --quiet "$AGENT_SERVICE"; then
-    ok "Agent is running (logs: journalctl -u $AGENT_SERVICE -f)"
-  else
-    journalctl -u "$AGENT_SERVICE" -n 30 --no-pager >&2 || true
-    die "the agent did not start. Check $AGENT_ENV_FILE and: journalctl -u $AGENT_SERVICE"
+  local invocation="" logs="" i
+  if [[ "$agent_state" == "refused" ]]; then
+    sleep 2
+    systemctl is-active --quiet "$AGENT_SERVICE" ||
+      die "the agent did not start. Check $AGENT_ENV_FILE and: journalctl -u $AGENT_SERVICE"
+    return 0
   fi
+  info "Waiting for the agent to reach its server"
+  for ((i = 0; i < 15; i++)); do
+    sleep 1
+    if ! systemctl is-active --quiet "$AGENT_SERVICE" && ((i >= 2)); then
+      break
+    fi
+    invocation="$(systemctl show -p InvocationID --value "$AGENT_SERVICE" 2>/dev/null)" || invocation=""
+    [[ -n "$invocation" ]] || continue
+    logs="$(journalctl --no-pager -o cat "_SYSTEMD_INVOCATION_ID=$invocation" 2>/dev/null)" || logs=""
+    if [[ "$logs" == *"connected to server"* ]]; then
+      agent_state="connected"
+      ok "Agent is running and connected to its server"
+      return 0
+    fi
+    if [[ "$logs" == *"server refused the agent"* ]]; then
+      agent_state="refused"
+      warn "the server rejected the agent's token (wrong, rotated or disabled agent). Put the right token in $AGENT_ENV_FILE, then: systemctl restart $AGENT_SERVICE"
+      return 0
+    fi
+  done
+  if systemctl is-active --quiet "$AGENT_SERVICE"; then
+    agent_state="waiting"
+    ok "Agent is running; it hasn't reached the server yet and keeps retrying (logs: journalctl -u $AGENT_SERVICE -f)"
+    return 0
+  fi
+  journalctl -u "$AGENT_SERVICE" -n 30 --no-pager >&2 || true
+  die "the agent did not start. Check $AGENT_ENV_FILE and: journalctl -u $AGENT_SERVICE"
+}
+
+agent_server_from_env() {
+  sed -n 's/^VV_AGENT_SERVER=["]\{0,1\}\([^"]*\)["]\{0,1\}[[:space:]]*$/\1/p' "$AGENT_ENV_FILE" 2>/dev/null | tail -n 1
+}
+
+print_agent_summary() {
+  local server
+  server="$(agent_server_from_env)"
+  echo
+  if [[ "$agent_state" == "refused" ]]; then
+    printf '%sThe Vigilant Vole agent is installed, but its token was rejected.%s\n' "$c_bold" "$c_reset"
+  else
+    printf '%sThe Vigilant Vole agent is running.%s\n' "$c_bold" "$c_reset"
+  fi
+  echo "See it on your server under Settings -> Remote agents: ${server%/}/settings/agents"
+  echo "(it shows as online once it has checked in). Tick \"Check from remote agents too\" on the"
+  echo "monitors it should run."
+  echo "Settings: $AGENT_ENV_FILE (mode 0600)   Logs: journalctl -u $AGENT_SERVICE -f"
+  echo "Update:   bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/$REPO/main/deploy/install.sh)\" -- update"
 }
 
 host_address() {
@@ -566,11 +802,19 @@ cmd_install() {
   require_root
   require_systemd
   detect_target >/dev/null
+  choose_mode
+  if [[ "$install_mode" == "agent" ]]; then
+    prompt_agent_settings
+    validate_agent_settings
+  fi
   ensure_tools
+  if [[ "$install_mode" == "agent" ]]; then
+    check_server_reachable
+  fi
   install_binary
   ensure_user
 
-  if [[ "$agent_mode" == 1 ]]; then
+  if [[ "$install_mode" == "agent" ]]; then
     install -d -m 0750 -o root -g "$SVC_USER" "$CONF_DIR"
     write_agent_env_file
     local agent_unit_changed
@@ -578,7 +822,11 @@ cmd_install() {
     systemctl daemon-reload
     systemctl enable --quiet "$AGENT_SERVICE"
     apply_service "$AGENT_SERVICE" "$agent_unit_changed"
+    if unit_exists "$SERVICE" && [[ "$binary_changed" == 1 ]]; then
+      systemctl restart "$SERVICE" || true
+    fi
     wait_agent
+    print_agent_summary
     return
   fi
 
@@ -631,28 +879,113 @@ cmd_update() {
   ok "Vigilant Vole $(installed_version) is running"
 }
 
+remove_unit() {
+  if unit_exists "$1"; then
+    info "Removing $1.service"
+    systemctl disable --now --quiet "$1" 2>/dev/null || true
+    rm -f "$UNIT_DIR/$1.service"
+  fi
+}
+
 cmd_uninstall() {
   require_root
+  local have_server=0 have_agent=0 rm_server=1 rm_agent=1
+  unit_exists "$SERVICE" && have_server=1
+  unit_exists "$AGENT_SERVICE" && have_agent=1
+
+  # What to remove: --server / --agent (or VV_INSTALL_MODE) pick one; with both
+  # installed a person at a terminal is asked; otherwise everything goes.
+  case "$install_mode" in
+  server) rm_agent=0 ;;
+  agent) rm_server=0 ;;
+  *)
+    if ((have_server == 1 && have_agent == 1)) && [[ "$assume_yes" != 1 ]] && interactive; then
+      local answer=""
+      {
+        echo "Both the Vigilant Vole server and a remote agent are installed here. Remove:"
+        echo "  1) the server (vigilant-vole.service)"
+        echo "  2) the agent (vigilant-vole-agent.service)"
+        echo "  3) both, and the program"
+      } >&2
+      while true; do
+        ask "Choose 1, 2 or 3 [3]: " answer
+        case "$answer" in
+        1) rm_agent=0 ;;
+        2) rm_server=0 ;;
+        "" | 3) ;;
+        *)
+          warn "answer 1, 2 or 3"
+          continue
+          ;;
+        esac
+        break
+      done
+    fi
+    ;;
+  esac
+  if [[ "$rm_server" == 1 && "$rm_agent" == 0 && "$have_server" == 0 ]]; then
+    die "the server (vigilant-vole.service) is not installed here; nothing removed"
+  fi
+  if [[ "$rm_agent" == 1 && "$rm_server" == 0 && "$have_agent" == 0 ]]; then
+    die "no agent (vigilant-vole-agent.service) is installed here; nothing removed"
+  fi
+  # The program, its link and the user stay while the other service needs them.
+  local keep_program=0 what
+  if [[ "$rm_server" == 0 && "$have_server" == 1 ]] || [[ "$rm_agent" == 0 && "$have_agent" == 1 ]]; then
+    keep_program=1
+  fi
+  if [[ "$keep_program" == 1 && "$rm_server" == 1 ]]; then
+    what="the server's data in $DATA_DIR (database, backups) and $ENV_FILE"
+  elif [[ "$keep_program" == 1 ]]; then
+    what="the agent's settings in $AGENT_ENV_FILE"
+  else
+    what="$DATA_DIR (database, backups) and $CONF_DIR"
+  fi
+
   # Ask before touching anything, so a declined purge changes nothing.
   if [[ "$purge" == 1 && "$assume_yes" != 1 ]]; then
-    if [[ -t 0 ]]; then
-      local answer=""
-      read -r -p "Delete $DATA_DIR (database, backups) and $CONF_DIR for good? [y/N] " answer
-      [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]] || die "nothing removed (answer y to confirm, or run uninstall without --purge)"
+    if interactive; then
+      local confirm=""
+      ask "Delete $what for good? [y/N] " confirm
+      [[ "$confirm" =~ ^[Yy]([Ee][Ss])?$ ]] || die "nothing removed (answer y to confirm, or run uninstall without --purge)"
     else
-      die "uninstall --purge deletes all monitoring data; add --yes to confirm when not running interactively"
+      die "uninstall --purge deletes $what; add --yes to confirm when not running interactively"
     fi
   fi
 
-  local svc
-  for svc in "$SERVICE" "$AGENT_SERVICE"; do
-    if unit_exists "$svc"; then
-      info "Removing $svc.service"
-      systemctl disable --now --quiet "$svc" 2>/dev/null || true
-      rm -f "$UNIT_DIR/$svc.service"
-    fi
-  done
+  if [[ "$rm_server" == 1 ]]; then
+    remove_unit "$SERVICE"
+  fi
+  if [[ "$rm_agent" == 1 ]]; then
+    remove_unit "$AGENT_SERVICE"
+  fi
   command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload 2>/dev/null || true
+
+  if [[ "$keep_program" == 1 ]]; then
+    if [[ "$rm_server" == 1 ]]; then
+      ok "Removed the server; the agent keeps running"
+    else
+      ok "Removed the agent; the server keeps running"
+    fi
+    if [[ "$purge" != 1 ]]; then
+      if [[ "$rm_server" == 1 ]]; then
+        echo "Kept the server's data in $DATA_DIR and settings in $ENV_FILE."
+      else
+        echo "Kept the agent's settings in $AGENT_ENV_FILE."
+      fi
+      echo "Delete them too with: uninstall --purge $([[ "$rm_server" == 1 ]] && echo --server || echo --agent)"
+      return
+    fi
+    if [[ "$rm_server" == 1 ]]; then
+      rm -rf "$DATA_DIR" "$ENV_FILE" "$UNIT_DIR/$SERVICE.service.d"
+      ok "Deleted the server's data and settings"
+    else
+      rm -rf "$AGENT_ENV_FILE" "$UNIT_DIR/$AGENT_SERVICE.service.d"
+      ok "Deleted the agent's settings"
+    fi
+    return
+  fi
+
   if [[ -L "$BIN_LINK" || -f "$BIN_LINK" ]]; then
     rm -f "$BIN_LINK"
   fi

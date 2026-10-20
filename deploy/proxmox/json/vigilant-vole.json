@@ -34,10 +34,38 @@
   },
   "app_vars": [
     {
+      "name": "var_mode",
+      "label": "Install",
+      "type": "select",
+      "options": ["server", "agent"],
+      "default": "server",
+      "help": "server: the web UI and database. agent: a remote probe that runs checks for another Vigilant Vole server and reports back (no web UI; defaults to 256 MB RAM and a 1 GB disk)"
+    },
+    {
       "name": "var_setup_token",
       "label": "Setup Token (VV_SETUP_TOKEN)",
       "type": "password",
-      "secret": true
+      "secret": true,
+      "help": "Server only: require /setup?token=<value> for the first-run setup page. Empty means off"
+    },
+    {
+      "name": "var_agent_server",
+      "label": "Agent: Server URL",
+      "type": "text",
+      "help": "Agent only, required: the URL of your Vigilant Vole server, e.g. https://status.example.com"
+    },
+    {
+      "name": "var_agent_token",
+      "label": "Agent: Token",
+      "type": "password",
+      "secret": true,
+      "help": "Agent only, required: the vva_... token from Settings → Remote agents → New agent on the server (shown once)"
+    },
+    {
+      "name": "var_agent_name",
+      "label": "Agent: Name",
+      "type": "text",
+      "help": "Agent only: the name the server shows. Empty means the container's hostname"
     }
   ],
   "notes": [
@@ -47,6 +75,10 @@
     },
     {
       "text": "Set a setup token (var_setup_token, or VV_SETUP_TOKEN in /etc/vigilant-vole/vigilant-vole.env) to require /setup?token=<value> for the first visit.",
+      "type": "info"
+    },
+    {
+      "text": "The script asks whether to install the server or a remote agent (var_mode=agent). An agent needs the server URL and a token from Settings → Remote agents on that server. It runs vigilant-vole-agent.service with its settings in /etc/vigilant-vole/agent.env (mode 0600), has no web UI and defaults to 1 CPU, 256 MB RAM and a 1 GB disk.",
       "type": "info"
     }
   ]
