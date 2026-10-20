@@ -561,4 +561,10 @@ fn coverage_report() {
         println!("{code:>6}: {done:>5}/{total:<5} {pct:5.1}%");
     }
     assert_eq!(rows["en"].2, 100.0);
+    // Every shipped translation is complete. New English strings added later
+    // must be translated in the same change (or follow-up) before this passes.
+    for lang in translated() {
+        let (done, total, pct) = rows[lang.code()];
+        assert_eq!(done, total, "{lang} is only {pct:.1}% translated: run `cargo test --lib coverage_report -- --nocapture` and see docs/translating.md");
+    }
 }
