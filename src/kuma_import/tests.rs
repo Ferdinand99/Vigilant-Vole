@@ -50,7 +50,7 @@ INSERT INTO monitor (id, name, type, url, interval, retry_interval, maxretries, 
     'bot', 'secret', 1, 1, 1, 'POST', '{"ping":true}', 'json', 5, 'Main site');
 INSERT INTO monitor (id, name, type, hostname, port, interval, timeout) VALUES (2, 'Postgres port', 'port', 'db.internal', 5432, 30, 48);
 INSERT INTO monitor (id, name, type, push_token, interval) VALUES (3, 'Nightly job', 'push', 'kumaPushTok1', 86400);
-INSERT INTO monitor (id, name, type, hostname) VALUES (4, 'Broker', 'mqtt', 'mqtt.internal');
+INSERT INTO monitor (id, name, type, hostname) VALUES (4, 'Broker', 'mongodb', 'mongo.internal');
 INSERT INTO monitor (id, name, type) VALUES (5, 'Backend', 'group');
 INSERT INTO monitor (id, name, type, url, keyword, invert_keyword) VALUES (6, 'Shop', 'keyword', 'https://shop.example.com', 'Out of stock', 1);
 INSERT INTO monitor (id, name, type, docker_container, docker_host, active) VALUES (7, 'Web container', 'docker', 'web', 1, 0);
@@ -131,7 +131,7 @@ fn sqlite_monitors_map_to_our_types_and_options() {
     // The second "Website" gets a distinct key.
     assert_eq!(monitor(&import, "Website #10").name, "Website");
     // Unsupported types are listed with a reason.
-    assert!(import.skipped.iter().any(|s| s.name == "Broker" && s.reason.contains("MQTT")));
+    assert!(import.skipped.iter().any(|s| s.name == "Broker" && s.reason.contains("MongoDB")));
 }
 
 #[test]
@@ -231,4 +231,107 @@ fn files_are_sniffed_by_content() {
     assert_eq!(read_file(&path).unwrap().source, "json");
     std::fs::write(&path, [0u8, 159, 146, 150]).unwrap();
     assert!(read_file(&path).is_err());
+}
+
+#[test]
+fn kuma_auth_methods_map_to_ours() {
+    let json = r##"{
+      "version": "2.0.0",
+      "monitorList": [
+        {"id": 1, "name": "Basic", "type": "http", "url": "https://a.example.com", "authMethod": "basic",
+         "basic_auth_user": "bot", "basic_auth_pass": "pw"},
+        {"id": 2, "name": "Legacy basic", "type": "http", "url": "https://b.example.com", "basic_auth_user": "old", "basic_auth_pass": "pw"},
+        {"id": 3, "name": "OAuth", "type": "http", "url": "https://c.example.com", "authMethod": "oauth2-cc",
+         "oauth_auth_method": "client_secret_post", "oauth_token_url": "https://idp.example.com/token",
+         "oauth_client_id": "vole", "oauth_client_secret": "shh", "oauth_scopes": "read write", "oauth_audience": "api"},
+        {"id": 4, "name": "OAuth basic", "type": "keyword", "keyword": "ok", "url": "https://d.example.com", "authMethod": "oauth2-cc",
+         "oauth_auth_method": "client_secret_basic", "oauth_token_url": "https://idp.example.com/token", "oauth_client_id": "v", "oauth_client_secret": "s"},
+        {"id": 5, "name": "Mtls", "type": "http", "url": "https://e.example.com", "authMethod": "mtls",
+         "tlsCa": "CA-PEM", "tlsCert": "CERT-PEM", "tlsKey": "KEY-PEM"},
+        {"id": 6, "name": "Ntlm", "type": "http", "url": "https://f.example.com", "authMethod": "ntlm",
+         "basic_auth_user": "DOMAIN\\user", "basic_auth_pass": "pw"},
+        {"id": 7, "name": "No auth", "type": "http", "url": "https://g.example.com"}
+      ]
+    }"##;
+    let import = read_json(json).unwrap();
+    let o = |name: &str| monitor(&import, name).options.clone();
+
+    let basic = o("Basic");
+    assert_eq!((&basic["auth_method"], &basic["basic_auth_user"], &basic["basic_auth_pass"]), (&"basic".into(), &"bot".into(), &"pw".into()));
+    assert_eq!(o("Legacy basic")["auth_method"], "basic");
+
+    let oauth = o("OAuth");
+    assert_eq!(oauth["auth_method"], "oauth2");
+    assert_eq!(oauth["oauth_token_url"], "https://idp.example.com/token");
+    assert_eq!((&oauth["oauth_client_id"], &oauth["oauth_client_secret"]), (&"vole".into(), &"shh".into()));
+    assert_eq!((&oauth["oauth_scope"], &oauth["oauth_audience"]), (&"read write".into(), &"api".into()));
+    assert_eq!(oauth["oauth_client_auth"], "client_secret_post");
+    assert_eq!(o("OAuth basic")["oauth_client_auth"], "client_secret_basic");
+
+    let mtls = o("Mtls");
+    assert_eq!(mtls["auth_method"], "mtls");
+    assert_eq!((&mtls["tls_client_cert"], &mtls["tls_client_key"], &mtls["tls_ca_cert"]), (&"CERT-PEM".into(), &"KEY-PEM".into(), &"CA-PEM".into()));
+
+    // NTLM has no equivalent: no credentials are carried over, and it is reported.
+    let ntlm = o("Ntlm");
+    assert!(!ntlm.contains_key("auth_method") && !ntlm.contains_key("basic_auth_user") && !ntlm.contains_key("basic_auth_pass"));
+    assert!(import.warnings.iter().any(|w| w.contains("Ntlm") && w.contains("NTLM")), "{:?}", import.warnings);
+    assert!(!o("No auth").contains_key("auth_method"));
+    assert!(!import.warnings.iter().any(|w| w.contains("shh") || w.contains("KEY-PEM")));
+}
+
+#[test]
+fn service_monitors_map_to_ours() {
+    let json = r##"{
+      "version": "2.0.0",
+      "monitorList": [
+        {"id": 1, "name": "PG", "type": "postgres", "databaseConnectionString": "postgres://vole:p%40ss@db.local:5433/app?sslmode=require", "databaseQuery": "SELECT count(*) FROM jobs"},
+        {"id": 2, "name": "My", "type": "mysql", "databaseConnectionString": "mysql://root:pw@maria.local:3306/shop"},
+        {"id": 3, "name": "Cache", "type": "redis", "databaseConnectionString": "rediss://:secret@cache.local:6380/2"},
+        {"id": 4, "name": "Bad conn", "type": "postgres", "databaseConnectionString": "Server=x;Database=y"},
+        {"id": 5, "name": "Broker", "type": "mqtt", "hostname": "mqtts://broker.local", "port": 8883, "mqttTopic": "home/status", "mqttSuccessMessage": "online", "mqttUsername": "u", "mqttPassword": "p"},
+        {"id": 6, "name": "Ws broker", "type": "mqtt", "hostname": "ws://broker.local", "port": 9001},
+        {"id": 7, "name": "Kafka", "type": "kafka-producer", "kafkaProducerBrokers": ["k1:9092", "k2:9092"], "kafkaProducerTopic": "orders",
+         "kafkaProducerSaslOptions": {"mechanism": "plain"}},
+        {"id": 8, "name": "Radius", "type": "radius", "hostname": "radius.local", "port": 1812, "radiusUsername": "u", "radiusPassword": "p", "radiusSecret": "s3"},
+        {"id": 9, "name": "Router", "type": "snmp", "hostname": "router.local", "port": 161, "snmpOid": ".1.3.6.1.2.1.1.3.0", "snmpVersion": "2c", "radiusPassword": "public", "expectedValue": "up"},
+        {"id": 10, "name": "V3", "type": "snmp", "hostname": "router.local", "snmpVersion": "3"},
+        {"id": 11, "name": "Mail", "type": "smtp", "hostname": "mail.local", "smtpSecurity": "secure"},
+        {"id": 12, "name": "MQ", "type": "rabbitmq", "rabbitmqNodes": ["https://mq.local:15671/"], "rabbitmqUsername": "guest", "rabbitmqPassword": "guest"},
+        {"id": 13, "name": "Mongo", "type": "mongodb", "databaseConnectionString": "mongodb://x"}
+      ]
+    }"##;
+    let import = read_json(json).unwrap();
+    let doc = |name: &str| monitor(&import, name);
+
+    let pg = doc("PG");
+    assert_eq!((pg.monitor_type.as_str(), pg.target.as_str()), ("postgres", "postgres://db.local:5433/app?sslmode=require"));
+    assert_eq!((&pg.options["basic_auth_user"], &pg.options["basic_auth_pass"]), (&"vole".into(), &"p@ss".into()), "credentials leave the address and are decoded");
+    assert_eq!(doc("My").target, "mysql://maria.local:3306/shop");
+    let cache = doc("Cache");
+    assert_eq!((cache.monitor_type.as_str(), cache.target.as_str()), ("redis", "rediss://cache.local:6380/2"));
+    assert!(!cache.options.contains_key("basic_auth_user") && cache.options["basic_auth_pass"] == "secret");
+
+    let mqtt = doc("Broker");
+    assert_eq!(mqtt.target, "mqtts://broker.local:8883/home/status");
+    assert_eq!((&mqtt.options["keyword"], &mqtt.options["basic_auth_user"]), (&"online".into(), &"u".into()));
+
+    let kafka = doc("Kafka");
+    assert_eq!(kafka.target, "kafka://k1:9092/orders");
+    let radius = doc("Radius");
+    assert_eq!((radius.target.as_str(), &radius.options["secret"]), ("radius://radius.local:1812", &"s3".into()));
+    let snmp = doc("Router");
+    assert_eq!(snmp.target, "snmp://router.local:161/1.3.6.1.2.1.1.3.0?version=2c");
+    assert_eq!((&snmp.options["secret"], &snmp.options["keyword"]), (&"public".into(), &"up".into()));
+    assert_eq!(doc("Mail").target, "mail.local:465");
+    let mq = doc("MQ");
+    assert_eq!((mq.monitor_type.as_str(), mq.target.as_str()), ("http", "https://mq.local:15671/api/health/checks/alarms/"));
+    assert_eq!(mq.options["auth_method"], "basic");
+
+    let skipped: Vec<&str> = import.skipped.iter().map(|s| s.name.as_str()).collect();
+    for name in ["Bad conn", "Ws broker", "V3", "Mongo"] {
+        assert!(skipped.contains(&name), "{name} is skipped: {skipped:?}");
+    }
+    let warned = |name: &str| import.warnings.iter().any(|w| w.starts_with(&format!("“{name}”")));
+    assert!(warned("PG") && warned("Kafka") && warned("MQ"), "{:?}", import.warnings);
 }
