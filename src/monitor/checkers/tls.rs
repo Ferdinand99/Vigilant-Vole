@@ -1,16 +1,23 @@
-//! TLS helpers: leaf-certificate parsing into [`ExpiryInfo`] and cached rustls
-//! client configs (verified with native roots / verification disabled) for
-//! the non-reqwest checkers (WebSocket).
+//! TLS helpers: leaf-certificate parsing into [`ExpiryInfo`], cached rustls
+//! client configs (verified with native roots / verification disabled) and
+//! a plain-TCP-to-TLS upgrade for the non-reqwest checkers (WebSocket, TLS,
+//! SMTP, Redis, ...).
 
+use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signature};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
 
+use tokio::net::TcpStream;
+use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
+
 use super::util;
-use crate::db::models::{ExpiryInfo, ExpiryKind};
+use crate::db::models::{CheckOutcome, ExpiryInfo, ExpiryKind};
 
 /// Parsed facts about a server's leaf certificate.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,6 +169,68 @@ impl ServerCertVerifier for AcceptAnyCert {
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
         self.0.signature_verification_algorithms.supported_schemes()
     }
+}
+
+/// Run the TLS handshake over an established TCP connection. `host` is the
+/// name to verify (and send as SNI); `ignore_tls` accepts any certificate.
+pub async fn upgrade(tcp: TcpStream, host: &str, ignore_tls: bool) -> std::io::Result<TlsStream<TcpStream>> {
+    upgrade_alpn(tcp, host, ignore_tls, &[]).await
+}
+
+/// [`upgrade`] offering ALPN protocols (`b"h2"` for gRPC).
+pub async fn upgrade_alpn(tcp: TcpStream, host: &str, ignore_tls: bool, alpn: &[&[u8]]) -> std::io::Result<TlsStream<TcpStream>> {
+    let mut config = if ignore_tls { insecure_config() } else { verified_config() }
+        .ok_or_else(|| std::io::Error::other("TLS is unavailable (no trusted root certificates)"))?;
+    if !alpn.is_empty() {
+        let mut own = (*config).clone();
+        own.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
+        config = Arc::new(own);
+    }
+    let name = ServerName::try_from(host.to_string())
+        .map_err(|_| std::io::Error::other(format!("Invalid server name \"{host}\"")))?;
+    TlsConnector::from(config).connect(name, tcp).await
+}
+
+/// The leaf certificate the peer presented.
+pub fn peer_cert(stream: &TlsStream<TcpStream>) -> Option<CertSummary> {
+    parse_cert(stream.get_ref().1.peer_certificates()?.first()?)
+}
+
+/// "TLS 1.3" for the negotiated protocol version.
+pub fn version_label(stream: &TlsStream<TcpStream>) -> &'static str {
+    match stream.get_ref().1.protocol_version() {
+        Some(rustls::ProtocolVersion::TLSv1_3) => "TLS 1.3",
+        Some(rustls::ProtocolVersion::TLSv1_2) => "TLS 1.2",
+        _ => "TLS",
+    }
+}
+
+/// Fetch the certificate of a server that speaks TLS from the first byte,
+/// without verifying it.
+pub async fn fetch_cert(host: &str, addr: SocketAddr) -> Option<CertSummary> {
+    let tcp = TcpStream::connect(addr).await.ok()?;
+    peer_cert(&upgrade(tcp, host, true).await.ok()?)
+}
+
+/// Explain a failed verified handshake. Certificate problems are classified;
+/// `fetch` gets the certificate again without verification (services that
+/// upgrade mid-protocol replay their prelude first) so the outcome can carry
+/// its expiry ("expired 3 days ago"). `None` if the error is not a
+/// certificate problem (the caller reports it as a connection failure).
+pub async fn explain_failure<F, Fut>(err: &std::io::Error, timeout: Duration, fetch: F) -> Option<CheckOutcome>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Option<CertSummary>>,
+{
+    let reason = classify_tls_error(&util::full_chain(err))?;
+    let cert = tokio::time::timeout(timeout.min(Duration::from_secs(5)), fetch()).await.ok().flatten();
+    let now = util::now_unix();
+    let mut outcome = match &cert {
+        Some(c) if c.is_expired(now) => CheckOutcome::down(c.expired_message(now)),
+        _ => CheckOutcome::down(reason),
+    };
+    outcome.expiry = cert.as_ref().and_then(CertSummary::expiry_info);
+    Some(outcome)
 }
 
 /// Map a TLS verification failure (from any layer's error text) to a clear

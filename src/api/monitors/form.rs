@@ -11,6 +11,7 @@ use crate::db::models::{Monitor, MonitorType, NewMonitor};
 use crate::notification::SECRET_MASK;
 use crate::db::tags::{self as db_tags, MonitorTag};
 use crate::monitor::checkers::{self, BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METHODS, JSON_OPERATORS};
+use crate::monitor::checkers::http_auth::{self, AUTH_METHODS, MtlsError, OAUTH_CLIENT_AUTHS};
 
 pub const MAX_NAME_LEN: usize = 150;
 pub const MAX_DESCRIPTION_LEN: usize = 2_000;
@@ -20,6 +21,9 @@ pub const MIN_INTERVAL: i64 = 10;
 pub const MAX_INTERVAL: i64 = 86_400;
 pub const MAX_TIMEOUT: i64 = 300;
 pub const MAX_RETRIES: i64 = 20;
+/// Longest accepted PEM text (certificate chain, key, CA bundle).
+pub const MAX_PEM_LEN: usize = 64 * 1024;
+const MAX_AUTH_FIELD_LEN: usize = 2_048;
 
 /// Field name → message. Ordered, so the first error is stable.
 pub type Errors = BTreeMap<&'static str, String>;
@@ -96,6 +100,17 @@ pub fn target_field(kind: MonitorType) -> &'static str {
         MonitorType::DomainExpiry => "target_domain",
         MonitorType::Ntp => "target_ntp",
         MonitorType::Steam => "target_steam",
+        MonitorType::Tls => "target_tls",
+        MonitorType::Smtp => "target_smtp",
+        MonitorType::Redis => "target_redis",
+        MonitorType::Postgres => "target_postgres",
+        MonitorType::Mysql => "target_mysql",
+        MonitorType::Mqtt => "target_mqtt",
+        MonitorType::Kafka => "target_kafka",
+        MonitorType::Rabbitmq => "target_rabbitmq",
+        MonitorType::Grpc => "target_grpc",
+        MonitorType::Radius => "target_radius",
+        MonitorType::Snmp => "target_snmp",
         MonitorType::Push | MonitorType::Group => "target",
     }
 }
@@ -125,6 +140,8 @@ pub struct FormValues {
     pub http_body_encoding: String,
     pub basic_auth_user: String,
     pub basic_auth_pass: String,
+    /// RADIUS shared secret / SNMP community.
+    pub secret: String,
     pub proxy_url: String,
     pub keyword: String,
     pub keyword_invert: bool,
@@ -149,6 +166,17 @@ pub struct FormValues {
     pub new_tag_name: String,
     pub new_tag_color: String,
     pub new_tag_value: String,
+    /// `none` | `basic` | `oauth2` | `mtls` ("" = derive from `basic_auth_user`).
+    pub auth_method: String,
+    pub oauth_token_url: String,
+    pub oauth_client_id: String,
+    pub oauth_client_secret: String,
+    pub oauth_scope: String,
+    pub oauth_audience: String,
+    pub oauth_client_auth: String,
+    pub tls_client_cert: String,
+    pub tls_client_key: String,
+    pub tls_ca_cert: String,
 }
 
 fn opt(s: &Option<String>) -> String {
@@ -178,6 +206,7 @@ impl FormValues {
             http_body_encoding: m.http_body_encoding.clone(),
             basic_auth_user: opt(&m.basic_auth_user),
             basic_auth_pass: opt(&m.basic_auth_pass),
+            secret: opt(&m.secret),
             proxy_url: opt(&m.proxy_url),
             keyword: opt(&m.keyword),
             keyword_invert: m.keyword_invert,
@@ -200,6 +229,20 @@ impl FormValues {
             new_tag_name: String::new(),
             new_tag_color: db_tags::DEFAULT_COLOR.to_string(),
             new_tag_value: String::new(),
+            auth_method: if m.auth_method == "none" && !opt(&m.basic_auth_user).is_empty() {
+                "basic".to_string()
+            } else {
+                m.auth_method.clone()
+            },
+            oauth_token_url: opt(&m.oauth_token_url),
+            oauth_client_id: opt(&m.oauth_client_id),
+            oauth_client_secret: opt(&m.oauth_client_secret),
+            oauth_scope: opt(&m.oauth_scope),
+            oauth_audience: opt(&m.oauth_audience),
+            oauth_client_auth: m.oauth_client_auth.clone(),
+            tls_client_cert: opt(&m.tls_client_cert),
+            tls_client_key: opt(&m.tls_client_key),
+            tls_ca_cert: opt(&m.tls_ca_cert),
         }
     }
 
@@ -207,13 +250,39 @@ impl FormValues {
         Self::from_new(&m.to_new(), channels, tags)
     }
 
-    /// For forms sent to the browser: a stored password becomes
-    /// [`SECRET_MASK`], which [`validate`] reads as "keep the stored one".
+    /// For forms sent to the browser: a stored password, RADIUS/SNMP secret,
+    /// OAuth client secret or private key becomes [`SECRET_MASK`], which [`validate`] reads as
+    /// "keep the stored one".
     pub fn masked(mut self) -> Self {
-        if !self.basic_auth_pass.is_empty() {
-            self.basic_auth_pass = SECRET_MASK.to_string();
+        for secret in [&mut self.basic_auth_pass, &mut self.secret, &mut self.oauth_client_secret, &mut self.tls_client_key] {
+            if !secret.is_empty() {
+                *secret = SECRET_MASK.to_string();
+            }
         }
         self
+    }
+
+    /// For re-rendering a rejected submission: a freshly typed OAuth client
+    /// secret or private key is not echoed back into the page (both are
+    /// required for their method, so leaving them out can't silently clear
+    /// a saved one). The mask stays, it is not a secret.
+    pub fn without_typed_secrets(mut self) -> Self {
+        for secret in [&mut self.oauth_client_secret, &mut self.tls_client_key] {
+            if secret.trim() != SECRET_MASK {
+                secret.clear();
+            }
+        }
+        self
+    }
+
+    /// The chosen authentication method; forms posted without the field
+    /// (older clients) mean basic auth when a user name is given.
+    pub fn auth_method_effective(&self) -> &str {
+        match self.auth_method.trim() {
+            "" if !self.basic_auth_user.trim().is_empty() => "basic",
+            "" => "none",
+            other => other,
+        }
     }
 
     /// Parse a submitted form. Controls hidden by `data-show-when` are
@@ -268,6 +337,7 @@ impl FormValues {
             http_body_encoding: p.text("http_body_encoding"),
             basic_auth_user: p.text("basic_auth_user"),
             basic_auth_pass: p.raw("basic_auth_pass").unwrap_or_default().to_string(),
+            secret: p.raw("secret").unwrap_or_default().to_string(),
             proxy_url: p.text("proxy_url"),
             keyword: p.raw("keyword").unwrap_or_default().to_string(),
             keyword_invert: p.flag("keyword_invert"),
@@ -290,6 +360,17 @@ impl FormValues {
             new_tag_name: p.text("new_tag_name"),
             new_tag_color: p.text("new_tag_color"),
             new_tag_value: p.text("new_tag_value"),
+            auth_method: p.text("auth_method"),
+            oauth_token_url: p.text("oauth_token_url"),
+            oauth_client_id: p.text("oauth_client_id"),
+            // Secrets and PEM text keep their whitespace.
+            oauth_client_secret: p.raw("oauth_client_secret").unwrap_or_default().to_string(),
+            oauth_scope: p.text("oauth_scope"),
+            oauth_audience: p.text("oauth_audience"),
+            oauth_client_auth: p.text("oauth_client_auth"),
+            tls_client_cert: p.raw("tls_client_cert").unwrap_or_default().to_string(),
+            tls_client_key: p.raw("tls_client_key").unwrap_or_default().to_string(),
+            tls_ca_cert: p.raw("tls_ca_cert").unwrap_or_default().to_string(),
         }
     }
 
@@ -461,6 +542,29 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
                 .map(|_| t.to_string())
                 .map_err(|e| first_line(&e))
         }
+        MonitorType::Tls => {
+            host_like(t)?;
+            checkers::util::split_host_port(t, Some(443))
+                .map(|_| t.to_string())
+                .map_err(|e| first_line(&e))
+        }
+        MonitorType::Smtp => {
+            host_like(t)?;
+            checkers::util::split_host_port(t, Some(25))
+                .map(|_| t.to_string())
+                .map_err(|e| first_line(&e))
+        }
+        MonitorType::Redis
+        | MonitorType::Postgres
+        | MonitorType::Mysql
+        | MonitorType::Mqtt
+        | MonitorType::Kafka
+        | MonitorType::Rabbitmq
+        | MonitorType::Grpc
+        | MonitorType::Radius
+        | MonitorType::Snmp => checkers::endpoint::parse(kind, t)
+            .map(|_| t.to_string())
+            .map_err(|e| first_line(&e)),
         MonitorType::Ping | MonitorType::Dns => {
             host_like(t)?;
             Ok(t.to_string())
@@ -521,6 +625,166 @@ fn destination(target: &str) -> String {
 /// (and through the same proxy) in `new`.
 fn same_destination(old: &NewMonitor, new: &NewMonitor) -> bool {
     destination(&old.target) == destination(&new.target) && old.proxy_url == new.proxy_url
+}
+
+/// Whether a secret stored for `old` would still reach the same server in
+/// `new` (service monitors compare type, host and port, not the path).
+fn same_service(old: &NewMonitor, new: &NewMonitor) -> bool {
+    old.monitor_type == new.monitor_type
+        && match (
+            checkers::endpoint::parse(old.monitor_type, &old.target),
+            checkers::endpoint::parse(new.monitor_type, &new.target),
+        ) {
+            (Ok(a), Ok(b)) => a.host.eq_ignore_ascii_case(&b.host) && a.port == b.port,
+            _ => false,
+        }
+}
+
+/// PEM text as stored: line endings normalised (browsers send CRLF), trimmed.
+fn pem_text(s: &str) -> Option<String> {
+    non_empty(&s.replace("\r\n", "\n").replace('\r', "\n"))
+}
+
+/// Settles a submitted secret. [`SECRET_MASK`] means "keep the stored one",
+/// which only holds while `unchanged` says it still goes to the same place;
+/// otherwise an editor could point the monitor at their own server and
+/// receive it. Anything else is a new value, empty clears it.
+fn resolve_secret(e: &mut Errors, field: &'static str, submitted: &str, stored: Option<&String>, unchanged: bool, reenter: &'static str) -> Option<String> {
+    if submitted.trim() != SECRET_MASK {
+        return (!submitted.trim().is_empty()).then(|| submitted.to_string());
+    }
+    match stored {
+        Some(secret) if unchanged => Some(secret.clone()),
+        _ => {
+            e.insert(field, crate::i18n::t(reenter).into());
+            None
+        }
+    }
+}
+
+/// The authentication section of an HTTP-family monitor. Only the chosen
+/// method's settings are kept; the others are cleared so no stale secret
+/// lingers (or travels in exports) after switching methods.
+fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut Errors) {
+    let method = v.auth_method_effective();
+    if !AUTH_METHODS.contains(&method) {
+        e.insert("auth_method", crate::i18n::t("httpauth.err_method").into());
+    }
+    m.auth_method = if AUTH_METHODS.contains(&method) { method.to_string() } else { "none".into() };
+    m.basic_auth_user = None;
+    m.basic_auth_pass = None;
+    m.oauth_token_url = None;
+    m.oauth_client_id = None;
+    m.oauth_client_secret = None;
+    m.oauth_scope = None;
+    m.oauth_audience = None;
+    m.oauth_client_auth = "client_secret_basic".into();
+    m.tls_client_cert = None;
+    m.tls_client_key = None;
+    m.tls_ca_cert = None;
+
+    match m.auth_method.as_str() {
+        "basic" => {
+            m.basic_auth_user = non_empty(&v.basic_auth_user);
+            let unchanged = same_destination(base, m);
+            m.basic_auth_pass = resolve_secret(e, "basic_auth_pass", &v.basic_auth_pass, base.basic_auth_pass.as_ref(), unchanged, "validation.basic_pass_reenter");
+            if m.basic_auth_user.is_none() {
+                let key = if m.basic_auth_pass.is_some() { "validation.basic_user" } else { "httpauth.err_basic_user" };
+                e.insert("basic_auth_user", crate::i18n::t(key).into());
+            }
+        }
+        "oauth2" => {
+            m.oauth_token_url = non_empty(&v.oauth_token_url);
+            match &m.oauth_token_url {
+                None => {
+                    e.insert("oauth_token_url", crate::i18n::t("httpauth.err_token_url").into());
+                }
+                Some(u) if u.chars().count() > MAX_TARGET_LEN => {
+                    e.insert("oauth_token_url", crate::i18n::tf("validation.target_long", &[("max", &MAX_TARGET_LEN.to_string())]));
+                }
+                Some(u) => {
+                    if http_auth::parse_token_url(u).is_err() {
+                        e.insert("oauth_token_url", crate::i18n::t("httpauth.err_token_url_invalid").into());
+                    }
+                }
+            }
+            m.oauth_client_id = non_empty(&v.oauth_client_id);
+            if m.oauth_client_id.is_none() {
+                e.insert("oauth_client_id", crate::i18n::t("httpauth.err_client_id").into());
+            }
+            // The secret goes to the token endpoint, so that is its destination.
+            let unchanged = destination(base.oauth_token_url.as_deref().unwrap_or_default())
+                == destination(m.oauth_token_url.as_deref().unwrap_or_default())
+                && base.proxy_url == m.proxy_url;
+            m.oauth_client_secret =
+                resolve_secret(e, "oauth_client_secret", &v.oauth_client_secret, base.oauth_client_secret.as_ref(), unchanged, "httpauth.err_secret_reenter");
+            if m.oauth_client_secret.is_none() && !e.contains_key("oauth_client_secret") {
+                e.insert("oauth_client_secret", crate::i18n::t("httpauth.err_secret").into());
+            }
+            let scope = v.oauth_scope.split_whitespace().collect::<Vec<_>>().join(" ");
+            m.oauth_scope = (!scope.is_empty()).then_some(scope);
+            m.oauth_audience = non_empty(&v.oauth_audience);
+            for (field, value) in [
+                ("oauth_client_id", &m.oauth_client_id),
+                ("oauth_scope", &m.oauth_scope),
+                ("oauth_audience", &m.oauth_audience),
+            ] {
+                if value.as_ref().is_some_and(|t| t.chars().count() > MAX_AUTH_FIELD_LEN) {
+                    e.insert(field, crate::i18n::tf("httpauth.err_long", &[("max", &MAX_AUTH_FIELD_LEN.to_string())]));
+                }
+            }
+            match v.oauth_client_auth.trim() {
+                "" => {}
+                other if OAUTH_CLIENT_AUTHS.contains(&other) => m.oauth_client_auth = other.to_string(),
+                _ => {
+                    e.insert("oauth_client_auth", crate::i18n::t("httpauth.err_client_auth").into());
+                }
+            }
+        }
+        "mtls" => {
+            m.tls_client_cert = pem_text(&v.tls_client_cert);
+            m.tls_ca_cert = pem_text(&v.tls_ca_cert);
+            let unchanged = same_destination(base, m);
+            m.tls_client_key = resolve_secret(
+                e,
+                "tls_client_key",
+                &v.tls_client_key.replace("\r\n", "\n"),
+                base.tls_client_key.as_ref(),
+                unchanged,
+                "httpauth.err_key_reenter",
+            )
+            .map(|k| k.trim().to_string());
+            if url::Url::parse(m.target.trim()).is_ok_and(|u| u.scheme() == "http") {
+                e.insert("auth_method", crate::i18n::t("httpauth.err_mtls_https").into());
+            }
+            for (field, value) in [("tls_client_cert", &m.tls_client_cert), ("tls_client_key", &m.tls_client_key), ("tls_ca_cert", &m.tls_ca_cert)] {
+                if value.as_ref().is_some_and(|t| t.len() > MAX_PEM_LEN) {
+                    e.insert(field, crate::i18n::tf("httpauth.err_pem_long", &[("max", &(MAX_PEM_LEN / 1024).to_string())]));
+                }
+            }
+            if !["tls_client_cert", "tls_client_key", "tls_ca_cert"].iter().any(|f| e.contains_key(f)) {
+                let problems = http_auth::mtls_problems(
+                    m.tls_client_cert.as_deref().unwrap_or_default(),
+                    m.tls_client_key.as_deref().unwrap_or_default(),
+                    m.tls_ca_cert.as_deref(),
+                );
+                for err in problems {
+                    let (field, key, detail) = match err {
+                        MtlsError::MissingCert => ("tls_client_cert", "httpauth.err_cert", String::new()),
+                        MtlsError::CertNotPem => ("tls_client_cert", "httpauth.err_cert_pem", String::new()),
+                        MtlsError::MissingKey => ("tls_client_key", "httpauth.err_key", String::new()),
+                        MtlsError::KeyNotPem => ("tls_client_key", "httpauth.err_key_pem", String::new()),
+                        MtlsError::KeyEncrypted => ("tls_client_key", "httpauth.err_key_encrypted", String::new()),
+                        MtlsError::CaNotPem => ("tls_ca_cert", "httpauth.err_ca_pem", String::new()),
+                        MtlsError::Rejected(why) => ("tls_client_key", "httpauth.err_pair", why),
+                        MtlsError::CaRejected(why) => ("tls_ca_cert", "httpauth.err_ca_rejected", why),
+                    };
+                    e.insert(field, crate::i18n::tf(key, &[("err", &detail)]));
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Validate `v` on top of `base` (the stored monitor when editing, defaults
@@ -660,28 +924,46 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
                 );
             }
         }
-        m.basic_auth_user = non_empty(&v.basic_auth_user);
         m.proxy_url = non_empty(&v.proxy_url);
         if let Some(proxy) = &m.proxy_url
             && let Err(msg) = validate_proxy(proxy)
         {
             e.insert("proxy_url", msg);
         }
-        m.basic_auth_pass = if v.basic_auth_pass == SECRET_MASK {
-            // Keep the stored password only while it still goes to the same
-            // place; otherwise an editor could point the monitor at their own
-            // server and receive it.
-            if base.basic_auth_pass.is_some() && same_destination(base, &m) {
-                base.basic_auth_pass.clone()
-            } else {
-                e.insert("basic_auth_pass", crate::i18n::t("validation.basic_pass_reenter").into());
-                None
+        validate_auth(v, base, &mut m, &mut e);
+    }
+
+    // -- service monitors (Redis, PostgreSQL, MQTT, …) ---------------------
+    let svc = checkers::endpoint::fields(kind);
+    if svc.tls {
+        m.ignore_tls = v.ignore_tls;
+    }
+    let keep_ok = same_service(base, &m);
+    if svc.credentials {
+        m.basic_auth_user = non_empty(&v.basic_auth_user);
+        m.basic_auth_pass = resolve_secret(&mut e, "basic_auth_pass", &v.basic_auth_pass, base.basic_auth_pass.as_ref(), keep_ok, "validation.secret_reenter");
+        if m.basic_auth_user.is_none() {
+            if kind == MonitorType::Postgres || kind == MonitorType::Rabbitmq && m.basic_auth_pass.is_some() {
+                e.insert("basic_auth_user", crate::i18n::t("validation.user_required").into());
+            } else if m.basic_auth_pass.is_some() && !svc.password_only {
+                e.insert("basic_auth_user", crate::i18n::t("validation.basic_user").into());
             }
-        } else {
-            (!v.basic_auth_pass.is_empty()).then(|| v.basic_auth_pass.clone())
-        };
-        if m.basic_auth_pass.is_some() && m.basic_auth_user.is_none() {
-            e.insert("basic_auth_user", crate::i18n::t("validation.basic_user").into());
+        }
+    }
+    if svc.secret {
+        m.secret = resolve_secret(&mut e, "secret", &v.secret, base.secret.as_ref(), keep_ok, "validation.secret_reenter");
+        if m.secret.is_none() && kind == MonitorType::Radius {
+            e.insert("secret", crate::i18n::t("validation.secret_required").into());
+        }
+    }
+    if svc.keyword {
+        m.keyword = (!v.keyword.trim().is_empty()).then(|| v.keyword.trim().to_string());
+        m.keyword_invert = v.keyword_invert;
+        if kind == MonitorType::Mqtt
+            && m.keyword.is_some()
+            && checkers::endpoint::parse(kind, &m.target).is_ok_and(|ep| ep.path.is_empty())
+        {
+            e.insert("keyword", crate::i18n::t("validation.mqtt_keyword_topic").into());
         }
     }
 
@@ -1164,5 +1446,274 @@ mod tests {
         assert_eq!(parsed.channels, vec![(3, ChannelMode::Alert), (8, ChannelMode::Off)]);
         assert_eq!(parsed.tag_value(4), Some("v"));
         assert_eq!(parsed.tag_value(5), None);
+    }
+
+    // -- HTTP authentication methods ---------------------------------------
+
+    fn submit_with(base: &NewMonitor, list: Vec<(&'static str, String)>) -> Result<Validated, Errors> {
+        let p = Pairs(list.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
+        validate(&FormValues::from_pairs(&p, &[]), base, &FormContext::default())
+    }
+
+    fn oauth_pairs(secret: &str) -> Vec<(&'static str, String)> {
+        let mut list = base_pairs("http", "https://api.example.com/health");
+        for (k, v) in [
+            ("auth_method", "oauth2"),
+            ("oauth_token_url", "https://login.example.com/oauth/token"),
+            ("oauth_client_id", "vole"),
+            ("oauth_client_secret", secret),
+            ("oauth_scope", "  read   write "),
+            ("oauth_audience", "https://api.example.com"),
+            ("oauth_client_auth", "client_secret_post"),
+        ] {
+            list = with(list, k, v);
+        }
+        list
+    }
+
+    fn stored_oauth() -> NewMonitor {
+        NewMonitor {
+            target: "https://api.example.com/health".into(),
+            auth_method: "oauth2".into(),
+            oauth_token_url: Some("https://login.example.com/oauth/token".into()),
+            oauth_client_id: Some("vole".into()),
+            oauth_client_secret: Some("the-client-secret".into()),
+            ..NewMonitor::default()
+        }
+    }
+
+    #[test]
+    fn oauth2_settings_are_validated_and_normalised() {
+        let ok = submit_with(&NewMonitor::default(), oauth_pairs("sekret")).unwrap().monitor;
+        assert_eq!(ok.auth_method, "oauth2");
+        assert_eq!(ok.oauth_token_url.as_deref(), Some("https://login.example.com/oauth/token"));
+        assert_eq!(ok.oauth_client_id.as_deref(), Some("vole"));
+        assert_eq!(ok.oauth_client_secret.as_deref(), Some("sekret"));
+        assert_eq!(ok.oauth_scope.as_deref(), Some("read write"));
+        assert_eq!(ok.oauth_audience.as_deref(), Some("https://api.example.com"));
+        assert_eq!(ok.oauth_client_auth, "client_secret_post");
+
+        let mut bad = with(oauth_pairs(""), "oauth_token_url", "login.example.com/token");
+        bad = with(bad, "oauth_client_id", " ");
+        let err = submit_with(&NewMonitor::default(), bad).unwrap_err();
+        for key in ["oauth_token_url", "oauth_client_id", "oauth_client_secret"] {
+            assert!(err.contains_key(key), "{key}: {err:?}");
+        }
+        let err = submit_with(&NewMonitor::default(), with(oauth_pairs("x"), "oauth_token_url", "ftp://idp/token")).unwrap_err();
+        assert!(err["oauth_token_url"].contains("http://"), "{err:?}");
+        let err = submit_with(&NewMonitor::default(), with(oauth_pairs("x"), "oauth_client_auth", "private_key_jwt")).unwrap_err();
+        assert!(err.contains_key("oauth_client_auth"));
+        let err = submit_with(&NewMonitor::default(), with(oauth_pairs("x"), "auth_method", "kerberos")).unwrap_err();
+        assert!(err.contains_key("auth_method"));
+    }
+
+    #[test]
+    fn stored_oauth_secret_is_masked_and_only_kept_for_the_same_token_url() {
+        let stored = stored_oauth();
+        let shown = FormValues::from_new(&stored, Vec::new(), &[]).masked();
+        assert_eq!(shown.oauth_client_secret, SECRET_MASK);
+        assert!(!format!("{shown:?}").contains("the-client-secret"));
+
+        // Untouched mask: kept, even when the monitored URL itself changes.
+        let kept = submit_with(&stored, with(with(oauth_pairs(SECRET_MASK), "target_url", "https://other.example.com/"), "target", "https://other.example.com/")).unwrap();
+        assert_eq!(kept.monitor.oauth_client_secret.as_deref(), Some("the-client-secret"));
+        // A different token endpoint or proxy: the secret must be typed again.
+        for (field, value) in [
+            ("oauth_token_url", "https://attacker.example/token"),
+            ("oauth_token_url", "http://login.example.com/oauth/token"),
+            ("proxy_url", "http://proxy.evil:3128"),
+        ] {
+            let err = submit_with(&stored, with(oauth_pairs(SECRET_MASK), field, value)).unwrap_err();
+            assert!(err.contains_key("oauth_client_secret"), "{field}={value}: {err:?}");
+        }
+        // Typing a new one is always fine; so is a new endpoint with it.
+        let fresh = submit_with(&stored, with(oauth_pairs("new"), "oauth_token_url", "https://attacker.example/token")).unwrap();
+        assert_eq!(fresh.monitor.oauth_client_secret.as_deref(), Some("new"));
+        // A mask with nothing stored (clone / import) has nothing to restore.
+        let err = submit_with(&NewMonitor::default(), oauth_pairs(SECRET_MASK)).unwrap_err();
+        assert!(err.contains_key("oauth_client_secret"));
+        // A re-rendered rejected form never echoes a typed secret, but keeps the mask.
+        let typed = FormValues::from_pairs(&Pairs(oauth_pairs("typed-secret").into_iter().map(|(k, v)| (k.to_string(), v)).collect()), &[]);
+        assert_eq!(typed.clone().without_typed_secrets().oauth_client_secret, "");
+        let masked = FormValues { oauth_client_secret: SECRET_MASK.into(), ..typed };
+        assert_eq!(masked.without_typed_secrets().oauth_client_secret, SECRET_MASK);
+    }
+
+    #[test]
+    fn switching_method_clears_the_other_methods_settings() {
+        let basic = NewMonitor {
+            target: "https://api.example.com/health".into(),
+            auth_method: "basic".into(),
+            basic_auth_user: Some("bot".into()),
+            basic_auth_pass: Some("hunter2".into()),
+            ..NewMonitor::default()
+        };
+        let out = submit_with(&basic, oauth_pairs("sekret")).unwrap().monitor;
+        assert_eq!((out.basic_auth_user, out.basic_auth_pass), (None, None));
+        let none = submit_with(&stored_oauth(), with(base_pairs("http", "https://api.example.com/health"), "auth_method", "none"))
+            .unwrap()
+            .monitor;
+        assert_eq!(none.auth_method, "none");
+        assert_eq!((none.oauth_token_url, none.oauth_client_secret), (None, None));
+        assert_eq!(none.oauth_client_auth, "client_secret_basic");
+    }
+
+    #[test]
+    fn forms_without_auth_method_keep_meaning_basic_auth() {
+        // Older clients (and the existing form tests) only post the basic fields.
+        let list = with(with(base_pairs("http", "https://x.io"), "basic_auth_user", "bot"), "basic_auth_pass", "pw");
+        let ok = submit_with(&NewMonitor::default(), list).unwrap().monitor;
+        assert_eq!(
+            (ok.auth_method.as_str(), ok.basic_auth_user.as_deref(), ok.basic_auth_pass.as_deref()),
+            ("basic", Some("bot"), Some("pw"))
+        );
+        let ok = submit_with(&NewMonitor::default(), base_pairs("http", "https://x.io")).unwrap().monitor;
+        assert_eq!(ok.auth_method, "none");
+        // A row with a user name from before auth_method existed shows as basic.
+        let legacy = NewMonitor { basic_auth_user: Some("bot".into()), ..NewMonitor::default() };
+        assert_eq!(FormValues::from_new(&legacy, Vec::new(), &[]).auth_method, "basic");
+        // Basic auth chosen explicitly needs a user name.
+        let err = submit_with(&NewMonitor::default(), with(base_pairs("http", "https://x.io"), "auth_method", "basic")).unwrap_err();
+        assert!(err.contains_key("basic_auth_user"));
+    }
+
+    #[test]
+    fn auth_fields_of_other_monitor_types_are_left_alone() {
+        let stored = stored_oauth();
+        let ok = submit_with(&stored, base_pairs("tcp", "db:5432")).unwrap().monitor;
+        assert_eq!(ok.auth_method, "oauth2");
+        assert_eq!(ok.oauth_client_secret.as_deref(), Some("the-client-secret"));
+    }
+
+    type TestPki = crate::monitor::checkers::http_auth::test_pki::Pki;
+
+    fn mtls_pairs(pki: &TestPki, key: &str, target: &str, proxy: &str) -> Vec<(&'static str, String)> {
+        let mut list = base_pairs("http", target);
+        // Browsers post textareas with CRLF line endings.
+        for (k, v) in [
+            ("auth_method", "mtls"),
+            ("tls_client_cert", &pki.client_cert_pem.replace('\n', "\r\n")),
+            ("tls_client_key", key),
+            ("tls_ca_cert", &pki.ca_pem.replace('\n', "\r\n")),
+            ("proxy_url", proxy),
+        ] {
+            list = with(list, k, v);
+        }
+        list
+    }
+
+    const API: &str = "https://api.example.com/health";
+
+    #[test]
+    fn mtls_material_is_validated_with_messages_on_the_field() {
+        use crate::monitor::checkers::http_auth::test_pki::unrelated_key_pem;
+        let pki = TestPki::new();
+        let crlf_key = pki.client_key_pem.replace('\n', "\r\n");
+        let ok = submit_with(&NewMonitor::default(), mtls_pairs(&pki, &crlf_key, API, "")).unwrap().monitor;
+        assert_eq!(ok.auth_method, "mtls");
+        assert_eq!(ok.tls_client_cert.as_deref(), Some(pki.client_cert_pem.trim()));
+        assert_eq!(ok.tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
+        assert_eq!(ok.tls_ca_cert.as_deref(), Some(pki.ca_pem.trim()));
+        assert!(!ok.tls_client_cert.unwrap().contains('\r'));
+
+        let good = || mtls_pairs(&pki, &pki.client_key_pem, API, "");
+        let err = submit_with(&NewMonitor::default(), mtls_pairs(&pki, &unrelated_key_pem(), API, "")).unwrap_err();
+        assert!(err["tls_client_key"].contains("can’t be used together"), "{err:?}");
+        let err = submit_with(&NewMonitor::default(), with(good(), "tls_client_cert", "hello")).unwrap_err();
+        assert!(err["tls_client_cert"].contains("BEGIN CERTIFICATE"), "{err:?}");
+        let err = submit_with(&NewMonitor::default(), with(good(), "tls_client_key", "")).unwrap_err();
+        assert!(err.contains_key("tls_client_key"));
+        let encrypted = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA";
+        let err = submit_with(&NewMonitor::default(), with(good(), "tls_client_key", encrypted)).unwrap_err();
+        assert!(err["tls_client_key"].contains("passphrase"), "{err:?}");
+        let err = submit_with(&NewMonitor::default(), with(good(), "tls_ca_cert", "nope")).unwrap_err();
+        assert!(err.contains_key("tls_ca_cert"));
+        // The CA is optional.
+        assert!(submit_with(&NewMonitor::default(), with(good(), "tls_ca_cert", "")).is_ok());
+        // Client certificates need https.
+        let http = mtls_pairs(&pki, &pki.client_key_pem, "http://api.example.com/", "");
+        assert!(submit_with(&NewMonitor::default(), http).unwrap_err().contains_key("auth_method"));
+    }
+
+    #[test]
+    fn stored_private_key_is_masked_and_only_kept_for_the_same_destination() {
+        let pki = TestPki::new();
+        let stored = NewMonitor {
+            target: API.into(),
+            auth_method: "mtls".into(),
+            tls_client_cert: Some(pki.client_cert_pem.trim().into()),
+            tls_client_key: Some(pki.client_key_pem.trim().into()),
+            ..NewMonitor::default()
+        };
+        let shown = FormValues::from_new(&stored, Vec::new(), &[]).masked();
+        assert_eq!(shown.tls_client_key, SECRET_MASK);
+        assert!(shown.tls_client_cert.contains("BEGIN CERTIFICATE"), "the certificate is public and stays visible");
+        assert!(!format!("{shown:?}").contains("PRIVATE KEY"));
+
+        let kept = submit_with(&stored, mtls_pairs(&pki, SECRET_MASK, "https://API.example.com:443/other", "")).unwrap();
+        assert_eq!(kept.monitor.tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
+        for (target, proxy) in [("https://attacker.example/", ""), (API, "http://proxy.evil:3128")] {
+            let err = submit_with(&stored, mtls_pairs(&pki, SECRET_MASK, target, proxy)).unwrap_err();
+            assert!(err.contains_key("tls_client_key"), "{target} {proxy}: {err:?}");
+        }
+        let err = submit_with(&NewMonitor::default(), mtls_pairs(&pki, SECRET_MASK, API, "")).unwrap_err();
+        assert!(err.contains_key("tls_client_key"));
+        let typed = submit_with(&stored, mtls_pairs(&pki, &pki.client_key_pem, "https://attacker.example/", "")).unwrap();
+        assert_eq!(typed.monitor.tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
+        // A rejected re-render doesn't put a typed key back into the page.
+        let p = Pairs(mtls_pairs(&pki, &pki.client_key_pem, API, "").into_iter().map(|(k, v)| (k.to_string(), v)).collect());
+        assert_eq!(FormValues::from_pairs(&p, &[]).without_typed_secrets().tls_client_key, "");
+    }
+
+    #[test]
+    fn every_auth_method_round_trips_through_the_form() {
+        let pki = TestPki::new();
+        let cases = [
+            NewMonitor { target: "https://x.io".into(), ..NewMonitor::default() },
+            NewMonitor {
+                target: "https://x.io".into(),
+                auth_method: "basic".into(),
+                basic_auth_user: Some("bot".into()),
+                basic_auth_pass: Some("pw".into()),
+                ..NewMonitor::default()
+            },
+            NewMonitor {
+                oauth_scope: Some("a b".into()),
+                oauth_audience: Some("aud".into()),
+                oauth_client_auth: "client_secret_post".into(),
+                ..stored_oauth()
+            },
+            NewMonitor {
+                target: "https://x.io".into(),
+                auth_method: "mtls".into(),
+                tls_client_cert: Some(pki.client_cert_pem.trim().into()),
+                tls_client_key: Some(pki.client_key_pem.trim().into()),
+                tls_ca_cert: Some(pki.ca_pem.trim().into()),
+                ..NewMonitor::default()
+            },
+        ];
+        for stored in cases {
+            // Edit without touching anything: what the browser posts back.
+            let mut v = FormValues::from_new(&stored, Vec::new(), &[]).masked();
+            v.name = "Website".into();
+            let out = validate(&v, &stored, &FormContext::default()).unwrap().monitor;
+            let (before, after) = (serde_json::to_value(&stored).unwrap(), serde_json::to_value(&out).unwrap());
+            for field in [
+                "auth_method",
+                "basic_auth_user",
+                "basic_auth_pass",
+                "oauth_token_url",
+                "oauth_client_id",
+                "oauth_client_secret",
+                "oauth_scope",
+                "oauth_audience",
+                "oauth_client_auth",
+                "tls_client_cert",
+                "tls_client_key",
+                "tls_ca_cert",
+            ] {
+                assert_eq!(after[field], before[field], "{} / {field}", stored.auth_method);
+            }
+        }
     }
 }

@@ -66,18 +66,65 @@
       </div>
     </details>
 
-    <details class="disclosure"{% if !f.v.basic_auth_user.is_empty() || !f.v.proxy_url.is_empty() || f.v.ignore_tls || f.v.max_redirects != "10" || f.has_err("basic_auth_user") || f.has_err("basic_auth_pass") || f.has_err("proxy_url") || f.has_err("max_redirects") %} open{% endif %}>
+    <details class="disclosure"{% if !f.auth_is("none") || !f.v.proxy_url.is_empty() || f.v.ignore_tls || f.v.max_redirects != "10" || f.has_auth_err() || f.has_err("proxy_url") || f.has_err("max_redirects") %} open{% endif %}>
       <summary>{{ tr("form.auth_network") }} <span class="disclosure-sub">{{ tr("form.auth_network_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
       <div class="disclosure-body">
-        <div class="field-row">
-          {{ m::field_text("basic_auth_user", tr("form.user_name"), value=&f.v.basic_auth_user, placeholder=tr("form.optional_placeholder"), error=f.err("basic_auth_user")) }}
+        {{ fm::select("auth_method", tr("httpauth.method"), &f.auth_methods, f.v.auth_method_effective(), tr("httpauth.method_help"), f.err("auth_method")) }}
+        <div class="field-row" data-show-when="auth_method=basic"{% if !f.auth_is("basic") %} hidden{% endif %}>
+          {{ m::field_text("basic_auth_user", tr("form.user_name"), value=&f.v.basic_auth_user, error=f.err("basic_auth_user")) }}
           {{ m::field_text("basic_auth_pass", tr("login.password"), value=&f.v.basic_auth_pass, kind="password", autocomplete="new-password", error=f.err("basic_auth_pass")) }}
+        </div>
+        <div class="stack-sm" data-show-when="auth_method=oauth2"{% if !f.auth_is("oauth2") %} hidden{% endif %}>
+          {{ m::field_text("oauth_token_url", tr("httpauth.oauth_token_url"), value=&f.v.oauth_token_url, kind="url", placeholder="https://login.example.com/oauth/token…", help=tr("httpauth.oauth_token_url_help"), error=f.err("oauth_token_url")) }}
+          <div class="field-row">
+            {{ m::field_text("oauth_client_id", tr("httpauth.oauth_client_id"), value=&f.v.oauth_client_id, error=f.err("oauth_client_id")) }}
+            {{ m::field_text("oauth_client_secret", tr("httpauth.oauth_client_secret"), value=&f.v.oauth_client_secret, kind="password", autocomplete="new-password", error=f.err("oauth_client_secret")) }}
+          </div>
+          <div class="field-row">
+            {{ m::field_text("oauth_scope", tr("httpauth.oauth_scope"), value=&f.v.oauth_scope, placeholder="read write…", help=tr("httpauth.oauth_scope_help"), error=f.err("oauth_scope")) }}
+            {{ m::field_text("oauth_audience", tr("httpauth.oauth_audience"), value=&f.v.oauth_audience, placeholder=tr("form.optional_placeholder"), help=tr("httpauth.oauth_audience_help"), error=f.err("oauth_audience")) }}
+          </div>
+          {{ fm::select("oauth_client_auth", tr("httpauth.oauth_client_auth"), &f.oauth_client_auths, f.v.oauth_client_auth.as_str(), tr("httpauth.oauth_client_auth_help"), f.err("oauth_client_auth")) }}
+        </div>
+        <div class="stack-sm" data-show-when="auth_method=mtls"{% if !f.auth_is("mtls") %} hidden{% endif %}>
+          {{ fm::area("tls_client_cert", tr("httpauth.tls_client_cert"), &f.v.tls_client_cert, 5, "-----BEGIN CERTIFICATE-----…", tr("httpauth.tls_client_cert_help"), f.err("tls_client_cert"), true) }}
+          {{ fm::area("tls_client_key", tr("httpauth.tls_client_key"), &f.v.tls_client_key, 5, "-----BEGIN PRIVATE KEY-----…", tr("httpauth.tls_client_key_help"), f.err("tls_client_key"), true) }}
+          {{ fm::area("tls_ca_cert", tr("httpauth.tls_ca_cert"), &f.v.tls_ca_cert, 4, "-----BEGIN CERTIFICATE-----…", tr("httpauth.tls_ca_cert_help"), f.err("tls_ca_cert"), true) }}
         </div>
         {{ m::field_text("proxy_url", tr("form.proxy"), value=&f.v.proxy_url, kind="url", placeholder="http://proxy.internal:3128…", help=tr("form.proxy_help"), error=f.err("proxy_url")) }}
         {{ fm::num("max_redirects", tr("form.follow_redirects"), &f.v.max_redirects, tr("form.max"), "0", "30", tr("form.redirects_help"), f.err("max_redirects")) }}
         {{ m::switch("ignore_tls", tr("form.ignore_tls"), f.v.ignore_tls, tr("form.ignore_tls_help")) }}
       </div>
     </details>
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-service" data-show-when="monitor_type=tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,radius,snmp"{% if !f.shows("tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,radius,snmp") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-service">{{ tr("form.connection") }}</h2>
+  <div class="card">
+    <div data-show-when="monitor_type=redis,postgres,mysql,mqtt,rabbitmq,radius"{% if !f.shows("redis,postgres,mysql,mqtt,rabbitmq,radius") %} hidden{% endif %}>
+      <div class="field-row">
+        {{ m::field_text("basic_auth_user", tr("form.user_name"), value=&f.v.basic_auth_user, placeholder=tr("form.optional_placeholder"), error=f.err("basic_auth_user"), sfx="-svc") }}
+        {{ m::field_text("basic_auth_pass", tr("login.password"), value=&f.v.basic_auth_pass, kind="password", autocomplete="new-password", error=f.err("basic_auth_pass"), sfx="-svc") }}
+      </div>
+    </div>
+    <div data-show-when="monitor_type=radius"{% if !f.shows("radius") %} hidden{% endif %}>
+      {{ m::field_text("secret", tr("form.radius_secret"), value=&f.v.secret, kind="password", autocomplete="new-password", help=tr("form.radius_secret_help"), error=f.err("secret"), sfx="-radius") }}
+    </div>
+    <div data-show-when="monitor_type=snmp"{% if !f.shows("snmp") %} hidden{% endif %}>
+      {{ m::field_text("secret", tr("form.snmp_community"), value=&f.v.secret, kind="password", autocomplete="new-password", placeholder="public…", help=tr("form.snmp_community_help"), error=f.err("secret"), sfx="-snmp") }}
+    </div>
+    <div data-show-when="monitor_type=mqtt"{% if !f.shows("mqtt") %} hidden{% endif %}>
+      {{ m::field_text("keyword", tr("form.message_contains"), value=&f.v.keyword, placeholder=tr("form.optional_placeholder"), help=tr("form.message_contains_help"), error=f.err("keyword"), sfx="-mqtt") }}
+      {{ m::switch("keyword_invert", tr("form.invert"), f.v.keyword_invert, tr("form.invert_help"), sfx="-mqtt") }}
+    </div>
+    <div data-show-when="monitor_type=snmp"{% if !f.shows("snmp") %} hidden{% endif %}>
+      {{ m::field_text("keyword", tr("form.value_contains"), value=&f.v.keyword, placeholder=tr("form.optional_placeholder"), help=tr("form.value_contains_help"), error=f.err("keyword"), sfx="-snmp") }}
+      {{ m::switch("keyword_invert", tr("form.invert"), f.v.keyword_invert, tr("form.invert_help"), sfx="-snmp") }}
+    </div>
+    <div data-show-when="monitor_type=tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc"{% if !f.shows("tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc") %} hidden{% endif %}>
+      {{ m::switch("ignore_tls", tr("form.ignore_tls"), f.v.ignore_tls, tr("form.ignore_tls_help"), sfx="-svc") }}
+    </div>
   </div>
 </section>
 
@@ -115,7 +162,7 @@
   </div>
 </section>
 
-<section class="form-section" aria-labelledby="sec-expiry" data-show-when="monitor_type=http,keyword,json_query,domain_expiry"{% if !f.shows("http,keyword,json_query,domain_expiry") %} hidden{% endif %}>
+<section class="form-section" aria-labelledby="sec-expiry" data-show-when="monitor_type=http,keyword,json_query,domain_expiry,tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc"{% if !f.shows("http,keyword,json_query,domain_expiry,tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc") %} hidden{% endif %}>
   <h2 class="form-section-title" id="sec-expiry">{{ tr("form.expiry_alerts") }}</h2>
   <div class="card">
     {{ m::switch("expiry_notify", tr("form.expiry_notify"), f.v.expiry_notify, tr("form.expiry_notify_help")) }}

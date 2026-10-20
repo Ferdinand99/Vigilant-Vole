@@ -27,11 +27,22 @@ pub enum MonitorType {
     DomainExpiry,
     Ntp,
     Steam,
+    Tls,
+    Smtp,
+    Redis,
+    Postgres,
+    Mysql,
+    Mqtt,
+    Kafka,
+    Rabbitmq,
+    Grpc,
+    Radius,
+    Snmp,
     Group,
 }
 
 impl MonitorType {
-    const ALL: [MonitorType; 13] = [
+    const ALL: [MonitorType; 24] = [
         MonitorType::Http,
         MonitorType::Keyword,
         MonitorType::JsonQuery,
@@ -44,6 +55,17 @@ impl MonitorType {
         MonitorType::DomainExpiry,
         MonitorType::Ntp,
         MonitorType::Steam,
+        MonitorType::Tls,
+        MonitorType::Smtp,
+        MonitorType::Redis,
+        MonitorType::Postgres,
+        MonitorType::Mysql,
+        MonitorType::Mqtt,
+        MonitorType::Kafka,
+        MonitorType::Rabbitmq,
+        MonitorType::Grpc,
+        MonitorType::Radius,
+        MonitorType::Snmp,
         MonitorType::Group,
     ];
 
@@ -67,6 +89,17 @@ impl MonitorType {
             MonitorType::DomainExpiry => "domain_expiry",
             MonitorType::Ntp => "ntp",
             MonitorType::Steam => "steam",
+            MonitorType::Tls => "tls",
+            MonitorType::Smtp => "smtp",
+            MonitorType::Redis => "redis",
+            MonitorType::Postgres => "postgres",
+            MonitorType::Mysql => "mysql",
+            MonitorType::Mqtt => "mqtt",
+            MonitorType::Kafka => "kafka",
+            MonitorType::Rabbitmq => "rabbitmq",
+            MonitorType::Grpc => "grpc",
+            MonitorType::Radius => "radius",
+            MonitorType::Snmp => "snmp",
             MonitorType::Group => "group",
         }
     }
@@ -90,6 +123,17 @@ impl MonitorType {
             MonitorType::DomainExpiry => crate::i18n::t("monitor_type.domain_expiry"),
             MonitorType::Ntp => crate::i18n::t("monitor_type.ntp"),
             MonitorType::Steam => crate::i18n::t("monitor_type.steam"),
+            MonitorType::Tls => crate::i18n::t("monitor_type.tls"),
+            MonitorType::Smtp => crate::i18n::t("monitor_type.smtp"),
+            MonitorType::Redis => crate::i18n::t("monitor_type.redis"),
+            MonitorType::Postgres => crate::i18n::t("monitor_type.postgres"),
+            MonitorType::Mysql => crate::i18n::t("monitor_type.mysql"),
+            MonitorType::Mqtt => crate::i18n::t("monitor_type.mqtt"),
+            MonitorType::Kafka => crate::i18n::t("monitor_type.kafka"),
+            MonitorType::Rabbitmq => crate::i18n::t("monitor_type.rabbitmq"),
+            MonitorType::Grpc => crate::i18n::t("monitor_type.grpc"),
+            MonitorType::Radius => crate::i18n::t("monitor_type.radius"),
+            MonitorType::Snmp => crate::i18n::t("monitor_type.snmp"),
             MonitorType::Group => crate::i18n::t("monitor_type.group"),
         }
     }
@@ -215,6 +259,8 @@ pub struct Monitor {
     pub ignore_tls: bool,
     pub basic_auth_user: Option<String>,
     pub basic_auth_pass: Option<String>,
+    /// RADIUS shared secret / SNMP community (masked like `basic_auth_pass`).
+    pub secret: Option<String>,
     pub proxy_url: Option<String>,
     // -- keyword --
     pub keyword: Option<String>,
@@ -252,6 +298,40 @@ pub struct Monitor {
     pub sort_order: i64,
     pub created_at: String,
     pub updated_at: String,
+    // -- HTTP authentication (see `checkers::http_auth`) --
+    /// `none` | `basic` | `oauth2` | `mtls`.
+    #[serde(default = "default_auth_method")]
+    pub auth_method: String,
+    #[serde(default)]
+    pub oauth_token_url: Option<String>,
+    #[serde(default)]
+    pub oauth_client_id: Option<String>,
+    #[serde(default)]
+    pub oauth_client_secret: Option<String>,
+    /// Space-separated scopes.
+    #[serde(default)]
+    pub oauth_scope: Option<String>,
+    #[serde(default)]
+    pub oauth_audience: Option<String>,
+    /// `client_secret_basic` | `client_secret_post`.
+    #[serde(default = "default_oauth_client_auth")]
+    pub oauth_client_auth: String,
+    /// PEM certificate (chain) sent to servers that ask for a client certificate.
+    #[serde(default)]
+    pub tls_client_cert: Option<String>,
+    #[serde(default)]
+    pub tls_client_key: Option<String>,
+    /// Extra PEM CA certificate(s) to trust for the monitored server.
+    #[serde(default)]
+    pub tls_ca_cert: Option<String>,
+}
+
+fn default_auth_method() -> String {
+    "none".into()
+}
+
+fn default_oauth_client_auth() -> String {
+    "client_secret_basic".into()
 }
 
 impl Monitor {
@@ -279,6 +359,7 @@ impl Monitor {
             ignore_tls: self.ignore_tls,
             basic_auth_user: self.basic_auth_user.clone(),
             basic_auth_pass: self.basic_auth_pass.clone(),
+            secret: self.secret.clone(),
             proxy_url: self.proxy_url.clone(),
             keyword: self.keyword.clone(),
             keyword_invert: self.keyword_invert,
@@ -300,6 +381,16 @@ impl Monitor {
             source: self.source.clone(),
             external_id: self.external_id.clone(),
             sort_order: self.sort_order,
+            auth_method: self.auth_method.clone(),
+            oauth_token_url: self.oauth_token_url.clone(),
+            oauth_client_id: self.oauth_client_id.clone(),
+            oauth_client_secret: self.oauth_client_secret.clone(),
+            oauth_scope: self.oauth_scope.clone(),
+            oauth_audience: self.oauth_audience.clone(),
+            oauth_client_auth: self.oauth_client_auth.clone(),
+            tls_client_cert: self.tls_client_cert.clone(),
+            tls_client_key: self.tls_client_key.clone(),
+            tls_ca_cert: self.tls_ca_cert.clone(),
         }
     }
 
@@ -335,6 +426,7 @@ pub struct NewMonitor {
     pub ignore_tls: bool,
     pub basic_auth_user: Option<String>,
     pub basic_auth_pass: Option<String>,
+    pub secret: Option<String>,
     pub proxy_url: Option<String>,
     pub keyword: Option<String>,
     pub keyword_invert: bool,
@@ -356,6 +448,16 @@ pub struct NewMonitor {
     pub source: String,
     pub external_id: Option<String>,
     pub sort_order: i64,
+    pub auth_method: String,
+    pub oauth_token_url: Option<String>,
+    pub oauth_client_id: Option<String>,
+    pub oauth_client_secret: Option<String>,
+    pub oauth_scope: Option<String>,
+    pub oauth_audience: Option<String>,
+    pub oauth_client_auth: String,
+    pub tls_client_cert: Option<String>,
+    pub tls_client_key: Option<String>,
+    pub tls_ca_cert: Option<String>,
 }
 
 impl Default for NewMonitor {
@@ -381,6 +483,7 @@ impl Default for NewMonitor {
             ignore_tls: false,
             basic_auth_user: None,
             basic_auth_pass: None,
+            secret: None,
             proxy_url: None,
             keyword: None,
             keyword_invert: false,
@@ -402,6 +505,16 @@ impl Default for NewMonitor {
             source: "manual".into(),
             external_id: None,
             sort_order: 0,
+            auth_method: default_auth_method(),
+            oauth_token_url: None,
+            oauth_client_id: None,
+            oauth_client_secret: None,
+            oauth_scope: None,
+            oauth_audience: None,
+            oauth_client_auth: default_oauth_client_auth(),
+            tls_client_cert: None,
+            tls_client_key: None,
+            tls_ca_cert: None,
         }
     }
 }

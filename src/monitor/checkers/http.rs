@@ -1,23 +1,26 @@
 //! HTTP(S) family checker: `http`, `keyword`, `json_query`.
 //!
 //! Supports method, JSON-object headers, body (json/form/raw encoding),
-//! basic auth, proxy (http/https/socks5/socks5h URL), redirect limit
+//! basic auth, OAuth2 client credentials and mTLS (see [`super::http_auth`]),
+//! proxy (http/https/socks5/socks5h URL), redirect limit
 //! (0 = don't follow; the 3xx response itself is then checked against the
 //! accepted codes), "ignore TLS errors", accepted status codes
 //! (`200-299,301,418`, `2xx`). The TLS leaf certificate is reported as
 //! [`ExpiryInfo`] on every HTTPS check. Environment proxy variables are NOT
 //! honoured; set `proxy_url` explicitly.
 //!
-//! Clients are cached per (ignore_tls, max_redirects, proxy) option set.
+//! Clients are cached per (ignore_tls, max_redirects, proxy, client TLS
+//! material) option set.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Method, Url};
 use serde_json::Value;
 
+use super::http_auth;
 use super::tls::{self, CertSummary};
 use super::util::{self, elapsed_ms};
 use crate::db::models::{CheckOutcome, HeartbeatStatus, Monitor, MonitorType};
@@ -170,6 +173,8 @@ struct ClientKey {
     ignore_tls: bool,
     max_redirects: u32,
     proxy: Option<String>,
+    /// Digest of the mTLS certificate, key and CA ([`http_auth::mtls_fingerprint`]).
+    mtls: Option<String>,
 }
 
 impl ClientKey {
@@ -185,11 +190,23 @@ impl ClientKey {
                 .map(str::trim)
                 .filter(|p| !p.is_empty())
                 .map(str::to_string),
+            mtls: http_auth::mtls_fingerprint(monitor),
         }
     }
 }
 
-fn client_for(key: &ClientKey) -> Result<reqwest::Client, String> {
+/// The monitor's client certificate, key and extra CA (PEM), for mTLS.
+fn mtls_material(monitor: &Monitor) -> Option<(&str, &str, Option<&str>)> {
+    (http_auth::effective_method(monitor) == "mtls").then(|| {
+        (
+            monitor.tls_client_cert.as_deref().unwrap_or_default(),
+            monitor.tls_client_key.as_deref().unwrap_or_default(),
+            monitor.tls_ca_cert.as_deref(),
+        )
+    })
+}
+
+fn client_for(key: &ClientKey, mtls: Option<(&str, &str, Option<&str>)>) -> Result<reqwest::Client, String> {
     static CLIENTS: OnceLock<Mutex<HashMap<ClientKey, reqwest::Client>>> = OnceLock::new();
     let cache = CLIENTS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(map) = cache.lock()
@@ -216,6 +233,11 @@ fn client_for(key: &ClientKey) -> Result<reqwest::Client, String> {
         }
         None => builder.no_proxy(),
     };
+    if key.mtls.is_some()
+        && let Some((cert, private_key, ca)) = mtls
+    {
+        builder = http_auth::apply_mtls(builder, cert, private_key, ca).map_err(|e| e.to_string())?;
+    }
     let client = builder
         .build()
         .map_err(|e| format!("Could not build HTTP client: {}", util::root_cause(&e)))?;
@@ -248,7 +270,7 @@ async fn check_inner(monitor: &Monitor) -> Result<CheckOutcome, String> {
             .map_err(|_| format!("Invalid HTTP method \"{method_name}\""))?
     };
     let key = ClientKey::for_monitor(monitor);
-    let client = client_for(&key)?;
+    let client = client_for(&key, mtls_material(monitor))?;
     let timeout = super::timeout_of(monitor);
 
     let headers = match monitor.http_headers.as_deref() {
@@ -256,17 +278,58 @@ async fn check_inner(monitor: &Monitor) -> Result<CheckOutcome, String> {
         None => HeaderMap::new(),
     };
     let has_content_type = headers.contains_key(CONTENT_TYPE);
-    let mut req = client
-        .request(method, url.clone())
-        .timeout(timeout)
-        .headers(headers);
-    if let Some(user) = monitor.basic_auth_user.as_deref().filter(|u| !u.is_empty()) {
-        req = req.basic_auth(user, monitor.basic_auth_pass.as_deref());
-    }
-    let req = apply_body(req, monitor, has_content_type)?;
+    let build = |bearer: Option<HeaderValue>| {
+        let mut headers = headers.clone();
+        // The OAuth2 token wins over a hand-written Authorization header.
+        if let Some(value) = bearer {
+            headers.insert(AUTHORIZATION, value);
+        }
+        let mut req = client
+            .request(method.clone(), url.clone())
+            .timeout(timeout)
+            .headers(headers);
+        if http_auth::effective_method(monitor) == "basic"
+            && let Some(user) = monitor.basic_auth_user.as_deref().filter(|u| !u.is_empty())
+        {
+            req = req.basic_auth(user, monitor.basic_auth_pass.as_deref());
+        }
+        apply_body(req, monitor, has_content_type)
+    };
 
-    let start = Instant::now();
-    let resp = match req.send().await {
+    // OAuth2: a cached token is reused until shortly before it expires. The
+    // token endpoint is another server: no redirects, no client certificate.
+    let token_client = || {
+        client_for(
+            &ClientKey {
+                max_redirects: 0,
+                mtls: None,
+                ..key.clone()
+            },
+            None,
+        )
+    };
+    let oauth = http_auth::effective_method(monitor) == "oauth2";
+    let (bearer, token_cached) = if oauth {
+        let (value, cached) = http_auth::bearer(monitor, &token_client()?, timeout).await?;
+        (Some(value), cached)
+    } else {
+        (None, false)
+    };
+
+    let mut start = Instant::now();
+    let mut sent = build(bearer)?.send().await;
+    if token_cached
+        && let Ok(resp) = &sent
+        && resp.status() == reqwest::StatusCode::UNAUTHORIZED
+    {
+        // The token may have been revoked or rotated before its expiry:
+        // fetch a new one and try once more.
+        http_auth::forget_token(monitor.id);
+        let (value, _) = http_auth::bearer(monitor, &token_client()?, timeout).await?;
+        start = Instant::now();
+        sent = build(Some(value))?.send().await;
+    }
+    let resp = match sent {
         Ok(resp) => resp,
         Err(err) => return Ok(request_error(&err, monitor, &url, &key, timeout).await),
     };
@@ -428,6 +491,7 @@ async fn describe_request_error(
             ignore_tls: true,
             max_redirects: 0,
             proxy: key.proxy.clone(),
+            mtls: None,
         };
         let cert = probe_cert(&probe_key, url, timeout.min(Duration::from_secs(10))).await;
         let now = util::now_unix();
@@ -461,12 +525,13 @@ pub(crate) async fn probe_cert_unverified(url: &Url, timeout: Duration) -> Optio
         ignore_tls: true,
         max_redirects: 0,
         proxy: None,
+        mtls: None,
     };
     probe_cert(&key, url, timeout).await
 }
 
 async fn probe_cert(key: &ClientKey, url: &Url, timeout: Duration) -> Option<CertSummary> {
-    let client = client_for(key).ok()?;
+    let client = client_for(key, None).ok()?;
     let resp = client
         .head(url.clone())
         .timeout(timeout)
@@ -789,9 +854,10 @@ mod tests {
             ignore_tls: false,
             max_redirects: 1,
             proxy: Some("::not a url".into()),
+            mtls: None,
         };
         assert!(
-            client_for(&key)
+            client_for(&key, None)
                 .unwrap_err()
                 .starts_with("Invalid proxy URL")
         );

@@ -16,12 +16,26 @@
 //! [`DNS_RECORD_TYPES`], [`parse_status_codes`], [`parse_headers`],
 //! [`parse_dns_resolver`].
 
+pub mod conn;
 pub mod dns;
 pub mod docker;
 pub mod domain;
+pub mod endpoint;
+pub mod grpc;
+pub mod handshake;
 pub mod http;
+pub mod http_auth;
+pub mod kafka;
+pub mod mqtt;
+pub mod mysql;
 pub mod ntp;
 pub mod ping;
+pub mod postgres;
+pub mod rabbitmq;
+pub mod radius;
+pub mod redis;
+pub mod smtp;
+pub mod snmp;
 pub mod steam;
 pub mod tcp;
 pub mod tls;
@@ -36,6 +50,7 @@ pub use dns::{DNS_RECORD_TYPES, parse_dns_resolver};
 pub use http::{
     BODY_ENCODINGS, HTTP_METHODS, JSON_OPERATORS, StatusCodes, parse_headers, parse_status_codes,
 };
+pub use http_auth::{AUTH_METHODS, OAUTH_CLIENT_AUTHS};
 
 /// Run one check for `monitor`, dispatching on its type.
 ///
@@ -81,6 +96,17 @@ async fn dispatch(monitor: &Monitor) -> CheckOutcome {
         MonitorType::DomainExpiry => domain::check(monitor).await,
         MonitorType::Ntp => ntp::check(monitor).await,
         MonitorType::Steam => steam::check(monitor).await,
+        MonitorType::Tls => handshake::check(monitor).await,
+        MonitorType::Smtp => smtp::check(monitor).await,
+        MonitorType::Redis => redis::check(monitor).await,
+        MonitorType::Postgres => postgres::check(monitor).await,
+        MonitorType::Mysql => mysql::check(monitor).await,
+        MonitorType::Mqtt => mqtt::check(monitor).await,
+        MonitorType::Rabbitmq => rabbitmq::check(monitor).await,
+        MonitorType::Kafka => kafka::check(monitor).await,
+        MonitorType::Snmp => snmp::check(monitor).await,
+        MonitorType::Radius => radius::check(monitor).await,
+        MonitorType::Grpc => grpc::check(monitor).await,
         MonitorType::Push | MonitorType::Group => CheckOutcome {
             status: HeartbeatStatus::Down,
             response_time_ms: None,
@@ -97,7 +123,33 @@ pub fn timeout_of(monitor: &Monitor) -> Duration {
 
 #[cfg(test)]
 pub(crate) mod test_support {
+    use std::sync::Arc;
+
     use crate::db::models::{Monitor, MonitorType};
+
+    /// A TLS acceptor with a fresh self-signed certificate for `localhost`
+    /// (untrusted by the OS store, so verified checks fail and `ignore_tls`
+    /// ones pass).
+    pub fn tls_acceptor() -> tokio_rustls::TlsAcceptor {
+        tls_acceptor_alpn(&[])
+    }
+
+    /// [`tls_acceptor`] that negotiates the given ALPN protocols.
+    pub fn tls_acceptor_alpn(alpn: &[&[u8]]) -> tokio_rustls::TlsAcceptor {
+        let key = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let mut config = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![key.cert.der().clone()],
+                rustls::pki_types::PrivateKeyDer::Pkcs8(key.signing_key.serialize_der().into()),
+            )
+            .unwrap();
+        config.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
+        tokio_rustls::TlsAcceptor::from(Arc::new(config))
+    }
 
     /// A monitor with schema defaults, for checker tests.
     pub fn monitor(monitor_type: MonitorType, target: &str) -> Monitor {
@@ -124,6 +176,7 @@ pub(crate) mod test_support {
             ignore_tls: false,
             basic_auth_user: None,
             basic_auth_pass: None,
+            secret: None,
             proxy_url: None,
             keyword: None,
             keyword_invert: false,
@@ -147,6 +200,16 @@ pub(crate) mod test_support {
             sort_order: 0,
             created_at: String::new(),
             updated_at: String::new(),
+            auth_method: n.auth_method,
+            oauth_token_url: None,
+            oauth_client_id: None,
+            oauth_client_secret: None,
+            oauth_scope: None,
+            oauth_audience: None,
+            oauth_client_auth: n.oauth_client_auth,
+            tls_client_cert: None,
+            tls_client_key: None,
+            tls_ca_cert: None,
         }
     }
 }

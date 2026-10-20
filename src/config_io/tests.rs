@@ -420,3 +420,72 @@ fn discovery_setting_changes_are_detected() {
     let doc = parse_document("settings:\n  site_name: Other\n  discovery_enabled: false\n").unwrap();
     assert!(!discovery_changed(&plan(&conn, &doc, Mode::Merge).unwrap()));
 }
+
+#[test]
+fn http_auth_methods_round_trip_with_masked_secrets() {
+    use crate::monitor::checkers::http_auth::test_pki::Pki;
+    let pki = Pki::new();
+    let doc = serde_json::json!({
+        "version": 1,
+        "monitors": [
+            {"name": "Legacy", "monitor_type": "http", "target": "https://legacy.example.com/",
+             "basic_auth_user": "bot", "basic_auth_pass": "hunter2hunter2"},
+            {"name": "Oauth", "monitor_type": "http", "target": "https://api.example.com/", "auth_method": "oauth2",
+             "oauth_token_url": "https://login.example.com/token", "oauth_client_id": "vole",
+             "oauth_client_secret": "client-secret-value", "oauth_scope": "read write", "oauth_client_auth": "client_secret_post"},
+            {"name": "Mtls", "monitor_type": "http", "target": "https://mtls.example.com/", "auth_method": "mtls",
+             "tls_client_cert": pki.client_cert_pem, "tls_client_key": pki.client_key_pem, "tls_ca_cert": pki.ca_pem},
+        ],
+    })
+    .to_string();
+    let mut conn = test_conn();
+    let applied = apply(&mut conn, &parse_document(&doc).unwrap(), Mode::Merge).unwrap().unwrap();
+    assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
+    // Documents without `auth_method` keep meaning basic auth.
+    assert_eq!(monitor_named(&conn, "Legacy").auth_method, "basic");
+    let oauth = monitor_named(&conn, "Oauth");
+    assert_eq!((oauth.auth_method.as_str(), oauth.oauth_scope.as_deref(), oauth.oauth_client_auth.as_str()), ("oauth2", Some("read write"), "client_secret_post"));
+
+    // Exports hide the client secret and the private key, but not the certificates.
+    let masked = export(&conn, false).unwrap();
+    let text = render(&masked, Format::Yaml).unwrap();
+    for secret in ["hunter2hunter2", "client-secret-value", "PRIVATE KEY"] {
+        assert!(!text.contains(secret), "{secret} leaked:\n{text}");
+    }
+    assert!(text.contains("BEGIN CERTIFICATE"));
+    let find = |name: &str| masked.monitors.as_ref().unwrap().iter().find(|m| m.name == name).unwrap().clone();
+    assert_eq!(find("Oauth").options["oauth_client_secret"], SECRET_MASK);
+    assert_eq!(find("Mtls").options["tls_client_key"], SECRET_MASK);
+    assert_eq!(find("Mtls").options["auth_method"], "mtls");
+    let full = render(&export(&conn, true).unwrap(), Format::Yaml).unwrap();
+    assert!(full.contains("client-secret-value") && full.contains("PRIVATE KEY"));
+
+    // Re-importing the masked export changes nothing and keeps the stored secrets.
+    let applied = apply(&mut conn, &masked, Mode::Merge).unwrap().unwrap();
+    assert!(!applied.plan.has_changes(), "{:?}", applied.plan.items);
+    assert_eq!(monitor_named(&conn, "Oauth").oauth_client_secret.as_deref(), Some("client-secret-value"));
+    assert_eq!(monitor_named(&conn, "Mtls").tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
+
+    // A fresh instance can't invent them.
+    let plan = plan(&test_conn(), &masked, Mode::Merge).unwrap();
+    for field in ["oauth_client_secret", "tls_client_key", "basic_auth_pass"] {
+        assert!(plan.errors.iter().any(|e| e.field.as_deref() == Some(field)), "{field}: {:?}", plan.errors);
+    }
+}
+
+#[test]
+fn bad_http_auth_in_a_document_is_reported_with_the_forms_messages() {
+    let doc = serde_json::json!({
+        "version": 1,
+        "monitors": [
+            {"name": "Oauth", "monitor_type": "http", "target": "https://api.example.com/", "auth_method": "oauth2", "oauth_token_url": "nope"},
+            {"name": "Mtls", "monitor_type": "http", "target": "https://m.example.com/", "auth_method": "mtls",
+             "tls_client_cert": "hello", "tls_client_key": "world"},
+        ],
+    })
+    .to_string();
+    let plan = plan(&test_conn(), &parse_document(&doc).unwrap(), Mode::Merge).unwrap();
+    for field in ["oauth_token_url", "oauth_client_id", "oauth_client_secret", "tls_client_cert", "tls_client_key"] {
+        assert!(plan.errors.iter().any(|e| e.field.as_deref() == Some(field)), "{field}: {:?}", plan.errors);
+    }
+}

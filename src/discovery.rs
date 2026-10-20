@@ -872,6 +872,7 @@ mod tests {
                 ignore_tls: false,
                 basic_auth_user: None,
                 basic_auth_pass: None,
+                secret: None,
                 proxy_url: None,
                 keyword: m.keyword,
                 keyword_invert: false,
@@ -895,6 +896,16 @@ mod tests {
                 sort_order: 0,
                 created_at: String::new(),
                 updated_at: String::new(),
+                auth_method: "none".into(),
+                oauth_token_url: None,
+                oauth_client_id: None,
+                oauth_client_secret: None,
+                oauth_scope: None,
+                oauth_audience: None,
+                oauth_client_auth: "client_secret_basic".into(),
+                tls_client_cert: None,
+                tls_client_key: None,
+                tls_ca_cert: None,
             },
             paused_by_discovery,
         }
@@ -959,7 +970,7 @@ mod tests {
             parse_labels(&container("c", &all), None).unwrap_err()
         };
         assert!(bad(&[("vigilant.type", "http")]).contains("target is required"));
-        assert!(bad(&[("vigilant.type", "smtp")]).contains("unknown"));
+        assert!(bad(&[("vigilant.type", "gopher")]).contains("unknown"));
         assert!(bad(&[("vigilant.type", "push")]).contains("can’t be discovered"));
         assert!(bad(&[("vigilant.interval", "5")]).contains("20 to 86400"));
         assert!(bad(&[("vigilant.retries", "lots")]).contains("whole number"));

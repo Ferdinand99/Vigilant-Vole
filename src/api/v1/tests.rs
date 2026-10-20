@@ -835,3 +835,68 @@ async fn backup_uploads_are_bounded_and_cleaned_up() {
     let html = String::from_utf8_lossy(&to_bytes(res.into_body(), usize::MAX).await.unwrap()).into_owned();
     assert!(!html.contains("Apply"), "{html}");
 }
+
+#[tokio::test]
+async fn auth_methods_are_masked_in_the_api_and_secrets_stay_with_their_destination() {
+    use crate::monitor::checkers::http_auth::test_pki::Pki;
+    let h = harness().await;
+    let mask = crate::notification::SECRET_MASK;
+    let pki = Pki::new();
+
+    // OAuth2: the client secret never comes back; PATCHing other fields keeps it.
+    let mut body = http_monitor("Oauth");
+    body["auth_method"] = json!("oauth2");
+    body["oauth_token_url"] = json!("https://login.example.com/token");
+    body["oauth_client_id"] = json!("vole");
+    body["oauth_client_secret"] = json!("client-secret-value");
+    body["oauth_scope"] = json!("read write");
+    let (status, created) = h.json(Method::POST, "/api/v1/monitors", &h.editor, Some(body)).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!((created["auth_method"].as_str(), created["oauth_client_secret"].as_str()), (Some("oauth2"), Some(mask)));
+    assert!(!created.to_string().contains("client-secret-value"));
+    let id = created["id"].as_i64().unwrap();
+    let uri = format!("/api/v1/monitors/{id}");
+    let (status, patched) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"interval_seconds": 30, "target": "https://other.example.com/"}))).await;
+    assert_eq!(status, StatusCode::OK, "{patched}");
+    let stored = h.state.with_conn(move |c| crate::db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    assert_eq!(stored.oauth_client_secret.as_deref(), Some("client-secret-value"));
+    // A different token endpoint needs the secret again.
+    let (status, err) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"oauth_token_url": "https://attacker.example/token"}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    assert!(err["error"]["fields"]["oauth_client_secret"].is_string(), "{err}");
+    // Validation errors name the field.
+    let (status, err) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"auth_method": "kerberos"}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(err["error"]["fields"]["auth_method"].is_string(), "{err}");
+
+    // mTLS: certificate visible, private key masked and tied to the target.
+    let mut body = http_monitor("Mtls");
+    body["auth_method"] = json!("mtls");
+    body["tls_client_cert"] = json!(pki.client_cert_pem);
+    body["tls_client_key"] = json!(pki.client_key_pem);
+    body["tls_ca_cert"] = json!(pki.ca_pem);
+    let (status, created) = h.json(Method::POST, "/api/v1/monitors", &h.editor, Some(body)).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["tls_client_key"], mask);
+    assert!(!created.to_string().contains("PRIVATE KEY"));
+    assert!(created["tls_client_cert"].as_str().unwrap().contains("BEGIN CERTIFICATE"));
+    let id = created["id"].as_i64().unwrap();
+    let uri = format!("/api/v1/monitors/{id}");
+    let (status, err) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"target": "https://attacker.example/"}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    assert!(err["error"]["fields"]["tls_client_key"].is_string(), "{err}");
+    let (status, err) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"tls_client_cert": "not a certificate"}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(err["error"]["fields"]["tls_client_cert"].is_string(), "{err}");
+    // Lists and viewers see the same masking.
+    let (_, list) = h.json(Method::GET, "/api/v1/monitors", &h.viewer, None).await;
+    assert!(!list.to_string().contains("PRIVATE KEY") && !list.to_string().contains("client-secret-value"));
+
+    // Clients that only know basic auth keep working without `auth_method`.
+    let mut body = http_monitor("Legacy");
+    body["basic_auth_user"] = json!("bot");
+    body["basic_auth_pass"] = json!("hunter2");
+    let (status, legacy) = h.json(Method::POST, "/api/v1/monitors", &h.editor, Some(body)).await;
+    assert_eq!(status, StatusCode::CREATED, "{legacy}");
+    assert_eq!(legacy["auth_method"], "basic");
+}

@@ -467,6 +467,9 @@ fn restore_headers(new: &mut Map<String, Value>, old: Option<&str>) -> Vec<Strin
 // ===========================================================================
 
 /// Monitor columns that are document fields of their own or never exported.
+/// Monitor fields exported as [`SECRET_MASK`] unless secrets are included.
+const MONITOR_SECRETS: &[&str] = &["basic_auth_pass", "secret", "oauth_client_secret", "tls_client_key"];
+
 const MONITOR_SPECIAL: &[&str] = &["name", "monitor_type", "target", "parent_id", "push_token", "source", "external_id"];
 
 fn new_monitor_value(m: &NewMonitor) -> Map<String, Value> {
@@ -507,8 +510,10 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             };
             options.insert("http_headers".into(), value);
         }
-        if !include_secrets && options.get("basic_auth_pass").is_some_and(|v| !v.is_null()) {
-            options.insert("basic_auth_pass".into(), Value::String(SECRET_MASK.into()));
+        for secret in MONITOR_SECRETS {
+            if !include_secrets && options.get(*secret).is_some_and(|v| !v.is_null()) {
+                options.insert((*secret).into(), Value::String(SECRET_MASK.into()));
+            }
         }
         let links = db_notifications::monitor_channel_links(conn, m.id)?;
         let notifications = links
@@ -1338,6 +1343,10 @@ pub fn monitor_from_doc(m: &MonitorDoc) -> Result<NewMonitor, (String, String)> 
         let kinds: Vec<&str> = MonitorType::all().iter().map(|t| t.as_str()).collect();
         return Err(("monitor_type".into(), format!("Unknown monitor type “{}”. Use one of: {}.", m.monitor_type, kinds.join(", "))));
     };
+    // Documents written before `auth_method` existed: a user name means basic auth.
+    if !m.options.contains_key("auth_method") && m.options.get("basic_auth_user").and_then(Value::as_str).is_some_and(|u| !u.is_empty()) {
+        obj.insert("auth_method".into(), Value::String("basic".into()));
+    }
     obj.insert("name".into(), Value::String(m.name.clone()));
     obj.insert("monitor_type".into(), serde_json::to_value(kind).unwrap_or(Value::Null));
     obj.insert("target".into(), Value::String(m.target.clone()));
@@ -1465,6 +1474,18 @@ fn plan_monitors(
         // proxy are unchanged.
         if nm.basic_auth_pass.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.basic_auth_pass.is_none()) {
             plan.error(KIND_MONITOR, key, Some("basic_auth_pass"), "The password was exported without secrets; fill it in.");
+            continue;
+        }
+        if nm.secret.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.secret.is_none()) {
+            plan.error(KIND_MONITOR, key, Some("secret"), "The secret was exported without secrets; fill it in.");
+            continue;
+        }
+        if nm.oauth_client_secret.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.oauth_client_secret.is_none()) {
+            plan.error(KIND_MONITOR, key, Some("oauth_client_secret"), "The client secret was exported without secrets; fill it in.");
+            continue;
+        }
+        if nm.tls_client_key.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.tls_client_key.is_none()) {
+            plan.error(KIND_MONITOR, key, Some("tls_client_key"), "The private key was exported without secrets; fill it in.");
             continue;
         }
         if let Some(h) = nm.http_headers.clone()

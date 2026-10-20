@@ -7,11 +7,13 @@ use super::models::{Heartbeat, HeartbeatStatus, Monitor, MonitorType, MonitorWit
 pub const MONITOR_COLUMNS: &str = "id, name, description, monitor_type, target, parent_id,
     interval_seconds, retry_interval_seconds, timeout_seconds, retries, active, upside_down,
     http_method, http_headers, http_body, http_body_encoding, accepted_status_codes, max_redirects,
-    ignore_tls, basic_auth_user, basic_auth_pass, proxy_url, keyword, keyword_invert,
+    ignore_tls, basic_auth_user, basic_auth_pass, secret, proxy_url, keyword, keyword_invert,
     json_path, json_operator, json_expected, dns_record_type, dns_resolver, dns_expected,
     docker_host, push_token, expiry_notify, expiry_days, resend_interval, escalation_minutes,
     flap_detection, run_on_agents, confirm_with_agents, source, external_id, sort_order,
-    created_at, updated_at";
+    created_at, updated_at,
+    auth_method, oauth_token_url, oauth_client_id, oauth_client_secret, oauth_scope,
+    oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert";
 
 /// `MONITOR_COLUMNS` qualified with the `m.` table alias, for joins.
 fn monitor_columns_aliased() -> String {
@@ -47,6 +49,7 @@ pub fn row_to_monitor(row: &Row) -> rusqlite::Result<Monitor> {
         ignore_tls: row.get("ignore_tls")?,
         basic_auth_user: row.get("basic_auth_user")?,
         basic_auth_pass: row.get("basic_auth_pass")?,
+        secret: row.get("secret")?,
         proxy_url: row.get("proxy_url")?,
         keyword: row.get("keyword")?,
         keyword_invert: row.get("keyword_invert")?,
@@ -70,6 +73,16 @@ pub fn row_to_monitor(row: &Row) -> rusqlite::Result<Monitor> {
         sort_order: row.get("sort_order")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        auth_method: row.get("auth_method")?,
+        oauth_token_url: row.get("oauth_token_url")?,
+        oauth_client_id: row.get("oauth_client_id")?,
+        oauth_client_secret: row.get("oauth_client_secret")?,
+        oauth_scope: row.get("oauth_scope")?,
+        oauth_audience: row.get("oauth_audience")?,
+        oauth_client_auth: row.get("oauth_client_auth")?,
+        tls_client_cert: row.get("tls_client_cert")?,
+        tls_client_key: row.get("tls_client_key")?,
+        tls_ca_cert: row.get("tls_ca_cert")?,
     })
 }
 
@@ -97,6 +110,7 @@ macro_rules! monitor_params {
             ":ignore_tls": $m.ignore_tls,
             ":basic_auth_user": $m.basic_auth_user,
             ":basic_auth_pass": $m.basic_auth_pass,
+            ":secret": $m.secret,
             ":proxy_url": $m.proxy_url,
             ":keyword": $m.keyword,
             ":keyword_invert": $m.keyword_invert,
@@ -118,6 +132,16 @@ macro_rules! monitor_params {
             ":source": $m.source,
             ":external_id": $m.external_id,
             ":sort_order": $m.sort_order,
+            ":auth_method": $m.auth_method,
+            ":oauth_token_url": $m.oauth_token_url,
+            ":oauth_client_id": $m.oauth_client_id,
+            ":oauth_client_secret": $m.oauth_client_secret,
+            ":oauth_scope": $m.oauth_scope,
+            ":oauth_audience": $m.oauth_audience,
+            ":oauth_client_auth": $m.oauth_client_auth,
+            ":tls_client_cert": $m.tls_client_cert,
+            ":tls_client_key": $m.tls_client_key,
+            ":tls_ca_cert": $m.tls_ca_cert,
             $($extra)*
         }
     };
@@ -130,20 +154,24 @@ pub fn insert_monitor(conn: &Connection, m: &NewMonitor) -> rusqlite::Result<i64
             name, description, monitor_type, target, parent_id, interval_seconds,
             retry_interval_seconds, timeout_seconds, retries, active, upside_down, http_method,
             http_headers, http_body, http_body_encoding, accepted_status_codes, max_redirects,
-            ignore_tls, basic_auth_user, basic_auth_pass, proxy_url, keyword, keyword_invert,
+            ignore_tls, basic_auth_user, basic_auth_pass, secret, proxy_url, keyword, keyword_invert,
             json_path, json_operator, json_expected, dns_record_type, dns_resolver, dns_expected,
             docker_host, push_token, expiry_notify, expiry_days, resend_interval,
             escalation_minutes, flap_detection, run_on_agents, confirm_with_agents, source,
-            external_id, sort_order
+            external_id, sort_order,
+            auth_method, oauth_token_url, oauth_client_id, oauth_client_secret, oauth_scope,
+            oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert
         ) VALUES (
             :name, :description, :monitor_type, :target, :parent_id, :interval_seconds,
             :retry_interval_seconds, :timeout_seconds, :retries, :active, :upside_down, :http_method,
             :http_headers, :http_body, :http_body_encoding, :accepted_status_codes, :max_redirects,
-            :ignore_tls, :basic_auth_user, :basic_auth_pass, :proxy_url, :keyword, :keyword_invert,
+            :ignore_tls, :basic_auth_user, :basic_auth_pass, :secret, :proxy_url, :keyword, :keyword_invert,
             :json_path, :json_operator, :json_expected, :dns_record_type, :dns_resolver, :dns_expected,
             :docker_host, :push_token, :expiry_notify, :expiry_days, :resend_interval,
             :escalation_minutes, :flap_detection, :run_on_agents, :confirm_with_agents, :source,
-            :external_id, :sort_order
+            :external_id, :sort_order,
+            :auth_method, :oauth_token_url, :oauth_client_id, :oauth_client_secret, :oauth_scope,
+            :oauth_audience, :oauth_client_auth, :tls_client_cert, :tls_client_key, :tls_ca_cert
         )",
         monitor_params!(m,),
     )?;
@@ -167,7 +195,7 @@ pub fn update_monitor(conn: &Connection, id: i64, m: &NewMonitor) -> rusqlite::R
             http_method = :http_method, http_headers = :http_headers, http_body = :http_body,
             http_body_encoding = :http_body_encoding, accepted_status_codes = :accepted_status_codes,
             max_redirects = :max_redirects, ignore_tls = :ignore_tls,
-            basic_auth_user = :basic_auth_user, basic_auth_pass = :basic_auth_pass,
+            basic_auth_user = :basic_auth_user, basic_auth_pass = :basic_auth_pass, secret = :secret,
             proxy_url = :proxy_url, keyword = :keyword, keyword_invert = :keyword_invert,
             json_path = :json_path, json_operator = :json_operator, json_expected = :json_expected,
             dns_record_type = :dns_record_type, dns_resolver = :dns_resolver,
@@ -177,6 +205,11 @@ pub fn update_monitor(conn: &Connection, id: i64, m: &NewMonitor) -> rusqlite::R
             flap_detection = :flap_detection, run_on_agents = :run_on_agents,
             confirm_with_agents = :confirm_with_agents, source = :source,
             external_id = :external_id, sort_order = :sort_order,
+            auth_method = :auth_method, oauth_token_url = :oauth_token_url,
+            oauth_client_id = :oauth_client_id, oauth_client_secret = :oauth_client_secret,
+            oauth_scope = :oauth_scope, oauth_audience = :oauth_audience,
+            oauth_client_auth = :oauth_client_auth, tls_client_cert = :tls_client_cert,
+            tls_client_key = :tls_client_key, tls_ca_cert = :tls_ca_cert,
             updated_at = datetime('now')
          WHERE id = :id",
         monitor_params!(m, ":id": id),
@@ -575,5 +608,56 @@ mod tests {
         let rec = expiry_records(&conn, id).unwrap();
         assert_eq!(rec.len(), 1);
         assert_eq!((rec[0].kind.as_str(), rec[0].days_left), ("cert", 10));
+    }
+
+    #[test]
+    fn http_auth_columns_round_trip() {
+        let conn = test_conn();
+        let m = NewMonitor {
+            name: "Secure".into(),
+            target: "https://api.example.com/".into(),
+            auth_method: "oauth2".into(),
+            oauth_token_url: Some("https://login.example.com/token".into()),
+            oauth_client_id: Some("vole".into()),
+            oauth_client_secret: Some("shh".into()),
+            oauth_scope: Some("read write".into()),
+            oauth_audience: Some("api".into()),
+            oauth_client_auth: "client_secret_post".into(),
+            tls_client_cert: Some("CERT".into()),
+            tls_client_key: Some("KEY".into()),
+            tls_ca_cert: Some("CA".into()),
+            ..NewMonitor::default()
+        };
+        let id = insert_monitor(&conn, &m).unwrap();
+        assert_eq!(get_monitor(&conn, id).unwrap().unwrap().to_new(), m);
+        let off = NewMonitor { auth_method: "none".into(), oauth_client_secret: None, ..m.clone() };
+        update_monitor(&conn, id, &off).unwrap();
+        assert_eq!(get_monitor(&conn, id).unwrap().unwrap().to_new(), off);
+        // New monitors default to no authentication.
+        let plain = insert_monitor(&conn, &NewMonitor { name: "Plain".into(), ..NewMonitor::default() }).unwrap();
+        let plain = get_monitor(&conn, plain).unwrap().unwrap();
+        assert_eq!((plain.auth_method.as_str(), plain.oauth_client_auth.as_str()), ("none", "client_secret_basic"));
+    }
+
+    #[test]
+    fn migration_turns_existing_basic_auth_into_the_basic_method() {
+        // The 0096 migration on a table that only has what it reads.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE monitors (id INTEGER PRIMARY KEY, basic_auth_user TEXT);
+             INSERT INTO monitors (id, basic_auth_user) VALUES (1, 'bot'), (2, NULL), (3, '');",
+        )
+        .unwrap();
+        conn.execute_batch(include_str!("../../migrations/0096_http_auth.sql")).unwrap();
+        let methods: Vec<String> = conn
+            .prepare("SELECT auth_method FROM monitors ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(methods, ["basic", "none", "none"]);
+        let style: String = conn.query_row("SELECT oauth_client_auth FROM monitors WHERE id = 2", [], |r| r.get(0)).unwrap();
+        assert_eq!(style, "client_secret_basic");
     }
 }
