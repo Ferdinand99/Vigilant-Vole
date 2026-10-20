@@ -14,6 +14,21 @@ use jiff::civil::Date;
 
 use super::{Lang, current, interpolate, lookup};
 
+/// Writes the ASCII digits of `text` in the language's digit set (Persian
+/// digits for `fa`); a no-op for languages that use Latin digits.
+pub fn local_digits(lang: Lang, text: String) -> String {
+    let zero = lang.info().numbers.zero;
+    if zero == '0' {
+        return text;
+    }
+    text.chars()
+        .map(|c| match c.to_digit(10) {
+            Some(d) if c.is_ascii_digit() => char::from_u32(u32::from(zero) + d).unwrap_or(c),
+            _ => c,
+        })
+        .collect()
+}
+
 fn group_digits(digits: &str, sep: char) -> String {
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (i, c) in digits.chars().enumerate() {
@@ -31,7 +46,7 @@ pub fn fmt_int_in(lang: Lang, n: i64) -> String {
     let digits = n.unsigned_abs().to_string();
     let nf = lang.info().numbers;
     let grouped = if digits.len() < 3 + nf.min_grouping { digits } else { group_digits(&digits, nf.group) };
-    if n < 0 { format!("-{grouped}") } else { grouped }
+    local_digits(lang, if n < 0 { format!("-{grouped}") } else { grouped })
 }
 
 pub fn fmt_int(n: i64) -> String {
@@ -54,7 +69,7 @@ pub fn fmt_dec_in(lang: Lang, value: f64, decimals: usize) -> String {
     out.push_str(&fmt_int_in(lang, int));
     if !frac.is_empty() {
         out.push(lang.info().numbers.decimal);
-        out.push_str(frac);
+        out.push_str(&local_digits(lang, frac.to_string()));
     }
     out
 }
@@ -71,10 +86,10 @@ pub fn fmt_pct2_in(lang: Lang, p: f64) -> String {
     } else {
         fmt_dec_in(lang, (p * 100.0).floor() / 100.0, 2)
     };
-    match lang.info().numbers.percent_space {
-        Some(space) => format!("{number}{space}%"),
-        None => format!("{number}%"),
-    }
+    let nf = lang.info().numbers;
+    let sign = nf.percent_sign;
+    let space = nf.percent_space.map(String::from).unwrap_or_default();
+    if nf.percent_before { format!("{sign}{space}{number}") } else { format!("{number}{space}{sign}") }
 }
 
 pub fn fmt_pct2(p: f64) -> String {
@@ -88,7 +103,7 @@ pub fn fmt_ms(ms: i64) -> String {
 
 /// A `[fmt]` pattern with its `{placeholders}` filled in.
 fn pattern(lang: Lang, key: &str, args: &[(&str, &str)]) -> String {
-    interpolate(lookup(lang, &format!("fmt.{key}")).unwrap_or_default(), args)
+    local_digits(lang, interpolate(lookup(lang, &format!("fmt.{key}")).unwrap_or_default(), args))
 }
 
 /// The `i`-th entry of a `|`-separated `[fmt]` list (month and weekday names).

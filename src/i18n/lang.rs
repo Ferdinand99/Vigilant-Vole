@@ -57,7 +57,7 @@ impl Plural {
 /// an integer). A language names the rule it follows; a rule names the
 /// categories a translation must provide ([`PluralRule::categories`]).
 ///
-/// To add a family (Welsh, Hebrew, …) add a variant here, its arm in
+/// To add a family (Welsh, Irish, …) add a variant here, its arm in
 /// [`PluralRule::category`] and [`PluralRule::categories`], and a test vector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluralRule {
@@ -73,8 +73,15 @@ pub enum PluralRule {
     Polish,
     /// `one` (1, 21, 31 … except 11), `few` (2–4 except 12–14), `many`: ru, uk, be.
     EastSlavic,
-    /// `one` (1), `few` (2–4), `other`: cs, sk.
+    /// `one` (1), `few` (2–4), `other`: cs, sk. CLDR also has `many` for
+    /// fractions; no count in the app is fractional, but files provide it.
     CzechSlovak,
+    /// `one` (1), `few` (0 and ending 02–19), `other`: ro.
+    Romanian,
+    /// `one` (1), `two` (2), `other`: he.
+    Hebrew,
+    /// `one` for 0 and 1: fa, hi.
+    ZeroOne,
     /// `zero`, `one`, `two`, `few` (3–10), `many` (11–99), `other`: ar.
     Arabic,
 }
@@ -100,6 +107,14 @@ impl PluralRule {
             PluralRule::CzechSlovak if n == 1 => Plural::One,
             PluralRule::CzechSlovak if (2..=4).contains(&n) => Plural::Few,
             PluralRule::CzechSlovak => Plural::Other,
+            PluralRule::Romanian if n == 1 => Plural::One,
+            PluralRule::Romanian if n == 0 || (1..=19).contains(&m100) => Plural::Few,
+            PluralRule::Romanian => Plural::Other,
+            PluralRule::Hebrew if n == 1 => Plural::One,
+            PluralRule::Hebrew if n == 2 => Plural::Two,
+            PluralRule::Hebrew => Plural::Other,
+            PluralRule::ZeroOne if n <= 1 => Plural::One,
+            PluralRule::ZeroOne => Plural::Other,
             PluralRule::Arabic if n == 0 => Plural::Zero,
             PluralRule::Arabic if n == 1 => Plural::One,
             PluralRule::Arabic if n == 2 => Plural::Two,
@@ -119,7 +134,10 @@ impl PluralRule {
             PluralRule::OneOther => &[One, Other],
             PluralRule::FrenchLike | PluralRule::SpanishLike => &[One, Many, Other],
             PluralRule::Polish | PluralRule::EastSlavic => &[One, Few, Many, Other],
-            PluralRule::CzechSlovak => &[One, Few, Other],
+            PluralRule::CzechSlovak => &[One, Few, Many, Other],
+            PluralRule::Romanian => &[One, Few, Other],
+            PluralRule::Hebrew => &[One, Two, Other],
+            PluralRule::ZeroOne => &[One, Other],
             PluralRule::Arabic => &[Zero, One, Two, Few, Many, Other],
         }
     }
@@ -135,6 +153,33 @@ pub struct Numbers {
     pub min_grouping: usize,
     /// What sits between a number and `%`: `None` → "99,95%".
     pub percent_space: Option<char>,
+    /// The percent sign: `%`, or `٪` (Arabic percent sign) in Persian.
+    pub percent_sign: char,
+    /// The sign comes before the number ("%12", tr).
+    pub percent_before: bool,
+    /// Zero of the digit set: `'0'`, or `'۰'` (Persian digits). The other
+    /// digits follow it in code-point order.
+    pub zero: char,
+}
+
+impl Numbers {
+    /// Latin digits and a trailing `%`; `with_*` adjust the exceptions.
+    pub const fn new(decimal: char, group: char, min_grouping: usize, percent_space: Option<char>) -> Self {
+        Self { decimal, group, min_grouping, percent_space, percent_sign: '%', percent_before: false, zero: '0' }
+    }
+
+    /// "%12" instead of "12%".
+    pub const fn percent_before(mut self) -> Self {
+        self.percent_before = true;
+        self
+    }
+
+    /// Another digit set and percent sign (Persian).
+    pub const fn script(mut self, zero: char, percent_sign: char) -> Self {
+        self.zero = zero;
+        self.percent_sign = percent_sign;
+        self
+    }
 }
 
 const NBSP: char = '\u{a0}';
@@ -153,7 +198,8 @@ pub struct LangInfo {
     pub beta: bool,
     pub plural: PluralRule,
     pub numbers: Numbers,
-    /// Other primary subtags that resolve to this language (`no`, `nn`).
+    /// Other tags that resolve to this language: a primary subtag (`no`, `nn`)
+    /// or a longer prefix (`zh-hant`, `zh-hk`).
     pub aliases: &'static [&'static str],
     /// The compiled-in `locales/<code>.toml`.
     pub source: &'static str,
@@ -166,7 +212,7 @@ const EN: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: false,
     plural: PluralRule::OneOther,
-    numbers: Numbers { decimal: '.', group: ',', min_grouping: 1, percent_space: None },
+    numbers: Numbers::new('.', ',', 1, None),
     aliases: &[],
     source: include_str!("../../locales/en.toml"),
 };
@@ -177,7 +223,7 @@ const NB: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: false,
     plural: PluralRule::OneOther,
-    numbers: Numbers { decimal: ',', group: NBSP, min_grouping: 2, percent_space: Some(NBSP) },
+    numbers: Numbers::new(',', NBSP, 2, Some(NBSP)),
     aliases: &["no", "nn"],
     source: include_str!("../../locales/nb.toml"),
 };
@@ -188,7 +234,7 @@ const DE: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::OneOther,
-    numbers: Numbers { decimal: ',', group: '.', min_grouping: 1, percent_space: Some(NBSP) },
+    numbers: Numbers::new(',', '.', 1, Some(NBSP)),
     aliases: &[],
     source: include_str!("../../locales/de.toml"),
 };
@@ -199,7 +245,7 @@ const FR: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::FrenchLike,
-    numbers: Numbers { decimal: ',', group: NNBSP, min_grouping: 1, percent_space: Some(NNBSP) },
+    numbers: Numbers::new(',', NNBSP, 1, Some(NNBSP)),
     aliases: &[],
     source: include_str!("../../locales/fr.toml"),
 };
@@ -210,7 +256,7 @@ const ES: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::SpanishLike,
-    numbers: Numbers { decimal: ',', group: '.', min_grouping: 2, percent_space: Some(NBSP) },
+    numbers: Numbers::new(',', '.', 2, Some(NBSP)),
     aliases: &[],
     source: include_str!("../../locales/es.toml"),
 };
@@ -221,7 +267,7 @@ const IT: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::SpanishLike,
-    numbers: Numbers { decimal: ',', group: '.', min_grouping: 1, percent_space: None },
+    numbers: Numbers::new(',', '.', 1, None),
     aliases: &[],
     source: include_str!("../../locales/it.toml"),
 };
@@ -232,7 +278,7 @@ const NL: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::OneOther,
-    numbers: Numbers { decimal: ',', group: '.', min_grouping: 1, percent_space: None },
+    numbers: Numbers::new(',', '.', 1, None),
     aliases: &[],
     source: include_str!("../../locales/nl.toml"),
 };
@@ -243,7 +289,7 @@ const PT_BR: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::FrenchLike,
-    numbers: Numbers { decimal: ',', group: '.', min_grouping: 1, percent_space: None },
+    numbers: Numbers::new(',', '.', 1, None),
     aliases: &[],
     source: include_str!("../../locales/pt-BR.toml"),
 };
@@ -254,7 +300,7 @@ const PL: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::Polish,
-    numbers: Numbers { decimal: ',', group: NBSP, min_grouping: 2, percent_space: None },
+    numbers: Numbers::new(',', NBSP, 2, None),
     aliases: &[],
     source: include_str!("../../locales/pl.toml"),
 };
@@ -265,7 +311,7 @@ const SV: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::OneOther,
-    numbers: Numbers { decimal: ',', group: NBSP, min_grouping: 1, percent_space: Some(NBSP) },
+    numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
     aliases: &[],
     source: include_str!("../../locales/sv.toml"),
 };
@@ -276,32 +322,196 @@ const DA: LangInfo = LangInfo {
     dir: Dir::Ltr,
     beta: true,
     plural: PluralRule::OneOther,
-    numbers: Numbers { decimal: ',', group: '.', min_grouping: 1, percent_space: Some(NBSP) },
+    numbers: Numbers::new(',', '.', 1, Some(NBSP)),
     aliases: &[],
     source: include_str!("../../locales/da.toml"),
 };
 
-/// A right-to-left language that exists only in tests, so the RTL plumbing
-/// (`dir`, logical CSS) can be exercised before a real RTL translation ships.
-#[cfg(test)]
-const AR_TEST: LangInfo = LangInfo {
+const AR: LangInfo = LangInfo {
     code: "ar",
-    english_name: "Arabic (test only)",
+    english_name: "Arabic",
     native_name: "العربية",
     dir: Dir::Rtl,
     beta: true,
     plural: PluralRule::Arabic,
-    numbers: Numbers { decimal: '.', group: ',', min_grouping: 1, percent_space: None },
+    numbers: Numbers::new('.', ',', 1, None),
     aliases: &[],
-    source: "",
+    source: include_str!("../../locales/ar.toml"),
+};
+
+const CS: LangInfo = LangInfo {
+    code: "cs",
+    english_name: "Czech",
+    native_name: "Čeština",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::CzechSlovak,
+    numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
+    aliases: &[],
+    source: include_str!("../../locales/cs.toml"),
+};
+
+const FA: LangInfo = LangInfo {
+    code: "fa",
+    english_name: "Persian",
+    native_name: "فارسی",
+    dir: Dir::Rtl,
+    beta: true,
+    plural: PluralRule::ZeroOne,
+    numbers: Numbers::new('٫', '٬', 1, None).script('۰', '٪'),
+    aliases: &[],
+    source: include_str!("../../locales/fa.toml"),
+};
+
+const FI: LangInfo = LangInfo {
+    code: "fi",
+    english_name: "Finnish",
+    native_name: "Suomi",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::OneOther,
+    numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
+    aliases: &[],
+    source: include_str!("../../locales/fi.toml"),
+};
+
+const HE: LangInfo = LangInfo {
+    code: "he",
+    english_name: "Hebrew",
+    native_name: "עברית",
+    dir: Dir::Rtl,
+    beta: true,
+    plural: PluralRule::Hebrew,
+    numbers: Numbers::new('.', ',', 1, None),
+    aliases: &["iw"],
+    source: include_str!("../../locales/he.toml"),
+};
+
+const HU: LangInfo = LangInfo {
+    code: "hu",
+    english_name: "Hungarian",
+    native_name: "Magyar",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::OneOther,
+    numbers: Numbers::new(',', NBSP, 1, None),
+    aliases: &[],
+    source: include_str!("../../locales/hu.toml"),
+};
+
+const JA: LangInfo = LangInfo {
+    code: "ja",
+    english_name: "Japanese",
+    native_name: "日本語",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::Other,
+    numbers: Numbers::new('.', ',', 1, None),
+    aliases: &[],
+    source: include_str!("../../locales/ja.toml"),
+};
+
+const KO: LangInfo = LangInfo {
+    code: "ko",
+    english_name: "Korean",
+    native_name: "한국어",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::Other,
+    numbers: Numbers::new('.', ',', 1, None),
+    aliases: &[],
+    source: include_str!("../../locales/ko.toml"),
+};
+
+const PT_PT: LangInfo = LangInfo {
+    code: "pt-PT",
+    english_name: "Portuguese (Portugal)",
+    native_name: "Português (Portugal)",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::SpanishLike,
+    numbers: Numbers::new(',', NBSP, 2, None),
+    aliases: &["pt-ao", "pt-mz"],
+    source: include_str!("../../locales/pt-PT.toml"),
+};
+
+const RO: LangInfo = LangInfo {
+    code: "ro",
+    english_name: "Romanian",
+    native_name: "Română",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::Romanian,
+    numbers: Numbers::new(',', '.', 1, Some(NBSP)),
+    aliases: &[],
+    source: include_str!("../../locales/ro.toml"),
+};
+
+const RU: LangInfo = LangInfo {
+    code: "ru",
+    english_name: "Russian",
+    native_name: "Русский",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::EastSlavic,
+    numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
+    aliases: &[],
+    source: include_str!("../../locales/ru.toml"),
+};
+
+const TR: LangInfo = LangInfo {
+    code: "tr",
+    english_name: "Turkish",
+    native_name: "Türkçe",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::OneOther,
+    numbers: Numbers::new(',', '.', 1, None).percent_before(),
+    aliases: &[],
+    source: include_str!("../../locales/tr.toml"),
+};
+
+const UK: LangInfo = LangInfo {
+    code: "uk",
+    english_name: "Ukrainian",
+    native_name: "Українська",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::EastSlavic,
+    numbers: Numbers::new(',', NBSP, 1, None),
+    aliases: &[],
+    source: include_str!("../../locales/uk.toml"),
+};
+
+const ZH_CN: LangInfo = LangInfo {
+    code: "zh-CN",
+    english_name: "Chinese (Simplified)",
+    native_name: "简体中文",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::Other,
+    numbers: Numbers::new('.', ',', 1, None),
+    aliases: &["zh-hans", "zh-sg"],
+    source: include_str!("../../locales/zh-CN.toml"),
+};
+
+const ZH_TW: LangInfo = LangInfo {
+    code: "zh-TW",
+    english_name: "Chinese (Traditional)",
+    native_name: "繁體中文",
+    dir: Dir::Ltr,
+    beta: true,
+    plural: PluralRule::Other,
+    numbers: Numbers::new('.', ',', 1, None),
+    aliases: &["zh-hant", "zh-hk", "zh-mo"],
+    source: include_str!("../../locales/zh-TW.toml"),
 };
 
 /// Every interface language. The first entry is the source language
 /// (English) and the fallback; the rest are in picker order.
-#[cfg(not(test))]
-pub static LANGS: &[LangInfo] = &[EN, NB, DA, DE, ES, FR, IT, NL, PL, PT_BR, SV];
-#[cfg(test)]
-pub static LANGS: &[LangInfo] = &[EN, NB, DA, DE, ES, FR, IT, NL, PL, PT_BR, SV, AR_TEST];
+pub static LANGS: &[LangInfo] = &[
+    EN, NB, AR, CS, DA, DE, ES, FA, FI, FR, HE, HU, IT, JA, KO, NL, PL, PT_BR, PT_PT, RO, RU, SV, TR, UK, ZH_CN, ZH_TW,
+];
 
 /// A supported interface language (an index into [`LANGS`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -358,9 +568,9 @@ impl Lang {
     }
 
     /// Resolves a stored code or a language tag. Tags match the registry
-    /// exactly (`pt-BR`, case-insensitive), then by primary language, so
-    /// `pt` and `pt-PT` give `pt-BR`, `de-AT` gives `de`, and `nb-NO`, `no`
-    /// and `nn` give `nb`. When several registered languages share a primary
+    /// exactly (`pt-BR`, case-insensitive), then by alias, then by primary language, so
+    /// `pt` gives `pt-BR`, `de-AT` gives `de`, `zh-HK` gives `zh-TW`, and
+    /// `nb-NO`, `no` and `nn` give `nb`. When several registered languages share a primary
     /// subtag, an exact match wins and otherwise the first listed does.
     pub fn from_code(code: &str) -> Option<Lang> {
         let norm = code.trim().replace('_', "-").to_ascii_lowercase();
@@ -368,6 +578,11 @@ impl Lang {
             return None;
         }
         if let Some(i) = LANGS.iter().position(|l| l.code.eq_ignore_ascii_case(&norm)) {
+            return Some(Lang(u8::try_from(i).ok()?));
+        }
+        if let Some(i) = LANGS.iter().position(|l| {
+            l.aliases.iter().any(|a| a.contains('-') && (norm == *a || norm.starts_with(&format!("{a}-"))))
+        }) {
             return Some(Lang(u8::try_from(i).ok()?));
         }
         let primary = norm.split('-').next()?;
@@ -391,8 +606,7 @@ impl Display for Lang {
 }
 
 /// `(code, label)` for every picker (Settings → General, Settings →
-/// Security): own names, "(beta)" where it applies. The test-only language
-/// is left out of real builds by the registry itself.
+/// Security): own names, "(beta)" where it applies.
 pub fn language_choices() -> Vec<(&'static str, String)> {
     Lang::all().map(|l| (l.code(), l.picker_label())).collect()
 }

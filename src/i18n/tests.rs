@@ -5,10 +5,10 @@ use super::catalog;
 use super::middleware::parse_accept_language;
 use super::*;
 
-/// Languages whose locale file must be complete. Every language except
-/// English (the source) and the test-only RTL language.
+/// Languages whose locale file must be complete: every language except
+/// English (the source).
 fn translated() -> impl Iterator<Item = Lang> {
-    Lang::all().filter(|l| *l != Lang::EN && l.code() != "ar")
+    Lang::all().filter(|l| *l != Lang::EN)
 }
 
 fn plural_base(key: &str) -> Option<&str> {
@@ -59,7 +59,7 @@ fn every_catalog_parses() {
 #[test]
 fn every_language_has_a_locale_file_named_after_its_code() {
     let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/locales"));
-    for lang in Lang::all().filter(|l| l.code() != "ar") {
+    for lang in Lang::all() {
         assert!(dir.join(format!("{}.toml", lang.code())).is_file(), "locales/{}.toml is missing", lang.code());
     }
     let codes: BTreeSet<&str> = LANGS.iter().map(|l| l.code).collect();
@@ -109,7 +109,7 @@ fn placeholders_match_english() {
 fn plural_categories_match_each_languages_rule() {
     let bases = english_plural_bases();
     assert!(bases.len() >= 20, "found {} plural keys", bases.len());
-    for lang in Lang::all().filter(|l| l.code() != "ar") {
+    for lang in Lang::all() {
         let cat = catalog::all(lang);
         let want: BTreeSet<Plural> = lang.plural_rule().categories().iter().copied().collect();
         for base in &bases {
@@ -144,6 +144,12 @@ fn plural_rules_follow_cldr() {
     );
     check(PluralRule::CzechSlovak, &[(0, Other), (1, One), (2, Few), (4, Few), (5, Other), (21, Other)]);
     check(
+        PluralRule::Romanian,
+        &[(0, Few), (1, One), (2, Few), (19, Few), (20, Other), (21, Other), (100, Other), (101, Few), (119, Few), (120, Other)],
+    );
+    check(PluralRule::Hebrew, &[(0, Other), (1, One), (2, Two), (3, Other), (20, Other)]);
+    check(PluralRule::ZeroOne, &[(0, One), (1, One), (2, Other), (100, Other)]);
+    check(
         PluralRule::Arabic,
         &[(0, Zero), (1, One), (2, Two), (3, Few), (10, Few), (11, Many), (99, Many), (100, Other), (102, Other), (103, Few), (111, Many)],
     );
@@ -158,6 +164,9 @@ fn plural_rules_follow_cldr() {
         PluralRule::Polish,
         PluralRule::EastSlavic,
         PluralRule::CzechSlovak,
+        PluralRule::Romanian,
+        PluralRule::Hebrew,
+        PluralRule::ZeroOne,
         PluralRule::Arabic,
     ] {
         let allowed: BTreeSet<Plural> = rule.categories().iter().copied().collect();
@@ -175,10 +184,20 @@ fn plural_lookup_uses_the_language_rule_and_falls_back() {
     assert_eq!(tn_in(Lang::NB, "count.monitors", 1), "1 overvåking");
     assert_eq!(tn_in(Lang::NB, "count.monitors", 0), "0 overvåkinger");
     assert_eq!(tn_in(Lang::NB, "count.monitors", 12_000), "12\u{a0}000 overvåkinger");
-    // The test-only Arabic has no file: English forms (and rule) are used, numbers in its style.
-    let ar = Lang::from_code("ar").expect("test language");
-    assert_eq!(tn_in(ar, "count.monitors", 1), "1 monitor");
-    assert_eq!(tn_in(ar, "count.monitors", 3), "3 monitors");
+    // Arabic picks all six forms, and Persian formats the number in its own digits.
+    let ar = Lang::from_code("ar").expect("Arabic");
+    let forms: BTreeSet<String> = [0, 1, 2, 5, 11, 100].iter().map(|n| tn_in(ar, "count.monitors", *n)).collect();
+    assert_eq!(forms.len(), 6, "{forms:?}");
+    let fa = Lang::from_code("fa").expect("Persian");
+    assert!(tn_in(fa, "count.monitors", 12).starts_with("۱۲") || tn_in(fa, "count.monitors", 12).contains("۱۲"));
+    // Russian and Czech use their `few`/`many` forms.
+    let ru = Lang::from_code("ru").expect("Russian");
+    let forms: BTreeSet<String> = [1, 2, 5].iter().map(|n| tn_in(ru, "count.monitors", *n)).collect();
+    assert_eq!(forms.len(), 3, "{forms:?}");
+    assert_eq!(tn_in(ru, "count.monitors", 21), tn_in(ru, "count.monitors", 1).replace('1', "21"));
+    let cs = Lang::from_code("cs").expect("Czech");
+    let forms: BTreeSet<String> = [1, 3, 5].iter().map(|n| tn_in(cs, "count.monitors", *n)).collect();
+    assert_eq!(forms.len(), 3, "{forms:?}");
     // Unknown keys render as number + key, never panic.
     assert_eq!(tn_in(Lang::EN, "no.such.plural", 3), "3 no.such.plural");
 }
@@ -283,10 +302,7 @@ fn lookup_falls_back_and_scopes_apply() {
         assert_eq!(status_label("weird"), "weird");
     });
     assert_eq!(t("no.such.key"), "no.such.key");
-    // A key a language lacks falls back to English, per key (the test-only
-    // Arabic file is empty).
-    let ar = Lang::from_code("ar").expect("test language");
-    assert_eq!(lookup(ar, "nav.dashboard"), Some("Dashboard"));
+    assert_eq!(lookup(Lang::NB, "no.such.key"), None);
 }
 
 #[tokio::test]
@@ -312,7 +328,9 @@ fn language_codes_and_accept_language() {
     assert_eq!(code("en_GB"), Some("en"));
     // Regions and reserves.
     assert_eq!(code("pt"), Some("pt-BR"));
-    assert_eq!(code("pt-PT"), Some("pt-BR"));
+    assert_eq!(code("pt-PT"), Some("pt-PT"));
+    assert_eq!(code("pt_pt"), Some("pt-PT"));
+    assert_eq!(code("pt-AO"), Some("pt-PT"));
     assert_eq!(code("pt-br"), Some("pt-BR"));
     assert_eq!(code("pt_BR"), Some("pt-BR"));
     assert_eq!(code("de-AT"), Some("de"));
@@ -322,7 +340,15 @@ fn language_codes_and_accept_language() {
     for (tag, want) in [("it", "it"), ("nl-BE", "nl"), ("pl-PL", "pl"), ("sv-FI", "sv"), ("da-DK", "da")] {
         assert_eq!(code(tag), Some(want), "{tag}");
     }
-    assert_eq!(code("ja"), None);
+    // Chinese: Hans by default, Hant and the Traditional regions to zh-TW.
+    for (tag, want) in [("zh", "zh-CN"), ("zh-Hans-CN", "zh-CN"), ("zh-SG", "zh-CN"), ("zh-Hant", "zh-TW"), ("zh-TW", "zh-TW"), ("zh-HK", "zh-TW"), ("zh-Hant-HK", "zh-TW"), ("zh-MO", "zh-TW")] {
+        assert_eq!(code(tag), Some(want), "{tag}");
+    }
+    for (tag, want) in [("iw", "he"), ("he-IL", "he"), ("ar-EG", "ar"), ("fa-IR", "fa"), ("ru-UA", "ru"), ("uk-UA", "uk"), ("cs-CZ", "cs"), ("tr-TR", "tr"), ("ja-JP", "ja"), ("ko-KR", "ko"), ("fi-FI", "fi"), ("hu-HU", "hu"), ("ro-RO", "ro")] {
+        assert_eq!(code(tag), Some(want), "{tag}");
+    }
+    assert_eq!(code("sk"), None);
+    assert_eq!(code("vi"), None);
     assert_eq!(code("*"), None);
     assert_eq!(code(""), None);
     // The picker only accepts canonical codes.
@@ -334,10 +360,12 @@ fn language_codes_and_accept_language() {
     assert_eq!(negotiate("nb-NO,nb;q=0.9,en;q=0.8"), Some("nb"));
     assert_eq!(negotiate("de-DE, en;q=0.5, no;q=0.7"), Some("de"));
     assert_eq!(negotiate("en-US,en;q=0.9"), Some("en"));
-    assert_eq!(negotiate("pt-PT,pt;q=0.9,en;q=0.8"), Some("pt-BR"));
-    assert_eq!(negotiate("ja, de-AT;q=0.8"), Some("de"));
+    assert_eq!(negotiate("pt-PT,pt;q=0.9,en;q=0.8"), Some("pt-PT"));
+    assert_eq!(negotiate("pt, en;q=0.8"), Some("pt-BR"));
+    assert_eq!(negotiate("zh-TW,zh;q=0.9"), Some("zh-TW"));
+    assert_eq!(negotiate("vi, de-AT;q=0.8"), Some("de"));
     assert_eq!(negotiate("fr-CH, fr;q=0.9, en;q=0.8"), Some("fr"));
-    assert_eq!(negotiate("zh, ja"), None);
+    assert_eq!(negotiate("vi, sk"), None);
     assert_eq!(negotiate("nb;q=0, en"), Some("en"));
     assert_eq!(negotiate("*"), None);
     assert_eq!(negotiate(""), None);
@@ -358,7 +386,12 @@ fn registry_entries_are_consistent() {
     assert!(choices.iter().any(|(code, label)| *code == "pt-BR" && label == "Português (Brasil) (beta)"));
     assert!(choices.iter().any(|(code, label)| *code == "nb" && label == "Norsk bokmål"), "{choices:?}");
     assert_eq!(Lang::EN.dir().as_str(), "ltr");
-    assert_eq!(Lang::from_code("ar").unwrap().dir().as_str(), "rtl");
+    for lang in Lang::all() {
+        let rtl = matches!(lang.code(), "ar" | "he" | "fa");
+        assert_eq!(lang.dir().as_str(), if rtl { "rtl" } else { "ltr" }, "{lang}");
+    }
+    assert!(choices.iter().any(|(code, label)| *code == "ar" && label == "العربية (beta)"));
+    assert!(choices.iter().any(|(code, label)| *code == "zh-TW" && label == "繁體中文 (beta)"));
 }
 
 #[test]
@@ -381,16 +414,36 @@ fn numbers_follow_each_languages_conventions() {
         ("pl", "1234".into(), format!("12{nb}345"), format!("1{nb}234{nb}567")),
         ("sv", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
         ("da", "1.234".into(), "12.345".into(), "1.234.567".into()),
+        ("fi", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        ("cs", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        ("uk", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        ("ru", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        ("hu", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        ("tr", "1.234".into(), "12.345".into(), "1.234.567".into()),
+        ("ro", "1.234".into(), "12.345".into(), "1.234.567".into()),
+        ("pt-PT", "1234".into(), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        ("ja", "1,234".into(), "12,345".into(), "1,234,567".into()),
+        ("ko", "1,234".into(), "12,345".into(), "1,234,567".into()),
+        ("zh-CN", "1,234".into(), "12,345".into(), "1,234,567".into()),
+        ("zh-TW", "1,234".into(), "12,345".into(), "1,234,567".into()),
+        ("ar", "1,234".into(), "12,345".into(), "1,234,567".into()),
+        ("he", "1,234".into(), "12,345".into(), "1,234,567".into()),
+        // Persian: Persian digits, ٬ for grouping.
+        ("fa", "۱٬۲۳۴".into(), "۱۲٬۳۴۵".into(), "۱٬۲۳۴٬۵۶۷".into()),
     ] {
         assert_eq!((int(code, 1_234), int(code, 12_345), int(code, 1_234_567)), (a, b, c), "{code}");
         assert_eq!(int(code, -1_000_000), format!("-{}", int(code, 1_000_000)), "{code}");
-        assert_eq!(int(code, 999), "999", "{code}");
+        assert_eq!(int(code, 999), local_digits(Lang::from_code(code).unwrap(), "999".into()), "{code}");
     }
     assert_eq!(dec("en", 99.951), "99.95");
-    for code in ["nb", "de", "fr", "es", "it", "nl", "pt-BR", "pl", "sv", "da"] {
+    for code in ["nb", "de", "fr", "es", "it", "nl", "pt-BR", "pl", "sv", "da", "fi", "cs", "uk", "ru", "hu", "tr", "ro", "pt-PT"] {
         assert_eq!(dec(code, 99.951), "99,95", "{code}");
         assert_eq!(dec(code, -0.001), "0,00", "{code}");
     }
+    for code in ["ja", "ko", "zh-CN", "zh-TW", "ar", "he"] {
+        assert_eq!(dec(code, 99.951), "99.95", "{code}");
+    }
+    assert_eq!(dec("fa", 1234.5), "۱٬۲۳۴٫۵۰");
     assert_eq!(dec("de", 1234.5), "1.234,50");
     assert_eq!(dec("sv", 1234.5), format!("1{nb}234,50"));
     // Percent: spacing is language-specific.
@@ -400,14 +453,23 @@ fn numbers_follow_each_languages_conventions() {
         assert_eq!(pct(code, 100.0), format!("100{nb}%"), "{code}");
     }
     assert_eq!(pct("fr", 99.95), format!("99,95{nn}%"));
-    for code in ["it", "nl", "pt-BR", "pl"] {
+    for code in ["it", "nl", "pt-BR", "pl", "uk", "hu", "pt-PT"] {
         assert_eq!(pct(code, 99.95), "99,95%", "{code}");
     }
+    for code in ["fi", "cs", "ru", "ro"] {
+        assert_eq!(pct(code, 99.95), format!("99,95{nb}%"), "{code}");
+    }
+    for code in ["ja", "ko", "zh-CN", "zh-TW", "ar", "he"] {
+        assert_eq!(pct(code, 99.95), "99.95%", "{code}");
+    }
+    // Turkish puts the sign first, Persian uses the Arabic percent sign and digits.
+    assert_eq!(pct("tr", 99.95), "%99,95");
+    assert_eq!(pct("fa", 99.95), "۹۹٫۹۵٪");
 }
 
 #[test]
 fn fmt_lists_and_patterns_are_well_formed() {
-    for lang in Lang::all().filter(|l| l.code() != "ar") {
+    for lang in Lang::all() {
         for (key, n) in [("months_short", 12), ("months_long", 12), ("weekdays_short", 7), ("weekdays_long", 7)] {
             let list = lookup(lang, &format!("fmt.{key}")).expect("fmt list");
             let items: Vec<&str> = list.split('|').collect();
@@ -446,14 +508,15 @@ fn fmt_lists_and_patterns_are_well_formed() {
 fn dates_and_durations_render_in_every_language() {
     let date = jiff::civil::date(2026, 3, 9);
     let z = date.at(14, 5, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).expect("zoned");
-    for lang in Lang::all().filter(|l| l.code() != "ar") {
+    for lang in Lang::all() {
+        let (nine, year, time) = (local_digits(lang, "9".into()), local_digits(lang, "2026".into()), local_digits(lang, "14:05".into()));
         let dm = fmt_day_month_in(lang, date);
-        assert!(dm.contains('9'), "{lang}: {dm}");
+        assert!(dm.contains(&nine), "{lang}: {dm}");
         assert!(!dm.contains('{'), "{lang}: unfilled pattern {dm}");
         let full = fmt_datetime_in(lang, &z);
-        assert!(full.contains("2026") && full.ends_with("14:05") && !full.contains('{'), "{lang}: {full}");
-        assert!(fmt_short_datetime_in(lang, &z).ends_with("14:05"), "{lang}");
-        assert!(fmt_weekday_day_month_in(lang, date).contains('9'), "{lang}");
+        assert!(full.contains(&year) && full.ends_with(&time) && !full.contains('{'), "{lang}: {full}");
+        assert!(fmt_short_datetime_in(lang, &z).ends_with(&time), "{lang}");
+        assert!(fmt_weekday_day_month_in(lang, date).contains(&nine), "{lang}");
         assert!(!fmt_day_month_long_in(lang, date).contains('{'), "{lang}");
         assert_eq!(fmt_duration_in(lang, 0), fmt_duration_in(lang, 0));
         for secs in [45, 190, 3 * 3600 + 240, 2 * 86_400 + 5 * 3600, 86_400] {
@@ -552,7 +615,7 @@ fn coverage(lang: Lang) -> (usize, usize) {
 #[test]
 fn coverage_report() {
     let mut rows = BTreeMap::new();
-    for lang in Lang::all().filter(|l| l.code() != "ar") {
+    for lang in Lang::all() {
         let (done, total) = coverage(lang);
         #[allow(clippy::cast_precision_loss)]
         rows.insert(lang.code(), (done, total, 100.0 * done as f64 / total as f64));
@@ -710,10 +773,18 @@ async fn pages_carry_the_language_direction() {
             String::from_utf8_lossy(&bytes).into_owned()
         }
     };
-    let rtl = page("ar").await;
-    assert!(rtl.contains("<html lang=\"ar\" dir=\"rtl\""), "{}", &rtl[..rtl.len().min(200)]);
+    for (accept, lang) in [("ar", "ar"), ("ar-EG", "ar"), ("he", "he"), ("iw", "he"), ("fa-IR", "fa")] {
+        let rtl = page(accept).await;
+        let want = format!("<html lang=\"{lang}\" dir=\"rtl\"");
+        assert!(rtl.contains(&want), "{accept}: {}", &rtl[..rtl.len().min(200)]);
+    }
+    for (accept, lang) in [("ja", "ja"), ("zh-HK", "zh-TW"), ("ru-RU", "ru")] {
+        let want = format!("<html lang=\"{lang}\" dir=\"ltr\"");
+        assert!(page(accept).await.contains(&want), "{accept}");
+    }
     let ltr = page("de-AT,de;q=0.9").await;
     assert!(ltr.contains("<html lang=\"de\" dir=\"ltr\""), "{}", &ltr[..ltr.len().min(200)]);
     assert!(page("en-GB").await.contains("<html lang=\"en\" dir=\"ltr\""));
-    assert!(page("pt-PT").await.contains("<html lang=\"pt-BR\" dir=\"ltr\""));
+    assert!(page("pt-PT").await.contains("<html lang=\"pt-PT\" dir=\"ltr\""));
+    assert!(page("pt").await.contains("<html lang=\"pt-BR\" dir=\"ltr\""));
 }
