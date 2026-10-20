@@ -65,6 +65,40 @@ thousands separators, the position of and space around `%`, and the digit set (P
 languages, Arabic included, use 0–9) follow CLDR and live in the language registry (`src/i18n/lang.rs`). Dates are
 Gregorian everywhere. CJK patterns carry no spaces (`2026年10月20日`), and `{span}` stays a plain number plus unit.
 
+### Coverage
+
+`cargo test --lib coverage_report -- --nocapture` prints this table; the test fails if any shipped language drops
+below 100 %. The key count differs per language because plural bases carry one key per plural category.
+
+| Language | Keys | Coverage |
+|---|---|---|
+| en (source) | 1730 | 100 % |
+| ar | 1846 | 100 % |
+| cs | 1788 | 100 % |
+| da | 1730 | 100 % |
+| de | 1730 | 100 % |
+| es | 1759 | 100 % |
+| fa | 1730 | 100 % |
+| fi | 1730 | 100 % |
+| fr | 1759 | 100 % |
+| he | 1759 | 100 % |
+| hu | 1730 | 100 % |
+| it | 1759 | 100 % |
+| ja | 1701 | 100 % |
+| ko | 1701 | 100 % |
+| nb | 1730 | 100 % |
+| nl | 1730 | 100 % |
+| pl | 1788 | 100 % |
+| pt-BR | 1759 | 100 % |
+| pt-PT | 1759 | 100 % |
+| ro | 1759 | 100 % |
+| ru | 1788 | 100 % |
+| sv | 1730 | 100 % |
+| tr | 1730 | 100 % |
+| uk | 1788 | 100 % |
+| zh-CN | 1701 | 100 % |
+| zh-TW | 1701 | 100 % |
+
 ## Add a language
 
 1. Copy `locales/en.toml` to `locales/<code>.toml` (BCP 47: `pt-BR`, `zh-Hans`) and translate it, starting with
@@ -84,13 +118,33 @@ closest language: `pt` gives `pt-BR`, `pt-PT`/`pt-AO` give `pt-PT`, `de-AT` give
 
 ### Right-to-left languages
 
-No right-to-left language ships yet, but the groundwork is there: set `dir: Dir::Rtl` in the registry entry and
-`<html dir>` follows. `static/style.css` uses logical properties (`margin-inline-start`, `inset-inline-end`,
-`text-align: start`) and a `--dir` variable for transforms; the few places that are physical on purpose carry an
-`rtl-ok` comment explaining why, and a test fails when a new physical declaration appears without one. Charts and
-uptime bars keep a left-to-right time axis. Directional icons (chevrons) are not mirrored yet.
+Arabic, Hebrew and Persian set `dir: Dir::Rtl` in the registry, and `<html dir>` follows. `static/style.css` uses
+logical properties (`margin-inline-start`, `inset-inline-end`, `text-align: start`) and a `--dir` variable for
+transforms; the few places that are physical on purpose carry an `rtl-ok` comment explaining why, and a test fails
+when a new physical declaration appears without one. Directional icons (chevrons, back arrows) are mirrored.
+
+* Charts, heartbeat bars and the uptime strip keep a left-to-right time axis (oldest left) inside the mirrored page.
+* Numbers, URLs, code, tokens and product names stay left-to-right: `code`, `kbd`, `.mono` and URL/e-mail/number/
+  password inputs are bidi-isolated, and templates wrap values that sit next to translated text (`ms`, uptime
+  percentages, status page paths, user-supplied names) in `<bdi>`.
+* Arabic, Persian and Hebrew (and the CJK languages) get their own font stacks and `letter-spacing: 0`: Inter has no
+  glyphs for them, and tracking would break Arabic letter joining.
+* Don't put invisible bidi control characters (U+2066–U+2069) in a locale file. Isolate in the template instead.
+* Persian formats numbers, dates and times with Persian digits; Arabic and Hebrew use 0–9.
+
+### Chinese, Japanese and Korean
+
+CJK languages have no spaces between words, so `:lang(ja)`, `:lang(zh)` and `:lang(ko)` set their own line-breaking
+rules (`line-break: strict`; Korean `word-break: keep-all`), a looser line height, system font stacks after Inter
+and no letter-spacing. Keep labels short: there is no wrapping point inside a Chinese or Japanese word.
 
 ## Known limitations
+
+* Text produced by the checks themselves (for example `Connection failed: Connection refused`) and the default
+  status page section name "Services" are still English.
+* The relative times that `static/app.js` rewrites with `Intl.RelativeTimeFormat` follow the browser's ICU spacing,
+  which can differ slightly from the server-rendered `[fmt]` text (Japanese "1 分前" vs "1分前").
+* Persian keeps Latin digits in a few raw numbers printed by templates (for example incident timeline times).
 
 * A few sentences are assembled from several keys around inline code (`push.help_1` / `push.help_2`,
   `backup.restore_help_*`, `docs.secrets_*` …), which assumes English word order. The translations reshape them to

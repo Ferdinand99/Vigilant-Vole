@@ -173,7 +173,7 @@ pub fn overall(statuses: &[PublicStatus], maintenance_shown: bool) -> Overall {
             class: "warning",
             icon: "alert",
             title: crate::i18n::t("pub.partial_outage"),
-            detail: crate::i18n::tnf("pub.some_down", down as i64, &[("total", &total.to_string())]),
+            detail: crate::i18n::tnf("pub.some_down", down as i64, &[("total", &crate::i18n::fmt_int(total as i64))]),
         };
     }
     if degraded > 0 {
@@ -674,7 +674,7 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
         let secs = event_seconds(e, now);
         let ongoing = e.ended_at.is_none();
         let start_local = maintenance::parse_db_ts(&e.started_at)
-            .map(|t| t.to_zoned(tz.clone()).strftime("%H:%M").to_string())
+            .map(|t| crate::i18n::local_digits(crate::i18n::current(), t.to_zoned(tz.clone()).strftime("%H:%M").to_string()))
             .unwrap_or_default();
         let text = if ongoing {
             crate::i18n::tf("pub.down_since", &[("time", &start_local), ("duration", &fmt_duration(secs))])

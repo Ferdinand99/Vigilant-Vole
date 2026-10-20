@@ -82,7 +82,7 @@ pub fn fmt_dec(value: f64, decimals: usize) -> String {
 /// "99,95 %", exactly 100 → "100%" / "100 %".
 pub fn fmt_pct2_in(lang: Lang, p: f64) -> String {
     let number = if p >= 100.0 {
-        "100".to_string()
+        local_digits(lang, "100".to_string())
     } else {
         fmt_dec_in(lang, (p * 100.0).floor() / 100.0, 2)
     };
