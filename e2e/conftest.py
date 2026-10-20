@@ -30,7 +30,7 @@ from typing import Any, Callable, Iterator
 import pytest
 from playwright.sync_api import APIRequestContext, Browser, BrowserContext, Page, Playwright, expect
 
-from fixture_servers import HttpTarget, TcpListener, WebhookCapture, free_port
+from fixture_servers import FakeRedis, HttpTarget, TcpListener, WebhookCapture, free_port
 
 REPO = Path(__file__).resolve().parent.parent
 ADMIN_USER = "admin"
@@ -239,6 +239,13 @@ def tcp_listener() -> Iterator[TcpListener]:
     t = TcpListener()
     yield t
     t.close()
+
+
+@pytest.fixture(scope="session")
+def fake_redis() -> Iterator[FakeRedis]:
+    r = FakeRedis()
+    yield r
+    r.close()
 
 
 @pytest.fixture(scope="session")

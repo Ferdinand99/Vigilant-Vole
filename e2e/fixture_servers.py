@@ -89,6 +89,69 @@ class TcpListener:
         self.sock.close()
 
 
+class FakeRedis:
+    """A tiny Redis: AUTH (password `hunter2`), SELECT, PING, INFO and QUIT."""
+
+    PASSWORD = "hunter2"
+
+    def __init__(self) -> None:
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(16)
+        self.port = self.sock.getsockname()[1]
+        self._stop = False
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self) -> None:
+        while not self._stop:
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    @staticmethod
+    def _command(reader: Any) -> list[str] | None:
+        head = reader.readline()
+        if not head.startswith(b"*"):
+            return None
+        args = []
+        for _ in range(int(head[1:])):
+            length = int(reader.readline()[1:])
+            args.append(reader.read(length + 2)[:-2].decode())
+        return args
+
+    def _handle(self, conn: socket.socket) -> None:
+        reader = conn.makefile("rb")
+        authed = False
+        with conn:
+            while True:
+                args = self._command(reader)
+                if not args:
+                    return
+                cmd = args[0].upper()
+                if cmd == "AUTH":
+                    authed = args[-1] == self.PASSWORD
+                    reply = b"+OK\r\n" if authed else b"-WRONGPASS invalid username-password pair\r\n"
+                elif not authed:
+                    reply = b"-NOAUTH Authentication required.\r\n"
+                elif cmd in ("SELECT", "PING"):
+                    reply = b"+OK\r\n" if cmd == "SELECT" else b"+PONG\r\n"
+                elif cmd == "INFO":
+                    body = b"# Server\r\nredis_version:7.2.4\r\n"
+                    reply = b"$%d\r\n%s\r\n" % (len(body), body)
+                elif cmd == "QUIT":
+                    conn.sendall(b"+OK\r\n")
+                    return
+                else:
+                    reply = b"-ERR unknown command\r\n"
+                conn.sendall(reply)
+
+    def close(self) -> None:
+        self._stop = True
+        self.sock.close()
+
+
 class WebhookCapture:
     """Records every request body it receives (JSON decoded when possible)."""
 
