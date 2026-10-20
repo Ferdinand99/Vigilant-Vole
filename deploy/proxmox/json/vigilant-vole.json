@@ -1,0 +1,53 @@
+{
+  "name": "Vigilant Vole",
+  "slug": "vigilant-vole",
+  "categories": [9],
+  "date_created": "2026-10-20",
+  "type": "ct",
+  "updateable": true,
+  "privileged": false,
+  "interface_port": 3001,
+  "documentation": "https://github.com/Ferdinand99/Vigilant-Vole#readme",
+  "website": "https://ferdinand99.github.io/Vigilant-Vole/",
+  "repository": "https://github.com/Ferdinand99/Vigilant-Vole",
+  "architectures": ["amd64", "arm64"],
+  "platforms": ["pve"],
+  "logo": "https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/assets/unraid-icon.png",
+  "description": "Lightweight self-hosted uptime monitor in a single Rust binary with SQLite. 30 monitor types (HTTP, ping, DNS, TCP, databases, game servers and more), 24 notification providers plus Apprise, status pages, remote agents, a REST API and config as code.",
+  "install_methods": [
+    {
+      "type": "default",
+      "script": "ct/vigilant-vole.sh",
+      "config_path": "/etc/vigilant-vole/vigilant-vole.env",
+      "resources": {
+        "cpu": 1,
+        "ram": 512,
+        "hdd": 2,
+        "os": "Debian",
+        "version": "13"
+      }
+    }
+  ],
+  "default_credentials": {
+    "username": null,
+    "password": null
+  },
+  "app_vars": [
+    {
+      "name": "var_setup_token",
+      "label": "Setup Token (VV_SETUP_TOKEN)",
+      "type": "password",
+      "secret": true
+    }
+  ],
+  "notes": [
+    {
+      "text": "No default login: open the web UI right after install and create the admin account in the setup wizard. Until then anyone who can reach the page can create it.",
+      "type": "warning"
+    },
+    {
+      "text": "Set a setup token (var_setup_token, or VV_SETUP_TOKEN in /etc/vigilant-vole/vigilant-vole.env) to require /setup?token=<value> for the first visit.",
+      "type": "info"
+    }
+  ]
+}

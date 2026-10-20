@@ -28,6 +28,8 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - [Vigilant Vole vs Uptime Kuma](#-vigilant-vole-vs-uptime-kuma)
 - [Quick start](#-quick-start)
 - [Unraid](#-unraid)
+- [Linux (systemd)](#-linux-systemd)
+- [Proxmox VE (LXC)](#-proxmox-ve-lxc)
 - [Configuration](#-configuration)
 - [Monitor types](#-monitor-types)
 - [Notifications](#-notifications)
@@ -183,15 +185,50 @@ The easy way: install **Vigilant-Vole** from **Community Applications** (templat
 
 For backups, Settings → Backup downloads a consistent snapshot; copying `/mnt/user/appdata/vigilant-vole` while the container is stopped works too.
 
+## 🐧 Linux (systemd)
+
+No Docker needed: every release has static binaries for **x86_64** and **aarch64**. On Debian, Ubuntu or any other Linux with systemd, as root:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)"
+```
+
+The [script](deploy/install.sh) downloads the latest release, checks it against `SHA256SUMS`, creates the `vigilant-vole` user and starts `vigilant-vole.service` (sandboxed, with only `CAP_NET_RAW` for ping), then prints the URL. Running it again is safe. Options go after `--`:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- update               # new release, data and settings kept
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- --port 8080 --version v0.3.0
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/install.sh)" -- uninstall            # keeps data; add --purge to delete it
+```
+
+| Path | |
+|---|---|
+| `/opt/vigilant-vole/vigilant-vole` | binary (also `/usr/local/bin/vigilant-vole`) |
+| `/var/lib/vigilant-vole` | data: database, session key, backups |
+| `/etc/vigilant-vole/vigilant-vole.env` | settings (`PORT`, `VV_*` …); `systemctl restart vigilant-vole` after editing |
+
+The same script installs a [remote agent](#-remote-agents) as a service (`--agent --server URL`, token in `VV_AGENT_TOKEN`). Reverse proxy, backups, Docker socket access and doing it by hand: **[docs/install-linux.md](docs/install-linux.md)**.
+
+## 🧰 Proxmox VE (LXC)
+
+A [community-scripts](https://community-scripts.org)-style script creates an unprivileged Debian 13 container (1 CPU, 512 MB RAM, 2 GB disk; amd64 and arm64) with Vigilant Vole in it. In the **Proxmox VE shell**:
+
+```bash
+export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/Ferdinand99/Vigilant-Vole/main/deploy/proxmox"
+bash -c "$(curl -fsSL "$COMMUNITY_SCRIPTS_URL/ct/vigilant-vole.sh")"
+```
+
+Open `http://<container-ip>:3001` when it's done. To update, run `update` in the container's console. Paths are the same as above (data `/var/lib/vigilant-vole`, settings `/etc/vigilant-vole/vigilant-vole.env`), and ping monitors work in the unprivileged container. The scripts live in [`deploy/proxmox/`](deploy/proxmox/) and use the community-scripts engine; they're meant for submission to community-scripts once the project meets their requirements.
+
 ## 🔧 Configuration
 
-Process settings come from environment variables; everything else (monitors, channels, users, site name, time zone, retention, …) is configured in the web UI, through the API, or as [config as code](#-config-as-code).
+Process settings come from environment variables; everything else (monitors, channels, users, site name, time zone, retention, …) is configured in the web UI, through the API, or as [config as code](#-config-as-code). With Docker, set them on the container; with the [Linux](#-linux-systemd) or [Proxmox](#-proxmox-ve-lxc) install, they go in `/etc/vigilant-vole/vigilant-vole.env` (then `systemctl restart vigilant-vole`).
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATA_DIR` | `./data` (`/data` in the image) | Database, session key and backups |
+| `DATA_DIR` | `./data` (`/data` in the image, `/var/lib/vigilant-vole` for Linux/Proxmox installs) | Database, session key and backups |
 | `PORT` | `3001` | HTTP port (listens on `0.0.0.0`) |
-| `PUID` / `PGID` | `1000` / `1000` | User and group id the app runs as (the container starts as root only to set these and fix `/data` ownership). Unraid: `99` / `100` |
+| `PUID` / `PGID` | `1000` / `1000` | Docker image only: user and group id the app runs as (the container starts as root only to set these and fix `/data` ownership). Unraid: `99` / `100` |
 | `VV_TRUST_PROXY` | off | `1`/`true`: trust `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For` / `X-Real-IP` from a reverse proxy (secure cookies, client IPs for login rate limiting, generated URLs). Only enable when the proxy is the only way in. |
 | `VV_SETUP_TOKEN` | – | When set, the first-run setup page only opens as `/setup?token=<value>`, so nobody else can claim a fresh instance. Ignored once an admin exists |
 | `VV_CONFIG_FILE` | – | Path to a YAML/JSON [config document](docs/config-as-code.md) merged into the database on every start |
@@ -409,7 +446,7 @@ You get `vigilant_*` metrics (status, response time, 24h/30d uptime ratio, certi
 - **Restore on next start**: upload a backup; it's validated now and swapped in at the next restart. The current database is moved to `data/backups/`.
 - **Config export/import** (above) for the readable, history-free version.
 - Before applying database migrations on upgrade, a snapshot is written to `data/backups/` automatically.
-- Manual: stop the container and copy the `data/` folder.
+- Manual: stop the container and copy the `data/` folder (Linux/Proxmox installs: stop `vigilant-vole` and copy `/var/lib/vigilant-vole`).
 
 ## 🔒 Security
 
@@ -445,6 +482,14 @@ cargo clippy --all-targets
 ```
 
 Templates, static assets, migrations and translations (`templates/`, `static/`, `migrations/`, `locales/`) are compiled into the binary, so rebuild after editing them. TLS everywhere is rustls (aws-lc-rs); there's no OpenSSL dependency, and the release build is a static musl binary in the image.
+
+The binaries attached to releases come from the Dockerfile's `builder` stage ([`.github/workflows/release-binaries.yml`](.github/workflows/release-binaries.yml)). The same locally:
+
+```bash
+docker build --target builder -t vigilant-vole-builder .
+id=$(docker create vigilant-vole-builder) && docker cp "$id":/usr/local/bin/vigilant-vole . && docker rm "$id"
+deploy/package-release.sh ./vigilant-vole x86_64-unknown-linux-musl v0.3.0 dist   # -> dist/vigilant-vole-x86_64-unknown-linux-musl.tar.gz
+```
 
 ## 🧩 Architecture
 
@@ -496,6 +541,7 @@ Done:
 - [x] REST API + OpenAPI, config as code, backup/restore
 - [x] Uptime Kuma importer, Prometheus metrics
 - [x] Docker label discovery
+- [x] Static Linux binaries (x86_64, aarch64), systemd installer and a Proxmox LXC script
 - [x] 26 UI languages (24 beta), including right-to-left (ar, he, fa) and CJK (ja, ko, zh-CN, zh-TW)
 
 Ideas, not promises:

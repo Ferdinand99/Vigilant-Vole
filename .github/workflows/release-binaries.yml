@@ -1,0 +1,171 @@
+# Builds static musl binaries for x86_64 and aarch64 on native runners and
+# attaches them to the GitHub release, with SHA256SUMS:
+#
+#   vigilant-vole-x86_64-unknown-linux-musl.tar.gz
+#   vigilant-vole-aarch64-unknown-linux-musl.tar.gz
+#   SHA256SUMS
+#
+#   release (called by release-please.yml with the new tag) -> upload to that release
+#   push tag vX.Y.Z  -> same; creates the release first if the tag has none
+#   manual run       -> Actions → Release binaries → Run workflow → tag (e.g. v0.3.0)
+#                       backfills an existing release; assets are replaced (--clobber)
+#
+# The binary comes out of the Dockerfile's `builder` stage at the tag being
+# built (the same Alpine/musl toolchain as the image), so old tags work too.
+# deploy/install.sh and the Proxmox scripts download these assets.
+name: Release binaries
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and attach binaries to (e.g. v0.3.0)
+        type: string
+        required: true
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to build and attach binaries to (e.g. v0.3.0)
+        type: string
+        required: true
+
+concurrency:
+  group: binaries-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Check tag
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a release tag like v1.2.3"
+            exit 1
+          fi
+
+      # The source at the tag; the packaging script from the ref this workflow
+      # runs on, so a backfill of an old tag still packs the current layout.
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          path: src
+
+      - uses: actions/checkout@v4
+        with:
+          path: tools
+          sparse-checkout: |
+            deploy/package-release.sh
+            LICENSE
+          sparse-checkout-cone-mode: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Reuses the image workflow's layer cache for the same platform when it
+      # has one (read-only), and keeps its own.
+      - name: Build (builder stage)
+        uses: docker/build-push-action@v6
+        with:
+          context: src
+          target: builder
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: vigilant-vole-builder:${{ matrix.target }}
+          cache-from: |
+            type=gha,scope=${{ matrix.platform == 'linux/amd64' && 'linux-amd64' || 'linux-arm64' }}
+            type=gha,scope=binaries-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=binaries-${{ matrix.target }}
+
+      - name: Extract and check the binary
+        run: |
+          id="$(docker create "vigilant-vole-builder:${{ matrix.target }}")"
+          docker cp "$id:/usr/local/bin/vigilant-vole" ./vigilant-vole
+          docker rm "$id" >/dev/null
+          file ./vigilant-vole
+          if ! file ./vigilant-vole | grep -Eq 'statically linked|static-pie linked'; then
+            echo "::error::binary is not statically linked"
+            exit 1
+          fi
+          if file ./vigilant-vole | grep -q 'not stripped'; then
+            echo "::error::binary is not stripped"
+            exit 1
+          fi
+          got="$(./vigilant-vole --version)"
+          echo "$got"
+          if [[ "$got" != "vigilant-vole ${TAG#v}" ]]; then
+            echo "::error::binary reports '$got', expected 'vigilant-vole ${TAG#v}'"
+            exit 1
+          fi
+
+      # Archive timestamps = the tagged commit's time, so a rebuild of the same
+      # binary gives the same archive.
+      - name: Package
+        run: |
+          SOURCE_DATE_EPOCH="$(git -C src log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          bash tools/deploy/package-release.sh ./vigilant-vole "${{ matrix.target }}" "$TAG" dist
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attach to release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum vigilant-vole-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      # release-please and manual runs attach to an existing release; a tag
+      # pushed by hand gets a release here first, so the assets have a home.
+      - name: Make sure the release exists
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            if [[ "${{ github.event_name }}" != "push" ]]; then
+              echo "::error::No GitHub release for $TAG. Create it first, then run this again."
+              exit 1
+            fi
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          fi
+
+      - name: Upload
+        working-directory: dist
+        run: gh release upload "$TAG" vigilant-vole-*.tar.gz SHA256SUMS --clobber
