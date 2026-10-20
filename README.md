@@ -36,6 +36,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - [Docker label discovery](#-docker-label-discovery)
 - [REST API](#-rest-api)
 - [Config as code](#-config-as-code)
+- [Translations](#-translations)
 - [Migrating from Uptime Kuma](#-migrating-from-uptime-kuma)
 - [Prometheus and Grafana](#-prometheus-and-grafana)
 - [Backup and restore](#-backup-and-restore)
@@ -71,7 +72,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Backup and restore** — consistent database snapshot download, restore on next start
 - **Multi-user with roles** (admin, editor, viewer), **TOTP 2FA** with recovery codes, **API tokens** (read/write, expiring)
 - **Data retention** with daily rollups — long-range uptime survives deleting old heartbeats
-- **English and Norwegian (bokmål)** interface, per-user language
+- **11 interface languages**, chosen per user: English, Norwegian (bokmål), German, French, Spanish, Italian, Dutch, Brazilian Portuguese, Polish, Swedish and Danish. The nine newest are marked beta; [help improve a translation](docs/translating.md). Plural rules, number and date formats follow each language, and the layout is ready for right-to-left languages
 - **Live dashboard** over Server-Sent Events, Apple-style UI in light and dark, works on a phone, installable as a PWA
 - **Tiny** — one ~32 MB static binary, ~18 MB compressed image, a few MB of RAM idle
 
@@ -122,10 +123,10 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Prometheus metrics | ✅ (Kuma-compatible names + more) | ✅ |
 | Long-range uptime after retention | ✅ daily rollups | ✅ aggregate tables in 2.0 |
 | Import from the other one | ✅ reads `kuma.db` | – |
-| Interface languages | English, Norwegian | **~50 languages** ✅ |
+| Interface languages | 11 (English, Norwegian, and 9 beta languages: de, fr, es, it, nl, pt-BR, pl, sv, da) | **~50 languages** ✅ |
 | Built-in Cloudflare Tunnel, remote browsers | ❌ | ✅ |
 
-If you need SQL Server/MongoDB/browser monitors or a language other than English/Norwegian, Kuma is the better fit today.
+If you need SQL Server/MongoDB/browser monitors or a language outside the eleven above, Kuma is the better fit today.
 
 ## 🚀 Quick start
 
@@ -362,6 +363,12 @@ curl -X POST -H "Authorization: Bearer vv_…" -H "Content-Type: application/yam
 
 **Merge** (default) creates and updates; **replace** also deletes what the document leaves out (requires `confirm=1`). Set `VV_CONFIG_FILE=/config/vigilant.yml` to merge a mounted file on every start. Full schema: [docs/config-as-code.md](docs/config-as-code.md).
 
+## 🌐 Translations
+
+The interface comes in English, Norwegian (bokmål), German, French, Spanish, Italian, Dutch, Brazilian Portuguese, Polish, Swedish and Danish. Everyone picks their own language under **Settings → Security**, admins set the default under **Settings → General**, and public status pages follow the visitor's `Accept-Language`. The newest nine are labelled *beta* until native speakers have reviewed them.
+
+Found a clumsy phrase, or want to add a language? Strings live in plain files, one per language, so a fix is a one-line change: see **[Helping with translations](docs/translating.md)**.
+
 ## 🔁 Migrating from Uptime Kuma
 
 **Settings → Backup → Move from Uptime Kuma**: upload Kuma's `kuma.db` (1.23 or 2.x; stop Kuma first) or a Kuma JSON backup, review the plan, apply. Monitors, groups, tags, notifications, status pages and maintenance windows come over; push tokens are kept, so only the host in your push URLs changes. Unsupported monitor types and providers are listed with the reason. Importing twice updates instead of duplicating. Details: [docs/migrating-from-uptime-kuma.md](docs/migrating-from-uptime-kuma.md).
@@ -447,11 +454,11 @@ src/
 ├── maintenance.rs       # maintenance window evaluation
 ├── config_io.rs         # config as code: export, plan, import, restore
 ├── kuma_import.rs       # Uptime Kuma importer
-└── i18n/                # translations (locales/en.toml, locales/nb.toml)
+└── i18n/                # language registry, plural rules, number/date formats; strings in locales/<code>.toml
 templates/               # Askama HTML templates (compiled in)
 static/                  # CSS, htmx, app.js, icons, fonts (embedded)
 migrations/              # SQL schema, run once each on startup
-locales/                 # interface strings
+locales/                 # interface strings, one file per language (+ glossary/ per language)
 ```
 
 A `Scheduler` runs one `tokio` task per active monitor under a global concurrency limit. Every observation — local checks, push requests, missed-push timeouts, agent results, group recomputes — goes through one pure state machine (`monitor::alerting`) that decides the status to record and the notifications and events to emit, so all sources follow the same rules. Updates are broadcast to `/events`, which pushes fresh dashboard fragments to connected browsers over SSE. An hourly job rolls heartbeats up into daily stats and prunes old ones.
@@ -473,7 +480,7 @@ Done:
 - [x] REST API + OpenAPI, config as code, backup/restore
 - [x] Uptime Kuma importer, Prometheus metrics
 - [x] Docker label discovery
-- [x] English and Norwegian UI
+- [x] English, Norwegian and nine more UI languages (beta), right-to-left ready
 
 Ideas, not promises:
 
