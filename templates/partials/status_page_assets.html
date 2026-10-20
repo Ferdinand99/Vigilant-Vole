@@ -1,0 +1,37 @@
+{#- "Logo and icon" section of the status page settings tab. Needs `page`,
+    `rows` and `error`; swapped in place by htmx after an upload or removal. -#}
+{%- import "macros.html" as m -%}
+<section class="form-section" id="sp-assets" aria-labelledby="sec-brand">
+  <h2 class="form-section-title" id="sec-brand">{{ tr("spx.brand") }}</h2>
+  <p class="form-section-sub">{{ tr("spx.brand_sub") }}</p>
+  {%- if !error.is_empty() %}
+  {{ m::callout("danger", error) }}
+  {%- endif %}
+  <ul class="list" role="list">
+    {%- for r in rows %}
+    <li class="list-row" id="sp-asset-{{ r.kind }}">
+      <span class="list-icon">
+        {%- if let Some(src) = r.src %}<img class="asset-thumb" src="{{ src }}" alt="" width="32" height="32">{% else %}{{ m::icon(r.icon) }}{% endif -%}
+      </span>
+      <span class="list-main">
+        <span class="list-title">{{ r.title }}</span>
+        <span class="list-sub">{{ r.sub }}</span>
+      </span>
+      <span class="list-trail">
+        <form class="cluster" method="post" action="/status-pages/{{ page.id }}/assets/{{ r.kind }}" enctype="multipart/form-data"
+          hx-post="/status-pages/{{ page.id }}/assets/{{ r.kind }}" hx-encoding="multipart/form-data" hx-trigger="change"
+          hx-target="#sp-assets" hx-swap="outerHTML">
+          <label class="btn btn-secondary btn-sm">{{ m::icon("upload") }}<span>{% if r.src.is_some() %}{{ tr("spx.replace") }}{% else %}{{ tr("spx.upload") }}{% endif %}</span>
+            <input class="vh" type="file" name="file" accept="image/png,image/jpeg,image/webp,image/x-icon,.ico" aria-label="{{ r.upload_label }}"></label>
+          <noscript><button type="submit" class="btn btn-secondary btn-sm">{{ tr("spx.save_upload") }}</button></noscript>
+        </form>
+        {%- if r.src.is_some() %}
+        <button type="button" class="btn btn-danger btn-sm" hx-delete="/status-pages/{{ page.id }}/assets/{{ r.kind }}"
+          hx-target="#sp-assets" hx-swap="outerHTML" hx-confirm="{{ r.remove_question }}"
+          data-confirm-label="{{ tr("common.remove") }}" aria-label="{{ r.remove_label }}">{{ tr("common.remove") }}</button>
+        {%- endif %}
+      </span>
+    </li>
+    {%- endfor %}
+  </ul>
+</section>

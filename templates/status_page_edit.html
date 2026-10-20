@@ -9,8 +9,102 @@
   {% call m::section_head(tr("sp.sections"), tr("sp.sections_sub"), "sp-content-title") %}{% endcall %}
   {% include "partials/status_sections.html" %}
 </section>
+{%- else if tab == "analytics" %}
+<section class="section" aria-labelledby="an-title">
+  {% call m::section_head(tr("spx.builtin"), tr("spx.builtin_sub"), "an-title") %}{% endcall %}
+  <div class="stats">
+    {{ m::stat(tr("spx.views_30"), &stats.views) }}
+    {{ m::stat(tr("spx.visitors_30"), &stats.visitors) }}
+    {{ m::stat(tr("spx.views_today"), &stats.today) }}
+  </div>
+  <div class="grid-2">
+    <section class="card" aria-labelledby="views-chart-title">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title" id="views-chart-title">{{ tr("spx.chart_title") }}</h2>
+          <p class="card-sub">{{ tr("spx.chart_sub") }}</p>
+        </div>
+      </div>
+      {%- if stats.has_data %}
+      <div class="chart">
+        <svg viewBox="0 0 {{ stats.chart.width }} {{ stats.chart.height }}" preserveAspectRatio="none" role="img" aria-label="{{ stats.chart.aria_label }}">
+          <line class="chart-grid" x1="0" x2="{{ stats.chart.width }}" y1="8" y2="8"></line>
+          <line class="chart-grid" x1="0" x2="{{ stats.chart.width }}" y1="{{ stats.chart.mid_y }}" y2="{{ stats.chart.mid_y }}"></line>
+          <line class="chart-grid" x1="0" x2="{{ stats.chart.width }}" y1="{{ stats.chart.height }}" y2="{{ stats.chart.height }}"></line>
+          <polygon class="chart-area" points="{{ stats.chart.area }}"></polygon>
+          <polyline class="chart-line" points="{{ stats.chart.line }}"></polyline>
+        </svg>
+        <div class="chart-scale" aria-hidden="true"><span>{{ stats.chart.max_label }}</span><span>0</span></div>
+      </div>
+      <div class="chart-axis" aria-hidden="true"><span>{{ stats.chart.start_label }}</span><span>{{ tr("spx.today") }}</span></div>
+      {%- else %}
+      {{ m::empty_state("chart", tr("spx.no_views_title"), tr("spx.no_views_text")) }}
+      {%- endif %}
+    </section>
+    <section class="card card-flush" aria-labelledby="ref-title">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title" id="ref-title">{{ tr("spx.referrers") }}</h2>
+          <p class="card-sub">{{ tr("spx.referrers_sub") }}</p>
+        </div>
+      </div>
+      {%- if stats.referrers.is_empty() %}
+      {{ m::empty_state("link", tr("spx.no_referrers_title"), tr("spx.no_referrers_text")) }}
+      {%- else %}
+      <ul class="list" role="list">
+        {%- for (domain, views) in stats.referrers %}
+        <li class="list-row">
+          <span class="list-icon">{{ m::icon("link") }}</span>
+          <span class="list-main"><span class="list-title">{{ domain }}</span></span>
+          <span class="list-trail num">{{ views }}</span>
+        </li>
+        {%- endfor %}
+      </ul>
+      {%- endif %}
+    </section>
+  </div>
+  <p class="section-foot">{{ tr("spx.privacy_note") }}</p>
+</section>
+
+<form class="form form-narrow" method="post" action="/status-pages/{{ page.id }}/analytics" data-warn-unsaved>
+  <section class="form-section" aria-labelledby="sec-counting">
+    <h2 class="form-section-title" id="sec-counting">{{ tr("spx.counting") }}</h2>
+    <div class="card">
+      {{ m::switch("analytics_enabled", tr("spx.count_views"), aform.enabled, tr("spx.count_views_help")) }}
+      {{ m::switch("analytics_unique", tr("spx.count_unique"), aform.unique, tr("spx.count_unique_help")) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-provider">
+    <h2 class="form-section-title" id="sec-provider">{{ tr("spx.third_party") }}</h2>
+    <p class="form-section-sub">{{ tr("spx.third_party_sub") }}</p>
+    <div class="card">
+      <div class="field">
+        <label class="label" for="f-analytics_provider">{{ tr("spx.provider") }}</label>
+        <select id="f-analytics_provider" name="analytics_provider">
+          {%- for (value, label) in providers %}
+          <option value="{{ value }}"{% if aform.provider == *value %} selected{% endif %}>{{ label }}</option>
+          {%- endfor %}
+        </select>
+      </div>
+      <div data-show-when="analytics_provider!=none">
+        {{ m::field_text("analytics_site_id", tr("spx.site_id"), value=&aform.site_id, placeholder="status.example.com…", help=tr("spx.site_id_help"), error=&aform.site_id_error) }}
+      </div>
+      <div data-show-when="analytics_provider=plausible,umami,matomo">
+        {{ m::field_text("analytics_url", tr("spx.script_url"), value=&aform.url, kind="url", placeholder="https://plausible.io/js/script.js…", help=tr("spx.script_url_help"), error=&aform.url_error) }}
+      </div>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    {{ m::link_button("/status-pages", tr("common.cancel"), "secondary") }}
+    {{ m::button(tr("monitor_form.save_changes")) }}
+  </div>
+</form>
 {%- else %}
-<form class="form form-narrow" method="post" action="/status-pages/{{ page.id }}/edit" data-warn-unsaved>
+<div class="stack form-narrow">
+{{ assets_html|safe }}
+<form class="form" method="post" action="/status-pages/{{ page.id }}/edit" data-warn-unsaved>
   <section class="form-section" aria-labelledby="sec-basics">
     <h2 class="form-section-title" id="sec-basics">{{ tr("sp.basics") }}</h2>
     <div class="card">
@@ -28,6 +122,19 @@
       </div>
       {{ m::field_textarea("description", tr("common.description"), &form.description, 2, tr("sp.description_placeholder"), tr("sp.description_help")) }}
       {{ m::switch("published", tr("sp.published"), form.published, tr("sp.published_help")) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-access">
+    <h2 class="form-section-title" id="sec-access">{{ tr("spx.access") }}</h2>
+    <p class="form-section-sub">{% if form.has_password %}{{ tr("spx.access_on") }}{% else %}{{ tr("spx.access_off") }}{% endif %}</p>
+    <div class="card">
+      {%- if form.has_password %}
+      {{ m::field_text("page_password", tr("spx.new_password"), kind="password", help=tr("spx.new_password_help"), autocomplete="new-password", error=&form.password_error) }}
+      {{ m::switch("remove_password", tr("spx.remove_password"), form.remove_password, tr("spx.remove_password_help")) }}
+      {%- else %}
+      {{ m::field_text("page_password", tr("spx.password"), kind="password", help=tr("spx.password_help"), autocomplete="new-password", error=&form.password_error) }}
+      {%- endif %}
     </div>
   </section>
 
@@ -102,6 +209,7 @@
     {{ m::button(tr("monitor_form.save_changes")) }}
   </div>
 </form>
+</div>
 {%- endif %}
 
 <dialog class="sheet" id="sp-picker" aria-labelledby="sp-picker-title">

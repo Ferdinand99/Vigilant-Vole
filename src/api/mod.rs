@@ -18,6 +18,7 @@ pub mod notifications;
 pub mod page;
 pub mod public_status;
 pub mod push;
+pub mod remote_browsers;
 pub mod settings;
 pub mod status_pages;
 pub mod tags;
@@ -114,6 +115,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(tokens::router())
         .merge(agents::router())
         .merge(metrics::router())
+        .merge(remote_browsers::router())
         .merge(v1::router())
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::require_auth));
 

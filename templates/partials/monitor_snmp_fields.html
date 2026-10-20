@@ -1,0 +1,30 @@
+{#- SNMP credentials of the monitor form (included inside the connection
+    section of monitor_form_fields.html; expects `f`, api::monitors::FormData).
+    The version picks the community (v1, v2c) or the SNMPv3 user and
+    passwords; the version and protocols go into the target's query. -#}
+{% import "macros.html" as m %}
+{% import "partials/monitor_form_macros.html" as fm %}
+
+<div class="field">
+  <span class="label" id="snmp-version-label">{{ tr("snmp.version") }}</span>
+  <div class="segmented" role="radiogroup" aria-labelledby="snmp-version-label">
+    <label><input type="radio" name="snmp_version" value="1"{% if f.opt_is("snmp_version", "1") %} checked{% endif %}><span>v1</span></label>
+    <label><input type="radio" name="snmp_version" value="2c"{% if f.opt_is("snmp_version", "2c") %} checked{% endif %}><span>v2c</span></label>
+    <label><input type="radio" name="snmp_version" value="3"{% if f.opt_is("snmp_version", "3") %} checked{% endif %}><span>v3</span></label>
+  </div>
+</div>
+<div data-show-when="snmp_version=1,2c"{% if f.opt_is("snmp_version", "3") %} hidden{% endif %}>
+  {{ m::field_text("secret", tr("form.snmp_community"), value=&f.v.secret, kind="password", autocomplete="new-password", placeholder="public…", help=tr("form.snmp_community_help"), error=f.err("secret"), sfx="-snmp") }}
+</div>
+<div class="stack-sm" data-show-when="snmp_version=3"{% if !f.opt_is("snmp_version", "3") %} hidden{% endif %}>
+  {{ m::field_text("basic_auth_user", tr("snmp.user"), value=&f.v.basic_auth_user, error=f.err("basic_auth_user"), sfx="-snmp") }}
+  <div class="field-row">
+    {{ fm::select("snmp_auth", tr("snmp.auth_protocol"), f.snmp_auths(), f.v.opt("snmp_auth"), "", "") }}
+    {{ m::field_text("basic_auth_pass", tr("snmp.auth_password"), value=&f.v.basic_auth_pass, kind="password", autocomplete="new-password", placeholder=tr("form.optional_placeholder"), error=f.err("basic_auth_pass"), sfx="-snmp") }}
+  </div>
+  <div class="field-row">
+    {{ fm::select("snmp_priv", tr("snmp.priv_protocol"), f.snmp_privs(), f.v.opt("snmp_priv"), "", "") }}
+    {{ m::field_text("secret", tr("snmp.priv_password"), value=&f.v.secret, kind="password", autocomplete="new-password", placeholder=tr("form.optional_placeholder"), error=f.err("secret"), sfx="-snmp3") }}
+  </div>
+  <p class="help">{{ tr("snmp.v3_help") }}</p>
+</div>

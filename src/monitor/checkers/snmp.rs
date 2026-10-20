@@ -1,22 +1,34 @@
-//! SNMP checker (v1 and v2c GET): `target` = `snmp://host[:port][/oid][?version=1|2c]`.
+//! SNMP checker (v1, v2c and v3 GET):
+//! `target` = `snmp://host[:port][/oid][?version=1|2c|3[&auth=…&priv=…&context=…]]`.
 //!
-//! Asks the device for one OID (default `1.3.6.1.2.1.1.3.0`, sysUpTime) using
-//! the monitor's secret as the community string (default `public`). Up when a
-//! value comes back; with a keyword set, the value's text must contain it (or,
-//! inverted, must not). SNMPv3 isn't supported. The request is repeated once
-//! when no answer arrives, because UDP loses packets. Response time = the
-//! round trip.
+//! Asks the device for one OID (default `1.3.6.1.2.1.1.3.0`, sysUpTime). Up
+//! when a value comes back; with a keyword set, the value's text must contain
+//! it (or, inverted, must not). Requests are repeated once when no answer
+//! arrives, because UDP loses packets.
+//!
+//! - v1/v2c: the monitor's secret is the community string (default `public`).
+//!   Response time = the round trip.
+//! - v3 ([`usm`]): the user name is `basic_auth_user`, the authentication
+//!   password `basic_auth_pass` and the privacy password `secret`; which of
+//!   them are set decides the security level (noAuthNoPriv, authNoPriv,
+//!   authPriv). `auth=` picks MD5, SHA-1 (default), SHA-224/256/384/512 and
+//!   `priv=` DES, AES-128 (default), AES-192 or AES-256. The engine is
+//!   discovered first; response time = the GET's round trip.
+
+pub mod usm;
 
 use std::time::{Duration, Instant};
 
 use tokio::net::UdpSocket;
 
-use super::endpoint;
+use super::endpoint::{self, Endpoint};
 use super::util;
 use crate::db::models::{CheckOutcome, Monitor, MonitorType};
 
 const DEFAULT_OID: &str = "1.3.6.1.2.1.1.3.0";
 const MAX_REPLY: usize = 8192;
+/// Shortest SNMPv3 password (RFC 3414 11.2; net-snmp refuses shorter).
+pub const MIN_PASSWORD_LEN: usize = 8;
 
 // BER tags.
 const INTEGER: u8 = 0x02;
@@ -57,8 +69,7 @@ pub fn encode_oid(text: &str) -> Result<Vec<u8>, String> {
         return Err(format!("\"{}\" is not a valid OID", util::truncate(text, 60)));
     }
     let mut out = Vec::new();
-    for (i, arc) in std::iter::once(arcs[0] * 40 + arcs[1]).chain(arcs[2..].iter().copied()).enumerate() {
-        let _ = i;
+    for arc in std::iter::once(arcs[0] * 40 + arcs[1]).chain(arcs[2..].iter().copied()) {
         let mut chunk = vec![(arc & 0x7F) as u8];
         let mut rest = arc >> 7;
         while rest > 0 {
@@ -157,7 +168,7 @@ fn describe(tag: u8, content: &[u8]) -> Value {
     Value::Text(text.unwrap_or_else(|| format!("(type 0x{tag:02X})")))
 }
 
-/// The reply to our request: the value or an error text.
+/// The reply to our v1/v2c request: the value or an error text.
 fn parse_response(packet: &[u8], request_id: i32) -> Result<Value, String> {
     let bad = || "Not an SNMP answer".to_string();
     let (tag, message, _) = read_tlv(packet).ok_or_else(bad)?;
@@ -170,6 +181,12 @@ fn parse_response(packet: &[u8], request_id: i32) -> Result<Value, String> {
     if pdu_tag != GET_RESPONSE {
         return Err(bad());
     }
+    parse_pdu(pdu, request_id)
+}
+
+/// A Response PDU's content (any version): the value or an error text.
+fn parse_pdu(pdu: &[u8], request_id: i32) -> Result<Value, String> {
+    let bad = || "Not an SNMP answer".to_string();
     let (_, id, rest) = read_tlv(pdu).ok_or_else(bad)?;
     if decode_int(id) != Some(i64::from(request_id)) {
         return Err(bad());
@@ -180,6 +197,9 @@ fn parse_response(packet: &[u8], request_id: i32) -> Result<Value, String> {
         0 => {}
         2 => return Ok(Value::Missing),
         1 => return Err("The device says the answer is too big".into()),
+        6 | 16 => {
+            return Err("The device refused to show this OID (authorizationError: the user or community may not read it; check the agent's access settings)".into());
+        }
         other => return Err(format!("The device reported an SNMP error ({other})")),
     }
     let (_, varbinds, _) = read_tlv(rest).ok_or_else(bad)?;
@@ -189,22 +209,235 @@ fn parse_response(packet: &[u8], request_id: i32) -> Result<Value, String> {
     Ok(describe(value_tag, value))
 }
 
+/// The OID of a PDU's first varbind (what a Report counts).
+fn first_varbind_oid(pdu: &[u8]) -> Option<String> {
+    let (_, _id, rest) = read_tlv(pdu)?;
+    let (_, _status, rest) = read_tlv(rest)?;
+    let (_, _index, rest) = read_tlv(rest)?;
+    let (_, varbinds, _) = read_tlv(rest)?;
+    let (_, varbind, _) = read_tlv(varbinds)?;
+    let (tag, name, _) = read_tlv(varbind)?;
+    (tag == OID).then(|| decode_oid(name))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Version {
+    V1,
+    V2c,
+    V3,
+}
+
+/// What a target's query asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Options {
+    pub version: Version,
+    /// v3: used when an authentication password is set.
+    pub auth: usm::Auth,
+    /// v3: used when a privacy password is set.
+    pub privacy: usm::Priv,
+    /// v3: `contextName` (usually empty).
+    pub context: String,
+}
+
+/// Reads `version`, `auth`, `priv` and `context` from the target's query.
+pub fn options(ep: &Endpoint) -> Result<Options, String> {
+    let version = match ep.query("version").unwrap_or("2c").trim().to_ascii_lowercase().as_str() {
+        "1" | "v1" => Version::V1,
+        "2c" | "2" | "v2c" => Version::V2c,
+        "3" | "v3" => Version::V3,
+        other => return Err(format!("Unsupported SNMP version \"{}\" (use 1, 2c or 3)", util::truncate(other, 10))),
+    };
+    let auth = match ep.query("auth").filter(|a| !a.trim().is_empty()) {
+        None => usm::Auth::Sha1,
+        Some(a) => usm::Auth::parse(a).ok_or_else(|| {
+            format!("Unknown SNMPv3 authentication protocol \"{}\" (use md5, sha, sha224, sha256, sha384 or sha512)", util::truncate(a, 20))
+        })?,
+    };
+    let privacy = match ep.query("priv").filter(|p| !p.trim().is_empty()) {
+        None => usm::Priv::Aes128,
+        Some(p) => usm::Priv::parse(p)
+            .ok_or_else(|| format!("Unknown SNMPv3 privacy protocol \"{}\" (use des, aes, aes192 or aes256)", util::truncate(p, 20)))?,
+    };
+    let context = ep.query("context").unwrap_or_default().to_string();
+    Ok(Options { version, auth, privacy, context })
+}
+
+/// Whether `target` asks for SNMPv3 (agents older than 0.3.0 can't run it).
+pub fn is_v3(target: &str) -> bool {
+    endpoint::parse(MonitorType::Snmp, target).is_ok_and(|ep| ep.query("version").is_some_and(|v| matches!(v.trim(), "3" | "v3" | "V3")))
+}
+
+/// The v3 user and passwords from the monitor's credential fields.
+pub fn credentials(monitor: &Monitor, opts: &Options) -> Result<usm::Credentials, String> {
+    let set = |s: &Option<String>| s.as_deref().filter(|s| !s.is_empty()).map(str::to_string);
+    let user = set(&monitor.basic_auth_user).ok_or("SNMPv3 needs a user name")?;
+    let auth_pw = set(&monitor.basic_auth_pass);
+    let priv_pw = set(&monitor.secret);
+    if priv_pw.is_some() && auth_pw.is_none() {
+        return Err("A privacy password needs an authentication password too (SNMPv3 doesn't encrypt without authentication)".into());
+    }
+    if [&auth_pw, &priv_pw].into_iter().flatten().any(|pw| pw.chars().count() < MIN_PASSWORD_LEN) {
+        return Err(format!("SNMPv3 passwords have at least {MIN_PASSWORD_LEN} characters"));
+    }
+    Ok(usm::Credentials { user, auth: auth_pw.map(|pw| (opts.auth, pw)), privacy: priv_pw.map(|pw| (opts.privacy, pw)) })
+}
+
+/// Sends `packet` and waits for the answer `accept` recognises (`None`: not
+/// ours, keep listening). A lost datagram is sent once more, each try
+/// waiting up to `per_try` and both ending by `deadline`. `Ok(None)`: silence.
+async fn exchange<T>(
+    socket: &UdpSocket,
+    packet: &[u8],
+    per_try: Duration,
+    deadline: Instant,
+    mut accept: impl FnMut(&[u8]) -> Option<T>,
+) -> Result<Option<T>, String> {
+    let mut buf = vec![0u8; MAX_REPLY];
+    for _ in 0..2 {
+        let now = Instant::now();
+        if now >= deadline {
+            break;
+        }
+        if let Err(e) = socket.send(packet).await {
+            return Err(format!("Send failed: {}", util::udp_recv_error(&e)));
+        }
+        let try_end = (now + per_try).min(deadline);
+        loop {
+            let left = try_end.saturating_duration_since(Instant::now());
+            match tokio::time::timeout(left, socket.recv(&mut buf)).await {
+                Ok(Ok(n)) => {
+                    if let Some(answer) = accept(&buf[..n]) {
+                        return Ok(Some(answer));
+                    }
+                }
+                Ok(Err(e)) => return Err(format!("No answer: {}", util::udp_recv_error(&e))),
+                Err(_) => break,
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// A v1/v2c GET: the value and the round trip in ms.
+async fn get_community(socket: &UdpSocket, version: Version, community: &str, oid: &[u8], timeout: Duration, peer: &str) -> Result<(Value, i64), String> {
+    let request_id = i32::from(rand::random::<u16>()) + 1;
+    let packet = get_request(if version == Version::V1 { 0 } else { 1 }, community, request_id, oid);
+    let start = Instant::now();
+    // Two tries share the timeout: a lost datagram shouldn't mean "down".
+    let per_try = (timeout / 2).max(Duration::from_millis(500)).min(timeout);
+    let answer = exchange(socket, &packet, per_try, start + timeout, |reply| match parse_response(reply, request_id) {
+        // A stray datagram (old try, wrong id): keep listening.
+        Err(e) if e == "Not an SNMP answer" => None,
+        parsed => Some(parsed),
+    })
+    .await?;
+    let ms = util::elapsed_ms(start);
+    match answer {
+        Some(value) => value.map(|v| (v, ms)),
+        None => Err(format!(
+            "No SNMP answer from {peer} within {} (wrong community, SNMP off or blocked?)",
+            util::format_secs(timeout)
+        )),
+    }
+}
+
+/// A v3 GET: engine discovery, then the request at the credentials' level
+/// (once more after a time-window resync). The value and the GET's round trip.
+async fn get_v3(socket: &UdpSocket, creds: &usm::Credentials, context: &str, oid: &[u8], timeout: Duration, peer: &str) -> Result<(Value, i64), String> {
+    let start = Instant::now();
+    // Leave the engine's own timeout a moment, so this message wins.
+    let deadline = start + timeout.mul_f64(0.95);
+    let per_try = (timeout / 4).max(Duration::from_millis(500)).min(timeout);
+    let ids = || (i32::from(rand::random::<u16>()) + 1, i32::from(rand::random::<u16>()) + 1);
+    let accept = |msg_id: i32, keys: Option<&usm::Keys>| {
+        let keys = keys.cloned();
+        move |reply: &[u8]| (usm::msg_id(reply) == Some(i64::from(msg_id))).then(|| usm::parse(reply, keys.as_ref()))
+    };
+
+    let (msg_id, request_id) = ids();
+    let discovered = exchange(socket, &usm::discovery(msg_id, request_id), per_try, deadline, accept(msg_id, None))
+        .await?
+        .ok_or_else(|| format!("No SNMPv3 answer from {peer} within {} (SNMP off, blocked, or no SNMPv3 there?)", util::format_secs(timeout)))??;
+    if discovered.pdu_tag != usm::REPORT || discovered.engine.id.is_empty() {
+        return Err("The device didn't answer the SNMPv3 engine discovery with its engine ID".into());
+    }
+    let keys = creds.keys(&discovered.engine.id);
+    let mut engine = discovered.engine;
+    let get_start = Instant::now();
+    for attempt in 0..2 {
+        let (msg_id, request_id) = ids();
+        let request = usm::Request {
+            msg_id,
+            request_id,
+            engine: &engine,
+            user: &creds.user,
+            keys: Some(&keys),
+            context,
+            oid: Some(oid),
+            salt: rand::random(),
+        };
+        let reply = exchange(socket, &usm::build(&request), per_try, deadline, accept(msg_id, Some(&keys))).await?;
+        let Some(reply) = reply else {
+            let why = if keys.encrypts() {
+                ": with a privacy password set, that usually means it (or the privacy protocol) is wrong"
+            } else {
+                ""
+            };
+            return Err(format!("{peer} answered the SNMPv3 discovery but not the request within {}{why}", util::format_secs(timeout)));
+        };
+        let reply = reply?;
+        if reply.pdu_tag == usm::REPORT {
+            let oid = first_varbind_oid(&reply.pdu).unwrap_or_default();
+            match usm::report_reason(&oid) {
+                Some(usm::ReportReason::NotInTimeWindow) if attempt == 0 => {
+                    // The engine's clock moved (or it rebooted): take its time and retry.
+                    engine = usm::Engine { id: engine.id, ..reply.engine };
+                    continue;
+                }
+                Some(reason) => return Err(reason.message(&creds.user)),
+                None => return Err(format!("The device answered with an SNMPv3 report ({})", util::truncate(&oid, 60))),
+            }
+        }
+        if reply.pdu_tag != GET_RESPONSE {
+            return Err("Not an SNMP answer".into());
+        }
+        if keys.authenticates() && !reply.authenticated || keys.encrypts() && !reply.encrypted {
+            return Err("The device's answer lacks the requested signature or encryption".into());
+        }
+        return match parse_pdu(&reply.pdu, request_id) {
+            Ok(value) => Ok((value, util::elapsed_ms(get_start))),
+            // net-snmp also says this when the user exists but asks for less security than its access rule.
+            Err(e) if e.contains("authorizationError") => Err(format!(
+                "The device won't show this OID to \"{}\" at this security level (authorizationError: check the agent's access settings, or set the passwords the user has)",
+                util::truncate(&creds.user, 60)
+            )),
+            Err(e) => Err(e),
+        };
+    }
+    Err(usm::ReportReason::NotInTimeWindow.message(&creds.user))
+}
+
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
     let ep = match endpoint::parse(MonitorType::Snmp, &monitor.target) {
         Ok(ep) => ep,
         Err(e) => return CheckOutcome::down(e),
     };
-    let version = match ep.query("version").unwrap_or("2c").to_ascii_lowercase().as_str() {
-        "1" => 0,
-        "2c" | "2" => 1,
-        other => return CheckOutcome::down(format!("Unsupported SNMP version \"{}\" (use 1 or 2c)", util::truncate(other, 10))),
+    let opts = match options(&ep) {
+        Ok(o) => o,
+        Err(e) => return CheckOutcome::down(e),
+    };
+    let creds = match opts.version {
+        Version::V3 => match credentials(monitor, &opts) {
+            Ok(c) => Some(c),
+            Err(e) => return CheckOutcome::down(e),
+        },
+        _ => None,
     };
     let oid_text = if ep.path.is_empty() { DEFAULT_OID } else { ep.path.as_str() };
     let oid = match encode_oid(oid_text) {
         Ok(o) => o,
         Err(e) => return CheckOutcome::down(e),
     };
-    let community = monitor.secret.as_deref().filter(|c| !c.is_empty()).unwrap_or("public");
     let addr = match util::resolve(&ep.host, ep.port).await {
         Ok(a) => a,
         Err(e) => return CheckOutcome::down(e),
@@ -217,50 +450,18 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     if let Err(e) = socket.connect(addr).await {
         return CheckOutcome::down(format!("Can't reach {}:{}: {}", addr.ip(), ep.port, util::tidy_io_error(&e)));
     }
-    let request_id = i32::from(rand::random::<u16>()) + 1;
-    let packet = get_request(version, community, request_id, &oid);
-    let start = Instant::now();
-    // Two tries share the timeout: a lost datagram shouldn't mean "down".
-    let per_try = (timeout / 2).max(Duration::from_millis(500)).min(timeout);
-    let mut buf = vec![0u8; MAX_REPLY];
-    let mut answer = None;
-    for _ in 0..2 {
-        if let Err(e) = socket.send(&packet).await {
-            return CheckOutcome::down(format!("Send failed: {}", util::udp_recv_error(&e)));
-        }
-        let deadline = Instant::now() + per_try;
-        loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            match tokio::time::timeout(left, socket.recv(&mut buf)).await {
-                Ok(Ok(n)) => match parse_response(&buf[..n], request_id) {
-                    // A stray datagram (old try, wrong id): keep listening.
-                    Err(e) if e == "Not an SNMP answer" && left > Duration::ZERO => continue,
-                    parsed => {
-                        answer = Some(parsed);
-                        break;
-                    }
-                },
-                Ok(Err(e)) => return CheckOutcome::down(format!("No answer: {}", util::udp_recv_error(&e))),
-                Err(_) => break,
-            }
-        }
-        if answer.is_some() {
-            break;
-        }
-    }
-    let ms = util::elapsed_ms(start);
-    let value = match answer {
+    let peer = format!("{}:{}", addr.ip(), ep.port);
+    let answer = match &creds {
+        Some(creds) => get_v3(&socket, creds, &opts.context, &oid, timeout, &peer).await,
         None => {
-            return CheckOutcome::down(format!(
-                "No SNMP answer from {}:{} within {} (wrong community, SNMP off or blocked?)",
-                addr.ip(),
-                ep.port,
-                util::format_secs(timeout)
-            ));
+            let community = monitor.secret.as_deref().filter(|c| !c.is_empty()).unwrap_or("public");
+            get_community(&socket, opts.version, community, &oid, timeout, &peer).await
         }
-        Some(Err(e)) => return CheckOutcome::down(e),
-        Some(Ok(Value::Missing)) => return CheckOutcome::down(format!("The device has no value for {oid_text}")),
-        Some(Ok(Value::Text(t))) => t,
+    };
+    let (value, ms) = match answer {
+        Err(e) => return CheckOutcome::down(e),
+        Ok((Value::Missing, _)) => return CheckOutcome::down(format!("The device has no value for {oid_text}")),
+        Ok((Value::Text(t), ms)) => (t, ms),
     };
     let shown = util::truncate(&value, 120);
     match monitor.keyword.as_deref().filter(|k| !k.is_empty()) {
@@ -274,149 +475,4 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::db::models::HeartbeatStatus;
-    use crate::monitor::checkers::test_support::monitor;
-
-    fn response(version: i64, id: i64, status: i64, value: Vec<u8>) -> Vec<u8> {
-        let varbind = tlv(SEQUENCE, &[tlv(OID, &encode_oid(DEFAULT_OID).unwrap()), value].concat());
-        let pdu = [encode_int(id), encode_int(status), encode_int(0), tlv(SEQUENCE, &varbind)].concat();
-        tlv(SEQUENCE, &[encode_int(version), tlv(OCTET_STRING, b"public"), tlv(GET_RESPONSE, &pdu)].concat())
-    }
-
-    /// A fake agent: community `public`, answers `value` for the default OID.
-    /// `drop_first` swallows the first request (packet loss).
-    async fn agent(value: Vec<u8>, status: i64, drop_first: bool) -> std::net::SocketAddr {
-        let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let addr = socket.local_addr().unwrap();
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 2048];
-            let mut first = true;
-            loop {
-                let Ok((n, from)) = socket.recv_from(&mut buf).await else { return };
-                if std::mem::take(&mut first) && drop_first {
-                    continue;
-                }
-                let (_, msg, _) = read_tlv(&buf[..n]).unwrap();
-                let (_, version, rest) = read_tlv(msg).unwrap();
-                let (_, community, rest) = read_tlv(rest).unwrap();
-                if community != b"public" {
-                    continue; // agents stay silent on a wrong community
-                }
-                let (_, pdu, _) = read_tlv(rest).unwrap();
-                let (_, id, _) = read_tlv(pdu).unwrap();
-                let reply = response(decode_int(version).unwrap(), decode_int(id).unwrap(), status, value.clone());
-                socket.send_to(&reply, from).await.unwrap();
-            }
-        });
-        addr
-    }
-
-    fn snmp(target: &str) -> Monitor {
-        let mut m = monitor(MonitorType::Snmp, target);
-        m.timeout_seconds = 2;
-        m
-    }
-
-    #[test]
-    fn oids_round_trip_through_ber() {
-        let enc = encode_oid("1.3.6.1.2.1.1.3.0").unwrap();
-        assert_eq!(enc, [0x2B, 6, 1, 2, 1, 1, 3, 0]);
-        assert_eq!(decode_oid(&enc), "1.3.6.1.2.1.1.3.0");
-        assert_eq!(decode_oid(&encode_oid(".1.3.6.1.4.1.8072.1.3.2.3.1.1").unwrap()), "1.3.6.1.4.1.8072.1.3.2.3.1.1");
-        assert_eq!(encode_oid("1.3.6.1.4.1.2021.10.1.5.1").unwrap().len(), 11);
-        assert!(encode_oid("1").is_err() && encode_oid("1.x").is_err() && encode_oid("3.1").is_err() && encode_oid("1.40").is_err());
-    }
-
-    #[test]
-    fn integers_use_the_shortest_signed_form() {
-        assert_eq!(encode_int(0), [2, 1, 0]);
-        assert_eq!(encode_int(127), [2, 1, 127]);
-        assert_eq!(encode_int(128), [2, 2, 0, 128]);
-        assert_eq!(encode_int(-1), [2, 1, 255]);
-        assert_eq!(decode_int(&[0, 128]), Some(128));
-        assert_eq!(decode_int(&[255]), Some(-1));
-    }
-
-    #[test]
-    fn request_matches_a_known_packet() {
-        // A v2c GET for sysUpTime.0, request id 1: net-snmp's snmpd answers it.
-        let want = hex::decode("302602010104067075626c6963a019020101020100020100300e300c06082b060102010103000500").unwrap();
-        assert_eq!(get_request(1, "public", 1, &encode_oid(DEFAULT_OID).unwrap()), want);
-    }
-
-    #[tokio::test]
-    async fn value_is_read_and_shown() {
-        let addr = agent(tlv(0x43, &[0x00, 0xA0, 0x0F, 0x40]), 0, false).await; // 10_489_664 ticks
-        let out = check(&snmp(&addr.to_string())).await;
-        assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        assert_eq!(out.message.as_deref(), Some("1.3.6.1.2.1.1.3.0 = 10489664 (1d 05:08:16)"));
-    }
-
-    #[tokio::test]
-    async fn keyword_and_invert_apply_to_the_value() {
-        let addr = agent(tlv(OCTET_STRING, b"Linux router 6.1"), 0, false).await;
-        let mut m = snmp(&addr.to_string());
-        m.keyword = Some("Linux".into());
-        assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
-        m.keyword = Some("Windows".into());
-        let out = check(&m).await;
-        assert_eq!(out.status, HeartbeatStatus::Down);
-        assert!(out.message.unwrap().ends_with("doesn't contain \"Windows\""));
-        m.keyword_invert = true;
-        assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
-        m.keyword = Some("Linux".into());
-        assert!(check(&m).await.message.unwrap().ends_with("contains \"Linux\""));
-    }
-
-    #[tokio::test]
-    async fn community_version_and_missing_values() {
-        let addr = agent(tlv(INTEGER, &[42]), 0, false).await;
-        let mut m = snmp(&format!("snmp://{addr}?version=1"));
-        assert_eq!(check(&m).await.message.as_deref(), Some("1.3.6.1.2.1.1.3.0 = 42"));
-        m.secret = Some("private".into());
-        let out = check(&m).await;
-        assert!(out.message.unwrap().starts_with("No SNMP answer from 127.0.0.1"));
-
-        let addr = agent(tlv(0x81, &[]), 0, false).await;
-        let out = check(&snmp(&addr.to_string())).await;
-        assert_eq!(out.message.as_deref(), Some("The device has no value for 1.3.6.1.2.1.1.3.0"));
-        let addr = agent(tlv(NULL, &[]), 2, false).await;
-        let out = check(&snmp(&format!("{addr}/1.3.6.1.9.9"))).await;
-        assert_eq!(out.message.as_deref(), Some("The device has no value for 1.3.6.1.9.9"));
-        assert!(check(&snmp("127.0.0.1?version=3")).await.message.unwrap().starts_with("Unsupported SNMP version"));
-        assert!(check(&snmp("127.0.0.1/1.x")).await.message.unwrap().contains("not a valid OID"));
-    }
-
-    #[tokio::test]
-    async fn a_lost_datagram_is_retried() {
-        let addr = agent(tlv(INTEGER, &[7]), 0, true).await;
-        let mut m = snmp(&addr.to_string());
-        m.timeout_seconds = 3;
-        let out = check(&m).await;
-        assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-    }
-
-    #[test]
-    fn garbage_is_not_an_answer() {
-        assert!(parse_response(&[], 1).is_err());
-        assert!(parse_response(&[0x30, 0x84, 0xFF, 0xFF, 0xFF, 0xFF], 1).is_err());
-        assert!(parse_response(b"HTTP/1.1 400", 1).is_err());
-    }
-
-    /// Against a real agent: `VV_TEST_SNMP=snmp://host:port/oid,community`.
-    #[tokio::test]
-    #[ignore = "needs an SNMP agent (VV_TEST_SNMP)"]
-    async fn live_agent() {
-        let spec = std::env::var("VV_TEST_SNMP").expect("VV_TEST_SNMP");
-        let (target, community) = spec.split_once(',').expect("target,community");
-        let mut m = snmp(target);
-        m.secret = Some(community.into());
-        let out = check(&m).await;
-        println!("{:?}", out.message);
-        assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        m.secret = Some("wrong".into());
-        println!("{:?}", check(&m).await.message);
-    }
-}
+mod tests;

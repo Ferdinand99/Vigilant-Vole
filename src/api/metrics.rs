@@ -198,7 +198,7 @@ pub fn redact_target(target: &str) -> String {
 /// Kuma's `monitor_url` / `monitor_hostname` / `monitor_port` labels.
 fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) {
     match t {
-        MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery | MonitorType::Websocket => {
+        MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery | MonitorType::Websocket | MonitorType::RealBrowser => {
             (redact_target(target), String::new(), String::new())
         }
         MonitorType::Tcp | MonitorType::Steam | MonitorType::Ntp | MonitorType::Tls | MonitorType::Smtp => match target.trim().rsplit_once(':') {
@@ -212,6 +212,10 @@ fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) 
         MonitorType::Ping | MonitorType::Dns | MonitorType::DomainExpiry => {
             (String::new(), target.trim().to_string(), String::new())
         }
+        MonitorType::TailscalePing => {
+            let peer = target.trim().split('?').next().unwrap_or_default();
+            (String::new(), peer.to_string(), String::new())
+        }
         MonitorType::Redis
         | MonitorType::Postgres
         | MonitorType::Mysql
@@ -219,8 +223,12 @@ fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) 
         | MonitorType::Kafka
         | MonitorType::Rabbitmq
         | MonitorType::Grpc
+        | MonitorType::GrpcKeyword
         | MonitorType::Radius
-        | MonitorType::Snmp => match crate::monitor::checkers::endpoint::parse(t, target) {
+        | MonitorType::Snmp
+        | MonitorType::SqlServer
+        | MonitorType::Mongodb
+        | MonitorType::GameServer => match crate::monitor::checkers::endpoint::parse(t, target) {
             Ok(e) => (String::new(), e.host, e.port.to_string()),
             Err(_) => (String::new(), target.trim().to_string(), String::new()),
         },

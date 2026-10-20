@@ -865,11 +865,47 @@
             c.setAttribute("data-vv-off", c.disabled ? "1" : "0");
             c.disabled = true;
           }
-        } else if (c.hasAttribute("data-vv-off")) {
+        } else if (c.hasAttribute("data-vv-off") && !c.closest("[data-show-when][hidden]")) {
+          /* A control inside a nested block that is still hidden (or inside
+             a hidden outer block) stays off: same-named fields may repeat. */
           c.disabled = c.getAttribute("data-vv-off") === "1";
           c.removeAttribute("data-vv-off");
         }
       });
+    });
+  }
+
+  /* ------------------------------------------------------- game preset
+     <select data-game-preset> with <option value="minecraft" data-port="25565">
+     rewrites the game server address: the scheme, and a port that was some
+     game's default becomes the new game's (Minecraft keeps none, so its SRV
+     record is used). Typing a scheme picks the matching option. */
+  function applyGamePreset(sel) {
+    var input = $("#f-target_game", sel.closest("form") || d);
+    var opt = sel.options[sel.selectedIndex];
+    if (!input || !opt) return;
+    var defaults = $$("option", sel).map(function (o) {
+      return o.getAttribute("data-port");
+    });
+    var rest = input.value.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+    var m = rest.match(/^(\[[^\]]*\]|[^:\/?#]*)(?::(\d*))?(.*)$/);
+    var host = m ? m[1] : rest;
+    var port = m && m[2] ? m[2] : "";
+    if (!host) {
+      input.value = sel.value + "://";
+      input.focus();
+      return;
+    }
+    if (!port || defaults.indexOf(port) !== -1) port = sel.value === "minecraft" ? "" : opt.getAttribute("data-port");
+    input.value = sel.value + "://" + host + (port ? ":" + port : "") + (m ? m[3] : "");
+  }
+  function syncGamePreset(input) {
+    var sel = $("[data-game-preset]", input.closest("form") || d);
+    var m = input.value.trim().match(/^([a-z]+):\/\//i);
+    if (!sel || !m) return;
+    var want = m[1].toLowerCase();
+    $$("option", sel).forEach(function (o) {
+      if (o.value === want) sel.value = want;
     });
   }
 
@@ -879,7 +915,10 @@
     if (!target) return;
     var out = $(target);
     if (!out) return;
-    out.disabled = false;
+    /* Inside a block hidden by show-when the field stays off until the block
+       shows (two editors may write the same field name). */
+    if (out.hasAttribute("data-vv-off")) out.setAttribute("data-vv-off", "0");
+    else out.disabled = false;
     var obj = {};
     $$(".kv-row", $("[data-kv-rows]", editor) || editor).forEach(function (row) {
       var inputs = $$("input, select", row);
@@ -1575,11 +1614,13 @@
     if (t.matches("[data-theme-set]") && t.checked) setTheme(t.getAttribute("data-theme-set"));
     if (t.closest && t.closest(".segmented")) initSegmented(t.closest(".segmented").parentNode);
     if (t.name) updateShowWhen(d, t.name);
+    if (t.matches && t.matches("select[data-game-preset]")) applyGamePreset(t);
   });
   d.addEventListener("input", function (e) {
     var t = e.target;
     if (t.matches && t.matches("input[data-password-strength]")) updateStrength(t);
     if (t.name && t.tagName !== "SELECT" && t.type !== "radio" && t.type !== "checkbox") updateShowWhen(d, t.name);
+    if (t.id === "f-target_game") syncGamePreset(t);
     var ed = t.closest && t.closest("[data-kv]");
     if (ed) kvSync(ed);
   });

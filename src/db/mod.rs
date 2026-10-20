@@ -16,6 +16,7 @@ pub mod maintenance;
 pub mod models;
 pub mod monitors;
 pub mod notifications;
+pub mod remote_browsers;
 pub mod rollups;
 pub mod settings;
 pub mod status_pages;

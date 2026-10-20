@@ -13,7 +13,9 @@ pub const MONITOR_COLUMNS: &str = "id, name, description, monitor_type, target, 
     flap_detection, run_on_agents, confirm_with_agents, source, external_id, sort_order,
     created_at, updated_at,
     auth_method, oauth_token_url, oauth_client_id, oauth_client_secret, oauth_scope,
-    oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert";
+    oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert,
+    remote_browser_id, browser_selector, browser_wait, browser_viewport, browser_js_errors,
+    grpc_proto";
 
 /// `MONITOR_COLUMNS` qualified with the `m.` table alias, for joins.
 fn monitor_columns_aliased() -> String {
@@ -83,6 +85,12 @@ pub fn row_to_monitor(row: &Row) -> rusqlite::Result<Monitor> {
         tls_client_cert: row.get("tls_client_cert")?,
         tls_client_key: row.get("tls_client_key")?,
         tls_ca_cert: row.get("tls_ca_cert")?,
+        remote_browser_id: row.get("remote_browser_id")?,
+        browser_selector: row.get("browser_selector")?,
+        browser_wait: row.get("browser_wait")?,
+        browser_viewport: row.get("browser_viewport")?,
+        browser_js_errors: row.get("browser_js_errors")?,
+        grpc_proto: row.get("grpc_proto")?,
     })
 }
 
@@ -142,6 +150,12 @@ macro_rules! monitor_params {
             ":tls_client_cert": $m.tls_client_cert,
             ":tls_client_key": $m.tls_client_key,
             ":tls_ca_cert": $m.tls_ca_cert,
+            ":remote_browser_id": $m.remote_browser_id,
+            ":browser_selector": $m.browser_selector,
+            ":browser_wait": $m.browser_wait,
+            ":browser_viewport": $m.browser_viewport,
+            ":browser_js_errors": $m.browser_js_errors,
+            ":grpc_proto": $m.grpc_proto,
             $($extra)*
         }
     };
@@ -160,7 +174,9 @@ pub fn insert_monitor(conn: &Connection, m: &NewMonitor) -> rusqlite::Result<i64
             escalation_minutes, flap_detection, run_on_agents, confirm_with_agents, source,
             external_id, sort_order,
             auth_method, oauth_token_url, oauth_client_id, oauth_client_secret, oauth_scope,
-            oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert
+            oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert,
+            remote_browser_id, browser_selector, browser_wait, browser_viewport, browser_js_errors,
+            grpc_proto
         ) VALUES (
             :name, :description, :monitor_type, :target, :parent_id, :interval_seconds,
             :retry_interval_seconds, :timeout_seconds, :retries, :active, :upside_down, :http_method,
@@ -171,7 +187,9 @@ pub fn insert_monitor(conn: &Connection, m: &NewMonitor) -> rusqlite::Result<i64
             :escalation_minutes, :flap_detection, :run_on_agents, :confirm_with_agents, :source,
             :external_id, :sort_order,
             :auth_method, :oauth_token_url, :oauth_client_id, :oauth_client_secret, :oauth_scope,
-            :oauth_audience, :oauth_client_auth, :tls_client_cert, :tls_client_key, :tls_ca_cert
+            :oauth_audience, :oauth_client_auth, :tls_client_cert, :tls_client_key, :tls_ca_cert,
+            :remote_browser_id, :browser_selector, :browser_wait, :browser_viewport, :browser_js_errors,
+            :grpc_proto
         )",
         monitor_params!(m,),
     )?;
@@ -210,6 +228,9 @@ pub fn update_monitor(conn: &Connection, id: i64, m: &NewMonitor) -> rusqlite::R
             oauth_scope = :oauth_scope, oauth_audience = :oauth_audience,
             oauth_client_auth = :oauth_client_auth, tls_client_cert = :tls_client_cert,
             tls_client_key = :tls_client_key, tls_ca_cert = :tls_ca_cert,
+            remote_browser_id = :remote_browser_id, browser_selector = :browser_selector,
+            browser_wait = :browser_wait, browser_viewport = :browser_viewport,
+            browser_js_errors = :browser_js_errors, grpc_proto = :grpc_proto,
             updated_at = datetime('now')
          WHERE id = :id",
         monitor_params!(m, ":id": id),

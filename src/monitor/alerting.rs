@@ -1026,6 +1026,12 @@ mod tests {
             tls_client_cert: None,
             tls_client_key: None,
             tls_ca_cert: None,
+            remote_browser_id: None,
+            browser_selector: None,
+            browser_wait: new.browser_wait,
+            browser_viewport: new.browser_viewport,
+            browser_js_errors: false,
+            grpc_proto: None,
         }
     }
 

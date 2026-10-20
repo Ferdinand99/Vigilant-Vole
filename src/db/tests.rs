@@ -233,3 +233,64 @@ fn backup_before_migration_writes_a_restorable_copy() {
     std::fs::remove_dir_all(&dir).unwrap();
     assert_eq!(users, 2);
 }
+
+/// A database with every embedded migration before `before` applied, as an
+/// older release left it.
+fn migrated_before(before: &str) -> Connection {
+    let mut conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(CONNECTION_PRAGMAS).unwrap();
+    super::prepare_tracking(&conn).unwrap();
+    for (name, sql) in super::embedded_migrations().into_iter().filter(|(name, _)| name.as_str() < before) {
+        super::apply_one(&mut conn, &name, &sql).unwrap();
+    }
+    conn
+}
+
+#[test]
+fn sqlserver_and_mongodb_upgrade_keeps_every_monitor_column() {
+    let mut conn = migrated_before("0097");
+    conn.execute_batch(
+        "INSERT INTO monitors (id, name, monitor_type, target) VALUES (1, 'Group', 'group', '');
+         INSERT INTO monitors (id, name, monitor_type, target, parent_id, basic_auth_user, basic_auth_pass, secret,
+                               auth_method, oauth_token_url, oauth_client_secret, tls_client_key, external_id, source, created_at)
+             VALUES (2, 'API', 'http', 'https://api.test', 1, 'bot', 'pw', NULL,
+                     'oauth2', 'https://idp.test/token', 'client-secret', 'KEY', 'x-1', 'config', '2026-01-02 03:04:05'),
+                    (3, 'Radius', 'radius', 'radius://r.test', NULL, 'u', 'p', 'shared', 'none', NULL, NULL, NULL, NULL, 'manual', '2026-01-03 00:00:00');
+         INSERT INTO heartbeats (monitor_id, status, checked_at) VALUES (2, 'up', '2026-01-04 00:00:00');",
+    )
+    .unwrap();
+    // The old CHECK refuses the new types.
+    assert!(conn.execute("INSERT INTO monitors (name, monitor_type) VALUES ('x', 'mongodb')", []).is_err());
+
+    let ran = apply_migrations(&mut conn).unwrap();
+    assert!(ran.iter().any(|n| n.starts_with("0097")), "{ran:?}");
+    let api = crate::db::monitors::get_monitor(&conn, 2).unwrap().unwrap();
+    assert_eq!((api.parent_id, api.basic_auth_user.as_deref(), api.basic_auth_pass.as_deref()), (Some(1), Some("bot"), Some("pw")));
+    assert_eq!((api.auth_method.as_str(), api.oauth_token_url.as_deref(), api.oauth_client_secret.as_deref()), ("oauth2", Some("https://idp.test/token"), Some("client-secret")));
+    assert_eq!((api.tls_client_key.as_deref(), api.external_id.as_deref(), api.source.as_str()), (Some("KEY"), Some("x-1"), "config"));
+    assert_eq!(api.created_at, "2026-01-02 03:04:05");
+    let radius = crate::db::monitors::get_monitor(&conn, 3).unwrap().unwrap();
+    assert_eq!(radius.secret.as_deref(), Some("shared"));
+    let beats: i64 = conn.query_row("SELECT COUNT(*) FROM heartbeats WHERE monitor_id = 2", [], |r| r.get(0)).unwrap();
+    assert_eq!(beats, 1, "heartbeats survive the rebuild");
+
+    // Also the types planned for the same release, and their column.
+    for kind in ["sqlserver", "mongodb", "tailscale_ping", "game_server", "grpc_keyword", "real_browser"] {
+        conn.execute("INSERT INTO monitors (name, monitor_type, target) VALUES (?1, ?1, 'db.test')", params![kind]).unwrap();
+    }
+    let proto: Option<String> = conn.query_row("SELECT grpc_proto FROM monitors WHERE id = 3", [], |r| r.get(0)).unwrap();
+    assert_eq!(proto, None);
+    assert!(conn.execute("INSERT INTO monitors (name, monitor_type) VALUES ('x', 'oracle')", []).is_err());
+    // Deleting a monitor still cascades (foreign keys point at the new table).
+    conn.execute("DELETE FROM monitors WHERE id = 2", []).unwrap();
+    let beats: i64 = conn.query_row("SELECT COUNT(*) FROM heartbeats", [], |r| r.get(0)).unwrap();
+    assert_eq!(beats, 0);
+}
+
+#[test]
+fn every_monitor_type_is_accepted_by_a_fresh_schema() {
+    let conn = test_conn();
+    for kind in crate::db::models::MonitorType::all() {
+        conn.execute("INSERT INTO monitors (name, monitor_type) VALUES (?1, ?1)", params![kind.as_str()]).unwrap();
+    }
+}

@@ -922,6 +922,42 @@ html:has(> .error-page) {
 .public-foot a {
   color: inherit;
 }
+/* Uploaded logo next to the page title; wide logos keep their shape. */
+.public-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.public-logo {
+  flex: none;
+  width: auto;
+  height: 44px;
+  max-width: min(12rem, 40vw);
+  object-fit: contain;
+  border-radius: var(--r-xs);
+}
+@media (max-width: 480px) {
+  .public-logo {
+    height: 36px;
+  }
+}
+/* Unlock card of a password-protected page (auth-card look, centred). */
+.public-lock {
+  align-self: center;
+}
+/* Logo/favicon preview inside a .list-icon tile. */
+.asset-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+}
+/* A file input hidden inside a button-styled label keeps a focus ring. */
+.btn:has(> input:focus-visible) {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 
 /* 7. Layout utilities ----------------------------------------------------- */
 .stack {
@@ -2432,6 +2468,26 @@ input[type="number"]::-webkit-outer-spin-button {
   width: 200px;
   height: 200px;
   image-rendering: pixelated;
+}
+
+/* Screenshot (a real-browser monitor's last failure): the page as the
+   browser rendered it, framed by a hairline, never wider than its card. */
+.screenshot {
+  display: block;
+  max-width: 100%;
+  max-height: min(70vh, 560px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.screenshot-link {
+  display: block;
+  align-self: flex-start;
+  max-width: min(100%, 640px);
+  border-radius: var(--r-sm);
 }
 
 /* Checkbox & radio */

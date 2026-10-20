@@ -20,6 +20,8 @@ pub enum MonitorType {
     JsonQuery,
     Tcp,
     Ping,
+    /// A Tailscale-level ping through the local tailscaled (LocalAPI).
+    TailscalePing,
     Dns,
     Push,
     Docker,
@@ -27,6 +29,8 @@ pub enum MonitorType {
     DomainExpiry,
     Ntp,
     Steam,
+    /// Minecraft (Java, Bedrock), Satisfactory, FiveM/RedM or Mumble status query.
+    GameServer,
     Tls,
     Smtp,
     Redis,
@@ -36,18 +40,28 @@ pub enum MonitorType {
     Kafka,
     Rabbitmq,
     Grpc,
+    /// Any unary gRPC method, keyword matched in its JSON-rendered answer.
+    GrpcKeyword,
     Radius,
     Snmp,
+    /// `sqlserver` (the serde name matches [`MonitorType::as_str`]).
+    #[serde(rename = "sqlserver")]
+    SqlServer,
+    Mongodb,
+    /// A page load in a real (remote, headless) Chromium over CDP.
+    RealBrowser,
     Group,
 }
 
 impl MonitorType {
-    const ALL: [MonitorType; 24] = [
+    /// A slice, not an array: adding a type needs no count bump.
+    const ALL: &[MonitorType] = &[
         MonitorType::Http,
         MonitorType::Keyword,
         MonitorType::JsonQuery,
         MonitorType::Tcp,
         MonitorType::Ping,
+        MonitorType::TailscalePing,
         MonitorType::Dns,
         MonitorType::Push,
         MonitorType::Docker,
@@ -55,6 +69,7 @@ impl MonitorType {
         MonitorType::DomainExpiry,
         MonitorType::Ntp,
         MonitorType::Steam,
+        MonitorType::GameServer,
         MonitorType::Tls,
         MonitorType::Smtp,
         MonitorType::Redis,
@@ -64,14 +79,18 @@ impl MonitorType {
         MonitorType::Kafka,
         MonitorType::Rabbitmq,
         MonitorType::Grpc,
+        MonitorType::GrpcKeyword,
         MonitorType::Radius,
         MonitorType::Snmp,
+        MonitorType::SqlServer,
+        MonitorType::Mongodb,
+        MonitorType::RealBrowser,
         MonitorType::Group,
     ];
 
     /// Every monitor type, in the order they should appear in the type picker.
     pub fn all() -> &'static [MonitorType] {
-        &Self::ALL
+        Self::ALL
     }
 
     /// The value stored in `monitors.monitor_type`.
@@ -82,6 +101,7 @@ impl MonitorType {
             MonitorType::JsonQuery => "json_query",
             MonitorType::Tcp => "tcp",
             MonitorType::Ping => "ping",
+            MonitorType::TailscalePing => "tailscale_ping",
             MonitorType::Dns => "dns",
             MonitorType::Push => "push",
             MonitorType::Docker => "docker",
@@ -89,6 +109,7 @@ impl MonitorType {
             MonitorType::DomainExpiry => "domain_expiry",
             MonitorType::Ntp => "ntp",
             MonitorType::Steam => "steam",
+            MonitorType::GameServer => "game_server",
             MonitorType::Tls => "tls",
             MonitorType::Smtp => "smtp",
             MonitorType::Redis => "redis",
@@ -98,8 +119,12 @@ impl MonitorType {
             MonitorType::Kafka => "kafka",
             MonitorType::Rabbitmq => "rabbitmq",
             MonitorType::Grpc => "grpc",
+            MonitorType::GrpcKeyword => "grpc_keyword",
             MonitorType::Radius => "radius",
             MonitorType::Snmp => "snmp",
+            MonitorType::SqlServer => "sqlserver",
+            MonitorType::Mongodb => "mongodb",
+            MonitorType::RealBrowser => "real_browser",
             MonitorType::Group => "group",
         }
     }
@@ -116,6 +141,7 @@ impl MonitorType {
             MonitorType::JsonQuery => crate::i18n::t("monitor_type.json_query"),
             MonitorType::Tcp => crate::i18n::t("monitor_type.tcp"),
             MonitorType::Ping => crate::i18n::t("monitor_type.ping"),
+            MonitorType::TailscalePing => crate::i18n::t("monitor_type.tailscale_ping"),
             MonitorType::Dns => crate::i18n::t("monitor_type.dns"),
             MonitorType::Push => crate::i18n::t("monitor_type.push"),
             MonitorType::Docker => crate::i18n::t("monitor_type.docker"),
@@ -123,6 +149,7 @@ impl MonitorType {
             MonitorType::DomainExpiry => crate::i18n::t("monitor_type.domain_expiry"),
             MonitorType::Ntp => crate::i18n::t("monitor_type.ntp"),
             MonitorType::Steam => crate::i18n::t("monitor_type.steam"),
+            MonitorType::GameServer => crate::i18n::t("monitor_type.game_server"),
             MonitorType::Tls => crate::i18n::t("monitor_type.tls"),
             MonitorType::Smtp => crate::i18n::t("monitor_type.smtp"),
             MonitorType::Redis => crate::i18n::t("monitor_type.redis"),
@@ -132,8 +159,12 @@ impl MonitorType {
             MonitorType::Kafka => crate::i18n::t("monitor_type.kafka"),
             MonitorType::Rabbitmq => crate::i18n::t("monitor_type.rabbitmq"),
             MonitorType::Grpc => crate::i18n::t("monitor_type.grpc"),
+            MonitorType::GrpcKeyword => crate::i18n::t("monitor_type.grpc_keyword"),
             MonitorType::Radius => crate::i18n::t("monitor_type.radius"),
             MonitorType::Snmp => crate::i18n::t("monitor_type.snmp"),
+            MonitorType::SqlServer => crate::i18n::t("monitor_type.sqlserver"),
+            MonitorType::Mongodb => crate::i18n::t("monitor_type.mongodb"),
+            MonitorType::RealBrowser => crate::i18n::t("monitor_type.real_browser"),
             MonitorType::Group => crate::i18n::t("monitor_type.group"),
         }
     }
@@ -148,6 +179,12 @@ impl MonitorType {
     /// and group monitors derive their status from children.
     pub fn is_active_check(self) -> bool {
         !matches!(self, MonitorType::Push | MonitorType::Group)
+    }
+
+    /// Types remote probe agents can run. Real-browser checks drive the
+    /// server's configured remote browsers, which agents don't have.
+    pub fn runs_on_agents(self) -> bool {
+        self.is_active_check() && self != MonitorType::RealBrowser
     }
 }
 
@@ -324,10 +361,39 @@ pub struct Monitor {
     /// Extra PEM CA certificate(s) to trust for the monitored server.
     #[serde(default)]
     pub tls_ca_cert: Option<String>,
+    // -- real browser (see `checkers::real_browser`) --
+    /// `remote_browsers.id`; `None` = the first configured remote browser.
+    #[serde(default)]
+    pub remote_browser_id: Option<i64>,
+    /// CSS selector that must match (checked instead of `keyword`).
+    #[serde(default)]
+    pub browser_selector: Option<String>,
+    /// `load` | `network_idle`.
+    #[serde(default = "default_browser_wait")]
+    pub browser_wait: String,
+    /// `desktop` | `mobile`.
+    #[serde(default = "default_browser_viewport")]
+    pub browser_viewport: String,
+    /// An uncaught JavaScript exception fails the check.
+    #[serde(default)]
+    pub browser_js_errors: bool,
+    // -- gRPC keyword (see `checkers::grpc_keyword`) --
+    /// `.proto` source for the called method; `None` = ask the server
+    /// (server reflection).
+    #[serde(default)]
+    pub grpc_proto: Option<String>,
 }
 
 fn default_auth_method() -> String {
     "none".into()
+}
+
+fn default_browser_wait() -> String {
+    "load".into()
+}
+
+fn default_browser_viewport() -> String {
+    "desktop".into()
 }
 
 fn default_oauth_client_auth() -> String {
@@ -391,6 +457,12 @@ impl Monitor {
             tls_client_cert: self.tls_client_cert.clone(),
             tls_client_key: self.tls_client_key.clone(),
             tls_ca_cert: self.tls_ca_cert.clone(),
+            remote_browser_id: self.remote_browser_id,
+            browser_selector: self.browser_selector.clone(),
+            browser_wait: self.browser_wait.clone(),
+            browser_viewport: self.browser_viewport.clone(),
+            browser_js_errors: self.browser_js_errors,
+            grpc_proto: self.grpc_proto.clone(),
         }
     }
 
@@ -458,6 +530,12 @@ pub struct NewMonitor {
     pub tls_client_cert: Option<String>,
     pub tls_client_key: Option<String>,
     pub tls_ca_cert: Option<String>,
+    pub remote_browser_id: Option<i64>,
+    pub browser_selector: Option<String>,
+    pub browser_wait: String,
+    pub browser_viewport: String,
+    pub browser_js_errors: bool,
+    pub grpc_proto: Option<String>,
 }
 
 impl Default for NewMonitor {
@@ -515,6 +593,12 @@ impl Default for NewMonitor {
             tls_client_cert: None,
             tls_client_key: None,
             tls_ca_cert: None,
+            remote_browser_id: None,
+            browser_selector: None,
+            browser_wait: default_browser_wait(),
+            browser_viewport: default_browser_viewport(),
+            browser_js_errors: false,
+            grpc_proto: None,
         }
     }
 }

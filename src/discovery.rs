@@ -906,6 +906,12 @@ mod tests {
                 tls_client_cert: None,
                 tls_client_key: None,
                 tls_ca_cert: None,
+                remote_browser_id: None,
+                browser_selector: None,
+                browser_wait: "load".into(),
+                browser_viewport: "desktop".into(),
+                browser_js_errors: false,
+                grpc_proto: None,
             },
             paused_by_discovery,
         }

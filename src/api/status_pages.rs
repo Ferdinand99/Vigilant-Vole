@@ -2,7 +2,9 @@
 //!
 //! Routes (all behind auth; viewers may only see the list):
 //! - `/status-pages` list · `/status-pages/new` create
-//! - `/status-pages/{id}/edit` content (sections, drag-to-reorder) and `?tab=settings`
+//! - `/status-pages/{id}/edit` content (sections, drag-to-reorder), `?tab=settings`
+//!   (incl. password, logo/favicon via `/status-pages/{id}/assets/{logo|favicon}`)
+//!   and `?tab=analytics` (views chart; settings saved by `POST /status-pages/{id}/analytics`)
 //! - `/status-pages/{id}` DELETE · `/status-pages/{id}/order` POST (drag result)
 //! - `/status-pages/{id}/sections[/{sid}[/monitors[/{mid}]|/picker]]` section editing
 //! - `/status-pages/{id}/incidents[/{iid}[/edit|/resolve|/reopen]]` announcements
@@ -22,6 +24,7 @@ use super::{ApiError, ApiResult, AppState, HtmlTemplate, PageCtx, flash};
 use crate::auth::{CurrentUser, Role};
 use crate::db::incidents::{self as db_incidents, Incident, NewIncident};
 use crate::db::models::MonitorType;
+use crate::db::status_pages::extras::{self as page_extras, Analytics, Provider};
 use crate::db::status_pages::{self as db_pages, NewStatusPage, Section, StatusPage, StatusPageSummary};
 
 pub fn router() -> Router<AppState> {
@@ -41,6 +44,8 @@ pub fn router() -> Router<AppState> {
         .route("/status-pages/{id}/incidents/{iid}/edit", get(incident_form))
         .route("/status-pages/{id}/incidents/{iid}/resolve", post(resolve_incident))
         .route("/status-pages/{id}/incidents/{iid}/reopen", post(reopen_incident))
+        .route("/status-pages/{id}/analytics", post(save_analytics))
+        .merge(super::public_status::assets::editor_routes())
         .layer(axum::middleware::from_fn(super::public_status::invalidate_after_writes))
 }
 
@@ -329,12 +334,18 @@ struct SettingsForm {
     custom_css: String,
     refresh_seconds: String,
     custom_domain: String,
+    /// The page has a password now (the field is write-only).
+    has_password: bool,
+    /// New password ("" = keep), only carried for validation.
+    new_password: String,
+    remove_password: bool,
     title_error: String,
     slug_error: String,
     domain_error: String,
     css_error: String,
     refresh_error: String,
     footer_error: String,
+    password_error: String,
 }
 
 impl SettingsForm {
@@ -353,14 +364,23 @@ impl SettingsForm {
             custom_css: p.custom_css.clone().unwrap_or_default(),
             refresh_seconds: p.refresh_seconds.to_string(),
             custom_domain: p.custom_domain.clone().unwrap_or_default(),
+            has_password: p.is_protected(),
             ..SettingsForm::default()
         }
     }
 
     fn has_errors(&self) -> bool {
-        [&self.title_error, &self.slug_error, &self.domain_error, &self.css_error, &self.refresh_error, &self.footer_error]
-            .iter()
-            .any(|e| !e.is_empty())
+        [
+            &self.title_error,
+            &self.slug_error,
+            &self.domain_error,
+            &self.css_error,
+            &self.refresh_error,
+            &self.footer_error,
+            &self.password_error,
+        ]
+        .iter()
+        .any(|e| !e.is_empty())
     }
 }
 
@@ -392,6 +412,11 @@ struct SettingsInput {
     refresh_seconds: String,
     #[serde(default)]
     custom_domain: String,
+    /// Write-only: a new page password ("" keeps the current one).
+    #[serde(default)]
+    page_password: String,
+    #[serde(default)]
+    remove_password: bool,
 }
 
 fn footer_too_long() -> String {
@@ -429,8 +454,15 @@ fn validate_settings(input: SettingsInput) -> (SettingsForm, Option<NewStatusPag
         custom_css: input.custom_css.trim().to_string(),
         refresh_seconds: input.refresh_seconds.trim().to_string(),
         custom_domain: input.custom_domain.trim().to_string(),
+        remove_password: input.remove_password,
         ..SettingsForm::default()
     };
+    if !input.remove_password && !input.page_password.is_empty() {
+        match page_extras::password_problem(&input.page_password) {
+            Some(e) => f.password_error = e.into(),
+            None => f.new_password = input.page_password,
+        }
+    }
     if f.title.is_empty() {
         f.title_error = crate::i18n::t("sp.err_title").into();
     } else if f.title.chars().count() > 120 {
@@ -496,6 +528,87 @@ struct EditTemplate {
     form: SettingsForm,
     badges: Vec<BadgeRow>,
     badges_live: bool,
+    /// "Logo and icon" section (settings tab), pre-rendered.
+    assets_html: String,
+    /// Analytics tab.
+    stats: super::public_status::analytics::Stats,
+    aform: AnalyticsForm,
+    providers: Vec<(&'static str, &'static str)>,
+}
+
+/// Analytics tab form values and per-field errors.
+#[derive(Debug, Clone, Default)]
+struct AnalyticsForm {
+    enabled: bool,
+    unique: bool,
+    provider: String,
+    site_id: String,
+    url: String,
+    site_id_error: String,
+    url_error: String,
+}
+
+impl AnalyticsForm {
+    fn from_settings(a: &Analytics) -> Self {
+        AnalyticsForm {
+            enabled: a.enabled,
+            unique: a.unique,
+            provider: a.provider.as_str().into(),
+            site_id: a.site_id.clone(),
+            url: a.url.clone(),
+            ..AnalyticsForm::default()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AnalyticsInput {
+    #[serde(default)]
+    analytics_enabled: bool,
+    #[serde(default)]
+    analytics_unique: bool,
+    #[serde(default)]
+    analytics_provider: String,
+    #[serde(default)]
+    analytics_site_id: String,
+    #[serde(default)]
+    analytics_url: String,
+}
+
+/// Pure validation of the analytics tab.
+fn validate_analytics(input: AnalyticsInput) -> (AnalyticsForm, Option<Analytics>) {
+    let mut form = AnalyticsForm {
+        enabled: input.analytics_enabled,
+        unique: input.analytics_unique,
+        provider: input.analytics_provider.trim().to_string(),
+        site_id: input.analytics_site_id.trim().to_string(),
+        url: input.analytics_url.trim().to_string(),
+        ..AnalyticsForm::default()
+    };
+    let Some(provider) = Provider::parse(&form.provider) else {
+        form.provider = "none".into();
+        form.site_id_error = crate::i18n::t("spx.err_analytics_provider").into();
+        return (form, None);
+    };
+    let candidate = Analytics {
+        enabled: form.enabled,
+        unique: form.unique,
+        provider,
+        site_id: form.site_id.clone(),
+        url: form.url.clone(),
+    };
+    match candidate.validated() {
+        Ok(a) => (form, Some(a)),
+        Err(errors) => {
+            for (field, msg) in errors {
+                match field {
+                    "analytics_url" => form.url_error = msg.into(),
+                    _ => form.site_id_error = msg.into(),
+                }
+            }
+            (form, None)
+        }
+    }
 }
 
 #[derive(Template)]
@@ -540,6 +653,7 @@ struct EditQuery {
     tab: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn render_edit(
     state: &AppState,
     user: &CurrentUser,
@@ -548,10 +662,15 @@ async fn render_edit(
     page: StatusPage,
     tab: &'static str,
     form: Option<SettingsForm>,
+    aform: Option<AnalyticsForm>,
 ) -> ApiResult<(SignedCookieJar, HtmlTemplate<EditTemplate>)> {
     let id = page.id;
-    let (sections, settings) = state
-        .with_conn(move |c| Ok((db_pages::sections(c, id)?, crate::db::settings::load(c)?)))
+    let with_stats = tab == "analytics";
+    let (sections, settings, stats) = state
+        .with_conn(move |c| {
+            let stats = if with_stats { super::public_status::analytics::load_stats(c, id)? } else { Default::default() };
+            Ok((db_pages::sections(c, id)?, crate::db::settings::load(c)?, stats))
+        })
         .await?;
     let base = base_url(settings.base_url.clone(), headers);
     let mut seen = std::collections::HashSet::new();
@@ -578,16 +697,26 @@ async fn render_edit(
         .collect();
     let (ctx, jar) = PageCtx::build(state, Some(user), &jar, crate::i18n::tf("monitor_form.edit_heading", &[("name", &page.title)]), "status-pages", "").await;
     let form = form.unwrap_or_else(|| SettingsForm::from_page(&page));
+    let aform = aform.unwrap_or_else(|| AnalyticsForm::from_settings(&page.analytics));
+    let assets_html = if tab == "settings" {
+        super::public_status::assets::AssetsPartial::new(page.clone(), String::new()).html()?
+    } else {
+        String::new()
+    };
     Ok((
         jar,
         HtmlTemplate(EditTemplate {
             ctx,
-            badges_live: page.published || settings.badges_public,
+            badges_live: (page.published && !page.is_protected()) || settings.badges_public,
             page,
             tab,
             sections,
             form,
             badges,
+            assets_html,
+            stats,
+            aform,
+            providers: Provider::ALL.iter().map(|p| (p.as_str(), p.label())).collect(),
         }),
     ))
 }
@@ -602,8 +731,32 @@ async fn edit(
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
     let page = load_page(&state, id).await?;
-    let tab = if q.tab == "settings" { "settings" } else { "content" };
-    render_edit(&state, &user, jar, &headers, page, tab, None).await
+    let tab = match q.tab.as_str() {
+        "settings" => "settings",
+        "analytics" => "analytics",
+        _ => "content",
+    };
+    render_edit(&state, &user, jar, &headers, page, tab, None, None).await
+}
+
+async fn save_analytics(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Form(input): Form<AnalyticsInput>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    let page = load_page(&state, id).await?;
+    let (form, valid) = validate_analytics(input);
+    if let Some(a) = valid {
+        state.with_conn(move |c| page_extras::set_analytics(c, id, &a)).await?;
+        let jar = flash(jar, "success", crate::i18n::t("spx.analytics_saved"));
+        return Ok((jar, Redirect::to(&format!("/status-pages/{id}/edit?tab=analytics"))).into_response());
+    }
+    let (jar, tpl) = render_edit(&state, &user, jar, &headers, page, "analytics", None, Some(form)).await?;
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, tpl).into_response())
 }
 
 async fn save_settings(
@@ -619,6 +772,14 @@ async fn save_settings(
     let (mut form, valid) = validate_settings(input);
     let hosts = request_hosts(&headers);
     if let Some(new) = valid {
+        // Write-only password: hash a new one (slow, off the async threads).
+        let password = if form.remove_password {
+            page_extras::PasswordChange::Remove
+        } else if form.new_password.is_empty() {
+            page_extras::PasswordChange::Keep
+        } else {
+            page_extras::PasswordChange::Set(crate::auth::hash_password_async(std::mem::take(&mut form.new_password)).await?)
+        };
         let saved = state
             .with_conn(move |c| {
                 if db_pages::slug_taken(c, &new.slug, Some(id))? {
@@ -637,6 +798,7 @@ async fn save_settings(
                     return Ok(Err("domain"));
                 }
                 db_pages::update(c, id, &new)?;
+                page_extras::apply_extras(c, id, &page_extras::ExtrasChange { password, ..Default::default() })?;
                 Ok(Ok(()))
             })
             .await?;
@@ -651,7 +813,9 @@ async fn save_settings(
             Err(_) => form.domain_error = crate::i18n::t("sp.err_domain_taken").into(),
         }
     }
-    let (jar, tpl) = render_edit(&state, &user, jar, &headers, page, "settings", Some(form)).await?;
+    form.new_password.clear();
+    form.has_password = page.is_protected();
+    let (jar, tpl) = render_edit(&state, &user, jar, &headers, page, "settings", Some(form), None).await?;
     Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, tpl).into_response())
 }
 
@@ -1116,7 +1280,49 @@ mod tests {
             custom_css: String::new(),
             refresh_seconds: "60".into(),
             custom_domain: "HTTPS://Status.Acme.test/".into(),
+            page_password: String::new(),
+            remove_password: false,
         }
+    }
+
+    #[test]
+    fn settings_validation_checks_the_page_password() {
+        let mut short = input();
+        short.page_password = "short".into();
+        let (form, page) = validate_settings(short);
+        assert!(page.is_none());
+        assert!(!form.password_error.is_empty());
+        let mut ok = input();
+        ok.page_password = "correct horse".into();
+        let (form, page) = validate_settings(ok);
+        assert!(page.is_some());
+        assert_eq!(form.new_password, "correct horse");
+        // Removing wins over a typed password.
+        let mut remove = input();
+        remove.page_password = "x".into();
+        remove.remove_password = true;
+        let (form, page) = validate_settings(remove);
+        assert!(page.is_some() && form.remove_password && form.new_password.is_empty());
+    }
+
+    #[test]
+    fn analytics_tab_validation() {
+        let input = |provider: &str, id: &str, url: &str| AnalyticsInput {
+            analytics_enabled: true,
+            analytics_unique: false,
+            analytics_provider: provider.into(),
+            analytics_site_id: id.into(),
+            analytics_url: url.into(),
+        };
+        let (_, a) = validate_analytics(input("plausible", "example.com", "https://plausible.io/js/script.js"));
+        let a = a.unwrap();
+        assert_eq!((a.provider, a.unique), (Provider::Plausible, false));
+        let (form, a) = validate_analytics(input("umami", "nope", "http://x.test/s.js"));
+        assert!(a.is_none());
+        assert!(!form.site_id_error.is_empty() && !form.url_error.is_empty());
+        let (form, a) = validate_analytics(input("evil", "", ""));
+        assert!(a.is_none());
+        assert_eq!(form.provider, "none");
     }
 
     #[test]

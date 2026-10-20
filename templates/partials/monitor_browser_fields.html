@@ -1,0 +1,87 @@
+{#- Real-browser sections of the monitor form (included by
+    monitor_form_fields.html; expects `f`, api::monitors::FormData). -#}
+{% import "macros.html" as m %}
+{% import "partials/monitor_form_macros.html" as fm %}
+
+<section class="form-section" aria-labelledby="sec-browser" data-show-when="monitor_type=real_browser"{% if !f.shows("real_browser") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-browser">{{ tr("browser.section") }}</h2>
+  <p class="form-section-sub">{{ tr("browser.section_sub") }}</p>
+  <div class="card">
+    {%- if f.remote_browsers.is_empty() %}
+    {{ m::callout("warning", tr("browser.none_text"), tr("browser.none_title")) }}
+    <p class="help"><a href="/settings/browsers">{{ tr("browser.add_link") }}</a></p>
+    {{ fm::error_line("remote_browser_id", f.err("remote_browser_id")) }}
+    {%- else %}
+    {{ fm::select("remote_browser_id", tr("browser.remote"), &f.remote_browsers, f.v.remote_browser_id.as_str(), tr("browser.remote_help"), f.err("remote_browser_id")) }}
+    {%- endif %}
+    <div class="field-row">
+      {{ fm::select("browser_wait", tr("browser.wait"), &f.browser_waits, f.v.browser_wait.as_str(), tr("browser.wait_help"), f.err("browser_wait")) }}
+      {{ fm::select("browser_viewport", tr("browser.viewport"), &f.browser_viewports, f.v.browser_viewport.as_str(), "", f.err("browser_viewport")) }}
+    </div>
+    {{ m::field_text("accepted_status_codes", tr("form.accepted_codes"), value=&f.v.accepted_status_codes, placeholder="200-299…", help=tr("browser.codes_help"), error=f.err("accepted_status_codes"), sfx="-browser") }}
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-browser-check" data-show-when="monitor_type=real_browser"{% if !f.shows("real_browser") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-browser-check">{{ tr("browser.check_title") }}</h2>
+  <div class="card">
+    <div class="field">
+      <span class="label" id="browser-check-label">{{ tr("browser.look_for") }}</span>
+      <div class="segmented" role="radiogroup" aria-labelledby="browser-check-label">
+        <label><input type="radio" name="browser_check" value="keyword"{% if f.v.browser_check != "selector" %} checked{% endif %}><span>{{ tr("browser.check_keyword") }}</span></label>
+        <label><input type="radio" name="browser_check" value="selector"{% if f.v.browser_check == "selector" %} checked{% endif %}><span>{{ tr("browser.check_selector") }}</span></label>
+      </div>
+      {{ fm::error_line("browser_check", f.err("browser_check")) }}
+    </div>
+    <div data-show-when="browser_check=keyword"{% if f.v.browser_check == "selector" %} hidden{% endif %}>
+      {{ m::field_text("keyword", tr("browser.keyword"), value=&f.v.keyword, placeholder=tr("form.optional_placeholder"), help=tr("browser.keyword_help"), error=f.err("keyword"), sfx="-browser") }}
+    </div>
+    <div data-show-when="browser_check=selector"{% if f.v.browser_check != "selector" %} hidden{% endif %}>
+      {{ m::field_text("browser_selector", tr("browser.selector"), value=&f.v.browser_selector, placeholder="#app .ready…", help=tr("browser.selector_help"), error=f.err("browser_selector")) }}
+    </div>
+    {{ m::switch("keyword_invert", tr("form.invert"), f.v.keyword_invert, tr("browser.invert_help"), sfx="-browser") }}
+    {{ m::switch("browser_js_errors", tr("browser.js_errors"), f.v.browser_js_errors, tr("browser.js_errors_help")) }}
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-browser-request" data-show-when="monitor_type=real_browser"{% if !f.shows("real_browser") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-browser-request">{{ tr("detail.request") }}</h2>
+  <div class="card">
+    <details class="disclosure"{% if !f.v.http_headers.is_empty() || !f.v.basic_auth_user.is_empty() || f.v.ignore_tls || f.has_err("http_headers") || f.has_err("basic_auth_user") || f.has_err("basic_auth_pass") %} open{% endif %}>
+      <summary>{{ tr("browser.request_title") }} <span class="disclosure-sub">{{ tr("browser.request_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+      <div class="disclosure-body">
+        <div class="field{% if f.has_err("http_headers") %} is-invalid{% endif %}">
+          <span class="label" id="browser-headers-label">{{ tr("form.headers") }}</span>
+          <div class="kv-editor" data-kv data-kv-json="#f-http_headers-browser" role="group" aria-labelledby="browser-headers-label">
+            <div class="kv-head" aria-hidden="true"><span>{{ tr("common.name") }}</span><span>{{ tr("form.value") }}</span><span></span></div>
+            <div class="kv-rows" data-kv-rows>
+              {%- for (k, val) in f.header_rows %}
+              <div class="kv-row">
+                <input type="text" value="{{ k }}" placeholder="X-Probe…" aria-label="{{ tr("form.header_name") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <input type="text" value="{{ val }}" placeholder="1…" aria-label="{{ tr("form.header_value") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("x") }}</button>
+              </div>
+              {%- endfor %}
+            </div>
+            <template data-kv-template>
+              <div class="kv-row">
+                <input type="text" placeholder="X-Probe…" aria-label="{{ tr("form.header_name") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <input type="text" placeholder="1…" aria-label="{{ tr("form.header_value") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("x") }}</button>
+              </div>
+            </template>
+            <div class="cluster"><button type="button" class="btn btn-plain btn-sm" data-kv-add>{{ m::icon("plus") }}<span>{{ tr("form.add_header") }}</span></button></div>
+            <input type="hidden" id="f-http_headers-browser" name="http_headers" value="{{ f.v.http_headers }}" disabled>
+          </div>
+          <p class="help">{{ tr("browser.headers_help") }}</p>
+          {{ fm::error_line("http_headers", f.err("http_headers")) }}
+        </div>
+        <div class="field-row">
+          {{ m::field_text("basic_auth_user", tr("form.user_name"), value=&f.v.basic_auth_user, placeholder=tr("form.optional_placeholder"), error=f.err("basic_auth_user"), sfx="-browser") }}
+          {{ m::field_text("basic_auth_pass", tr("login.password"), value=&f.v.basic_auth_pass, kind="password", autocomplete="new-password", error=f.err("basic_auth_pass"), sfx="-browser") }}
+        </div>
+        {{ m::switch("ignore_tls", tr("form.ignore_tls"), f.v.ignore_tls, tr("form.ignore_tls_help"), sfx="-browser") }}
+      </div>
+    </details>
+  </div>
+</section>

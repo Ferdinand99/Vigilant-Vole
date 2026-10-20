@@ -43,6 +43,9 @@ use crate::db::tags::{self as db_tags, MonitorTag};
 use crate::db::{monitors as db_monitors, notifications as db_notifications, settings as db_settings};
 use crate::notification::{self, SECRET_MASK, schema};
 
+mod browsers;
+pub use browsers::RemoteBrowserDoc;
+
 /// Current document format version.
 pub const DOC_VERSION: u32 = 1;
 
@@ -68,6 +71,8 @@ pub struct Document {
     pub tags: Option<Vec<TagDoc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notification_channels: Option<Vec<ChannelDoc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_browsers: Option<Vec<RemoteBrowserDoc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitors: Option<Vec<MonitorDoc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -268,6 +273,35 @@ pub struct StatusPageDoc {
     /// `None` keeps the current layout (one empty "Services" section for new pages).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sections: Option<Vec<SectionDoc>>,
+    /// Write-only page password: a new one sets it, `""` removes it, the
+    /// secret mask (exports without secrets) keeps it. `None` keeps it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    /// Argon2 hash of the page password (full exports only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password_hash: Option<String>,
+    /// Built-in and third-party analytics. `None` keeps the current settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analytics: Option<db_pages::extras::AnalyticsDoc>,
+    /// Logo as a `data:image/…;base64,…` URL (full exports only); `""` removes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<String>,
+    /// Favicon as a data URL (full exports only); `""` removes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favicon: Option<String>,
+}
+
+impl StatusPageDoc {
+    /// The extra (password, analytics, image) fields, for validation.
+    pub fn extras(&self) -> db_pages::extras::DocExtras<'_> {
+        db_pages::extras::DocExtras {
+            password: self.password.as_deref(),
+            password_hash: self.password_hash.as_deref(),
+            analytics: self.analytics.as_ref(),
+            logo: self.logo.as_deref(),
+            favicon: self.favicon.as_deref(),
+        }
+    }
 }
 
 fn default_theme() -> String {
@@ -470,7 +504,10 @@ fn restore_headers(new: &mut Map<String, Value>, old: Option<&str>) -> Vec<Strin
 /// Monitor fields exported as [`SECRET_MASK`] unless secrets are included.
 const MONITOR_SECRETS: &[&str] = &["basic_auth_pass", "secret", "oauth_client_secret", "tls_client_key"];
 
-const MONITOR_SPECIAL: &[&str] = &["name", "monitor_type", "target", "parent_id", "push_token", "source", "external_id"];
+const MONITOR_SPECIAL: &[&str] = &["name", "monitor_type", "target", "parent_id", "push_token", "source", "external_id", "remote_browser_id"];
+
+/// Monitor option naming its remote browser (instead of `remote_browser_id`).
+const REMOTE_BROWSER_OPTION: &str = "remote_browser";
 
 fn new_monitor_value(m: &NewMonitor) -> Map<String, Value> {
     match serde_json::to_value(m) {
@@ -489,6 +526,7 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
     let channel_keys = unique_keys(channels.iter().map(|c| (c.id, c.name.clone())));
     let tags_by_monitor = db_tags::tags_by_monitor(conn)?;
     let defaults = new_monitor_value(&NewMonitor::default());
+    let browser_names: HashMap<i64, String> = crate::db::remote_browsers::list(conn)?.into_iter().map(|b| (b.id, b.name)).collect();
 
     let mut monitors: Vec<&Monitor> = all_monitors.iter().filter(|m| m.source != "docker").collect();
     monitors.sort_by(|a, b| a.sort_order.cmp(&b.sort_order).then(a.id.cmp(&b.id)));
@@ -502,6 +540,9 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             options.remove(*k);
         }
         options.retain(|k, v| defaults.get(k) != Some(v));
+        if let Some(name) = m.remote_browser_id.and_then(|id| browser_names.get(&id)) {
+            options.insert(REMOTE_BROWSER_OPTION.into(), Value::String(name.clone()));
+        }
         if let Some(Value::String(h)) = options.get("http_headers").cloned() {
             let value = if include_secrets {
                 serde_json::from_str::<Value>(&h).unwrap_or(Value::String(h))
@@ -582,6 +623,7 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
                 monitors: s.monitors.iter().filter_map(|sm| keys.get(&sm.monitor_id).cloned()).collect(),
             })
             .collect();
+        let (password, password_hash, analytics, logo, favicon) = db_pages::extras::export_doc_extras(conn, &p, include_secrets)?;
         page_docs.push(StatusPageDoc {
             slug: p.slug,
             title: p.title,
@@ -597,6 +639,11 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             custom_css: p.custom_css,
             refresh_seconds: p.refresh_seconds,
             sections: Some(sections),
+            password,
+            password_hash,
+            analytics,
+            logo,
+            favicon,
         });
     }
     let page_slugs: HashMap<i64, String> = db_pages::list(conn)?.into_iter().map(|s| (s.page.id, s.page.slug)).collect();
@@ -641,6 +688,7 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
         }),
         tags: Some(tags.into_iter().map(|t| TagDoc { name: t.name, color: t.color }).collect()),
         notification_channels: Some(channel_docs),
+        remote_browsers: Some(browsers::export(conn, include_secrets)?),
         monitors: Some(monitor_docs),
         status_pages: Some(page_docs),
         maintenance: Some(maintenance_docs),
@@ -840,6 +888,7 @@ pub const KIND_CHANNEL: &str = "notification_channel";
 pub const KIND_MONITOR: &str = "monitor";
 pub const KIND_PAGE: &str = "status_page";
 pub const KIND_MAINTENANCE: &str = "maintenance";
+pub const KIND_BROWSER: &str = "remote_browser";
 
 // ===========================================================================
 // Prepared operations (resolved ids; negative ids are placeholders for
@@ -883,8 +932,8 @@ enum MonitorOp {
 
 #[derive(Debug, Clone)]
 enum PageOp {
-    Create { ph: i64, page: NewStatusPage, sections: Option<Vec<(String, Vec<i64>)>> },
-    Update { id: i64, page: NewStatusPage, sections: Option<Vec<(String, Vec<i64>)>> },
+    Create { ph: i64, page: NewStatusPage, sections: Option<Vec<(String, Vec<i64>)>>, extras: Box<db_pages::extras::ExtrasChange> },
+    Update { id: i64, page: NewStatusPage, sections: Option<Vec<(String, Vec<i64>)>>, extras: Box<db_pages::extras::ExtrasChange> },
 }
 
 #[derive(Debug, Clone)]
@@ -906,6 +955,8 @@ struct Ops {
     delete_monitors: Vec<i64>,
     delete_channels: Vec<i64>,
     delete_tags: Vec<i64>,
+    browsers: Vec<browsers::BrowserOp>,
+    delete_browsers: Vec<i64>,
 }
 
 /// Result of a successful apply.
@@ -949,6 +1000,7 @@ struct Current {
     monitor_tags: HashMap<i64, Vec<MonitorTag>>,
     pages: Vec<db_pages::StatusPage>,
     windows: Vec<db_maint::MaintenanceWindow>,
+    browsers: Vec<crate::db::remote_browsers::RemoteBrowser>,
 }
 
 impl Current {
@@ -963,6 +1015,7 @@ impl Current {
             monitor_tags: db_tags::tags_by_monitor(conn)?,
             pages: db_pages::list(conn)?.into_iter().map(|s| s.page).collect(),
             windows: db_maint::list(conn)?,
+            browsers: crate::db::remote_browsers::list(conn)?,
         })
     }
 }
@@ -1080,8 +1133,19 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
         }
         monitor_ids.insert(norm(&key), m.id);
     }
+    // -- remote browsers (before the monitors that use them) ----------------
+    let browser_ids = browsers::plan(
+        &cur.browsers,
+        doc.remote_browsers.as_deref(),
+        mode,
+        &mut plan,
+        &mut ops.browsers,
+        &mut ops.delete_browsers,
+        &mut ph,
+    );
     if let Some(monitors) = &doc.monitors {
-        plan_monitors(conn, &cur, monitors, mode, &mut tag_ids, &channel_ids, &docker_keys, &mut monitor_ids, &mut plan, &mut ops, &mut ph)?;
+        let refs = Refs { tag_ids: &mut tag_ids, channel_ids: &channel_ids, browsers: &browser_ids };
+        plan_monitors(conn, &cur, monitors, mode, refs, &docker_keys, &mut monitor_ids, &mut plan, &mut ops, &mut ph)?;
     }
 
     // -- status pages --------------------------------------------------------
@@ -1329,6 +1393,9 @@ fn plan_channel(
 pub fn monitor_from_doc(m: &MonitorDoc) -> Result<NewMonitor, (String, String)> {
     let mut obj = new_monitor_value(&NewMonitor::default());
     for (k, v) in &m.options {
+        if k == REMOTE_BROWSER_OPTION {
+            continue; // resolved by name in `plan_monitors`
+        }
         if MONITOR_SPECIAL.contains(&k.as_str()) || !obj.contains_key(k) {
             return Err((k.clone(), format!("Unknown monitor field “{k}”.")));
         }
@@ -1355,20 +1422,28 @@ pub fn monitor_from_doc(m: &MonitorDoc) -> Result<NewMonitor, (String, String)> 
     serde_json::from_value::<NewMonitor>(Value::Object(obj)).map_err(|e| ("options".into(), format!("Invalid monitor field: {e}")))
 }
 
+/// Names other sections resolve to ids (or placeholders) for monitors.
+struct Refs<'a> {
+    tag_ids: &'a mut HashMap<String, i64>,
+    channel_ids: &'a HashMap<String, i64>,
+    /// `(normalised name, id)`, oldest first.
+    browsers: &'a [(String, i64)],
+}
+
 #[allow(clippy::too_many_arguments)]
 fn plan_monitors(
     conn: &Connection,
     cur: &Current,
     monitors: &[MonitorDoc],
     mode: Mode,
-    tag_ids: &mut HashMap<String, i64>,
-    channel_ids: &HashMap<String, i64>,
+    refs: Refs<'_>,
     docker_keys: &HashSet<String>,
     monitor_ids: &mut HashMap<String, i64>,
     plan: &mut Plan,
     ops: &mut Ops,
     ph: &mut Placeholders,
 ) -> rusqlite::Result<()> {
+    let Refs { tag_ids, channel_ids, browsers } = refs;
     let by_id: HashMap<i64, &Monitor> = cur.monitors.iter().map(|m| (m.id, m)).collect();
 
     // Pass 1: decide identity (existing id or placeholder) for every entry.
@@ -1470,6 +1545,21 @@ fn plan_monitors(
         let existing = by_id.get(id).copied();
         let parent = final_parent.get(id).copied().flatten();
         nm.parent_id = parent;
+        match m.options.get(REMOTE_BROWSER_OPTION) {
+            None | Some(Value::Null) => {}
+            Some(Value::String(name)) if name.trim().is_empty() => {}
+            Some(Value::String(name)) => match browsers.iter().find(|(k, _)| *k == norm(name)) {
+                Some((_, bid)) => nm.remote_browser_id = Some(*bid),
+                None => {
+                    plan.error(KIND_MONITOR, key, Some(REMOTE_BROWSER_OPTION), format!("No remote browser named “{}”.", name.trim()));
+                    continue;
+                }
+            },
+            Some(_) => {
+                plan.error(KIND_MONITOR, key, Some(REMOTE_BROWSER_OPTION), "Give the remote browser’s name.");
+                continue;
+            }
+        }
 
         // Secrets the export masked. A masked password stays masked:
         // `form::validate` keeps the stored one only while the target and
@@ -1573,6 +1663,8 @@ fn plan_monitors(
             channel_ids: effective_channels.iter().map(|(c, _)| *c).collect(),
             tag_ids: tag_views.iter().map(|t| t.tag_id).collect(),
             child_count,
+            remote_browser_ids: browsers.iter().map(|(_, b)| *b).collect(),
+            browser_optional: true,
         };
         let valid = match form::validate(&values, &base, &cx) {
             Ok(v) => v,
@@ -1588,6 +1680,11 @@ fn plan_monitors(
         // Not part of the monitor form (pause/resume are separate actions there).
         out.sort_order = nm.sort_order;
         out.active = nm.active;
+        if out.monitor_type == MonitorType::RealBrowser && out.remote_browser_id.is_none() {
+            plan.warnings.push(format!(
+                "“{key}”: no remote browser is set up, so this real-browser monitor can’t run yet. Add one in Settings → Remote browsers."
+            ));
+        }
 
         // Push tokens: keep / set / generate.
         if out.monitor_type == MonitorType::Push {
@@ -1753,12 +1850,23 @@ fn plan_page(
             Some(out)
         }
     };
-    let Some(page) = page.filter(|_| ok) else {
+    let existing_page = cur.pages.iter().find(|x| x.slug == slug);
+    let extras = match db_pages::extras::plan_doc_extras(p.extras(), existing_page) {
+        Ok(e) => Some(e),
+        Err(errors) => {
+            for (field, msg) in errors {
+                err(plan, &field, &msg);
+            }
+            None
+        }
+    };
+    let (Some(page), Some((extras, extra_changes))) = (page.filter(|_| ok), extras) else {
         return Ok(());
     };
-    match cur.pages.iter().find(|x| x.slug == slug) {
+    let extras = Box::new(extras);
+    match existing_page {
         Some(existing) => {
-            let mut changes = Vec::new();
+            let mut changes: Vec<String> = extra_changes.iter().map(|c| c.to_string()).collect();
             let old = existing.to_new();
             for (name, differs) in [
                 ("title", old.title != page.title),
@@ -1797,14 +1905,14 @@ fn plan_page(
                 plan.item(KIND_PAGE, slug, Action::Unchanged, changes);
             } else {
                 plan.item(KIND_PAGE, slug, Action::Update, changes);
-                ops.pages.push(PageOp::Update { id: existing.id, page, sections });
+                ops.pages.push(PageOp::Update { id: existing.id, page, sections, extras });
             }
         }
         None => {
             let id = ph.next();
             page_ids.insert(slug.to_string(), id);
             plan.item(KIND_PAGE, slug, Action::Create, Vec::new());
-            ops.pages.push(PageOp::Create { ph: id, page, sections });
+            ops.pages.push(PageOp::Create { ph: id, page, sections, extras });
         }
     }
     Ok(())
@@ -2100,6 +2208,7 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
             }
         }
     }
+    browsers::execute(conn, &ops.browsers, &ops.delete_browsers, &mut ids)?;
     for id in &ops.delete_monitors {
         db_monitors::delete_monitor(conn, *id)?;
         applied.deleted_monitor_ids.push(*id);
@@ -2111,6 +2220,7 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
                 if let Some(p) = m.parent_id {
                     m.parent_id = Some(resolve(&ids, p)?);
                 }
+                m.remote_browser_id = browsers::resolve_id(&ids, m.remote_browser_id)?;
                 let id = db_monitors::insert_monitor(conn, &m)?;
                 ids.insert(*ph, id);
                 (id, w)
@@ -2120,6 +2230,7 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
                 if let Some(p) = m.parent_id {
                     m.parent_id = Some(resolve(&ids, p)?);
                 }
+                m.remote_browser_id = browsers::resolve_id(&ids, m.remote_browser_id)?;
                 db_monitors::update_monitor(conn, *id, &m)?;
                 (*id, w)
             }
@@ -2141,17 +2252,19 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
     for op in &ops.pages {
         applied.pages_changed = true;
         match op {
-            PageOp::Create { ph, page, sections } => {
+            PageOp::Create { ph, page, sections, extras } => {
                 let id = insert_page(conn, page)?;
                 ids.insert(*ph, id);
                 let sections = sections.clone().unwrap_or_else(|| vec![("Services".to_string(), Vec::new())]);
                 write_sections(conn, id, &sections, &ids)?;
+                db_pages::extras::apply_extras(conn, id, extras)?;
             }
-            PageOp::Update { id, page, sections } => {
+            PageOp::Update { id, page, sections, extras } => {
                 db_pages::update(conn, *id, page)?;
                 if let Some(sections) = sections {
                     write_sections(conn, *id, sections, &ids)?;
                 }
+                db_pages::extras::apply_extras(conn, *id, extras)?;
             }
         }
     }
@@ -2465,6 +2578,9 @@ pub fn sections_present(doc: &Document) -> BTreeMap<&'static str, usize> {
     }
     if let Some(v) = &doc.notification_channels {
         m.insert("notification_channels", v.len());
+    }
+    if let Some(v) = &doc.remote_browsers {
+        m.insert("remote_browsers", v.len());
     }
     if let Some(v) = &doc.monitors {
         m.insert("monitors", v.len());
