@@ -72,6 +72,26 @@ Anrede: informelles „du“ (Imperative wie „Gib einen Namen ein“), nie „
 | severity | Schweregrad | |
 | operational | In Betrieb | |
 | degraded | Eingeschränkt | |
+| remote browser | Remote-Browser | Headless-Chromium-Instanz |
+| real browser | Echter Browser | Monitortyp; in Fließtext „Echter-Browser-Monitor“ |
+| screenshot | Screenshot | |
+| game server | Spieleserver | |
+| server reflection | Server Reflection | Fachbegriff beibehalten |
+| metadata | Metadaten | gRPC |
+| privacy password | Datenschutz-Passwort | SNMPv3 |
+| security level | Sicherheitsstufe | |
+| engine ID | Engine-ID | |
+| unlock | Entsperren | |
+| password-protected page | passwortgeschützte Seite | Pill: „Passwortgeschützt“ |
+| page views | Seitenaufrufe | kurz: Aufrufe |
+| unique visitors | Eindeutige Besucher | |
+| referrer | Referrer | |
+| Tailscale peer | Tailscale-Peer | |
+| MOTD | MOTD | unverändert |
+| replica set | Replica Set | unverändert |
+| headless | Headless | „Headless-Chromium“ |
+| selector | Selektor | CSS-Selektor |
+| viewport | Viewport | |
 
 ## Stil
 

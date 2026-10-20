@@ -81,6 +81,23 @@ Style
 | slug | URL-név | |
 | theme | téma | |
 | appearance | megjelenés | |
+| remote browser | távoli böngésző | |
+| real browser | valódi böngésző | monitor type "Valódi böngésző"; headless = "fej nélküli" |
+| screenshot | képernyőkép | |
+| game server | játékszerver | |
+| server reflection | szerver-reflexió | gRPC |
+| metadata | metaadatok | gRPC |
+| privacy password | adatvédelmi jelszó | SNMPv3; privacy = "adatvédelem" |
+| security level | biztonsági szint | |
+| engine ID | motorazonosító | SNMPv3 |
+| unlock | Feloldás | button on password page |
+| password-protected page | jelszóval védett oldal | pill "Jelszóval védett" |
+| page views | oldalmegtekintések | short: "megtekintések" |
+| unique visitors | egyedi látogatók | |
+| referrer | hivatkozó oldal | |
+| Tailscale peer | Tailscale-partner | |
+| analytics | analitika | |
+| replica set | replicaSet | kept as MongoDB option name |
 
 Decisions
 - "Működik" (up) and "Leállt" (down) follow Kuma; "Függőben" for pending.

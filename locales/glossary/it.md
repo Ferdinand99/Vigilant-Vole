@@ -82,6 +82,24 @@ Termini fissati per la traduzione di Vigilant Vole. Il lessico di Uptime Kuma (i
 | preview | anteprima | |
 | merge / replace | unisci / sostituisci | |
 | copy / paste | copia / incolla | |
+| remote browser | browser remoto | |
+| real browser | browser reale | Tipo di monitor «Browser reale». |
+| screenshot | screenshot | Prestito. |
+| game server | server di gioco | |
+| server reflection | server reflection | Termine gRPC lasciato in inglese. |
+| metadata | metadati | |
+| privacy password | password di privacy | SNMPv3. |
+| security level | livello di sicurezza | |
+| engine ID | engine ID | Invariato. |
+| unlock | sblocca | |
+| password-protected page | pagina protetta da password | Breve: «Protetta da password». |
+| page views | visualizzazioni di pagina | |
+| unique visitors | visitatori unici | |
+| referrer | referrer | Prestito. |
+| Tailscale peer | peer Tailscale | |
+| MOTD | MOTD | Invariato. |
+| replica set | replica set | Invariato. |
+| headless | headless | Invariato. |
 
 ## Stile
 

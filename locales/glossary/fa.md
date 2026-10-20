@@ -81,6 +81,25 @@ word list (terms only); differences are noted.
 | revoke | ابطال | |
 | status | وضعیت | |
 | metric(s) | سنجه‌ها | |
+| remote browser | مرورگر راه‌دور | |
+| real browser | مرورگر واقعی | monitor type |
+| headless | headless | kept Latin: «Chromium بدون رابط (headless)» |
+| screenshot | تصویر صفحه | |
+| game server | سرور بازی | |
+| server reflection | server reflection | kept Latin (gRPC feature) |
+| metadata | فراداده | |
+| privacy password | گذرواژهٔ حریم خصوصی | SNMPv3 |
+| security level | سطح امنیتی | |
+| engine ID | engine ID | kept Latin |
+| unlock | بازکردن قفل | |
+| password-protected page | صفحهٔ دارای گذرواژه | pill: «دارای گذرواژه» |
+| page views | بازدید صفحه | |
+| unique visitors | بازدیدکنندگان یکتا | |
+| referrer | سایت ارجاع‌دهنده | |
+| Tailscale peer | همتای Tailscale | |
+| MOTD | MOTD | kept Latin |
+| replica set | replica set | kept Latin |
+| analytics | تحلیل | |
 
 ## Style
 

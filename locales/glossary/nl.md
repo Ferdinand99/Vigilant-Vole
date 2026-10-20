@@ -72,6 +72,25 @@ Informeel “je/jouw”, korte gebiedende wijs. Termen komen als woordenlijst de
 | severity | ernst | |
 | location | locatie | |
 | region | regio | |
+| remote browser | externe browser | |
+| real browser | echte browser | monitortype “Echte browser” |
+| screenshot | screenshot | |
+| game server | gameserver | zoals Steam-gameserver |
+| server reflection | server reflection | vakterm blijft Engels |
+| metadata | metadata | |
+| privacy password | privacywachtwoord | SNMPv3 |
+| security level | beveiligingsniveau | |
+| engine ID | engine-ID | SNMPv3 |
+| unlock | ontgrendelen | knop op beveiligde statuspagina |
+| password-protected page | pagina met wachtwoord / met wachtwoord beveiligd | pill: “Met wachtwoord” |
+| page views | paginaweergaven | kort: weergaven |
+| unique visitors | unieke bezoekers | |
+| referrer | verwijzer | verwijzende site |
+| Tailscale peer | Tailscale-peer | |
+| MOTD | MOTD | blijft Engels |
+| replica set | replicaSet | optienaam, blijft code |
+| headless | headless | “headless Chromium” |
+| analytics | analyse | |
 
 ## Stijl
 - Aanspreekvorm: “je/jouw”, nooit “u”; korte gebiedende wijs (“Voer een naam in”).

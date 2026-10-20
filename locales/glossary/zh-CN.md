@@ -77,6 +77,26 @@ Vigilant Vole 界面翻译所用术语。每个术语只定一种译法，全文
 | reminder | 提醒 | |
 | upside-down mode | 反转模式 | Same as Kuma |
 | draft / published | 草稿 / 已发布 | |
+| remote browser | 远程浏览器 | Headless Chromium used by real-browser monitors |
+| real browser | 真实浏览器 | |
+| headless | 无头 | |
+| screenshot | 截图 | |
+| game server | 游戏服务器 | |
+| server reflection | 服务器反射 | gRPC |
+| metadata | 元数据 | gRPC metadata |
+| privacy password | 隐私密码 | SNMPv3; authentication password = 认证密码 |
+| security level | 安全级别 | |
+| engine ID | 引擎 ID | |
+| unlock | 解锁 | |
+| password-protected page | 受密码保护的页面 | Pill: 受密码保护 |
+| page views | 页面浏览量 | Short: 浏览量 |
+| unique visitors | 独立访客 | |
+| referrer | 来源网站 | |
+| Tailscale peer | Tailscale 节点 | |
+| MOTD | MOTD | Kept in Latin |
+| replica set | 副本集 | |
+| analytics | 统计 | |
+| logo / browser icon | Logo / 浏览器图标 | |
 
 ## Style
 

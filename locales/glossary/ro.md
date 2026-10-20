@@ -90,3 +90,22 @@ Terms were decided once and are reused across `locales/ro.toml`. Kuma word list 
 | container | container | |
 | secret | secret | |
 | severity | gravitate | |
+| remote browser | browser la distanță | follows "agent la distanță" |
+| real browser | browser real | |
+| headless | headless | kept in English |
+| screenshot | captură de ecran | |
+| game server | server de joc | |
+| server reflection | reflexia serverului | |
+| metadata (gRPC) | metadate | |
+| privacy password | parolă de confidențialitate | SNMPv3 |
+| security level | nivel de securitate | |
+| engine ID | ID de motor | |
+| unlock | deblochează | |
+| password-protected page | pagină protejată cu parolă | |
+| page views | vizualizări de pagină | |
+| unique visitors | vizitatori unici | |
+| referrer | sursă de trafic / site de proveniență | |
+| Tailscale peer | peer Tailscale | |
+| MOTD | MOTD | kept in English |
+| replica set | replicaSet | kept as parameter name |
+| analytics | statistici | |

@@ -88,3 +88,21 @@ Counts: no plural forms; `모니터 {n}개`. Standard loanword spellings (모니
 | rotate (token) | 교체 | |
 | clone | 복제 | |
 | Kuma | Uptime Kuma | product name, kept |
+| remote browser | 원격 브라우저 | |
+| real browser | 실제 브라우저 | |
+| headless | 헤드리스 | “헤드리스 Chromium” |
+| screenshot | 스크린샷 | |
+| game server | 게임 서버 | |
+| server reflection | 서버 리플렉션 | |
+| metadata | 메타데이터 | |
+| privacy password | 프라이버시 비밀번호 | SNMPv3 |
+| security level | 보안 수준 | |
+| engine ID | 엔진 ID | |
+| unlock | 잠금 해제 | |
+| password-protected page | 비밀번호로 보호된 페이지 | pill: 비밀번호 보호 |
+| page views | 페이지 조회수 | short: 조회수 |
+| unique visitors | 순 방문자 | |
+| referrer | 리퍼러 | “유입 사이트” in descriptions |
+| Tailscale peer | Tailscale 피어 | |
+| MOTD | MOTD | kept |
+| replica set | 레플리카 세트 | rarely used; `replicaSet` stays Latin |

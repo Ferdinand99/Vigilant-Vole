@@ -82,3 +82,23 @@ Plurals: one / few / many / other (other = genitive singular, e.g. `{n} мони
 | label (Docker) | метка | |
 | endpoint | эндпоинт | |
 | scope | область доступа | |
+| remote browser | удаленный браузер | headless Chromium; nav: «Удаленные браузеры» |
+| real browser | настоящий браузер | monitor type |
+| screenshot | скриншот | |
+| game server | игровой сервер | |
+| server reflection | рефлексия сервера | gRPC |
+| metadata (gRPC) | метаданные | |
+| privacy password (SNMPv3) | пароль шифрования | field label: «Конфиденциальность (шифрование)» |
+| security level | уровень безопасности | |
+| engine ID | ID движка | |
+| unlock | разблокировать | button |
+| password-protected page | страница под паролем | pill «Под паролем»; long: «защищена паролем» |
+| page views | просмотры страниц | |
+| unique visitors | уникальные посетители | |
+| referrer | источник | «Основные источники»; «сайты-источники» |
+| Tailscale peer | узел Tailscale | |
+| MOTD | MOTD | unchanged |
+| replica set | replicaSet | unchanged (URL parameter) |
+| headless | headless | kept in English with Chromium |
+| viewport | размер окна | options «Компьютер» / «Телефон» |
+| network idle | простой сети | |

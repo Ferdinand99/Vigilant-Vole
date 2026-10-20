@@ -81,6 +81,24 @@
 | agent | агент | |
 | channel | канал | |
 | secret | секрет | |
+| remote browser | віддалений браузер | |
+| real browser | справжній браузер | |
+| headless | headless | не перекладається |
+| screenshot | знімок екрана | |
+| game server | ігровий сервер | |
+| server reflection | server reflection | термін gRPC, не перекладається |
+| metadata | метадані | |
+| privacy password | пароль приватності | SNMPv3 |
+| security level | рівень безпеки | |
+| engine ID | engine ID | не перекладається |
+| unlock | розблокувати | |
+| password-protected page | сторінка, захищена паролем | у мітці «Захищено паролем» |
+| page views | перегляди сторінки | |
+| unique visitors | унікальні відвідувачі | |
+| referrer | джерело переходів | |
+| Tailscale peer | вузол Tailscale | |
+| MOTD | MOTD | не перекладається |
+| replica set | replicaSet | параметр, не перекладається |
 
 ## Стиль
 

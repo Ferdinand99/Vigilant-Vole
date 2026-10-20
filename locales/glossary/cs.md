@@ -69,6 +69,25 @@
 | degraded | omezený provoz | |
 | revoke | zrušit platnost | |
 | rotate | obnovit | token |
+| remote browser | vzdálený prohlížeč | |
+| real browser | skutečný prohlížeč | monitor type |
+| headless | bezhlavý | Chromium |
+| screenshot | snímek obrazovky | |
+| game server | herní server | |
+| server reflection | reflexe serveru | gRPC |
+| metadata | metadata | gRPC |
+| privacy password | heslo soukromí | SNMPv3; "Privacy" = Soukromí |
+| security level | úroveň zabezpečení | |
+| engine ID | ID enginu | |
+| unlock | odemknout | |
+| password-protected page | stránka chráněná heslem | pill: Chráněno heslem |
+| page views | zobrazení stránky | short: zobrazení |
+| unique visitors | unikátní návštěvníci | |
+| referrer | odkazující web | |
+| Tailscale peer | peer Tailscale | |
+| MOTD | MOTD | |
+| replica set | replicaSet | stays as option name |
+| viewport | zobrazená oblast | |
 
 ## Style
 - Address: neutral polite plural imperative ("Zadejte", "Vyberte"); no "Vy" sentences, no informal "ty".

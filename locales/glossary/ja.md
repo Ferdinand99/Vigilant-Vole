@@ -70,6 +70,24 @@
 | host | ホスト | |
 | port | ポート | |
 | server | サーバー | |
+| remote browser | リモートブラウザー | |
+| real browser | リアルブラウザー | monitor type |
+| screenshot | スクリーンショット | |
+| game server | ゲームサーバー | |
+| server reflection | サーバーリフレクション | gRPC |
+| metadata | メタデータ | gRPC |
+| privacy password | プライバシーパスワード | SNMPv3 |
+| security level | セキュリティレベル | |
+| engine ID | エンジンID | |
+| unlock | ロック解除 | button |
+| password-protected page | パスワードで保護されたページ | pill: パスワード保護 |
+| page views | ページビュー | short: 閲覧数 |
+| unique visitors | ユニーク訪問者 | |
+| referrer | リファラー | |
+| Tailscale peer | Tailscaleピア | |
+| MOTD | MOTD | untranslated |
+| replica set | レプリカセット | |
+| headless | ヘッドレス | |
 
 ## Style
 - Polite but concise: noun-ending labels for buttons and headings; です/ます for sentences. Addressing the reader is avoided (no お客様, no あなた).

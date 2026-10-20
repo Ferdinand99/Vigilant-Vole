@@ -70,6 +70,24 @@ Kuma = Uptime Kuma `pl.json`, used only as a word list.
 | slug | slug | technical, kept |
 | header | nagłówek | |
 | body | treść | request body = "treść żądania" |
+| remote browser | zdalna przeglądarka | |
+| real browser | prawdziwa przeglądarka | monitor type; "monitory prawdziwej przeglądarki" |
+| headless | bez interfejsu | "Chromium bez interfejsu" |
+| screenshot | zrzut ekranu | |
+| game server | serwer gier | |
+| server reflection | refleksja serwera | |
+| metadata | metadane | gRPC |
+| privacy password | hasło prywatności | SNMPv3 |
+| security level | poziom zabezpieczeń | SNMPv3 |
+| engine ID | ID silnika | SNMPv3 |
+| unlock | Odblokuj | button |
+| password-protected page | strona chroniona hasłem | pill "Chroniona hasłem" |
+| page views | wyświetlenia strony | |
+| unique visitors | unikalni odwiedzający | |
+| referrer | strona odsyłająca / źródło odwiedzin | heading "Główne źródła odwiedzin" |
+| Tailscale peer | peer Tailscale | |
+| MOTD | MOTD | kept |
+| replica set | replicaSet | kept as parameter; "węzeł główny" = primary |
 
 ## Style
 

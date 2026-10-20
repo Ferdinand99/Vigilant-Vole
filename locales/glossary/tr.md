@@ -78,6 +78,24 @@ Word list for Vigilant Vole. Kuma column notes only where we differ from Uptime 
 | container | kapsayıcı | Docker; "konteyner" avoided. |
 | clone | çoğalt | "Kopyala" is used for copy-to-clipboard. |
 | flapping alert | dalgalanma uyarısı | |
+| remote browser | uzak tarayıcı | Headless Chromium the server connects to. |
+| real browser | gerçek tarayıcı | Monitor type. |
+| headless | başsız | "Başsız Chromium". |
+| screenshot | ekran görüntüsü | |
+| game server | oyun sunucusu | |
+| server reflection | sunucu yansıtma | gRPC. |
+| metadata | meta veri | gRPC call metadata. |
+| privacy password | gizlilik parolası | SNMPv3. |
+| security level | güvenlik düzeyi | SNMPv3; protocol names stay English. |
+| engine ID | motor kimliği | |
+| unlock | kilidi aç | Button on a password-protected page. |
+| password-protected page | parola korumalı sayfa | Pill: "Parola korumalı". |
+| page views | sayfa görüntüleme | Short: "görüntüleme". |
+| unique visitors | tekil ziyaretçi | |
+| referrer | yönlendiren | "Yönlendiren siteler". |
+| Tailscale peer | Tailscale eşi | |
+| MOTD | MOTD | Kept in English. |
+| replica set | replicaSet | Connection-string option, kept in English. |
 
 ## Style
 

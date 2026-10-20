@@ -69,6 +69,24 @@
 | host | anfitrião | «Host» mantido em campos técnicos. |
 | draft / published | rascunho / publicado | |
 | severity | gravidade | |
+| remote browser | navegador remoto | «Navegador» para browser. |
+| real browser | navegador real | |
+| headless | headless | Mantido: «Chromium headless». |
+| screenshot | captura de ecrã | |
+| game server | servidor de jogos | Como «Servidor de jogos Steam». |
+| server reflection | server reflection | Termo gRPC mantido. |
+| metadata | metadados | |
+| privacy password | palavra-passe de privacidade | SNMPv3. |
+| security level | nível de segurança | |
+| engine ID | ID do motor | |
+| unlock | desbloquear | Botão: «Desbloquear». |
+| password-protected page | página protegida por palavra-passe | |
+| page views | visualizações de página | Curto: «visualizações». |
+| unique visitors | visitantes únicos | |
+| referrer | referenciador | |
+| Tailscale peer | par Tailscale | |
+| MOTD | MOTD | Mantido. |
+| replica set | replicaSet | Parâmetro mantido. |
 
 ## Estilo
 - Registo neutro: infinitivo ou terceira pessoa («Introduza o código»); nunca «tu», nunca gerúndio brasileiro («a carregar»).

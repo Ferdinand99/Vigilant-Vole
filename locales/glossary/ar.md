@@ -74,3 +74,22 @@ Monitor is treated as a masculine noun (مراقب); its plural is مراقبا�
 | resolved | تم الحل | |
 | host / server | مضيف / خادم | |
 | proxy | بروكسي | «وكيل» is already used for agent |
+| remote browser | متصفح بعيد (pl. المتصفحات البعيدة) | |
+| real browser | متصفح حقيقي | |
+| headless | بلا واجهة | e.g. «Chromium بلا واجهة» |
+| screenshot | لقطة شاشة | |
+| game server | خادم ألعاب | |
+| server reflection | server reflection | Latin, protocol feature |
+| metadata | البيانات الوصفية | |
+| privacy password | كلمة مرور الخصوصية | SNMPv3 |
+| security level | مستوى الأمان | |
+| engine ID | معرّف المحرك | |
+| unlock | فتح | button on the password page |
+| password-protected page | صفحة محمية بكلمة مرور | |
+| page views | مشاهدات الصفحة | short: المشاهدات |
+| unique visitors | الزوار الفريدون | |
+| referrer | موقع مُحيل (pl. المواقع المُحيلة) | |
+| Tailscale peer | نظير Tailscale | |
+| MOTD | MOTD | Latin |
+| replica set | replicaSet | stays Latin (URL option) |
+| selector | محدد | CSS selector: محدد CSS |

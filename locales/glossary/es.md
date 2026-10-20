@@ -77,3 +77,27 @@ Español neutro internacional. Kuma no se pudo consultar (sin acceso al archivo)
 - Nombres de producto y términos técnicos sin traducir (HTTP, TLS, DNS, SMTP, OAuth2, Docker, Prometheus…).
 - Plurales: `.one`, `.many` (múltiplos exactos de 1.000.000, «de monitores») y `.other`.
 - Textos de botones y pestañas cortos; sin signos de exclamación salvo en el original.
+
+## Términos añadidos (ronda 2)
+
+| English | Español | Nota |
+|---|---|---|
+| remote browser | navegador remoto | |
+| real browser | navegador real | |
+| headless | headless | sin traducir («Chromium headless») |
+| screenshot | captura de pantalla | |
+| game server | servidor de juegos | |
+| server reflection | reflexión del servidor | gRPC |
+| metadata | metadatos | gRPC |
+| privacy password | contraseña de privacidad | SNMPv3 |
+| security level | nivel de seguridad | |
+| engine ID | ID de motor | |
+| unlock | desbloquear | |
+| password-protected page | página protegida con contraseña | corto: «Con contraseña» |
+| page views | visualizaciones de página | corto: «visualizaciones» |
+| unique visitors | visitantes únicos | |
+| referrer | referente | sitio de origen |
+| Tailscale peer | peer de Tailscale | «peer» sin traducir |
+| MOTD | MOTD | sin traducir |
+| replica set | replicaSet | sin traducir (parámetro) |
+| viewport | ventana gráfica | |

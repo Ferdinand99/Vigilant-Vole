@@ -79,6 +79,24 @@ Aspas: “…” (e ‘…’ dentro). Maiúscula só no início da frase (sente
 | read only / read and write | somente leitura / leitura e gravação | |
 | check-in (push) | enviar sinal | não "se apresentar" |
 | powered by | Com tecnologia | |
+| remote browser | navegador remoto | |
+| real browser | navegador real | monitor que carrega a página em um Chromium |
+| headless | headless | termo técnico, não traduzido |
+| screenshot | captura de tela | |
+| game server | servidor de jogo | |
+| server reflection | reflexão do servidor | gRPC |
+| metadata | metadados | gRPC |
+| privacy password | senha de privacidade | SNMPv3 |
+| security level | nível de segurança | SNMPv3 |
+| engine ID | engine ID | SNMPv3, não traduzido |
+| unlock | Desbloquear | botão da página protegida |
+| password-protected page | página protegida por senha | |
+| page views | visualizações de página | |
+| unique visitors | visitantes únicos | |
+| referrer | referenciador | |
+| Tailscale peer | peer do Tailscale | "peer" não traduzido |
+| MOTD | MOTD | não traduzido |
+| replica set | replicaSet | termo do MongoDB, em código |
 
 ## Estilo
 - Plurais: `.one` para 0 e 1 ("{n} monitor"), `.many` para múltiplos exatos de 1.000.000 ("{n} de monitores"), `.other` nos demais ("{n} monitores").

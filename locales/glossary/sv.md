@@ -70,6 +70,26 @@
 | rotate token | byt token | |
 | broker (MQTT, Kafka) | broker | inte "mäklare" |
 | token | token (en) | bestämd form "tokenen"; plural oförändrat "token" |
+| remote browser | fjärrwebbläsare | |
+| real browser | riktig webbläsare | monitortyp |
+| headless | huvudlös | "huvudlös Chromium" |
+| screenshot | skärmbild | |
+| game server | spelserver | |
+| server reflection | server reflection | oöversatt teknisk term |
+| metadata | metadata | gRPC |
+| privacy password | sekretesslösenord | SNMPv3 |
+| security level | säkerhetsnivå | |
+| engine ID | motor-ID | |
+| unlock | lås upp | |
+| password-protected page | lösenordsskyddad sida | |
+| page views | sidvisningar | |
+| unique visitors | unika besökare | |
+| referrer | hänvisare | |
+| analytics | statistik | flik/inställningar |
+| Tailscale peer | Tailscale-peer | |
+| MOTD | MOTD | oöversatt |
+| replica set | replicaSet | kod, oöversatt |
+| network idle | nätverksvila | |
 
 ## Stil
 - Tilltal: informellt "du", naturliga imperativ ("Ange ett namn"). Aldrig "ni".

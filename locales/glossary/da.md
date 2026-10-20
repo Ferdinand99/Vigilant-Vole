@@ -87,3 +87,23 @@ Kilde: `locales/en.toml`. Ordforråd er sammenholdt med Uptime Kumas danske ord 
 | delete / remove | slet / fjern | slet = permanent, fjern = tag ud af liste |
 | preview | forhåndsvis | |
 | layout/theme | tema | |
+| remote browser | fjernbrowser | flertal "fjernbrowsere"; passer til "fjernagent" |
+| real browser | rigtig browser | "Overvågninger med rigtig browser" |
+| headless | headless | bevares (Chromium) |
+| screenshot | skærmbillede | |
+| game server | spilserver | |
+| server reflection | server reflection | bevares som teknisk term |
+| metadata | metadata | |
+| privacy password (SNMPv3) | privatlivsadgangskode | "Privatliv (kryptering)" for priv-protokol |
+| security level | sikkerhedsniveau | |
+| engine ID | engine-ID | |
+| unlock | lås op | |
+| password-protected page | adgangskodebeskyttet side | pille: "Adgangskodebeskyttet" |
+| page views | sidevisninger | "visninger" i korte mærkater |
+| unique visitors | unikke besøgende | |
+| referrer | henviser | flertal "henvisere" |
+| analytics | statistik | fane/overskrift; "Google Analytics" bevares |
+| Tailscale peer | Tailscale-peer | |
+| MOTD | MOTD | bevares |
+| replica set | replicaSet | bevares som parameter |
+| site ID | websted-ID | |

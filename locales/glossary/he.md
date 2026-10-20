@@ -74,6 +74,24 @@ Right-to-left. Technical terms and product names stay in Latin script.
 | record | רשומה | |
 | channel (Slack) | ערוץ | |
 | space | חלל | Webex/Chat |
+| remote browser | דפדפן מרוחק | |
+| real browser | דפדפן אמיתי | monitor type |
+| headless | ללא ממשק | "Chromium ללא ממשק" |
+| screenshot | צילום מסך | |
+| game server | שרת משחק | |
+| server reflection | server reflection | Latin, gRPC term |
+| metadata | Metadata | Latin, gRPC term |
+| privacy password | סיסמת פרטיות | SNMPv3 |
+| security level | רמת אבטחה | |
+| engine ID | Engine ID | Latin |
+| unlock | ביטול נעילה | button on password-protected page |
+| password-protected page | דף מוגן בסיסמה | |
+| page views | צפיות בדף | short: צפיות |
+| unique visitors | מבקרים ייחודיים | |
+| referrer | מפנה | "אתרים מפנים" |
+| Tailscale peer | עמית Tailscale | |
+| MOTD | MOTD | Latin |
+| replica set | replicaSet | Latin, as the URL option |
 
 ## Style
 - Modern Hebrew, gender-neutral: infinitive (להזין, לשמור) for buttons and actions; impersonal or noun phrases for sentences; masculine singular only when unavoidable.

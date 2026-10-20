@@ -66,6 +66,24 @@ Word list so every string uses one term per concept. Kuma column differences are
 | username | käyttäjätunnus | "user name" = käyttäjänimi |
 | recovery / authenticator app | todennussovellus | |
 | response | vaste | |
+| remote browser | etäselain | Settings → Etäselaimet |
+| real browser | oikea selain | Monitor type "Oikea selain" |
+| headless | headless | Kept in English ("headless-Chromium") |
+| screenshot | kuvakaappaus | |
+| game server | pelipalvelin | |
+| server reflection | palvelimen reflektio | English term in parentheses on first use |
+| metadata | metatiedot | gRPC metadata |
+| privacy password | yksityisyyssalasana | SNMPv3; authentication password = todennussalasana |
+| security level | suojaustaso | |
+| engine ID | moottorin tunnus | |
+| unlock | avaa lukitus | Button "Avaa lukitus" |
+| password-protected page | salasanasuojattu sivu | pill "Salasanasuojattu" |
+| page views | sivunäytöt | short: näytöt |
+| unique visitors | yksittäiset kävijät | |
+| referrer | viittaaja | |
+| Tailscale peer | Tailscale-vertainen | |
+| MOTD | MOTD | Kept in English |
+| replica set | replikajoukko | option name `replicaSet` unchanged |
 
 ## Style
 - Address: neutral. Imperatives and infinitives ("Valitse seuraimet", "Lisää kanava"), never "te"; "sinä" forms only when unavoidable ("sinun").

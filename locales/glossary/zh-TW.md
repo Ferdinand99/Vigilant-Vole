@@ -84,3 +84,21 @@ Dates: `2026年10月20日`, months `1月…12月`, durations `{n} 秒/分鐘/小
 | custom domain | 自訂網域 | |
 | appearance | 外觀 | |
 | theme auto/light/dark | 自動 / 淺色 / 深色 | |
+| remote browser | 遠端瀏覽器 | |
+| real browser | 真實瀏覽器 | monitor type |
+| headless | 無頭 | 無頭 Chromium |
+| screenshot | 螢幕截圖 | |
+| game server | 遊戲伺服器 | |
+| server reflection | server reflection | kept (gRPC term) |
+| metadata | 中繼資料 | |
+| privacy password | 隱私密碼 | SNMPv3 |
+| security level | 安全等級 | |
+| engine ID | 引擎 ID | |
+| unlock | 解鎖 | |
+| password-protected page | 受密碼保護的頁面 | pill: 受密碼保護 |
+| page views | 頁面瀏覽次數 | short: 瀏覽次數 |
+| unique visitors | 不重複訪客 | |
+| referrer | 參照來源 | |
+| Tailscale peer | Tailscale 對等節點 | |
+| MOTD | MOTD | kept |
+| replica set | replicaSet | kept (URI parameter) |

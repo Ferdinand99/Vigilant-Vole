@@ -80,3 +80,22 @@
 | host | hôte | |
 | port | port | |
 | proxy | proxy | |
+| remote browser | navigateur distant | |
+| real browser | navigateur réel | moniteur « Navigateur réel » |
+| headless | headless | gardé tel quel (« Chromium headless ») |
+| screenshot | capture d’écran | |
+| game server | serveur de jeu | |
+| server reflection | réflexion de serveur | gRPC |
+| metadata | métadonnées | gRPC |
+| privacy password | mot de passe de confidentialité | SNMPv3 |
+| security level | niveau de sécurité | SNMPv3 |
+| engine ID | ID de moteur | |
+| unlock | déverrouiller | « Déverrouiller » |
+| password-protected page | page protégée par mot de passe | |
+| page views | pages vues / vues | |
+| unique visitors | visiteurs uniques | |
+| referrer | référent | |
+| Tailscale peer | pair Tailscale | |
+| MOTD | MOTD | inchangé |
+| replica set | replicaSet | paramètre d’URL, inchangé |
+| analytics | statistiques | |
