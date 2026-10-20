@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.3.0...v0.4.0) (2026-10-20)
+
+
+### Features
+
+* bulk edit for monitors and "Copy for AI" on the API reference ([#11](https://github.com/Ferdinand99/Vigilant-Vole/issues/11)) ([48bace5](https://github.com/Ferdinand99/Vigilant-Vole/commit/48bace5e5bcca3b02570a46b6ce05919d6dcf374))
+* **deploy:** static Linux binaries, systemd installer and Proxmox LXC script ([804018b](https://github.com/Ferdinand99/Vigilant-Vole/commit/804018b0096d93f5ceeba619bc69ef2d876cf93b))
+
 ## [0.3.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.2.0...v0.3.0) (2026-10-20)
 
 
