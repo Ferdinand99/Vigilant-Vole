@@ -79,3 +79,8 @@ Kuma = Uptime Kuma `pl.json`, used only as a word list.
 - Sentence case; months and weekdays lower-case; dates "20 października 2026".
 - Plurals: one / few / many / other (other = genitive singular form, e.g. "{n} monitora").
 - Prefer short forms in tabs, buttons and pills ("Ponów" not "Spróbuj ponownie").
+- Plural bases: `.few` (2–4, not 12–14) uses nominative plural ("2 użytkownicy", "3 monitory"); `.many` (0, 5–21, …) genitive plural ("5 użytkowników"); `.other` (fractions) genitive singular.
+- Pointers to the Security page: "w sekcji Bezpieczeństwo" (nominative after "sekcji"), avoiding locative of page names. Same for "w sekcji Tokeny API".
+- Avoid gendered forms for the viewer ("zalogowany", "wiedział"); use impersonal phrasing ("sesja pozostanie aktywna", "aby było wiadomo").
+- Certificate/domain expiry in the past: "Termin minął {n} dni temu" (gender-neutral, serves cert and domain).
+- Raw/plain text encoding: "zwykły tekst".
