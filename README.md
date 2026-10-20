@@ -57,6 +57,9 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Groups and tags** — nest monitors under group monitors (status = worst child), colour-coded tags with values, search and filters, clone, and bulk actions: select monitors (or every one matching a filter) to pause, resume, delete or **edit them together** — remote agents, check interval and timing, notification channels and tags — also via `POST /api/v1/monitors/bulk`
 - **Maintenance windows** — manual, one-off, daily, weekly, every N days, days of the month (including “last day”) or a **cron expression** (any time zone, across midnight and DST changes); monitors record *maintenance* and stay quiet
 
+**AI assistants**
+- **MCP server** — connect your own Claude Code, Claude Desktop or any MCP client (`POST /mcp`, Streamable HTTP, or the `vigilant-vole mcp` stdio bridge) with an API token: a read token to ask what's down and why, a write token to pause monitors, post incident updates or start maintenance. Vigilant Vole never calls an AI itself; secrets are masked and nothing can delete data — see [docs/mcp.md](docs/mcp.md)
+
 **Alerting**
 - **24 notification providers**, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
 - **Smart alerting** — retries with a separate retry interval, upside-down mode, reminders every N down checks, **escalation** channels after N minutes down, **flap detection**, and recovery messages that say **how long it was down**
@@ -129,6 +132,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Prometheus metrics | ✅ (Kuma-compatible names + more) | ✅ |
 | Long-range uptime after retention | ✅ daily rollups | ✅ aggregate tables in 2.0 |
 | Import from the other one | ✅ reads `kuma.db` | – |
+| MCP server for AI assistants (read/write tokens) | ✅ | ❌ |
 | Interface languages | 26 (English, Norwegian, and 24 beta languages incl. ar, he, fa, ja, ko, zh, ru, uk) | **~50 languages** ✅ |
 | Built-in Cloudflare Tunnel | ❌ | ✅ |
 

@@ -54,6 +54,8 @@ API tokens only work under `/api/` and for `/metrics`; they can't open the web U
 | System | `GET /api/v1/me`, `GET /api/v1/health`, `GET /api/v1/agents`, `GET/PATCH /api/v1/settings`, `GET /api/v1/openapi.json` |
 | Configuration | `GET/POST /api/v1/config` — see [config-as-code](config-as-code.md) |
 
+AI assistants can use the same tokens against the MCP endpoint `POST /mcp`: see [mcp.md](mcp.md).
+
 Public and machine endpoints (no API token):
 
 | Endpoint | Auth | Purpose |

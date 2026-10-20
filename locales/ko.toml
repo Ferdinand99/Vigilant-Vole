@@ -1636,6 +1636,14 @@ disabled = "에이전트 비활성화됨. 토큰이 더 이상 작동하지 않�
 deleted = "에이전트 삭제됨"
 
 [integ]
+mcp_title = "MCP 및 AI 어시스턴트"
+mcp_sub = "내 AI 어시스턴트(Claude Code, Claude Desktop 등)가 모니터를 살펴보고, 허용하면 직접 조작할 수 있게 해요. Vigilant Vole은 AI를 직접 호출하지 않아요. 어시스턴트가 내 구독으로 이곳에 연결해요."
+mcp_address = "MCP 주소"
+mcp_claude_code = "Claude Code"
+mcp_desktop = "Claude Desktop 및 기타 앱"
+mcp_desktop_help = "stdio만 지원하는 앱은 vigilant-vole 프로그램을 브리지로 실행해 위 주소에 연결해요. 이 파일을 앱의 MCP 설정에 넣으세요."
+mcp_safe_title = "읽기 토큰으로 시작하세요"
+mcp_safe_text = "읽기 토큰은 볼 수만 있어요. 어시스턴트가 무언가를 바꾸게 하고 싶을 때만 쓰기 토큰을 만드세요. 이 경우 내 역할의 권한으로 동작해요. 데이터 삭제나 사용자, 설정, 토큰, 백업 변경은 어떤 경우에도 할 수 없어요."
 sub = "모니터링할 컨테이너를 자동으로 찾고 Prometheus와 Grafana로 메트릭을 보내요."
 docker = "Docker 검색"
 docker_sub_1 = "다음 라벨이 있는 컨테이너가 모니터가 돼요:"

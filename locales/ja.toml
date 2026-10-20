@@ -1635,6 +1635,14 @@ disabled = "エージェントを無効にしました。トークンは使え�
 deleted = "エージェントを削除しました"
 
 [integ]
+mcp_title = "MCPとAIアシスタント"
+mcp_sub = "お使いのAIアシスタント（Claude Code、Claude Desktopなど）にモニターを見てもらい、許可すれば操作もさせられます。Vigilant Vole自身がAIを呼び出すことはありません。アシスタントがご自身のサブスクリプションでここに接続します。"
+mcp_address = "MCPアドレス"
+mcp_claude_code = "Claude Code"
+mcp_desktop = "Claude Desktopなどのアプリ"
+mcp_desktop_help = "stdioにしか対応しないアプリは、上のアドレスへのブリッジとしてvigilant-voleプログラムを起動します。ファイルをアプリのMCP設定に入れてください。"
+mcp_safe_title = "まずは読み取りトークンから"
+mcp_safe_text = "読み取りトークンは閲覧しかできません。アシスタントに変更させたいときだけ書き込みトークンを作成してください。その場合、あなたのロールの権限で動作します。データの削除や、ユーザー・設定・トークン・バックアップの変更はできません。"
 sub = "監視するコンテナを自動で検出し、メトリクスを Prometheus と Grafana に送信します。"
 docker = "Docker検出"
 docker_sub_1 = "次のラベルを持つコンテナーがモニターになります:"

@@ -698,6 +698,9 @@ struct IntegrationsTemplate {
     metrics_url: String,
     scrape_config: String,
     compose_example: String,
+    mcp_url: String,
+    mcp_claude_code: String,
+    mcp_desktop: String,
     labels: Vec<(&'static str, &'static str, &'static str)>,
 }
 
@@ -726,6 +729,18 @@ pub fn scrape_config(base_url: &str) -> String {
     )
 }
 
+/// `claude mcp add …` for Claude Code, with a placeholder for the token.
+pub fn mcp_claude_code_command(base_url: &str) -> String {
+    format!("claude mcp add --transport http vigilant-vole {base_url}/mcp --header \"Authorization: Bearer vv_YOUR_API_TOKEN\"")
+}
+
+/// Config for Claude Desktop and other stdio-only clients (the bridge).
+pub fn mcp_desktop_config(base_url: &str) -> String {
+    format!(
+        "{{\n  \"mcpServers\": {{\n    \"vigilant-vole\": {{\n      \"command\": \"vigilant-vole\",\n      \"args\": [\"mcp\", \"--url\", \"{base_url}\"],\n      \"env\": {{ \"VV_MCP_TOKEN\": \"vv_YOUR_API_TOKEN\" }}\n    }}\n  }}\n}}\n"
+    )
+}
+
 async fn integrations_page(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -747,6 +762,9 @@ async fn integrations_page(
         metrics_url: format!("{base}/metrics"),
         scrape_config: scrape_config(&base),
         compose_example: discovery::COMPOSE_EXAMPLE.to_string(),
+        mcp_url: format!("{base}/mcp"),
+        mcp_claude_code: mcp_claude_code_command(&base),
+        mcp_desktop: mcp_desktop_config(&base),
         labels: discovery::LABEL_REFERENCE
             .iter()
             .map(|(name, example, help)| {
@@ -1046,5 +1064,19 @@ mod tests {
         assert!(cfg.contains("scheme: https"));
         assert!(cfg.contains("metrics_path: /vv/metrics"));
         assert!(cfg.contains("targets: [\"status.example.com\"]"));
+    }
+
+    #[test]
+    fn mcp_setup_snippets_use_the_public_address_and_a_token_placeholder() {
+        let cmd = mcp_claude_code_command("https://status.example.com");
+        assert_eq!(
+            cmd,
+            "claude mcp add --transport http vigilant-vole https://status.example.com/mcp --header \"Authorization: Bearer vv_YOUR_API_TOKEN\""
+        );
+        let cfg: serde_json::Value = serde_json::from_str(&mcp_desktop_config("https://status.example.com")).expect("valid JSON");
+        let server = &cfg["mcpServers"]["vigilant-vole"];
+        assert_eq!(server["command"], "vigilant-vole");
+        assert_eq!(server["args"], serde_json::json!(["mcp", "--url", "https://status.example.com"]));
+        assert_eq!(server["env"]["VV_MCP_TOKEN"], "vv_YOUR_API_TOKEN");
     }
 }
