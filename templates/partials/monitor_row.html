@@ -24,7 +24,7 @@
   </div>
   <div class="list-beats">{{ m::heartbeat_bar(&r.recent, tr("dashboard.recent_checks_oldest")) }}</div>
   <div class="list-value">
-    <strong>{{ r.uptime_label }}</strong>
+    <strong><bdi>{{ r.uptime_label }}</bdi></strong>
     <small>{{ tr("dashboard.h24") }}</small>
   </div>
   <div class="list-value hide-sm">

@@ -247,6 +247,44 @@ html {
     scroll-behavior: smooth;
   }
 }
+/* CJK typography (ja, ko, zh-CN, zh-TW). Inter has no CJK glyphs, so Latin stays in Inter and CJK
+   falls back to the platform's regional font; the lang attribute on <html> picks the glyph variant. */
+:root:lang(ja) {
+  --font: "InterVariable", "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", "IPAexGothic", "IPAPGothic", system-ui, sans-serif;
+}
+:root:lang(ko) {
+  --font: "InterVariable", "Inter", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic", system-ui, sans-serif;
+}
+:root:lang(zh-CN) {
+  --font: "InterVariable", "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", system-ui, sans-serif;
+}
+:root:lang(zh-TW) {
+  --font: "InterVariable", "Inter", "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", "Noto Sans TC", "WenQuanYi Zen Hei", system-ui, sans-serif;
+}
+/* Tracking tuned for Latin looks cramped on ideographs: reset it everywhere, including descendants. */
+:is(:lang(ja), :lang(ko), :lang(zh)),
+:is(:lang(ja), :lang(ko), :lang(zh)) * {
+  letter-spacing: 0 !important;
+}
+/* Han/kana/hangul need more leading than Latin; the Latin-tuned headline heights are too tight. */
+:is(:lang(ja), :lang(ko), :lang(zh)) h1,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-large-title { line-height: 1.3; }
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-title1 { line-height: 1.35; }
+:is(:lang(ja), :lang(ko), :lang(zh)) h2,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-title2 { line-height: 1.4; }
+:is(:lang(ja), :lang(ko), :lang(zh)) h3,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-title3 { line-height: 1.45; }
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-callout,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-footnote,
+:is(:lang(ja), :lang(ko), :lang(zh)) .t-caption { line-height: 1.55; }
+/* Japanese and Chinese break between any two characters; use the strict kinsoku rules. */
+:is(:lang(ja), :lang(zh)) body { line-break: strict; }
+/* Japanese: break at phrase boundaries (Chromium 119+), so "継続中" is not split. Ignored elsewhere. */
+:lang(ja) body { word-break: auto-phrase; }
+/* Korean separates words with spaces: break there, not inside a word (overflow-wrap is the safety net). */
+:lang(ko) body { word-break: keep-all; overflow-wrap: anywhere; }
+/* CJK has no italic; keep the upright glyphs instead of a synthesised slant. */
+:is(:lang(ja), :lang(ko), :lang(zh)) :is(em, i, cite, address, dfn) { font-style: normal; }
 body {
   margin: 0;
   min-height: 100dvh;
@@ -4420,4 +4458,53 @@ html.is-sorting * {
 [dir="rtl"] .btn[hx-get="/settings/notifications/providers"] > .icon,
 [dir="rtl"] .icon-flip {
   transform: scaleX(-1);
+}
+
+/* RTL scripts: fonts, joining and bidi isolation ------------------------------ */
+/* Inter stays first for Latin; Arabic/Hebrew glyphs fall through to system fonts. */
+:lang(ar),
+:lang(fa) {
+  --font: "InterVariable", "Inter", "Segoe UI", "Noto Sans Arabic", "Noto Naskh Arabic", Tahoma, "Geeza Pro", "SF Arabic", system-ui, -apple-system, Arial, sans-serif;
+}
+:lang(he) {
+  --font: "InterVariable", "Inter", "Segoe UI", "Arial Hebrew", "Noto Sans Hebrew", system-ui, -apple-system, Arial, sans-serif;
+}
+/* Any letter-spacing (negative or positive) breaks Arabic letter joining. */
+:lang(ar) *,
+:lang(fa) *,
+:lang(he) * {
+  letter-spacing: 0 !important;
+}
+:lang(ar) body,
+:lang(fa) body {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+/* Technical strings stay left-to-right inside right-to-left text. */
+code,
+kbd,
+samp,
+.mono,
+.textarea-code,
+input[type="url"],
+input[type="email"],
+input[type="number"],
+input[type="password"] {
+  unicode-bidi: isolate;
+}
+[dir="rtl"] input[type="url"],
+[dir="rtl"] input[type="email"],
+[dir="rtl"] input[type="number"],
+[dir="rtl"] input[type="password"],
+[dir="rtl"] .textarea-code {
+  direction: ltr;
+  text-align: end;
+}
+/* Latin placeholders ("Ada Lovelace…") keep their trailing ellipsis on the right. */
+[dir="rtl"] ::placeholder {
+  unicode-bidi: plaintext;
+}
+/* The strips above run oldest to newest, left to right; keep their captions in step. */
+.uptime-legend {
+  direction: ltr;
 }

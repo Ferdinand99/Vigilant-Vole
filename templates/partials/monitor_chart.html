@@ -31,7 +31,7 @@
       <polyline class="chart-line" points="{{ s.line }}"></polyline>
       {%- endfor %}
     </svg>
-    <div class="chart-scale" aria-hidden="true"><span>{{ chart.max_label }}</span><span>{{ millis(0) }}</span></div>
+    <div class="chart-scale" aria-hidden="true"><span><bdi>{{ chart.max_label }}</bdi></span><span><bdi>{{ millis(0) }}</bdi></span></div>
   </div>
   <div class="chart-axis" aria-hidden="true"><span>{{ chart.range.axis_start() }}</span><span>{{ tr("common.now") }}</span></div>
   {%- if chart.has_down_band || chart.has_maintenance_band %}

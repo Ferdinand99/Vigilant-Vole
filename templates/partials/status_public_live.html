@@ -61,7 +61,7 @@
         </span>
         <span class="list-trail">
           {%- if let Some(ms) = mon.response_label() %}
-          <span class="list-value hide-sm"><strong>{{ ms }}</strong><small>{{ tr("dashboard.response") }}</small></span>
+          <span class="list-value hide-sm"><strong><bdi>{{ ms }}</bdi></strong><small>{{ tr("dashboard.response") }}</small></span>
           {%- endif %}
           <span class="pill status-{{ mon.status.class() }}"><span class="dot"></span>{{ mon.status.label() }}</span>
         </span>
@@ -70,7 +70,7 @@
           <div class="uptime-days" role="img" aria-label="{{ tr1("detail.days_aria", "value", mon.uptime_label()) }}">
             {%- for d in mon.days %}<span class="uptime-day {{ d.class }}" data-tip="{{ d.tip }}"></span>{% endfor -%}
           </div>
-          <div class="uptime-legend"><span class="hide-sm">{{ tr("detail.days_ago_90") }}</span><span class="show-sm">{{ tr("detail.days_ago_45") }}</span><span>{{ mon.uptime_label() }}</span><span>{{ tr("common.today") }}</span></div>
+          <div class="uptime-legend"><span class="hide-sm">{{ tr("detail.days_ago_90") }}</span><span class="show-sm">{{ tr("detail.days_ago_45") }}</span><span><bdi>{{ mon.uptime_label() }}</bdi></span><span>{{ tr("common.today") }}</span></div>
         </div>
         {%- endif %}
       </li>
