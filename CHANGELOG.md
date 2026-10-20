@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.2.0...v0.3.0) (2026-10-20)
+
+
+### Features
+
+* **i18n:** 24 new interface languages, incl. right-to-left and CJK ([#8](https://github.com/Ferdinand99/Vigilant-Vole/issues/8)) ([ad67acd](https://github.com/Ferdinand99/Vigilant-Vole/commit/ad67acd78824748e5b2d098f06a7f392b098c5f5))
+* SQL Server, MongoDB, real-browser, gRPC keyword, game server and Tailscale monitors; SNMPv3; status page logo, password and analytics ([#6](https://github.com/Ferdinand99/Vigilant-Vole/issues/6)) ([d464f5d](https://github.com/Ferdinand99/Vigilant-Vole/commit/d464f5d11ae671442e6088e40d0114dad10369fb))
+
 ## [0.2.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.1.0...v0.2.0) (2026-10-20)
 
 
