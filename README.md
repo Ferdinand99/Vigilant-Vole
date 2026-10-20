@@ -72,7 +72,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Backup and restore** — consistent database snapshot download, restore on next start
 - **Multi-user with roles** (admin, editor, viewer), **TOTP 2FA** with recovery codes, **API tokens** (read/write, expiring)
 - **Data retention** with daily rollups — long-range uptime survives deleting old heartbeats
-- **11 interface languages**, chosen per user: English, Norwegian (bokmål), German, French, Spanish, Italian, Dutch, Brazilian Portuguese, Polish, Swedish and Danish. The nine newest are marked beta; [help improve a translation](docs/translating.md). Plural rules, number and date formats follow each language, and the layout is ready for right-to-left languages
+- **26 interface languages**, chosen per user: English, Norwegian (bokmål), Arabic, Chinese (Simplified and Traditional), Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Korean, Persian, Polish, Portuguese (Brazil and Portugal), Romanian, Russian, Spanish, Swedish, Turkish and Ukrainian. All but English and Norwegian are marked beta; [help improve a translation](docs/translating.md). Plural rules (including few/many and Arabic's six forms), number, digit and date formats follow each language, and Arabic, Hebrew and Persian run right-to-left
 - **Live dashboard** over Server-Sent Events, Apple-style UI in light and dark, works on a phone, installable as a PWA
 - **Tiny** — one ~32 MB static binary, ~18 MB compressed image, a few MB of RAM idle
 
@@ -123,10 +123,10 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Prometheus metrics | ✅ (Kuma-compatible names + more) | ✅ |
 | Long-range uptime after retention | ✅ daily rollups | ✅ aggregate tables in 2.0 |
 | Import from the other one | ✅ reads `kuma.db` | – |
-| Interface languages | 11 (English, Norwegian, and 9 beta languages: de, fr, es, it, nl, pt-BR, pl, sv, da) | **~50 languages** ✅ |
+| Interface languages | 26 (English, Norwegian, and 24 beta languages incl. ar, he, fa, ja, ko, zh, ru, uk) | **~50 languages** ✅ |
 | Built-in Cloudflare Tunnel, remote browsers | ❌ | ✅ |
 
-If you need SQL Server/MongoDB/browser monitors or a language outside the eleven above, Kuma is the better fit today.
+If you need SQL Server/MongoDB/browser monitors or a language outside the 26 above, Kuma is the better fit today.
 
 ## 🚀 Quick start
 
@@ -365,7 +365,7 @@ curl -X POST -H "Authorization: Bearer vv_…" -H "Content-Type: application/yam
 
 ## 🌐 Translations
 
-The interface comes in English, Norwegian (bokmål), German, French, Spanish, Italian, Dutch, Brazilian Portuguese, Polish, Swedish and Danish. Everyone picks their own language under **Settings → Security**, admins set the default under **Settings → General**, and public status pages follow the visitor's `Accept-Language`. The newest nine are labelled *beta* until native speakers have reviewed them.
+The interface comes in English, Norwegian (bokmål), Arabic, Chinese (Simplified and Traditional), Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Korean, Persian, Polish, Portuguese (Brazil and Portugal), Romanian, Russian, Spanish, Swedish, Turkish and Ukrainian. Everyone picks their own language under **Settings → Security**, admins set the default under **Settings → General**, and public status pages follow the visitor's `Accept-Language`. Every language except English and Norwegian is labelled *beta* until native speakers have reviewed it; all of them cover 100 % of the strings. Arabic, Hebrew and Persian switch the whole layout to right-to-left (numbers, URLs, code and product names stay left-to-right), and Persian uses Persian digits.
 
 Found a clumsy phrase, or want to add a language? Strings live in plain files, one per language, so a fix is a one-line change: see **[Helping with translations](docs/translating.md)**.
 
@@ -480,7 +480,7 @@ Done:
 - [x] REST API + OpenAPI, config as code, backup/restore
 - [x] Uptime Kuma importer, Prometheus metrics
 - [x] Docker label discovery
-- [x] English, Norwegian and nine more UI languages (beta), right-to-left ready
+- [x] 26 UI languages (24 beta), including right-to-left (ar, he, fa) and CJK (ja, ko, zh-CN, zh-TW)
 
 Ideas, not promises:
 

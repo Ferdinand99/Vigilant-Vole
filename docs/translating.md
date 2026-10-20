@@ -43,18 +43,27 @@ language has exactly those:
 | French-like | fr, pt-BR | `one`, `many`, `other` | `one` is 0 and 1; `many` is whole millions ("1 000 000 **de** moniteurs") |
 | Spanish-like | es, it | `one`, `many`, `other` | `one` is exactly 1; `many` is whole millions |
 | Polish | pl | `one`, `few`, `many`, `other` | `one` is 1; `few` ends in 2–4 but not 12–14; `many` is the rest of the integers; `other` is the fraction/fallback form |
+| East Slavic | ru, uk | `one`, `few`, `many`, `other` | `one` ends in 1 but not 11; `few` ends in 2–4 but not 12–14; `many` is the rest (0, 5–20, 25–30 …); `other` is the fraction form (use the genitive singular) |
+| Czech | cs | `one`, `few`, `many`, `other` | `one` is 1; `few` is 2–4; whole numbers 0 and 5+ use `other` (genitive plural); `many` is the fraction form (genitive singular), so it is never reached for the integer counts in the app but is kept for completeness |
+| Romanian | ro | `one`, `few`, `other` | `one` is 1; `few` is 0 and numbers ending 02–19 ("{n} monitoare"); `other` is 20+ ("{n} **de** monitoare") |
+| Hebrew | he | `one`, `two`, `other` | `one` is 1, `two` is 2 |
+| Arabic | ar | `zero`, `one`, `two`, `few`, `many`, `other` | 0; 1; 2; last two digits 03–10; last two digits 11–99; the rest (100–102, 200–202 …) |
+| Zero-or-one | fa | `one`, `other` | `one` is 0 and 1 |
+| Portuguese (Portugal) | pt-PT | `one`, `many`, `other` | like Spanish-like: `one` is exactly 1 (0 is `other`) |
+| No plurals | ja, ko, zh-CN, zh-TW | `other` | one form for every count |
+| one / other | fi, tr, hu | `one`, `other` | `one` is exactly 1 (Turkish and Hungarian nouns stay singular, so both forms read the same) |
 
-The rules for East Slavic (ru, uk), Czech/Slovak, Arabic and languages without plurals exist in
-`src/i18n/lang.rs` already, and the key set accepts `.zero`, `.one`, `.two`, `.few`, `.many` and `.other`.
-`other` is always required: it is also the fallback for any category a file leaves out.
+`other` is always required: it is also the fallback for any category a file leaves out. To add a family, add a
+variant to `PluralRule` in `src/i18n/lang.rs` (its `category` arm, its `categories`, and a test vector).
 
 ### Dates, durations and numbers (`[fmt]`)
 
 The `[fmt]` section holds what is language-specific about formatting: month and weekday names (lists separated by
 `|`, exactly 12 and 7 entries, Monday first), date patterns (`{day}`, `{month}`, `{year}`, `{time}`, …), duration
 units (`{n} min`), compact units for notifications (`{n}h`) and relative-time phrases (`{span} ago`). Decimal and
-thousands separators and the space before `%` follow CLDR and live in the language registry
-(`src/i18n/lang.rs`).
+thousands separators, the position of and space around `%`, and the digit set (Persian digits for `fa`; the other
+languages, Arabic included, use 0–9) follow CLDR and live in the language registry (`src/i18n/lang.rs`). Dates are
+Gregorian everywhere. CJK patterns carry no spaces (`2026年10月20日`), and `{span}` stays a plain number plus unit.
 
 ## Add a language
 
@@ -70,7 +79,8 @@ thousands separators and the space before `%` follow CLDR and live in the langua
    headings must not overflow. Shorten the translation rather than changing the design.
 
 The language then shows up in both pickers, in `Accept-Language` negotiation (regions and reserves resolve to the
-closest language: `pt` and `pt-PT` give `pt-BR`, `de-AT` gives `de`) and in every `<html lang>`.
+closest language: `pt` gives `pt-BR`, `pt-PT`/`pt-AO` give `pt-PT`, `de-AT` gives `de`, `zh` and `zh-SG` give
+`zh-CN`, `zh-Hant`/`zh-HK`/`zh-MO` give `zh-TW`, `iw` gives `he`) and in every `<html lang>`.
 
 ### Right-to-left languages
 
