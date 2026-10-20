@@ -104,7 +104,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | MQTT, Kafka, RabbitMQ, gRPC health checks, RADIUS, SNMP v1/v2c, SMTP, TLS handshake | ✅ | ✅ (no TLS-handshake type) |
 | gRPC keyword calls, SNMPv3, GameDig, Tailscale | ❌ | ✅ |
 | Real-browser (headless Chrome) monitor | ❌ | ✅ |
-| HTTP auth | Basic auth | Basic, NTLM, mTLS, OAuth2 client credentials ✅ |
+| HTTP auth | Basic, OAuth2 client credentials, mTLS ✅ | Basic, NTLM, mTLS, OAuth2 client credentials ✅ |
 | Notification providers | 24 native + Apprise (90+ services) | **90+ native** ✅ |
 | Reminders (resend while down) | ✅ | ✅ |
 | Escalation channels after N minutes | ✅ | ❌ |
@@ -477,13 +477,13 @@ Done:
 
 Ideas, not promises:
 
-- [ ] Database monitors (PostgreSQL, MySQL/MariaDB, Redis, MongoDB) and MQTT
+- [ ] More monitor types: SQL Server, MongoDB, SNMPv3, gRPC keyword calls, common GameDig games
 - [ ] Status page subscribers (email/webhook)
 - [ ] Incident update timelines
 - [ ] Status page logo upload
 - [ ] MariaDB/PostgreSQL as an alternative storage backend
 - [ ] More interface languages (contributions welcome — see `locales/`)
-- [ ] More HTTP auth methods (mTLS, OAuth2 client credentials)
+- [ ] NTLM HTTP authentication
 - [ ] Published multi-arch images
 
 ## 📄 License

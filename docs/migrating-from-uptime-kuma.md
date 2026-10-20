@@ -91,7 +91,7 @@ or a **Webhook** instead. Notes:
 
 | Kuma feature | Why / what to do |
 |---|---|
-| MQTT, Kafka producer, SQL Server, PostgreSQL, MySQL/MariaDB, MongoDB, Redis, RADIUS, gRPC keyword, SNMP, RabbitMQ, SMTP monitors | Not supported yet. Skipped and listed. |
+| SQL Server, MongoDB, gRPC keyword and SNMPv3 monitors | Not supported yet. Skipped and listed. |
 | GameDig | Not supported; Source-engine game servers can use the Steam type. |
 | Tailscale ping | Use a ping monitor on the Tailscale address. |
 | Manual monitors | Use a push monitor. |
