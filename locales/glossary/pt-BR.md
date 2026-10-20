@@ -25,7 +25,7 @@ Aspas: “…” (e ‘…’ dentro). Maiúscula só no início da frase (sente
 | notification channel | canal de notificação | |
 | notifications | notificações | |
 | alert | alerta | |
-| escalation | escalonamento | |
+| escalation | escalonamento (em rótulos curtos: escalada) | |
 | flapping | oscilando / oscilação | monitor que alterna entre no ar e fora do ar |
 | retry / retries | nova tentativa / novas tentativas | igual ao Kuma |
 | push monitor | monitor push | "Push" fica em inglês |

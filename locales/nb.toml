@@ -788,6 +788,7 @@ err_footer_long = "Bunnteksten kan ha høyst {max} tegn."
 err_css = "Egen CSS kan ikke inneholde «</style», «<script» eller HTML-kommentarer."
 err_css_long = "Egen CSS må være under 64 KB."
 default_section = "Tjenester"
+already_here = "Allerede i denne seksjonen"
 
 [inc]
 title_placeholder = "Treg respons fra API-et…"

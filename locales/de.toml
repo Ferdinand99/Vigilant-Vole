@@ -785,6 +785,7 @@ err_footer_long = "Die Fußzeile darf höchstens {max} Zeichen lang sein."
 err_css = "Eigenes CSS darf „</style“, „<script“ oder HTML-Kommentare nicht enthalten."
 err_css_long = "Eigenes CSS darf höchstens 64 KB groß sein."
 default_section = "Dienste"
+already_here = "Bereits in diesem Bereich"
 
 [inc]
 title_placeholder = "Langsame Antworten der API …"

@@ -807,6 +807,7 @@ err_footer_long = "Usa al massimo {max} caratteri per il piè di pagina."
 err_css = "Il CSS personalizzato non può contenere «</style», «<script» o commenti HTML."
 err_css_long = "Mantieni il CSS personalizzato sotto i 64 KB."
 default_section = "Servizi"
+already_here = "Già in questa sezione"
 
 [inc]
 title_placeholder = "Risposte lente dall’API…"

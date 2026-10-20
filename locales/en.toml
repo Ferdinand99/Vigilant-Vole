@@ -788,6 +788,7 @@ err_footer_long = "Keep the footer to {max} characters or fewer."
 err_css = "Custom CSS can’t contain “</style”, “<script” or HTML comments."
 err_css_long = "Keep custom CSS under 64 KB."
 default_section = "Services"
+already_here = "Already on this section"
 
 [inc]
 title_placeholder = "Slow responses from the API…"

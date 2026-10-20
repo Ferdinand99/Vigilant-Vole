@@ -786,6 +786,7 @@ err_footer_long = "Gebruik maximaal {max} tekens voor de voettekst."
 err_css = "Eigen CSS mag geen “</style”, “<script” of HTML-commentaar bevatten."
 err_css_long = "Houd eigen CSS onder 64 KB."
 default_section = "Diensten"
+already_here = "Staat al in deze sectie"
 
 [inc]
 title_placeholder = "Trage reacties van de API…"

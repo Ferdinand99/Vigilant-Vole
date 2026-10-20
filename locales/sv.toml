@@ -785,6 +785,7 @@ err_footer_long = "Håll sidfoten på högst {max} tecken."
 err_css = "Egen CSS får inte innehålla ”</style”, ”<script” eller HTML-kommentarer."
 err_css_long = "Håll egen CSS under 64 KB."
 default_section = "Tjänster"
+already_here = "Redan i det här avsnittet"
 
 [inc]
 title_placeholder = "Långsamma svar från API:et…"

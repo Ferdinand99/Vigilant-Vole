@@ -831,6 +831,7 @@ err_footer_long = "Stopka może mieć najwyżej {max} znaków."
 err_css = "Własny CSS nie może zawierać „</style”, „<script” ani komentarzy HTML."
 err_css_long = "Własny CSS może mieć najwyżej 64 KB."
 default_section = "Usługi"
+already_here = "Już w tej sekcji"
 
 [inc]
 title_placeholder = "Wolne odpowiedzi z API…"
@@ -892,7 +893,7 @@ description_help = "Wyświetlany na stronach statusu. Obsługuje **pogrubienie**
 schedule_section = "Harmonogram"
 repeats = "Powtarzanie"
 manual = "Ręcznie"
-once = "Jednorazowo"
+once = "Raz"
 daily = "Codziennie"
 weekly = "Co tydzień"
 in_effect = "Obowiązuje teraz"

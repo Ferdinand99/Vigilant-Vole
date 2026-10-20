@@ -406,7 +406,7 @@ no_channels_text = "Adicione Discord, Slack, e-mail ou um dos outros 19 serviço
 setup_notifications = "Configurar notificações"
 channel_off = "Desativado nas configurações"
 alerts_to = "Alertas para {name}"
-escalation = "Escalonamento"
+escalation = "Escalada"
 remind_every = "Lembrar a cada"
 checks_unit = "verificações"
 remind_help = "Enquanto continuar fora do ar. Com 0, envia um único alerta."
@@ -807,6 +807,7 @@ err_footer_long = "Use no máximo {max} caracteres no rodapé."
 err_css = "O CSS personalizado não pode conter “</style”, “<script” nem comentários HTML."
 err_css_long = "Use menos de 64 KB no CSS personalizado."
 default_section = "Serviços"
+already_here = "Já está nesta seção"
 
 [inc]
 title_placeholder = "Respostas lentas da API…"

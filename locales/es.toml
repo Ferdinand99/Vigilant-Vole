@@ -806,6 +806,7 @@ err_footer_long = "El pie de página debe tener {max} caracteres o menos."
 err_css = "El CSS personalizado no puede contener «</style», «<script» ni comentarios HTML."
 err_css_long = "El CSS personalizado debe ocupar menos de 64 KB."
 default_section = "Servicios"
+already_here = "Ya está en esta sección"
 
 [inc]
 title_placeholder = "Respuestas lentas de la API…"

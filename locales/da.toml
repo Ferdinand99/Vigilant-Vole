@@ -787,6 +787,7 @@ err_footer_long = "Hold sidefoden på højst {max} tegn."
 err_css = "Egen CSS kan ikke indeholde »</style«, »<script« eller HTML-kommentarer."
 err_css_long = "Hold egen CSS under 64 KB."
 default_section = "Tjenester"
+already_here = "Allerede i dette afsnit"
 
 [inc]
 title_placeholder = "Langsomme svar fra API’et…"
