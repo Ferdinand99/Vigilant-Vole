@@ -1,4 +1,4 @@
-//! Locale catalogs: `locales/*.toml`, compiled in and parsed once.
+//! Locale catalogs: `locales/<code>.toml`, compiled in and parsed once.
 //!
 //! The files use a small TOML subset: `[section]` headers (dotted names
 //! allowed), `key = "value"` lines with `\"`, `\\`, `\n` and `\u{…}`-free
@@ -8,26 +8,26 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use super::Lang;
+use super::lang::LANGS;
 
-pub(super) const SOURCES: [(Lang, &str); 2] = [
-    (Lang::En, include_str!("../../locales/en.toml")),
-    (Lang::Nb, include_str!("../../locales/nb.toml")),
-];
+pub(super) type Catalog = HashMap<String, String>;
 
-type Catalog = HashMap<String, String>;
+static CATALOGS: OnceLock<Vec<Catalog>> = OnceLock::new();
 
-static CATALOGS: OnceLock<[Catalog; 2]> = OnceLock::new();
-
-fn catalogs() -> &'static [Catalog; 2] {
+/// One parsed catalog per registered language, in registry order.
+fn catalogs() -> &'static [Catalog] {
     CATALOGS.get_or_init(|| {
-        SOURCES.map(|(lang, src)| {
-            parse(src).unwrap_or_else(|err| {
-                // The test suite parses every catalog, so this only happens
-                // with a hand-edited release build.
-                tracing::error!(lang = lang.code(), %err, "invalid locale file");
-                HashMap::new()
+        LANGS
+            .iter()
+            .map(|info| {
+                parse(info.source).unwrap_or_else(|err| {
+                    // The test suite parses every catalog, so this only happens
+                    // with a hand-edited release build.
+                    tracing::error!(lang = info.code, %err, "invalid locale file");
+                    HashMap::new()
+                })
             })
-        })
+            .collect()
     })
 }
 
@@ -49,6 +49,12 @@ pub(super) fn keys_with_prefix(lang: Lang, prefix: &str) -> Vec<&'static str> {
 #[cfg(test)]
 pub(super) fn all(lang: Lang) -> &'static Catalog {
     &catalogs()[lang.index()]
+}
+
+/// The text of a locale file as compiled in (tests re-parse it).
+#[cfg(test)]
+pub(super) fn source(lang: Lang) -> &'static str {
+    lang.info().source
 }
 
 /// Parses one locale file. Errors name the 1-based line.

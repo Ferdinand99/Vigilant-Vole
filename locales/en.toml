@@ -113,6 +113,31 @@ connecting = "Connecting…"
 reconnecting = "Reconnecting…"
 offline = "Offline"
 
+[fmt]
+# Dates, durations and relative times. Lists are separated by "|" and must
+# have exactly 12 months and 7 weekdays (Monday first).
+months_short = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec"
+months_long = "January|February|March|April|May|June|July|August|September|October|November|December"
+weekdays_short = "Mon|Tue|Wed|Thu|Fri|Sat|Sun"
+weekdays_long = "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday"
+day_month = "{month} {day}"
+day_month_long = "{month} {day}"
+date = "{day_month}, {year}"
+datetime = "{date}, {time}"
+short_datetime = "{day_month}, {time}"
+weekday_day_month = "{weekday}, {day_month}"
+just_now = "just now"
+ago = "{span} ago"
+future = "in {span}"
+dur_sec = "{n} sec"
+dur_min = "{n} min"
+dur_hour = "{n} h"
+dur_day = "{n} d"
+compact_sec = "{n}s"
+compact_min = "{n}m"
+compact_hour = "{n}h"
+compact_day = "{n}d"
+
 [count]
 monitors.one = "{n} monitor"
 monitors.other = "{n} monitors"

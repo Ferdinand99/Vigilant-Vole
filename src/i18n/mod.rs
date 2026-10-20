@@ -1,6 +1,9 @@
-//! Interface translations (English and Norwegian Bokmål).
+//! Interface translations.
 //!
-//! Strings live in `locales/<lang>.toml` (compiled in, parsed once). The
+//! The languages are a registry ([`lang::LANGS`]): one entry and one
+//! `locales/<code>.toml` per language. Strings live in those files (compiled
+//! in, parsed once). A key missing from a language falls back to English, key
+//! by key. The
 //! language of the current request is a task-local set by [`layer`] (site
 //! default / `Accept-Language`) and refined by the auth middleware (a user's
 //! own choice), so templates and handlers can translate without threading a
@@ -19,6 +22,7 @@
 
 mod catalog;
 mod format;
+mod lang;
 mod middleware;
 #[cfg(test)]
 mod tests;
@@ -26,68 +30,19 @@ mod tests;
 use std::fmt::Display;
 use std::future::Future;
 use std::sync::atomic::{AtomicU8, Ordering};
+#[cfg(debug_assertions)]
+use std::sync::{Mutex, PoisonError};
 
 pub use format::*;
+pub use lang::{Dir, LANGS, Lang, LangInfo, Numbers, Plural, PluralRule, language_choices};
 pub use middleware::{layer, negotiate, site_language};
-
-/// A supported interface language.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum Lang {
-    #[default]
-    En,
-    Nb,
-}
-
-impl Lang {
-    pub const ALL: [Lang; 2] = [Lang::En, Lang::Nb];
-
-    /// BCP 47 code used in `<html lang>`, settings and locale file names.
-    pub fn code(self) -> &'static str {
-        match self {
-            Lang::En => "en",
-            Lang::Nb => "nb",
-        }
-    }
-
-    /// The language's own name ("English", "Norsk bokmål").
-    pub fn native_name(self) -> &'static str {
-        match self {
-            Lang::En => "English",
-            Lang::Nb => "Norsk bokmål",
-        }
-    }
-
-    /// Parses a stored code or a language tag: `nb`, `no`, `nn` and
-    /// `nb-NO`-style tags map to Bokmål; `en`/`en-GB` to English.
-    pub fn from_code(code: &str) -> Option<Lang> {
-        let primary = code.trim().split(['-', '_']).next()?.to_ascii_lowercase();
-        match primary.as_str() {
-            "en" => Some(Lang::En),
-            "nb" | "no" | "nn" => Some(Lang::Nb),
-            _ => None,
-        }
-    }
-
-    fn index(self) -> usize {
-        match self {
-            Lang::En => 0,
-            Lang::Nb => 1,
-        }
-    }
-}
-
-impl Display for Lang {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.code())
-    }
-}
 
 tokio::task_local! {
     static LANG: Lang;
 }
 
 /// Last known site default (Settings → General), for work that runs outside
-/// a request, like notifications sent by the scheduler.
+/// a request, like notifications sent by the scheduler. A registry index.
 static SITE_DEFAULT: AtomicU8 = AtomicU8::new(0);
 
 /// Language of the current request (English outside a request scope).
@@ -102,10 +57,7 @@ pub fn current_or_site() -> Lang {
 
 /// The cached site default language (English until known).
 pub fn site_default() -> Lang {
-    match SITE_DEFAULT.load(Ordering::Relaxed) {
-        1 => Lang::Nb,
-        _ => Lang::En,
-    }
+    Lang::all().nth(usize::from(SITE_DEFAULT.load(Ordering::Relaxed))).unwrap_or_default()
 }
 
 /// Updates the cached site default (done whenever settings are read).
@@ -124,9 +76,30 @@ pub fn sync_scope<R>(lang: Lang, f: impl FnOnce() -> R) -> R {
     LANG.sync_scope(lang, f)
 }
 
-/// Looks a key up in `lang`, falling back to English.
+/// Looks a key up in `lang`, falling back to English per key (and saying so
+/// once per key in debug builds).
 pub fn lookup(lang: Lang, key: &str) -> Option<&'static str> {
-    catalog::get(lang, key).or_else(|| catalog::get(Lang::En, key))
+    if let Some(text) = catalog::get(lang, key) {
+        return Some(text);
+    }
+    let english = catalog::get(Lang::EN, key);
+    #[cfg(debug_assertions)]
+    if english.is_some() && lang != Lang::EN {
+        note_fallback(lang, key);
+    }
+    english
+}
+
+/// Logs a missing translation the first time it is asked for.
+#[cfg(debug_assertions)]
+fn note_fallback(lang: Lang, key: &str) {
+    static SEEN: Mutex<Vec<(u8, String)>> = Mutex::new(Vec::new());
+    let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
+    let id = (u8::try_from(lang.index()).unwrap_or(0), key.to_string());
+    if !seen.contains(&id) {
+        tracing::debug!(lang = lang.code(), key, "no translation, using English");
+        seen.push(id);
+    }
 }
 
 /// Translation of `key` in `lang`; unknown keys render as the key itself
@@ -152,20 +125,25 @@ pub fn tf(key: &'static str, args: &[(&str, &str)]) -> String {
     interpolate(t(key), args)
 }
 
-/// Plural form: `{key}.one` when `n == 1`, otherwise `{key}.other`, with
-/// `{n}` replaced by the formatted number.
+/// Plural form: `{key}.<category>` for the language's CLDR plural category
+/// of `n` (`one`, `few`, `many`, `other`, …), falling back to `{key}.other`,
+/// with `{n}` replaced by the formatted number.
 pub fn tn(key: &'static str, n: i64) -> String {
     tn_in(current(), key, n)
 }
 
 pub fn tn_in(lang: Lang, key: &str, n: i64) -> String {
-    let form = if n == 1 { "one" } else { "other" };
-    let full = format!("{key}.{form}");
-    let text = lookup(lang, &full).unwrap_or_else(|| {
-        #[cfg(debug_assertions)]
-        tracing::warn!(key = %full, "missing plural translation key");
-        ""
-    });
+    // A language that hasn't translated this key at all uses English's forms
+    // (and English's plural rule), not a half-matching mix.
+    let forms = if catalog::get(lang, &format!("{key}.other")).is_some() { lang } else { Lang::EN };
+    let category = forms.plural_category(n).as_str();
+    let text = catalog::get(forms, &format!("{key}.{category}"))
+        .or_else(|| catalog::get(forms, &format!("{key}.other")))
+        .unwrap_or_else(|| {
+            #[cfg(debug_assertions)]
+            tracing::warn!(key, "missing plural translation key");
+            ""
+        });
     if text.is_empty() {
         return format!("{n} {key}");
     }
@@ -208,7 +186,7 @@ pub fn t_or<'a>(key: &str, fallback: &'a str) -> &'a str {
 /// JSON object with the `js.*` strings for `static/app.js`
 /// (`window.VV_I18N`), safe to embed in a `<script>` element.
 pub fn js_bundle(lang: Lang) -> String {
-    let map: serde_json::Map<String, serde_json::Value> = catalog::keys_with_prefix(Lang::En, "js.")
+    let map: serde_json::Map<String, serde_json::Value> = catalog::keys_with_prefix(Lang::EN, "js.")
         .into_iter()
         .map(|key| {
             let value = lookup(lang, key).unwrap_or_default();
@@ -312,6 +290,10 @@ pub trait Tr {
     /// `<html lang>` code of the current language.
     fn lang_code(&self) -> &'static str {
         current().code()
+    }
+    /// `<html dir>`: `ltr` or `rtl`.
+    fn lang_dir(&self) -> &'static str {
+        current().dir().as_str()
     }
     /// `window.VV_I18N` payload (embed with `|safe`).
     fn i18n_js(&self) -> String {

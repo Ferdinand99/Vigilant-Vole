@@ -53,7 +53,6 @@ async fn settings_home(user: CurrentUser) -> Redirect {
 // Time zones & languages (also used by the setup wizard)
 // ---------------------------------------------------------------------------
 
-pub const LANGUAGES: &[(&str, &str)] = &[("en", "English"), ("nb", "Norsk bokmål")];
 
 /// Used when the system has no tz database (e.g. a scratch container).
 const FALLBACK_ZONES: &[&str] = &[
@@ -141,7 +140,7 @@ struct GeneralTemplate {
     badges_public: bool,
     agent_confirmation_default: bool,
     timezones: Vec<String>,
-    languages: &'static [(&'static str, &'static str)],
+    languages: Vec<(&'static str, String)>,
     db_size: String,
     heartbeat_count: String,
     site_name_error: String,
@@ -228,7 +227,7 @@ async fn general_template(state: &AppState, ctx: PageCtx, s: &db_settings::Setti
         badges_public: s.badges_public,
         agent_confirmation_default: s.agent_confirmation_default,
         timezones: timezones(),
-        languages: LANGUAGES,
+        languages: crate::i18n::language_choices(),
         db_size,
         heartbeat_count,
         site_name_error: String::new(),
@@ -275,7 +274,7 @@ async fn general_save(
     if !valid_timezone(&timezone) {
         page.timezone_error = crate::i18n::t("general.err_timezone").into();
     }
-    let language = if LANGUAGES.iter().any(|(code, _)| *code == form.language) {
+    let language = if crate::i18n::Lang::from_exact_code(&form.language).is_some() {
         form.language.clone()
     } else {
         "en".to_string()
@@ -344,7 +343,7 @@ struct SecurityTemplate {
     new_codes_text: String,
     /// The user's own language code ("" = site default).
     language: String,
-    languages: &'static [(&'static str, &'static str)],
+    languages: Vec<(&'static str, String)>,
     /// Native name of the site default language.
     site_language_name: &'static str,
 }
@@ -378,7 +377,7 @@ async fn security_template(state: &AppState, user: &CurrentUser, ctx: PageCtx, n
         new_codes_text: new_codes.join("\n"),
         new_codes,
         language: record.language.clone().unwrap_or_default(),
-        languages: LANGUAGES,
+        languages: crate::i18n::language_choices(),
         site_language_name: crate::i18n::site_language(state).await.unwrap_or_default().native_name(),
     })
 }
@@ -440,7 +439,7 @@ async fn save_profile(
         return Ok(back_to_security(jar, "error", crate::i18n::t("sec.name_long")));
     }
     let language = form.language.trim().to_string();
-    if !language.is_empty() && !LANGUAGES.iter().any(|(code, _)| *code == language) {
+    if !language.is_empty() && crate::i18n::Lang::from_exact_code(&language).is_none() {
         return Ok(back_to_security(jar, "error", crate::i18n::t("sec.bad_language")));
     }
     let id = user.id;

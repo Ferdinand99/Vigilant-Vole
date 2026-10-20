@@ -241,21 +241,8 @@ pub fn format_time(t: OffsetDateTime) -> String {
 
 /// "3d 4h", "2h 5m", "4m 10s", "12s".
 pub fn format_duration(d: Duration) -> String {
-    let secs = d.as_secs();
-    let (days, hours, mins, s) = (
-        secs / 86_400,
-        secs % 86_400 / 3600,
-        secs % 3600 / 60,
-        secs % 60,
-    );
-    // Hours are "t" (timer) in Norwegian.
-    let h_unit = if crate::i18n::current() == crate::i18n::Lang::Nb { "t" } else { "h" };
-    match (days, hours, mins) {
-        (0, 0, 0) => format!("{s}s"),
-        (0, 0, m) => format!("{m}m {s}s"),
-        (0, h, m) => format!("{h}{h_unit} {m}m"),
-        (d, h, _) => format!("{d}d {h}{h_unit}"),
-    }
+    // The unit patterns are the language's `fmt.compact_*` ("3d 4h", "3d 4t").
+    crate::i18n::fmt_duration_compact(i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// Escapes `& < > " '` for HTML bodies (Telegram, Matrix, email).
