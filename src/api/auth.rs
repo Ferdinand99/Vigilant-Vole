@@ -614,7 +614,7 @@ pub async fn session_user(state: &AppState, jar: &SignedCookieJar) -> ApiResult<
     Ok(resolve_session(state, jar).await?.map(|(user, _)| user))
 }
 
-async fn authenticate_token_detailed(state: &AppState, token: &str) -> ApiResult<Option<(CurrentUser, AuthMethod)>> {
+pub async fn authenticate_token_detailed(state: &AppState, token: &str) -> ApiResult<Option<(CurrentUser, AuthMethod)>> {
     if !tokens::is_well_formed(token) {
         return Ok(None);
     }

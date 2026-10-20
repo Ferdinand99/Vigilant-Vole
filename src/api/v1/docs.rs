@@ -313,6 +313,8 @@ pub static ROUTES: &[RouteDoc] = &[
     r("POST", "/api/agent/v1/results", "agent token", "Push and machine endpoints", "For remote agents: a batch of up to 500 results.")
         .req(r#"{"results": [{"monitor_id": 7, "status": "up", "response_time_ms": 120, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}]}"#),
     r("GET", "/metrics", "metrics token", "Push and machine endpoints", "Prometheus metrics (when enabled). Bearer token or basic-auth password; Kuma-compatible series included."),
+    r("POST", "/mcp", "api token", "Push and machine endpoints", "Model Context Protocol server (Streamable HTTP, JSON-RPC 2.0) for AI assistants: tools to read and, with a write token, steer your monitors, incidents and maintenance, plus this reference as a resource. Bearer API token; GET answers 405. See docs/mcp.md.")
+        .req(r#"{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "why_is_it_down", "arguments": {"id": 7}}}"#),
     r("GET", "/healthz", "public", "Push and machine endpoints", "Liveness probe: always \"ok\"."),
 ];
 
@@ -472,6 +474,11 @@ pub fn openapi_document(server_url: &str) -> Value {
 async fn openapi(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> ApiResult<Response> {
     let server = state.settings().await?.base_url.unwrap_or_else(|| "/".into());
     Ok(json_ok(&headers, &openapi_document(&server)))
+}
+
+/// The reference as Markdown (also served as an MCP resource).
+pub fn reference_markdown(base_url: &str) -> String {
+    markdown::document(base_url)
 }
 
 /// The reference as Markdown, for AI assistants.

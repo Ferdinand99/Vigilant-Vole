@@ -38,7 +38,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 
-pub use docs::{ROUTES, RouteDoc};
+pub use docs::{ROUTES, RouteDoc, reference_markdown};
 pub use error::{V1Error, V1Result};
 
 use super::AppState;

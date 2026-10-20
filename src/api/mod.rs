@@ -127,7 +127,8 @@ pub fn build_router(state: AppState) -> Router {
         .merge(badges::public_router())
         .merge(push::public_router())
         .merge(agents::public_router())
-        .merge(metrics::public_router());
+        .merge(metrics::public_router())
+        .merge(crate::mcp::router());
 
     // Layers run outermost-last: trace → compression → negotiate → language → custom domain → csrf → route.
     protected

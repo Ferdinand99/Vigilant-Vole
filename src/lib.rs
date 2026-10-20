@@ -12,6 +12,8 @@ pub mod discovery;
 pub mod i18n;
 pub mod kuma_import;
 pub mod maintenance;
+pub mod mcp;
+pub mod mcp_bridge;
 pub mod monitor;
 pub mod notification;
 pub mod server;

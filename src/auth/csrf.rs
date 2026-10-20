@@ -14,7 +14,7 @@ use axum::http::{HeaderMap, Method};
 use url::Url;
 
 /// Prefixes of paths that never rely on the session cookie.
-const EXEMPT_PREFIXES: &[&str] = &["/api/push", "/api/agent", "/api/v1", "/api/badge", "/metrics"];
+const EXEMPT_PREFIXES: &[&str] = &["/api/push", "/api/agent", "/api/v1", "/api/badge", "/metrics", "/mcp"];
 
 /// Is `path` one of the token/public machine endpoints?
 pub fn is_exempt_path(path: &str) -> bool {
@@ -80,6 +80,21 @@ pub fn is_allowed(
             None => return false,
         },
     };
+    source_matches(source, headers, trust_proxy, base_url)
+}
+
+/// Does the request's `Origin` (or, failing that, `Referer`) name this
+/// server? `None` when the request carries neither (non-browser clients),
+/// `Some(false)` for a foreign or opaque origin. Used for DNS-rebinding
+/// protection on endpoints that are authenticated by token only.
+pub fn source_is_ours(headers: &HeaderMap, trust_proxy: bool, base_url: Option<&str>) -> Option<bool> {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let source = header("origin").or_else(|| header("referer"))?;
+    Some(source_matches(source, headers, trust_proxy, base_url))
+}
+
+fn source_matches(source: &str, headers: &HeaderMap, trust_proxy: bool, base_url: Option<&str>) -> bool {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let Some((scheme, source)) = origin_authority(source) else {
         return false;
     };
