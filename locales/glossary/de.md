@@ -101,3 +101,5 @@ Anrede: informelles „du“ (Imperative wie „Gib einen Namen ein“), nie „
 - Lange Komposita auf Buttons, Tabs und Pills werden gekürzt.
 - Genus: „das Token“, „das Tag“ durchgehend sächlich.
 - Plural: `.one` (genau 1) und `.other` (alles andere, auch 0).
+
+- cron expression: Cron-Ausdruck (the word "cron" stays Latin).

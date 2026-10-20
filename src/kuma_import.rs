@@ -1404,6 +1404,10 @@ fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
         weekdays: None,
         time_from: None,
         time_to: None,
+        interval_days: None,
+        month_days: None,
+        cron: None,
+        duration_minutes: None,
         timezone: tz_name,
         monitors: Vec::new(),
         status_pages: Vec::new(),
@@ -1418,10 +1422,8 @@ fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
             w.start_at = start;
             w.end_at = end;
         }
-        "recurring-weekday" | "recurring-interval" => {
-            if strategy_raw == "recurring-interval" && i(row, &["interval_day"]).unwrap_or(1) != 1 {
-                return Err("“Every N days” schedules aren’t supported; only daily and weekly.".into());
-            }
+        "recurring-weekday" | "recurring-interval" | "recurring-day-of-month" => {
+            let interval = i(row, &["interval_day"]).unwrap_or(1);
             let (from, to) = (kuma_time(row, &["start_time"]), kuma_time(row, &["end_time"]));
             let (Some(from), Some(to)) = (from, to) else {
                 return Err("Its start and end times couldn’t be read.".into());
@@ -1430,29 +1432,75 @@ fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
             w.time_to = Some(to);
             w.start_at = start;
             w.end_at = end;
-            if strategy_raw == "recurring-weekday" {
-                w.strategy = "weekly".into();
-                let days: Vec<String> = match json_field(row, &["weekdays"]) {
-                    Some(Value::Array(a)) => a
-                        .iter()
-                        .filter_map(Value::as_i64)
-                        // Kuma: 0 = Sunday … 6 = Saturday; ours: ISO 1 = Monday … 7 = Sunday.
-                        .map(|d| if d == 0 { 7 } else { d })
-                        .filter(|d| (1..=7).contains(d))
-                        .map(|d| d.to_string())
-                        .collect(),
-                    _ => Vec::new(),
-                };
-                if days.is_empty() {
-                    return Err("It has no weekdays.".into());
+            match strategy_raw.as_str() {
+                "recurring-weekday" => {
+                    w.strategy = "weekly".into();
+                    let days: Vec<String> = match json_field(row, &["weekdays"]) {
+                        Some(Value::Array(a)) => a
+                            .iter()
+                            .filter_map(Value::as_i64)
+                            // Kuma: 0 = Sunday … 6 = Saturday; ours: ISO 1 = Monday … 7 = Sunday.
+                            .map(|d| if d == 0 { 7 } else { d })
+                            .filter(|d| (1..=7).contains(d))
+                            .map(|d| d.to_string())
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    if days.is_empty() {
+                        return Err("It has no weekdays.".into());
+                    }
+                    w.weekdays = Some(days.join(","));
                 }
-                w.weekdays = Some(days.join(","));
-            } else {
-                w.strategy = "daily".into();
+                "recurring-interval" if interval <= 1 => w.strategy = "daily".into(),
+                "recurring-interval" => {
+                    if w.start_at.is_none() {
+                        return Err("An “every N days” schedule needs its first date.".into());
+                    }
+                    w.strategy = "interval".into();
+                    w.interval_days = Some(interval);
+                }
+                _ => {
+                    // Kuma: numbers, and "lastDay1" (the last day) … "lastDay4".
+                    let days: Vec<String> = match json_field(row, &["days_of_month"]) {
+                        Some(Value::Array(a)) => a
+                            .iter()
+                            .filter_map(|d| match d {
+                                Value::Number(n) => n.as_i64().filter(|n| (1..=31).contains(n)),
+                                Value::String(t) => t
+                                    .strip_prefix("lastDay")
+                                    .and_then(|n| n.parse::<i64>().ok())
+                                    .filter(|n| (1..=4).contains(n))
+                                    .map(|n| -n)
+                                    .or_else(|| t.parse::<i64>().ok().filter(|n| (1..=31).contains(n))),
+                                _ => None,
+                            })
+                            .map(|d| d.to_string())
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    if days.is_empty() {
+                        return Err("It has no days of the month.".into());
+                    }
+                    w.strategy = "monthly".into();
+                    w.month_days = Some(days.join(","));
+                }
             }
         }
-        "recurring-day-of-month" => return Err("Day-of-month schedules aren’t supported; only daily and weekly.".into()),
-        "cron" => return Err("Cron schedules aren’t supported; recreate it as a daily or weekly window.".into()),
+        "cron" => {
+            let expression = s(row, &["cron"]).unwrap_or_default();
+            if let Err(reason) = crate::maintenance::CronSpec::parse(&expression) {
+                return Err(format!("Its cron expression “{expression}” isn’t supported: {reason}"));
+            }
+            let minutes = i(row, &["duration"]).unwrap_or(60);
+            if !(1..=crate::maintenance::MAX_DURATION_MINUTES).contains(&minutes) {
+                return Err(format!("Its length of {minutes} minutes is out of range."));
+            }
+            w.strategy = "cron".into();
+            w.cron = Some(expression.trim().to_string());
+            w.duration_minutes = Some(minutes);
+            w.start_at = start;
+            w.end_at = end;
+        }
         other => return Err(format!("The “{other}” schedule isn’t supported.")),
     }
     Ok(w)

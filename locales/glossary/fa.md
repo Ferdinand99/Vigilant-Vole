@@ -110,3 +110,5 @@ word list (terms only); differences are noted.
 - No sentence capitalisation in Persian. Product, protocol and technical terms stay Latin.
 - Plurals: only `one` and `other`, both with a singular noun after the number.
 - Dates: Gregorian calendar with Persian transliterated month names.
+
+- cron expression: عبارت cron (the word "cron" stays Latin).

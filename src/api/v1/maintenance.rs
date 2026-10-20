@@ -1,6 +1,7 @@
 //! `/api/v1/maintenance/**`. Windows are exchanged in their stored form:
 //! `start_at` / `end_at` in UTC (`YYYY-MM-DD HH:MM:SS`), `time_from` /
-//! `time_to` as local `HH:MM` in `timezone`, `weekdays` as ISO days (`"1,3,5"`).
+//! `time_to` as local `HH:MM` in `timezone`, `weekdays` as ISO days (`"1,3,5"`),
+//! `month_days` as `"1,15,-1"`, `interval_days`, `cron` and `duration_minutes`.
 
 use std::collections::HashMap;
 
@@ -73,6 +74,14 @@ struct WindowIn {
     time_from: Option<Option<String>>,
     #[serde(default, deserialize_with = "double")]
     time_to: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_i64")]
+    interval_days: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double")]
+    month_days: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double")]
+    cron: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_i64")]
+    duration_minutes: Option<Option<i64>>,
     timezone: Option<String>,
     monitor_ids: Option<Vec<i64>>,
     status_page_ids: Option<Vec<i64>>,
@@ -81,6 +90,10 @@ struct WindowIn {
 /// Keeps `null` (clear) apart from a missing field (keep).
 fn double<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<String>>, D::Error> {
     Option::<String>::deserialize(d).map(Some)
+}
+
+fn double_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<i64>>, D::Error> {
+    Option::<i64>::deserialize(d).map(Some)
 }
 
 /// Validates with the config importer's rules (ids are passed as keys).
@@ -103,6 +116,16 @@ fn validate(conn: &Connection, input: &WindowIn, base: Option<(&MaintenanceWindo
         weekdays: pick(&input.weekdays, bw.map(|w| &w.weekdays)),
         time_from: pick(&input.time_from, bw.map(|w| &w.time_from)),
         time_to: pick(&input.time_to, bw.map(|w| &w.time_to)),
+        interval_days: match input.interval_days {
+            Some(v) => v,
+            None => bw.and_then(|w| w.interval_days),
+        },
+        month_days: pick(&input.month_days, bw.map(|w| &w.month_days)),
+        cron: pick(&input.cron, bw.map(|w| &w.cron)),
+        duration_minutes: match input.duration_minutes {
+            Some(v) => v,
+            None => bw.and_then(|w| w.duration_minutes),
+        },
         timezone: input.timezone.clone().or_else(|| bw.map(|w| w.timezone.clone())).unwrap_or_else(|| "UTC".into()),
         monitors: input.monitor_ids.clone().unwrap_or(bm).iter().map(i64::to_string).collect(),
         status_pages: input.status_page_ids.clone().unwrap_or(bp).iter().map(i64::to_string).collect(),

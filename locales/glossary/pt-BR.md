@@ -102,3 +102,5 @@ Aspas: “…” (e ‘…’ dentro). Maiúscula só no início da frase (sente
 - Plurais: `.one` para 0 e 1 ("{n} monitor"), `.many` para múltiplos exatos de 1.000.000 ("{n} de monitores"), `.other` nos demais ("{n} monitores").
 - Datas: "{day} de {month}", meses abreviados com ponto ("jan.", "fev."), dias da semana "seg.", "ter."…
 - Textos curtos e calmos, sem exclamações; botões e abas curtos.
+
+| cron expression | expressão cron | "cron" kept Latin |

@@ -318,7 +318,7 @@ pub struct MaintenanceDoc {
     pub title: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
-    /// `manual` | `once` | `daily` | `weekly`.
+    /// `manual` | `once` | `daily` | `weekly` | `interval` | `monthly` | `cron`.
     pub strategy: String,
     /// Manual: in maintenance right now. Scheduled: enabled.
     #[serde(default = "yes")]
@@ -336,6 +336,18 @@ pub struct MaintenanceDoc {
     pub time_from: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_to: Option<String>,
+    /// Interval: every N days, counted from the date of `start_at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_days: Option<i64>,
+    /// Monthly: days of the month, `"1,15,-1"` (negative counts from the end).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub month_days: Option<String>,
+    /// Cron: five fields, evaluated in `timezone`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron: Option<String>,
+    /// Cron: length of each occurrence, in minutes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_minutes: Option<i64>,
     #[serde(default = "default_tz")]
     pub timezone: String,
     #[serde(default)]
@@ -666,6 +678,10 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             weekdays: w.weekdays.filter(|d| !d.is_empty()),
             time_from: w.time_from,
             time_to: w.time_to,
+            interval_days: w.interval_days,
+            month_days: w.month_days,
+            cron: w.cron,
+            duration_minutes: w.duration_minutes,
             timezone: w.timezone,
             monitors,
             status_pages,
@@ -2007,6 +2023,10 @@ fn plan_window(
                 ("weekdays", e.weekdays.clone().filter(|d| !d.is_empty()) != row.weekdays),
                 ("time_from", e.time_from != row.time_from),
                 ("time_to", e.time_to != row.time_to),
+                ("interval_days", e.interval_days != row.interval_days),
+                ("month_days", e.month_days != row.month_days),
+                ("cron", e.cron != row.cron),
+                ("duration_minutes", e.duration_minutes != row.duration_minutes),
                 ("timezone", e.timezone != row.timezone),
             ] {
                 if differs {
@@ -2060,7 +2080,7 @@ pub fn validate_window(
     let strategy = match Strategy::parse(w.strategy.trim()) {
         Some(s) => s,
         None => {
-            errors.push(("strategy".into(), "Use manual, once, daily or weekly.".into()));
+            errors.push(("strategy".into(), "Use manual, once, daily, weekly, interval, monthly or cron.".into()));
             Strategy::Manual
         }
     };
@@ -2100,12 +2120,39 @@ pub fn validate_window(
             (Some(_), Some(_)) => errors.push(("end_at".into(), "The end has to be after the start.".into())),
             _ => errors.push(("start_at".into(), "Once windows need start_at and end_at.".into())),
         },
-        Strategy::Daily | Strategy::Weekly => {
-            if time_from.is_none() || time_to.is_none() {
+        Strategy::Daily | Strategy::Weekly | Strategy::Interval | Strategy::Monthly | Strategy::Cron => {
+            if strategy.uses_times() && (time_from.is_none() || time_to.is_none()) {
                 errors.push(("time_from".into(), "Recurring windows need time_from and time_to.".into()));
             }
             if strategy == Strategy::Weekly && weekdays.is_empty() {
                 errors.push(("weekdays".into(), "Pick at least one day, like \"1,3,5\".".into()));
+            }
+            if strategy == Strategy::Interval {
+                match w.interval_days {
+                    Some(n) if (1..=366).contains(&n) => {}
+                    _ => errors.push(("interval_days".into(), "Use a number of days from 1 to 366.".into())),
+                }
+                if start_at.is_none() {
+                    errors.push(("start_at".into(), "Every-N-days windows need start_at, the first day.".into()));
+                }
+            }
+            if strategy == Strategy::Monthly {
+                let raw = w.month_days.as_deref().unwrap_or("");
+                match crate::maintenance::parse_month_days_strict(raw) {
+                    Ok(d) if !d.is_empty() => {}
+                    Ok(_) => errors.push(("month_days".into(), "Pick at least one day, like \"1,15\" or \"-1\" for the last day.".into())),
+                    Err(e) => errors.push(("month_days".into(), e)),
+                }
+            }
+            if strategy == Strategy::Cron {
+                match crate::maintenance::CronSpec::parse(w.cron.as_deref().unwrap_or("")) {
+                    Ok(_) => {}
+                    Err(e) => errors.push(("cron".into(), e)),
+                }
+                match w.duration_minutes {
+                    Some(n) if (1..=crate::maintenance::MAX_DURATION_MINUTES).contains(&n) => {}
+                    _ => errors.push(("duration_minutes".into(), format!("Use a length from 1 to {} minutes.", crate::maintenance::MAX_DURATION_MINUTES))),
+                }
             }
             if let (Some(a), Some(b)) = (&start_at, &end_at)
                 && b <= a
@@ -2135,7 +2182,6 @@ pub fn validate_window(
     if !errors.is_empty() {
         return Err(errors);
     }
-    let recurring = strategy.is_recurring();
     Ok(db_maint::NewWindow {
         title: title.to_string(),
         description: w.description.trim().to_string(),
@@ -2145,8 +2191,13 @@ pub fn validate_window(
         end_at: if strategy == Strategy::Manual { None } else { end_at },
         weekdays: (strategy == Strategy::Weekly)
             .then(|| weekdays.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(",")),
-        time_from: if recurring { time_from } else { None },
-        time_to: if recurring { time_to } else { None },
+        time_from: if strategy.uses_times() { time_from } else { None },
+        time_to: if strategy.uses_times() { time_to } else { None },
+        interval_days: (strategy == Strategy::Interval).then_some(w.interval_days).flatten(),
+        month_days: (strategy == Strategy::Monthly)
+            .then(|| crate::maintenance::fmt_month_days(&crate::maintenance::parse_month_days(w.month_days.as_deref().unwrap_or("")))),
+        cron: (strategy == Strategy::Cron).then(|| w.cron.as_deref().unwrap_or("").trim().to_string()),
+        duration_minutes: (strategy == Strategy::Cron).then_some(w.duration_minutes).flatten(),
         timezone,
         monitor_ids: monitor_list,
         status_page_ids: page_list,
@@ -2279,9 +2330,11 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
                 let w = resolve_window(w, &ids)?;
                 conn.execute(
                     "INSERT INTO maintenance_windows
-                         (title, description, strategy, active, start_at, end_at, weekdays, time_from, time_to, timezone)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                    params![w.title, w.description, w.strategy, w.active, w.start_at, w.end_at, w.weekdays, w.time_from, w.time_to, w.timezone],
+                         (title, description, strategy, active, start_at, end_at, weekdays, time_from, time_to, timezone,
+                          interval_days, month_days, cron, duration_minutes)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    params![w.title, w.description, w.strategy, w.active, w.start_at, w.end_at, w.weekdays, w.time_from, w.time_to, w.timezone,
+                            w.interval_days, w.month_days, w.cron, w.duration_minutes],
                 )?;
                 write_window_links(conn, conn.last_insert_rowid(), &w)?;
             }
@@ -2289,9 +2342,11 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
                 let w = resolve_window(w, &ids)?;
                 conn.execute(
                     "UPDATE maintenance_windows SET title = ?2, description = ?3, strategy = ?4, active = ?5, start_at = ?6,
-                         end_at = ?7, weekdays = ?8, time_from = ?9, time_to = ?10, timezone = ?11, skip_until = NULL
+                         end_at = ?7, weekdays = ?8, time_from = ?9, time_to = ?10, timezone = ?11, interval_days = ?12,
+                         month_days = ?13, cron = ?14, duration_minutes = ?15, skip_until = NULL
                      WHERE id = ?1",
-                    params![id, w.title, w.description, w.strategy, w.active, w.start_at, w.end_at, w.weekdays, w.time_from, w.time_to, w.timezone],
+                    params![id, w.title, w.description, w.strategy, w.active, w.start_at, w.end_at, w.weekdays, w.time_from, w.time_to, w.timezone,
+                            w.interval_days, w.month_days, w.cron, w.duration_minutes],
                 )?;
                 conn.execute("DELETE FROM maintenance_monitors WHERE maintenance_id = ?1", params![id])?;
                 conn.execute("DELETE FROM maintenance_status_pages WHERE maintenance_id = ?1", params![id])?;

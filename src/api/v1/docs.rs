@@ -274,7 +274,7 @@ pub static ROUTES: &[RouteDoc] = &[
     r("DELETE", "/api/v1/status-pages/{id}/incidents/{iid}", "editor", "Status pages", "Delete an incident."),
     // -- Maintenance --
     r("GET", "/api/v1/maintenance", "viewer", "Maintenance", "List maintenance windows with their current state."),
-    r("POST", "/api/v1/maintenance", "editor", "Maintenance", "Create a window. Times: start_at/end_at in UTC, time_from/time_to local to timezone, weekdays ISO (1 = Monday).")
+    r("POST", "/api/v1/maintenance", "editor", "Maintenance", "Create a window. Times: start_at/end_at in UTC, time_from/time_to local to timezone, weekdays ISO (1 = Monday). Strategies: manual, once, daily, weekly, interval (interval_days, counted from start_at), monthly (month_days like 1,15,-1) and cron (cron + duration_minutes).")
         .req(r#"{"title": "Database upgrade", "strategy": "weekly", "weekdays": "2,4", "time_from": "22:00", "time_to": "23:30", "timezone": "Europe/Oslo", "monitor_ids": [7]}"#),
     r("GET", "/api/v1/maintenance/{id}", "viewer", "Maintenance", "Get one window."),
     r("PATCH", "/api/v1/maintenance/{id}", "editor", "Maintenance", "Change a window; null clears a time field.").req(r#"{"active": false}"#),

@@ -109,3 +109,4 @@ Terms were decided once and are reused across `locales/ro.toml`. Kuma word list 
 | MOTD | MOTD | kept in English |
 | replica set | replicaSet | kept as parameter name |
 | analytics | statistici | |
+| cron expression | expresie cron | "cron" kept Latin |

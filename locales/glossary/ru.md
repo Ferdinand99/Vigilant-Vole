@@ -102,3 +102,4 @@ Plurals: one / few / many / other (other = genitive singular, e.g. `{n} мони
 | headless | headless | kept in English with Chromium |
 | viewport | размер окна | options «Компьютер» / «Телефон» |
 | network idle | простой сети | |
+| cron expression | выражение cron | "cron" kept Latin |

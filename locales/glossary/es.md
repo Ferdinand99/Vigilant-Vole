@@ -101,3 +101,5 @@ Español neutro internacional. Kuma no se pudo consultar (sin acceso al archivo)
 | MOTD | MOTD | sin traducir |
 | replica set | replicaSet | sin traducir (parámetro) |
 | viewport | ventana gráfica | |
+
+- cron expression: expresión cron (the word "cron" stays Latin).

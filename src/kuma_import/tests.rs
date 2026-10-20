@@ -72,7 +72,14 @@ INSERT INTO "group" (id, name, status_page_id, weight) VALUES (1, 'Web', 1, 2), 
 INSERT INTO monitor_group (id, monitor_id, group_id, weight) VALUES (1, 1, 1, 1), (2, 6, 1, 2), (3, 2, 2, 1), (4, 4, 2, 2);
 INSERT INTO maintenance (id, title, strategy, start_time, end_time, weekdays, timezone, active)
     VALUES (1, 'Patch night', 'recurring-weekday', '02:00', '03:30', '[0,3]', 'Europe/Oslo', 1);
-INSERT INTO maintenance (id, title, strategy, cron) VALUES (2, 'Cron thing', 'cron', '0 2 * * *');
+INSERT INTO maintenance (id, title, strategy, cron, duration, timezone) VALUES (2, 'Cron thing', 'cron', '0 2 * * 0', 90, 'Europe/Oslo');
+INSERT INTO maintenance (id, title, strategy, cron, duration) VALUES (4, 'Bad cron', 'cron', '0 0 0 0 0 0 0', 30);
+INSERT INTO maintenance (id, title, strategy, start_time, end_time, start_date, interval_day, timezone)
+    VALUES (5, 'Every third day', 'recurring-interval', '01:00', '02:00', '2026-10-01 00:00:00', 3, 'Europe/Oslo');
+INSERT INTO maintenance (id, title, strategy, start_time, end_time, days_of_month, timezone)
+    VALUES (6, 'Month end', 'recurring-day-of-month', '22:00', '23:00', '[1,15,"lastDay1","lastDay2"]', 'Europe/Oslo');
+INSERT INTO maintenance (id, title, strategy, start_time, end_time, interval_day)
+    VALUES (7, 'Interval without date', 'recurring-interval', '01:00', '02:00', 2);
 INSERT INTO maintenance (id, title, strategy, start_date, end_date, timezone)
     VALUES (3, 'Move', 'single', '2026-11-01 10:00:00', '2026-11-01 12:00:00', 'Europe/Oslo');
 INSERT INTO monitor_maintenance VALUES (1, 2, 1), (2, 3, 3);
@@ -168,7 +175,20 @@ fn tags_notifications_pages_and_maintenance_map() {
     assert_eq!(patch.status_pages, vec!["acme".to_string()]);
     let once = windows.iter().find(|w| w.title == "Move").unwrap();
     assert_eq!(once.start_at.as_deref(), Some("2026-11-01 09:00:00"), "local Oslo time converted to UTC");
-    assert!(import.skipped.iter().any(|s| s.name == "Cron thing"));
+    // Cron, every-N-days and day-of-month schedules come across.
+    let cron = windows.iter().find(|w| w.title == "Cron thing").unwrap();
+    assert_eq!((cron.strategy.as_str(), cron.cron.as_deref(), cron.duration_minutes), ("cron", Some("0 2 * * 0"), Some(90)));
+    assert_eq!(cron.timezone, "Europe/Oslo");
+    let third = windows.iter().find(|w| w.title == "Every third day").unwrap();
+    assert_eq!((third.strategy.as_str(), third.interval_days), ("interval", Some(3)));
+    assert_eq!(third.start_at.as_deref(), Some("2026-09-30 22:00:00"), "the first date is Oslo local midnight");
+    assert_eq!((third.time_from.as_deref(), third.time_to.as_deref()), (Some("01:00"), Some("02:00")));
+    let month = windows.iter().find(|w| w.title == "Month end").unwrap();
+    assert_eq!((month.strategy.as_str(), month.month_days.as_deref()), ("monthly", Some("1,15,-1,-2")));
+    // What can't be mapped is still listed with a reason.
+    assert!(import.skipped.iter().any(|s| s.name == "Bad cron" && s.reason.contains("cron")), "{:?}", import.skipped);
+    assert!(import.skipped.iter().any(|s| s.name == "Interval without date"), "{:?}", import.skipped);
+    assert!(windows.iter().all(|w| w.title != "Bad cron" && w.title != "Interval without date"));
 }
 
 #[test]

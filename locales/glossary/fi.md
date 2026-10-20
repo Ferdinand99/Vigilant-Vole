@@ -92,3 +92,5 @@ Word list so every string uses one term per concept. Kuma column differences are
 - Compounds are written as one word (seuraintyyppi, ilmoituskanava); long labels are shortened.
 - Numerals take the partitive singular after n > 1 in UI counts, which equals the `other` form; `one` = exactly 1.
 - Dates: `20. lokakuuta 2026`, time `klo 14:30`, 24-hour clock.
+
+- cron expression: cron-lauseke (the word "cron" stays Latin).

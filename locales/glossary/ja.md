@@ -95,3 +95,5 @@
 - Katakana loanwords with long vowel ー (モニター, サーバー, ユーザー).
 - Durations: {n}秒 / {n}分 / {n}時間 / {n}日; plural categories: other only.
 - Product and protocol names stay in Latin script.
+
+- cron expression: cron式 (the word "cron" stays Latin).

@@ -363,6 +363,35 @@ async fn maintenance_windows_validate_and_round_trip() {
 }
 
 #[tokio::test]
+async fn maintenance_cron_monthly_and_interval_windows_round_trip_and_validate() {
+    let h = harness().await;
+    let post = |body: Value| h.json(Method::POST, "/api/v1/maintenance", &h.editor, Some(body));
+    let (status, w) = post(json!({"title": "Sundays", "strategy": "cron", "cron": "0 2 * * 0", "duration_minutes": 90, "timezone": "Europe/Oslo"})).await;
+    assert_eq!(status, StatusCode::CREATED, "{w}");
+    assert_eq!((w["cron"].as_str(), w["duration_minutes"].as_i64()), (Some("0 2 * * 0"), Some(90)));
+    let id = w["id"].as_i64().unwrap();
+    // PATCH keeps what it isn't given and can clear a field with null.
+    let (status, w) = h.json(Method::PATCH, &format!("/api/v1/maintenance/{id}"), &h.editor, Some(json!({"duration_minutes": 30}))).await;
+    assert_eq!((status, w["cron"].as_str(), w["duration_minutes"].as_i64()), (StatusCode::OK, Some("0 2 * * 0"), Some(30)));
+    let (status, w) = h.json(Method::PATCH, &format!("/api/v1/maintenance/{id}"), &h.editor, Some(json!({"strategy": "monthly", "cron": null, "duration_minutes": null, "month_days": "1,-1", "time_from": "22:00", "time_to": "23:00"}))).await;
+    assert_eq!((status, w["month_days"].as_str(), w["cron"].is_null()), (StatusCode::OK, Some("1,-1"), true), "{w}");
+    let (status, w) = post(json!({"title": "Every 3", "strategy": "interval", "interval_days": 3, "start_at": "2026-10-01 00:00:00", "time_from": "01:00", "time_to": "02:00"})).await;
+    assert_eq!((status, w["interval_days"].as_i64()), (StatusCode::CREATED, Some(3)), "{w}");
+    // Validation names the field.
+    for (body, field) in [
+        (json!({"title": "x", "strategy": "cron", "cron": "nope", "duration_minutes": 5}), "cron"),
+        (json!({"title": "x", "strategy": "cron", "cron": "0 2 * * *", "duration_minutes": 0}), "duration_minutes"),
+        (json!({"title": "x", "strategy": "monthly", "month_days": "0", "time_from": "01:00", "time_to": "02:00"}), "month_days"),
+        (json!({"title": "x", "strategy": "interval", "interval_days": 0, "start_at": "2026-10-01 00:00:00", "time_from": "01:00", "time_to": "02:00"}), "interval_days"),
+        (json!({"title": "x", "strategy": "interval", "interval_days": 2, "time_from": "01:00", "time_to": "02:00"}), "start_at"),
+    ] {
+        let (status, err) = post(body).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{field}: {err}");
+        assert!(err["error"]["fields"][field].is_string(), "{field}: {err}");
+    }
+}
+
+#[tokio::test]
 async fn settings_patch_validates_like_the_settings_page() {
     let h = harness().await;
     let (status, s) = h.json(Method::PATCH, "/api/v1/settings", &h.admin, Some(json!({"retention_days": 30, "site_name": "Acme"}))).await;

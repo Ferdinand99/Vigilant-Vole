@@ -97,3 +97,5 @@ Informeel “je/jouw”, korte gebiedende wijs. Termen komen als woordenlijst de
 - Aanhalingstekens: “…” met ‘…’ binnenin; apostrof ’ (’s, zo’n).
 - Zinsbegin met hoofdletter, verder kleine letters (zinsstijl); geen uitroeptekens.
 - Productnamen en technische termen blijven Engels. Lange samenstellingen vermijden in knoppen en tabs.
+
+| cron expression | cron-expressie | "cron" kept Latin |

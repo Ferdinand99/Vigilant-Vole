@@ -102,3 +102,4 @@ Dates: `2026年10月20日`, months `1月…12月`, durations `{n} 秒/分鐘/小
 | Tailscale peer | Tailscale 對等節點 | |
 | MOTD | MOTD | kept |
 | replica set | replicaSet | kept (URI parameter) |
+| cron expression | Cron 運算式 | "cron" kept Latin |

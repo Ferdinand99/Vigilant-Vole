@@ -96,3 +96,5 @@
 - Plurals: one (1), few (2-4), many (decimals: genitive singular), other (genitive plural).
 - Product names, protocols, flags and code stay in English.
 - Status pills: Běží / Nedostupné / Čeká / Údržba / Pozastaveno.
+
+- cron expression: výraz cron (the word "cron" stays Latin).

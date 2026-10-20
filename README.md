@@ -55,7 +55,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Real-browser checks** — load a page in a headless Chromium (browserless, chromedp/headless-shell) over the DevTools protocol: status, text or CSS selector, JavaScript errors, desktop or mobile viewport, and a screenshot of the last failure. The browser runs as its own container, so this image stays small — see [docs/real-browser.md](docs/real-browser.md)
 - **TLS certificate and domain expiry** warnings, configurable per monitor
 - **Groups and tags** — nest monitors under group monitors (status = worst child), colour-coded tags with values, search and filters, clone, and bulk actions: select monitors (or every one matching a filter) to pause, resume, delete or **edit them together** — remote agents, check interval and timing, notification channels and tags — also via `POST /api/v1/monitors/bulk`
-- **Maintenance windows** — manual, one-off, daily or weekly (any time zone, across midnight); monitors record *maintenance* and stay quiet
+- **Maintenance windows** — manual, one-off, daily, weekly, every N days, days of the month (including “last day”) or a **cron expression** (any time zone, across midnight and DST changes); monitors record *maintenance* and stay quiet
 
 **Alerting**
 - **24 notification providers**, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
@@ -120,7 +120,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Status pages, custom domains, badges | ✅ | ✅ |
 | Status page logo upload, analytics, password protection | ✅ incl. built-in, cookie-free analytics | Logo and analytics ✅ · password protection ❌ |
 | Incidents | Multiple per page, pinned, history | One active incident per page |
-| Maintenance windows | Manual, once, daily, weekly | Also cron, day-of-month, every N days ✅ |
+| Maintenance windows | ✅ manual, once, daily, weekly, every N days, days of the month, cron | ✅ the same |
 | Multiple users with roles | ✅ admin / editor / viewer | ❌ single user |
 | 2FA (TOTP) | ✅ + recovery codes | ✅ |
 | REST API | ✅ full CRUD + OpenAPI | ❌ (socket.io; API keys for metrics only) |

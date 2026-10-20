@@ -93,3 +93,5 @@ Monitor is treated as a masculine noun (مراقب); its plural is مراقبا�
 | MOTD | MOTD | Latin |
 | replica set | replicaSet | stays Latin (URL option) |
 | selector | محدد | CSS selector: محدد CSS |
+
+- cron expression: تعبير cron (the word "cron" stays Latin).

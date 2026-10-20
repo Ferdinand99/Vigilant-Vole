@@ -107,3 +107,5 @@ Kilde: `locales/en.toml`. Ordforråd er sammenholdt med Uptime Kumas danske ord 
 | MOTD | MOTD | bevares |
 | replica set | replicaSet | bevares som parameter |
 | site ID | websted-ID | |
+
+- cron expression: cron-udtryk (the word "cron" stays Latin).

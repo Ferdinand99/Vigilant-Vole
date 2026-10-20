@@ -99,3 +99,5 @@
 | MOTD | MOTD | inchangé |
 | replica set | replicaSet | paramètre d’URL, inchangé |
 | analytics | statistiques | |
+
+- cron expression: expression cron (the word "cron" stays Latin).

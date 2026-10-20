@@ -60,6 +60,39 @@ pub fn describe_schedule(w: &MaintenanceWindow) -> String {
             format!("{} – {} ({tz_name})", fmt(&w.start_at), fmt(&w.end_at))
         }
         Strategy::Daily => crate::i18n::tf("mw.desc_daily", &[("range", &range()), ("tz", tz_name)]),
+        Strategy::Interval => {
+            let first = w
+                .start_at
+                .as_deref()
+                .and_then(maintenance::parse_db_ts)
+                .map(|t| crate::i18n::fmt_date(t.to_zoned(tz.clone()).date()))
+                .unwrap_or_else(|| "?".into());
+            crate::i18n::tf(
+                "mw.desc_interval",
+                &[
+                    ("n", &crate::i18n::fmt_int(w.interval_days.unwrap_or(1))),
+                    ("from", &first),
+                    ("range", &range()),
+                    ("tz", tz_name),
+                ],
+            )
+        }
+        Strategy::Monthly => {
+            let days = maintenance::parse_month_days(w.month_days.as_deref().unwrap_or(""));
+            let names: Vec<String> = days
+                .iter()
+                .map(|d| if *d == -1 { crate::i18n::t("mw.last_day_short").to_string() } else { d.to_string() })
+                .collect();
+            crate::i18n::tf("mw.desc_monthly", &[("days", &names.join(", ")), ("range", &range()), ("tz", tz_name)])
+        }
+        Strategy::Cron => crate::i18n::tf(
+            "mw.desc_cron",
+            &[
+                ("cron", w.cron.as_deref().unwrap_or("?")),
+                ("minutes", &crate::i18n::fmt_int(w.duration_minutes.unwrap_or(0))),
+                ("tz", tz_name),
+            ],
+        ),
         Strategy::Weekly => {
             let days = maintenance::parse_weekdays(w.weekdays.as_deref().unwrap_or(""));
             let names: Vec<&str> = WEEKDAYS
@@ -228,17 +261,23 @@ struct WindowForm {
     time_from: String,
     time_to: String,
     weekdays: Vec<i8>,
+    interval_days: String,
+    month_days: String,
+    cron: String,
+    duration_minutes: String,
     valid_from: String,
     valid_until: String,
     monitor_ids: Vec<i64>,
     status_page_ids: Vec<i64>,
+    /// Upcoming runs of a saved recurring window, as text.
+    next_runs: Vec<String>,
     title_error: String,
     description_error: String,
     schedule_error: String,
     timezone_error: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct WindowInput {
     #[serde(default)]
     title: String,
@@ -260,6 +299,14 @@ struct WindowInput {
     time_to: String,
     #[serde(default)]
     weekday: Vec<i8>,
+    #[serde(default)]
+    interval_days: String,
+    #[serde(default)]
+    month_days: String,
+    #[serde(default)]
+    cron: String,
+    #[serde(default)]
+    duration_minutes: String,
     #[serde(default)]
     valid_from: String,
     #[serde(default)]
@@ -299,6 +346,10 @@ fn validate(input: WindowInput) -> (WindowForm, Option<NewWindow>) {
         weekdays: maintenance::parse_weekdays(
             &input.weekday.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","),
         ),
+        interval_days: input.interval_days.trim().to_string(),
+        month_days: input.month_days.trim().to_string(),
+        cron: input.cron.split_whitespace().collect::<Vec<_>>().join(" "),
+        duration_minutes: input.duration_minutes.trim().to_string(),
         valid_from: input.valid_from.trim().to_string(),
         valid_until: input.valid_until.trim().to_string(),
         monitor_ids: input.monitor_id,
@@ -356,19 +407,52 @@ fn validate(input: WindowInput) -> (WindowForm, Option<NewWindow>) {
                 _ => f.schedule_error = crate::i18n::t("mw.err_start_end").into(),
             }
         }
-        Strategy::Daily | Strategy::Weekly => {
-            match (maintenance::parse_hhmm(&f.time_from), maintenance::parse_hhmm(&f.time_to)) {
-                (Some(a), Some(b)) => {
-                    row.time_from = Some(a.strftime("%H:%M").to_string());
-                    row.time_to = Some(b.strftime("%H:%M").to_string());
+        Strategy::Daily | Strategy::Weekly | Strategy::Interval | Strategy::Monthly | Strategy::Cron => {
+            if strategy.uses_times() {
+                match (maintenance::parse_hhmm(&f.time_from), maintenance::parse_hhmm(&f.time_to)) {
+                    (Some(a), Some(b)) => {
+                        row.time_from = Some(a.strftime("%H:%M").to_string());
+                        row.time_to = Some(b.strftime("%H:%M").to_string());
+                    }
+                    _ => f.schedule_error = crate::i18n::t("mw.err_times").into(),
                 }
-                _ => f.schedule_error = crate::i18n::t("mw.err_times").into(),
+            }
+            match strategy {
+                Strategy::Interval => match f.interval_days.parse::<i64>() {
+                    Ok(n) if (1..=366).contains(&n) => row.interval_days = Some(n),
+                    _ => f.schedule_error = crate::i18n::t("mw.err_interval").into(),
+                },
+                Strategy::Monthly => match maintenance::parse_month_days_strict(&f.month_days) {
+                    Ok(days) if !days.is_empty() => row.month_days = Some(maintenance::fmt_month_days(&days)),
+                    _ => f.schedule_error = crate::i18n::t("mw.err_month_days").into(),
+                },
+                Strategy::Cron => {
+                    if maintenance::CronSpec::parse(&f.cron).is_err() {
+                        f.schedule_error = crate::i18n::t("mw.err_cron").into();
+                    } else {
+                        row.cron = Some(f.cron.clone());
+                    }
+                    match f.duration_minutes.parse::<i64>() {
+                        Ok(n) if (1..=maintenance::MAX_DURATION_MINUTES).contains(&n) => row.duration_minutes = Some(n),
+                        _ if f.schedule_error.is_empty() => {
+                            f.schedule_error = crate::i18n::tf(
+                                "mw.err_duration",
+                                &[("max", &crate::i18n::fmt_int(maintenance::MAX_DURATION_MINUTES))],
+                            )
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
             if strategy == Strategy::Weekly {
                 if f.weekdays.is_empty() && f.schedule_error.is_empty() {
                     f.schedule_error = crate::i18n::t("mw.err_days").into();
                 }
                 row.weekdays = Some(f.weekdays.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","));
+            }
+            if strategy == Strategy::Interval && f.valid_from.is_empty() && f.schedule_error.is_empty() {
+                f.schedule_error = crate::i18n::t("mw.err_interval_start").into();
             }
             if !f.valid_from.is_empty() {
                 match date_start(&f.valid_from, &tz, 0) {
@@ -395,6 +479,26 @@ fn validate(input: WindowInput) -> (WindowForm, Option<NewWindow>) {
         && f.schedule_error.is_empty()
         && f.timezone_error.is_empty();
     (f, ok.then_some(row))
+}
+
+/// The next few runs of a saved recurring window, formatted in its time zone.
+fn next_runs(w: &MaintenanceWindow, tz: &TimeZone) -> Vec<String> {
+    let schedule = Schedule::from_window(w);
+    if !schedule.strategy.is_recurring() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut after = Timestamp::now();
+    for _ in 0..3 {
+        let Some((start, end)) = maintenance::next_occurrence(&schedule, after) else { break };
+        out.push(format!(
+            "{} → {}",
+            crate::i18n::fmt_short_datetime(&start.to_zoned(tz.clone())),
+            crate::i18n::fmt_short_datetime(&end.to_zoned(tz.clone()))
+        ));
+        after = end;
+    }
+    out
 }
 
 impl WindowForm {
@@ -428,6 +532,11 @@ impl WindowForm {
             time_from: w.time_from.clone().unwrap_or_default(),
             time_to: w.time_to.clone().unwrap_or_default(),
             weekdays: maintenance::parse_weekdays(w.weekdays.as_deref().unwrap_or("")),
+            interval_days: w.interval_days.map(|n| n.to_string()).unwrap_or_default(),
+            month_days: w.month_days.clone().unwrap_or_default(),
+            cron: w.cron.clone().unwrap_or_default(),
+            duration_minutes: w.duration_minutes.map(|n| n.to_string()).unwrap_or_default(),
+            next_runs: next_runs(w, &tz),
             valid_from,
             valid_until,
             monitor_ids,
@@ -714,6 +823,10 @@ mod tests {
             time_from: "22:00".into(),
             time_to: "02:00".into(),
             weekday: vec![5, 1, 5],
+            interval_days: String::new(),
+            month_days: String::new(),
+            cron: String::new(),
+            duration_minutes: String::new(),
             valid_from: String::new(),
             valid_until: String::new(),
             monitor_id: vec![3, 1, 3],
@@ -773,6 +886,10 @@ mod tests {
             weekdays: None,
             time_from: row.time_from.clone(),
             time_to: row.time_to.clone(),
+            interval_days: row.interval_days,
+            month_days: row.month_days.clone(),
+            cron: row.cron.clone(),
+            duration_minutes: row.duration_minutes,
             timezone: row.timezone.clone(),
             skip_until: None,
             created_at: String::new(),
@@ -814,5 +931,94 @@ mod tests {
         let tz = timezones();
         assert!(tz.contains(&"Europe/Oslo".to_string()));
         assert!(tz.contains(&"UTC".to_string()));
+    }
+
+    #[test]
+    fn cron_monthly_and_interval_forms_validate() {
+        let mut cron = input("cron");
+        cron.cron = "  0  2 * * 0 ".into();
+        cron.duration_minutes = "90".into();
+        let (_, row) = validate(cron.clone());
+        let row = row.expect("valid cron");
+        assert_eq!((row.cron.as_deref(), row.duration_minutes, row.time_from.clone()), (Some("0 2 * * 0"), Some(90), None));
+        for (cron_text, minutes) in [("nope", "90"), ("0 2 * * *", "0"), ("0 2 * * *", "x"), ("0 2 * * *", "99999999")] {
+            let mut bad = cron.clone();
+            bad.cron = cron_text.into();
+            bad.duration_minutes = minutes.into();
+            let (form, row) = validate(bad);
+            assert!(row.is_none() && !form.schedule_error.is_empty(), "{cron_text} {minutes}");
+        }
+
+        let mut monthly = input("monthly");
+        monthly.month_days = "15, 1, last".into();
+        let (_, row) = validate(monthly.clone());
+        assert_eq!(row.unwrap().month_days.as_deref(), Some("1,15,-1"));
+        monthly.month_days = "40".into();
+        assert!(validate(monthly).1.is_none());
+
+        let mut every = input("interval");
+        every.interval_days = "3".into();
+        every.valid_from = "2026-10-01".into();
+        let (_, row) = validate(every.clone());
+        let row = row.unwrap();
+        // Oslo is UTC+2 on 1 October: local midnight is the evening before in UTC.
+        assert_eq!((row.interval_days, row.start_at.as_deref()), (Some(3), Some("2026-09-30 22:00:00")));
+        every.valid_from = String::new();
+        assert!(validate(every.clone()).1.is_none(), "the first day is required");
+        every.valid_from = "2026-10-01".into();
+        every.interval_days = "0".into();
+        assert!(validate(every).1.is_none());
+    }
+
+    #[test]
+    fn the_new_schedules_describe_themselves_and_preview_the_next_runs() {
+        let mut cron = input("cron");
+        cron.cron = "0 2 * * 0".into();
+        cron.duration_minutes = "90".into();
+        let row = validate(cron).1.unwrap();
+        let w = MaintenanceWindow {
+            id: 1,
+            title: row.title.clone(),
+            description: String::new(),
+            strategy: row.strategy.clone(),
+            active: true,
+            start_at: None,
+            end_at: None,
+            weekdays: None,
+            time_from: None,
+            time_to: None,
+            interval_days: row.interval_days,
+            month_days: row.month_days.clone(),
+            cron: row.cron.clone(),
+            duration_minutes: row.duration_minutes,
+            timezone: "Europe/Oslo".into(),
+            skip_until: None,
+            created_at: String::new(),
+        };
+        assert_eq!(describe_schedule(&w), "Cron 0 2 * * 0, 90 min each (Europe/Oslo)");
+        let form = WindowForm::from_window(&w, vec![], vec![]);
+        assert_eq!(form.next_runs.len(), 3);
+        assert_eq!((form.cron.as_str(), form.duration_minutes.as_str()), ("0 2 * * 0", "90"));
+        let monthly = MaintenanceWindow {
+            strategy: "monthly".into(),
+            cron: None,
+            duration_minutes: None,
+            month_days: Some("1,-1".into()),
+            time_from: Some("22:00".into()),
+            time_to: Some("23:00".into()),
+            ..w.clone()
+        };
+        assert_eq!(describe_schedule(&monthly), "Days 1, last of the month, 22:00–23:00 (Europe/Oslo)");
+        let every = MaintenanceWindow {
+            strategy: "interval".into(),
+            cron: None,
+            duration_minutes: None,
+            interval_days: Some(3),
+            start_at: Some("2026-09-30 22:00:00".into()),
+            time_from: Some("01:00".into()),
+            time_to: Some("02:00".into()),
+            ..w
+        };
+        assert_eq!(describe_schedule(&every), "Every 3 days from Oct 1, 2026, 01:00–02:00 (Europe/Oslo)");
     }
 }
