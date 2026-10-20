@@ -229,9 +229,9 @@ Settings → General (admins): site name, public base URL (used in notification 
 | TLS handshake | `host[:port]` | Handshake and certificate for any service that speaks TLS from the first byte (HTTPS, IMAPS, LDAPS, …); certificate expiry warnings |
 | SMTP | `host[:port]` | Greeting and `EHLO`; port 465 uses implicit TLS, other ports are upgraded with `STARTTLS` when offered, and the certificate is checked |
 | Redis | `redis[s]://host[:port][/db]` | `AUTH` (password or ACL user), `SELECT`, `PING`; shows the server version |
-| PostgreSQL | `postgres://host[:port]/db[?sslmode=…]` | Login (cleartext, MD5 or SCRAM-SHA-256) and `SELECT 1`; TLS when the server offers it |
-| MySQL / MariaDB | `mysql://host[:port][/db][?sslmode=…]` | Server greeting; with a user name also the login (`mysql_native_password`, `caching_sha2_password`) and a ping |
-| MQTT | `mqtt[s]://host[:port][/topic]` | Connect with optional login; with a topic it subscribes, and with a keyword waits for a matching message |
+| PostgreSQL | `postgres://host[:port]/db[?sslmode=…]` | Login (cleartext, MD5 or SCRAM-SHA-256) and `SELECT 1`; TLS when the server offers it. `sslmode` works like libpq's: `disable`, `prefer` (default), `require`, `verify-ca`, `verify-full` — only the `verify-*` modes check the certificate |
+| MySQL / MariaDB | `mysql://host[:port][/db][?sslmode=…]` | Server greeting; with a user name also the login (`mysql_native_password`, `caching_sha2_password`) and a ping. `sslmode` as for PostgreSQL (MySQL's `VERIFY_IDENTITY` etc. work too) |
+| MQTT | `mqtt[s]://host[:port][/topic]` | Connect with optional login; with a topic (wildcards `+`/`#` allowed) it subscribes, and with a keyword waits for a matching message |
 | Kafka | `kafka[s]://host[:port][/topic]` | Broker answers (`ApiVersions`, `Metadata`); with a topic, that it exists and every partition has a leader. Nothing is produced or created |
 | RabbitMQ | `amqp[s]://host[:port][/vhost]` | AMQP 0-9-1 greeting; with a user name, login and opening the virtual host |
 | gRPC | `grpc[s]://host[:port][/service]` | Standard `grpc.health.v1.Health/Check` over HTTP/2; up only when `SERVING` |

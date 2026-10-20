@@ -308,13 +308,7 @@ mod tests {
 
     #[tokio::test]
     async fn other_servers_and_closed_ports_are_down() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            while let Ok((mut tcp, _)) = listener.accept().await {
-                let _ = tcp.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
-            }
-        });
+        let addr = crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
         let out = check(&redis(&addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not a Redis server"));

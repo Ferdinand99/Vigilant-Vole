@@ -69,7 +69,7 @@
     <details class="disclosure"{% if !f.auth_is("none") || !f.v.proxy_url.is_empty() || f.v.ignore_tls || f.v.max_redirects != "10" || f.has_auth_err() || f.has_err("proxy_url") || f.has_err("max_redirects") %} open{% endif %}>
       <summary>{{ tr("form.auth_network") }} <span class="disclosure-sub">{{ tr("form.auth_network_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
       <div class="disclosure-body">
-        {{ fm::select("auth_method", tr("httpauth.method"), &f.auth_methods, f.v.auth_method_effective(), tr("httpauth.method_help"), f.err("auth_method")) }}
+        {{ fm::select("auth_method", tr("httpauth.method"), &f.auth_methods, f.v.auth_method.as_str(), tr("httpauth.method_help"), f.err("auth_method")) }}
         <div class="field-row" data-show-when="auth_method=basic"{% if !f.auth_is("basic") %} hidden{% endif %}>
           {{ m::field_text("basic_auth_user", tr("form.user_name"), value=&f.v.basic_auth_user, error=f.err("basic_auth_user")) }}
           {{ m::field_text("basic_auth_pass", tr("login.password"), value=&f.v.basic_auth_pass, kind="password", autocomplete="new-password", error=f.err("basic_auth_pass")) }}

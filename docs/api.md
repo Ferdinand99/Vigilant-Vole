@@ -112,13 +112,19 @@ or OID (`snmp`). Credentials never go into the target:
 | `ignore_tls` | every type that can use TLS |
 
 `secret` is masked like the other secrets: responses carry `"••••••"`, sending that value back keeps the stored one
-while the host and port of `target` are unchanged.
+while the host and port of `target` are unchanged and its protection isn't lowered (`rediss://` → `redis://`, a
+lower PostgreSQL/MySQL `sslmode`): then the secret has to be sent again.
+
+The MQTT topic is the rest of the target after the host and port, as written: `mqtt://broker/home/#` subscribes
+to `home/#` (escape a literal `%` as `%25`). PostgreSQL and MySQL take `?sslmode=` with libpq's meaning:
+`disable`, `prefer` (default: TLS when offered), `require`, `verify-ca` or `verify-full`; only the `verify-*`
+modes check the certificate (unless `ignore_tls`).
 
 ## HTTP monitor authentication
 
 HTTP, keyword and JSON query monitors take an `auth_method`: `none` (default), `basic`, `oauth2` or `mtls`. Only
-the chosen method's fields are kept (the others are cleared). A request that sets `basic_auth_user` without
-`auth_method` means `basic`, as before.
+the chosen method's fields are kept (the others are cleared, so `{"auth_method": "none"}` switches basic auth
+off). A request that sets `basic_auth_user` without `auth_method` (or with an empty one) means `basic`, as before.
 
 | Method | Fields |
 |---|---|

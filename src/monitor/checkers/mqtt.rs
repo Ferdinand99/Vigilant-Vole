@@ -1,4 +1,6 @@
 //! MQTT checker (3.1.1): `target` = `[mqtt|mqtts]://host[:port][/topic]`.
+//! The topic is everything after the host and port, as written (wildcards
+//! `+` and `#` and a literal `?` included; `%XX` is decoded, so `%25` is `%`).
 //!
 //! Connects with the monitor's user name and password (if any) and waits for
 //! `CONNACK`. With a topic in the path it also subscribes (QoS 0); with a
@@ -121,6 +123,17 @@ fn connack_error(code: u8) -> String {
     }
 }
 
+/// The topic of an MQTT target: the text after the host and port. Read from
+/// the raw target, because a URL parser takes `#` (the multi-level wildcard)
+/// for a fragment and `?` for a query. `None` when there is no topic.
+pub fn topic(target: &str) -> Option<String> {
+    let t = target.trim();
+    let rest = t.split_once("://").map_or(t, |(_, rest)| rest);
+    let (_, path) = rest.split_once('/')?;
+    let topic = endpoint::percent_decode(path);
+    (!topic.is_empty()).then_some(topic)
+}
+
 /// Topic and payload of a `PUBLISH` (QoS 0 only, as subscribed).
 fn parse_publish(body: &[u8]) -> Option<(&[u8], &[u8])> {
     let len = usize::from(u16::from_be_bytes([*body.first()?, *body.get(1)?]));
@@ -133,7 +146,8 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Ok(ep) => ep,
         Err(e) => return CheckOutcome::down(e),
     };
-    let topic = (!ep.path.is_empty()).then_some(ep.path.as_str());
+    let topic = topic(&monitor.target);
+    let topic = topic.as_deref();
     let keyword = monitor.keyword.as_deref().filter(|k| !k.is_empty());
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
@@ -280,6 +294,27 @@ mod tests {
         m
     }
 
+    #[test]
+    fn topics_keep_wildcards_and_question_marks() {
+        assert_eq!(topic("mqtt://broker/home/#").as_deref(), Some("home/#"));
+        assert_eq!(topic("mqtts://broker:8883/a/+/b").as_deref(), Some("a/+/b"));
+        assert_eq!(topic("broker:1883/sensors/temp?x").as_deref(), Some("sensors/temp?x"));
+        assert_eq!(topic("[::1]:1883/#").as_deref(), Some("#"));
+        assert_eq!(topic("mqtt://broker//leading/slash").as_deref(), Some("/leading/slash"));
+        assert_eq!(topic("mqtt://broker/100%25/a%2Bb").as_deref(), Some("100%/a+b"));
+        assert_eq!(topic("mqtt://broker/"), None);
+        assert_eq!(topic("mqtt://broker:1883"), None);
+    }
+
+    #[tokio::test]
+    async fn wildcard_topics_are_subscribed_as_written() {
+        let addr = serve(false, false).await;
+        for t in ["home/#", "a/+/b", "sensors/temp?x"] {
+            let out = check(&mqtt(&format!("mqtt://{addr}/{t}"))).await;
+            assert_eq!(out.message.as_deref(), Some(format!("Subscribed to {t}").as_str()), "{t}");
+        }
+    }
+
     #[tokio::test]
     async fn connect_only() {
         let addr = serve(false, false).await;
@@ -347,13 +382,7 @@ mod tests {
 
     #[tokio::test]
     async fn other_servers_are_down() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            while let Ok((mut tcp, _)) = listener.accept().await {
-                let _ = tcp.write_all(b"SSH-2.0-OpenSSH_9.6\r\n").await;
-            }
-        });
+        let addr = crate::monitor::checkers::test_support::foreign_server(b"SSH-2.0-OpenSSH_9.6\r\n").await;
         let out = check(&mqtt(&addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not an MQTT broker"));

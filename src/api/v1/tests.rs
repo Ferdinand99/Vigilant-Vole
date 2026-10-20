@@ -900,3 +900,37 @@ async fn auth_methods_are_masked_in_the_api_and_secrets_stay_with_their_destinat
     assert_eq!(status, StatusCode::CREATED, "{legacy}");
     assert_eq!(legacy["auth_method"], "basic");
 }
+
+#[tokio::test]
+async fn auth_method_none_switches_basic_auth_off() {
+    let h = harness().await;
+    let mut body = http_monitor("Basic");
+    body["auth_method"] = json!("basic");
+    body["basic_auth_user"] = json!("bot");
+    body["basic_auth_pass"] = json!("hunter2");
+    let (status, created) = h.json(Method::POST, "/api/v1/monitors", &h.editor, Some(body)).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let id = created["id"].as_i64().unwrap();
+    let uri = format!("/api/v1/monitors/{id}");
+    let stored = |h: &Harness| {
+        let state = h.state.clone();
+        async move { state.with_conn(move |c| crate::db::monitors::get_monitor(c, id)).await.unwrap().unwrap() }
+    };
+
+    // An explicit "none" is respected and clears the basic credentials.
+    let (status, patched) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"auth_method": "none"}))).await;
+    assert_eq!(status, StatusCode::OK, "{patched}");
+    assert_eq!(patched["auth_method"], "none");
+    let m = stored(&h).await;
+    assert_eq!((m.auth_method.as_str(), m.basic_auth_user.as_deref(), m.basic_auth_pass.as_deref()), ("none", None, None));
+
+    // Old clients that only send a user name (or an empty method) still mean basic.
+    let (status, patched) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"auth_method": "", "basic_auth_user": "bot", "basic_auth_pass": "pw"}))).await;
+    assert_eq!(status, StatusCode::OK, "{patched}");
+    let m = stored(&h).await;
+    assert_eq!((m.auth_method.as_str(), m.basic_auth_user.as_deref()), ("basic", Some("bot")));
+    // ... and a PATCH that doesn't mention the method keeps it.
+    let (status, _) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"interval_seconds": 120}))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(stored(&h).await.auth_method, "basic");
+}

@@ -3,7 +3,8 @@
 //!
 //! The scheme picks plain or TLS (`redis://` / `rediss://`), the path carries
 //! what the service calls its "database" (Redis db index, PostgreSQL database,
-//! MQTT topic, AMQP vhost, gRPC service) and the query holds rare options.
+//! AMQP vhost, gRPC service) and the query holds rare options. MQTT reads its
+//! topic from the raw target instead (`mqtt::topic`), since topics use `#`.
 //! Credentials never go into the target: they live in the monitor's user name,
 //! password and secret fields, so they can be masked.
 

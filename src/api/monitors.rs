@@ -285,7 +285,7 @@ const TARGETS: &[TargetSpec] = &[
         types: "postgres",
         label: "PostgreSQL server",
         placeholder: "db.local:5432/app…",
-        help: "Uses port 5432. The path is the database name; add ?sslmode=disable or ?sslmode=require.",
+        help: "Uses port 5432. The path is the database name. TLS is used when the server offers it; add ?sslmode=verify-full to also check the certificate (or disable, require, verify-ca).",
         url: false,
     },
     TargetSpec {
@@ -293,7 +293,7 @@ const TARGETS: &[TargetSpec] = &[
         types: "mysql",
         label: "MySQL or MariaDB server",
         placeholder: "db.local:3306…",
-        help: "Uses port 3306. Without a user name only the server greeting is checked.",
+        help: "Uses port 3306. Without a user name only the server greeting is checked. TLS is used when the server offers it; add ?sslmode=verify-full to also check the certificate.",
         url: false,
     },
     TargetSpec {
@@ -301,7 +301,7 @@ const TARGETS: &[TargetSpec] = &[
         types: "mqtt",
         label: "MQTT broker",
         placeholder: "broker.local:1883/home/status…",
-        help: "Uses port 1883 (8883 for mqtts://). Add a topic as the path to subscribe to it.",
+        help: "Uses port 1883 (8883 for mqtts://). Add a topic as the path to subscribe to it; wildcards (+ and #) work as written.",
         url: false,
     },
     TargetSpec {
@@ -418,7 +418,7 @@ impl FormData {
     /// Whether the chosen authentication method is `method` (for pre-hiding
     /// the `data-show-when="auth_method=…"` blocks).
     pub fn auth_is(&self, method: &str) -> bool {
-        self.v.auth_method_effective() == method
+        self.v.auth_method == method
     }
 
     /// Whether any authentication field has an error (keeps the section open).

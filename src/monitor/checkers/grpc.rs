@@ -106,6 +106,18 @@ fn explain(code: u32, message: &str, service: &str) -> String {
     }
 }
 
+/// Aborts a spawned task when dropped. The HTTP/2 connection task belongs to
+/// the probe: when the monitor's timeout drops the probe mid-call, the task
+/// and its socket go with it instead of depending on the peer to finish the
+/// shutdown (a peer that stops reading would keep it alive).
+struct AbortOnDrop<T>(tokio::task::JoinHandle<T>);
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 fn h2_err(e: &h2::Error) -> String {
     if e.is_io() {
         "Connection closed by the server".into()
@@ -128,7 +140,7 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         let connected = conn::connect_alpn(&ep, monitor.ignore_tls, timeout, &[b"h2"]).await?;
         let fail = CheckOutcome::down;
         let (mut client, connection) = h2::client::handshake(connected.io).await.map_err(|e| fail(h2_err(&e)))?;
-        let driver = tokio::spawn(connection);
+        let driver = AbortOnDrop(tokio::spawn(connection));
         let result = async {
             client = client.ready().await.map_err(|e| fail(h2_err(&e)))?;
             let host = if ep.host.contains(':') { format!("[{}]", ep.host) } else { ep.host.clone() };
@@ -170,7 +182,7 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
             parse_status(&data).map_err(fail)
         }
         .await;
-        driver.abort();
+        drop(driver);
         let status = result?;
         let ms = util::elapsed_ms(start);
         let what = if service.is_empty() { "server".to_string() } else { format!("service {}", util::truncate(service, 60)) };
@@ -310,6 +322,40 @@ mod tests {
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
         assert_eq!(out.message.as_deref(), Some("SERVING (server) · TLS 1.3"));
         assert!(out.expiry.is_some());
+    }
+
+    /// A server that takes the call and never answers: once the check times
+    /// out, the client must hang up (no connection task left running).
+    #[tokio::test]
+    async fn a_timed_out_call_closes_the_connection() {
+        use tokio::io::AsyncReadExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (closed_tx, closed_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (mut tcp, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 4096];
+            while matches!(tcp.read(&mut buf).await, Ok(n) if n > 0) {}
+            let _ = closed_tx.send(());
+        });
+        let mut m = grpc(&format!("grpc://{addr}"));
+        m.timeout_seconds = 1;
+        let out = check(&m).await;
+        assert!(out.message.as_deref().unwrap().contains("no answer within"), "{:?}", out.message);
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(3), closed_rx).await;
+        assert!(closed.is_ok(), "the connection outlived the check");
+    }
+
+    #[tokio::test]
+    async fn dropping_the_guard_aborts_the_task() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let guard = AbortOnDrop(tokio::spawn(async move {
+            let _tx = tx; // dropped when the task ends
+            std::future::pending::<()>().await;
+        }));
+        drop(guard);
+        let ended = tokio::time::timeout(std::time::Duration::from_secs(1), rx).await;
+        assert!(matches!(ended, Ok(Err(_))), "the task kept running");
     }
 
     #[tokio::test]

@@ -12,7 +12,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_rustls::TlsAcceptor;
 
 /// A CA plus a server certificate (for 127.0.0.1) and a client certificate
-/// signed by it. All PEM except the server's DER material.
+/// signed by it. All PEM except the server's DER material. The PEM text uses
+/// LF line endings on every OS (rcgen writes CRLF on Windows), the way the
+/// form stores it, so tests can compare stored values with these.
 pub struct Pki {
     pub ca_pem: String,
     pub client_cert_pem: String,
@@ -28,8 +30,13 @@ fn ca(name: &str) -> (CertifiedIssuer<'static, KeyPair>, String) {
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     params.distinguished_name.push(DnType::CommonName, name);
     let issuer = CertifiedIssuer::self_signed(params, key).unwrap();
-    let pem = issuer.pem();
+    let pem = lf(issuer.pem());
     (issuer, pem)
+}
+
+/// PEM text with LF line endings.
+fn lf(pem: String) -> String {
+    pem.replace("\r\n", "\n")
 }
 
 fn leaf(issuer: &CertifiedIssuer<'static, KeyPair>, cn: &str, usage: ExtendedKeyUsagePurpose, ip: bool) -> (rcgen::Certificate, KeyPair) {
@@ -51,8 +58,8 @@ impl Pki {
         let (client, client_key) = leaf(&issuer, "vole-client", ExtendedKeyUsagePurpose::ClientAuth, false);
         Self {
             ca_pem,
-            client_cert_pem: client.pem(),
-            client_key_pem: client_key.serialize_pem(),
+            client_cert_pem: lf(client.pem()),
+            client_key_pem: lf(client_key.serialize_pem()),
             server_cert: server.der().clone(),
             server_key: server_key.serialize_der(),
             ca_der: issuer.der().clone(),
@@ -69,7 +76,7 @@ pub fn stranger_client() -> (String, String) {
 
 /// A fresh private key unrelated to any certificate above.
 pub fn unrelated_key_pem() -> String {
-    KeyPair::generate().unwrap().serialize_pem()
+    lf(KeyPair::generate().unwrap().serialize_pem())
 }
 
 /// Serves `HTTP/1.1 200 OK` over TLS, but only to clients presenting a
@@ -104,4 +111,12 @@ pub async fn serve_requiring_client_cert(pki: &Pki) -> SocketAddr {
         }
     });
     addr
+}
+
+#[test]
+fn pem_text_uses_lf_on_every_os() {
+    let pki = Pki::new();
+    for pem in [&pki.ca_pem, &pki.client_cert_pem, &pki.client_key_pem, &unrelated_key_pem()] {
+        assert!(!pem.contains('\r'), "{pem:?}");
+    }
 }

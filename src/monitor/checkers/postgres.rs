@@ -3,10 +3,12 @@
 //! Speaks the frontend/backend protocol 3.0 directly: optional TLS
 //! (`SSLRequest`), startup, cleartext / MD5 / SCRAM-SHA-256 authentication,
 //! then `SELECT 1`. The user name and password come from the monitor's
-//! credentials. `sslmode` is `disable`, `prefer` (default: TLS when the server
-//! offers it) or `require`; certificates are verified unless the monitor
-//! ignores TLS errors. The database defaults to the user name. Response time =
-//! connect + login + query.
+//! credentials. `sslmode` works like libpq's ([`conn::SslMode`]): `disable`,
+//! `prefer` (default: TLS when the server offers it), `require`, `verify-ca`
+//! and `verify-full`; only the `verify-*` modes check the certificate (and not
+//! when the monitor ignores TLS errors). The certificate's expiry is reported
+//! whenever TLS is used. The database defaults to the user name. Response
+//! time = connect + login + query.
 
 use std::time::Instant;
 
@@ -17,7 +19,7 @@ use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-use super::conn::{self, Io};
+use super::conn::{self, Io, SslMode};
 use super::endpoint;
 use super::tls::{self, CertSummary};
 use super::util;
@@ -161,7 +163,7 @@ fn scram_final(password: &str, client_first_bare: &str, server_first: &str, clie
 
 enum Failure {
     Down(String),
-    Outcome(CheckOutcome),
+    Outcome(Box<CheckOutcome>),
 }
 
 impl From<String> for Failure {
@@ -184,20 +186,18 @@ struct Session {
 
 async fn connect(
     ep: &endpoint::Endpoint,
-    sslmode: &str,
+    sslmode: SslMode,
     ignore_tls: bool,
     timeout: std::time::Duration,
 ) -> Result<(Stream, Option<CertSummary>, Option<&'static str>), Failure> {
-    let addr = util::resolve(&ep.host, ep.port).await.map_err(Failure::Down)?;
-    let mut tcp = TcpStream::connect(addr)
-        .await
-        .map_err(|e| Failure::Down(format!("Connection to {}:{} failed: {}", addr.ip(), ep.port, util::tidy_io_error(&e))))?;
-    if sslmode == "disable" {
+    let (mut tcp, addr) = conn::tcp(&ep.host, ep.port).await.map_err(Failure::Down)?;
+    if sslmode == SslMode::Disable {
         return Ok((Box::new(tcp), None, None));
     }
+    let verify = sslmode.verify(ignore_tls);
     tcp.write_all(&SSL_REQUEST).await.map_err(|e| Failure::Down(io_err(e)))?;
     match tcp.read_u8().await.map_err(|e| Failure::Down(io_err(e)))? {
-        b'S' => match tls::upgrade(tcp, &ep.host, ignore_tls).await {
+        b'S' => match tls::upgrade_with(tcp, &ep.host, verify, &[]).await {
             Ok(stream) => {
                 let (cert, version) = (tls::peer_cert(&stream), tls::version_label(&stream));
                 Ok((Box::new(stream), cert, Some(version)))
@@ -209,10 +209,11 @@ async fn connect(
                     (tcp.read_u8().await.ok()? == b'S').then_some(())?;
                     tls::peer_cert(&tls::upgrade(tcp, &ep.host, true).await.ok()?)
                 };
-                Err(Failure::Outcome(conn::tls_failure_with(&err, ignore_tls, timeout, fetch).await))
+                let outcome = conn::tls_failure_with(&err, verify == tls::Verify::None, timeout, fetch).await;
+                Err(Failure::Outcome(Box::new(outcome)))
             }
         },
-        b'N' if sslmode == "require" => Err(Failure::Down("The server doesn't support TLS (sslmode=require)".into())),
+        b'N' if sslmode.requires_tls() => Err(Failure::Down(sslmode.no_tls_message())),
         b'N' => Ok((Box::new(tcp), None, None)),
         _ => Err(Failure::Down("Not a PostgreSQL server (bad reply to the TLS request)".into())),
     }
@@ -322,15 +323,15 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     let Some(user) = monitor.basic_auth_user.as_deref() else {
         return CheckOutcome::down("Enter a user name");
     };
-    let sslmode = ep.query("sslmode").unwrap_or("prefer").to_ascii_lowercase();
-    if !matches!(sslmode.as_str(), "disable" | "prefer" | "require") {
-        return CheckOutcome::down(format!("Unsupported sslmode \"{}\" (use disable, prefer or require)", util::truncate(&sslmode, 20)));
-    }
+    let sslmode = match SslMode::of(&ep) {
+        Ok(mode) => mode,
+        Err(e) => return CheckOutcome::down(e),
+    };
     let database = if ep.path.is_empty() { user } else { ep.path.as_str() };
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
     let probe = async {
-        let (mut stream, cert, tls_version) = connect(&ep, &sslmode, monitor.ignore_tls, timeout).await?;
+        let (mut stream, cert, tls_version) = connect(&ep, sslmode, monitor.ignore_tls, timeout).await?;
         let version = login(&mut stream, user, monitor.basic_auth_pass.as_deref(), database).await?;
         select_one(&mut stream, database).await?;
         let ms = util::elapsed_ms(start);
@@ -346,7 +347,7 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
             conn::up(ms, message, session.cert.as_ref(), session.tls_version)
         }
         Ok(Err(Failure::Down(msg))) => CheckOutcome::down(msg),
-        Ok(Err(Failure::Outcome(outcome))) => outcome,
+        Ok(Err(Failure::Outcome(outcome))) => *outcome,
         Err(_) => conn::timed_out(&format!("PostgreSQL on {}:{}", ep.host, ep.port), timeout),
     }
 }
@@ -547,19 +548,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tls_is_used_when_offered_and_verified() {
+    async fn tls_is_used_when_offered_and_verified_only_when_asked() {
         let addr = serve(Auth::Scram, true).await;
         let target = format!("postgres://localhost:{}/app", addr.port());
-        let out = check(&pg(&target, Some("pw"))).await;
-        assert_eq!(out.status, HeartbeatStatus::Down);
-        assert!(out.message.as_deref().unwrap().contains("not trusted"), "{:?}", out.message);
+        // prefer (default) and require encrypt without checking the certificate, like libpq.
+        for t in [target.clone(), format!("{target}?sslmode=require")] {
+            let out = check(&pg(&t, Some("pw"))).await;
+            assert_eq!(out.status, HeartbeatStatus::Up, "{t}: {:?}", out.message);
+            assert!(out.message.unwrap().ends_with("· TLS 1.3"));
+            assert!(out.expiry.is_some(), "the certificate's expiry is still reported");
+        }
+        for mode in ["verify-ca", "verify-full"] {
+            let out = check(&pg(&format!("{target}?sslmode={mode}"), Some("pw"))).await;
+            assert_eq!(out.status, HeartbeatStatus::Down, "{mode}");
+            assert!(out.message.as_deref().unwrap().contains("not trusted"), "{mode}: {:?}", out.message);
+            assert!(out.expiry.is_some());
+        }
 
-        let mut m = pg(&target, Some("pw"));
+        let mut m = pg(&format!("{target}?sslmode=verify-full"), Some("pw"));
         m.ignore_tls = true;
         let out = check(&m).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        assert!(out.message.unwrap().ends_with("· TLS 1.3"));
-        assert!(out.expiry.is_some());
 
         let out = check(&pg(&format!("{target}?sslmode=disable"), Some("pw"))).await;
         assert_eq!(out.status, HeartbeatStatus::Down, "the server speaks TLS only");
@@ -571,6 +580,8 @@ mod tests {
         let out = check(&pg(&format!("postgres://{addr}/app?sslmode=require"), Some("pw"))).await;
         assert_eq!(out.message.as_deref(), Some("The server doesn't support TLS (sslmode=require)"));
         let out = check(&pg(&format!("postgres://{addr}/app?sslmode=verify-full"), Some("pw"))).await;
+        assert_eq!(out.message.as_deref(), Some("The server doesn't support TLS (sslmode=verify-full)"));
+        let out = check(&pg(&format!("postgres://{addr}/app?sslmode=allow"), Some("pw"))).await;
         assert!(out.message.unwrap().starts_with("Unsupported sslmode"));
     }
 
@@ -586,13 +597,7 @@ mod tests {
 
     #[tokio::test]
     async fn other_servers_are_down() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            while let Ok((mut tcp, _)) = listener.accept().await {
-                let _ = tcp.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
-            }
-        });
+        let addr = crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
         let out = check(&pg(&format!("{addr}?sslmode=disable"), Some("pw"))).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not a PostgreSQL server"));

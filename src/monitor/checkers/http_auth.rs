@@ -35,16 +35,18 @@ pub const OAUTH_CLIENT_AUTHS: &[&str] = &["client_secret_basic", "client_secret_
 const MAX_TOKEN_BODY: usize = 64 * 1024;
 /// How long a token without `expires_in` is trusted.
 const DEFAULT_TOKEN_TTL_SECS: u64 = 300;
+/// Most tokens kept at once (one per OAuth2 monitor).
+const MAX_TOKENS: usize = 4096;
 
-/// The method a monitor actually uses. Rows written before `auth_method`
-/// existed (or by code that only knows basic auth) carry a user name with
-/// method `none`; that still means basic auth.
-pub fn effective_method(monitor: &Monitor) -> &str {
-    match monitor.auth_method.as_str() {
-        "none" | "" if monitor.basic_auth_user.as_deref().is_some_and(|u| !u.is_empty()) => "basic",
-        "" => "none",
-        other => other,
-    }
+/// The method meant by input that doesn't name one: clients, forms and
+/// config files from before `auth_method` existed only knew basic auth, so a
+/// user name means basic. Each input boundary (form posts, the v1 API, config
+/// documents, agents fed by an older server) applies this once when the
+/// method is missing or empty; an explicit `none` is always respected. Stored
+/// monitors carry their method (migration 0096 converted the old rows) and
+/// the checker uses `monitor.auth_method` as is.
+pub fn implied_method(basic_auth_user: Option<&str>) -> &'static str {
+    if basic_auth_user.is_some_and(|u| !u.trim().is_empty()) { "basic" } else { "none" }
 }
 
 /// Replace every given secret in `message` (empty ones are ignored).
@@ -169,7 +171,7 @@ pub fn validate_mtls(cert: &str, key: &str, ca: Option<&str>) -> Result<(), Mtls
 
 /// Stable, non-reversible id of the TLS material, for the client cache key.
 pub fn mtls_fingerprint(monitor: &Monitor) -> Option<String> {
-    if effective_method(monitor) != "mtls" {
+    if monitor.auth_method != "mtls" {
         return None;
     }
     let part = |s: &Option<String>| s.as_deref().unwrap_or_default().trim().to_string();
@@ -282,6 +284,10 @@ struct CachedToken {
 }
 
 /// Access tokens by monitor id. Clock is a parameter so expiry is testable.
+/// Bounded: tokens due for a refresh are dropped on every `put` (they are
+/// never served again), at most [`MAX_TOKENS`] are kept, and a monitor's
+/// token is forgotten when the monitor is edited or deleted
+/// ([`forget_token`], called by `Scheduler::reload`).
 #[derive(Default)]
 pub struct TokenCache {
     entries: Mutex<HashMap<i64, CachedToken>>,
@@ -298,6 +304,13 @@ impl TokenCache {
 
     pub fn put(&self, monitor_id: i64, fingerprint: &str, token: &str, expires_in: Option<u64>, now: Instant) {
         if let Ok(mut map) = self.entries.lock() {
+            map.retain(|_, e| now < e.refresh_at);
+            if map.len() >= MAX_TOKENS
+                && !map.contains_key(&monitor_id)
+                && let Some(first_due) = map.iter().min_by_key(|(_, e)| e.refresh_at).map(|(id, _)| *id)
+            {
+                map.remove(&first_due);
+            }
             map.insert(
                 monitor_id,
                 CachedToken {
@@ -316,12 +329,13 @@ impl TokenCache {
     }
 }
 
-fn cache() -> &'static TokenCache {
+pub(crate) fn cache() -> &'static TokenCache {
     static CACHE: OnceLock<TokenCache> = OnceLock::new();
     CACHE.get_or_init(TokenCache::default)
 }
 
-/// Drops the cached token of a monitor (after the target rejected it).
+/// Drops the cached token of a monitor: after the target rejected it, and
+/// whenever the monitor is edited, paused or deleted.
 pub fn forget_token(monitor_id: i64) {
     cache().invalidate(monitor_id);
 }
@@ -457,16 +471,10 @@ mod tests {
     }
 
     #[test]
-    fn legacy_basic_auth_rows_still_mean_basic() {
-        let mut m = monitor(MonitorType::Http, "https://x.io");
-        assert_eq!(effective_method(&m), "none");
-        m.basic_auth_user = Some("bot".into());
-        assert_eq!(effective_method(&m), "basic");
-        m.auth_method = "oauth2".into();
-        assert_eq!(effective_method(&m), "oauth2");
-        m.auth_method = "basic".into();
-        m.basic_auth_user = None;
-        assert_eq!(effective_method(&m), "basic");
+    fn a_missing_method_with_a_user_name_means_basic() {
+        assert_eq!(implied_method(None), "none");
+        assert_eq!(implied_method(Some(" ")), "none");
+        assert_eq!(implied_method(Some("bot")), "basic");
     }
 
     #[test]
@@ -528,6 +536,25 @@ mod tests {
         // An already-expired token is never served.
         cache.put(1, "fp", "tok", Some(0), t0);
         assert_eq!(cache.get(1, "fp", t0), None);
+    }
+
+    #[test]
+    fn cache_drops_stale_tokens_and_stays_bounded() {
+        let cache = TokenCache::default();
+        let t0 = Instant::now();
+        let len = || cache.entries.lock().unwrap().len();
+        cache.put(1, "fp", "old", Some(10), t0);
+        cache.put(2, "fp", "tok", Some(1000), t0);
+        // Monitor 1's token is due by now: the next put drops it.
+        cache.put(3, "fp", "tok", Some(1000), t0 + Duration::from_secs(60));
+        assert_eq!(len(), 2);
+        for id in 10..10 + MAX_TOKENS as i64 {
+            cache.put(id, "fp", "tok", Some(1000 + id as u64), t0);
+        }
+        assert_eq!(len(), MAX_TOKENS);
+        // The token due first made room; the newest is kept.
+        assert_eq!(cache.get(2, "fp", t0), None);
+        assert!(cache.get(9 + MAX_TOKENS as i64, "fp", t0).is_some());
     }
 
     #[test]

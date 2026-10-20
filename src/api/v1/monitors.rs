@@ -249,6 +249,14 @@ fn read_body(body: Value, base: &NewMonitor, existing: Option<&Monitor>) -> V1Re
     let Value::Object(mut body) = body else {
         return Err(V1Error::bad_request("Send a JSON object."));
     };
+    // Clients that only know basic auth don't send `auth_method` (an empty or
+    // null one counts as not sent): a user name then means basic, as it
+    // always has. An explicit method, `none` included, is respected.
+    if body.get("auth_method").is_some_and(|m| m.is_null() || m.as_str().is_some_and(|m| m.trim().is_empty())) {
+        body.remove("auth_method");
+    }
+    let method_given = body.contains_key("auth_method");
+    let user_given = body.get("basic_auth_user").and_then(Value::as_str).map(str::to_string);
     let tags = body.remove("tags").map(|v| parse_tags(&v)).transpose()?;
     let channels = body.remove("notifications").map(|v| parse_links(&v)).transpose()?;
     let mut obj = match serde_json::to_value(base) {
@@ -262,10 +270,6 @@ fn read_body(body: Value, base: &NewMonitor, existing: Option<&Monitor>) -> V1Re
             obj.insert((*secret).into(), json!(SECRET_MASK));
         }
     }
-    // Clients that only know basic auth don't send `auth_method`: a user name
-    // then means basic, as it always has.
-    let method_given = body.contains_key("auth_method");
-    let basic_given = body.get("basic_auth_user").and_then(Value::as_str).is_some_and(|u| !u.is_empty());
     if let Some(h) = obj.get("http_headers").and_then(Value::as_str) {
         let redacted = crate::config_io::redact_headers(h);
         if redacted.is_object() {
@@ -291,8 +295,8 @@ fn read_body(body: Value, base: &NewMonitor, existing: Option<&Monitor>) -> V1Re
         return Err(V1Error::validation("", unknown));
     }
     let mut monitor: NewMonitor = serde_json::from_value(Value::Object(obj)).map_err(|e| V1Error::validation(format!("Invalid field: {e}"), BTreeMap::new()))?;
-    if !method_given && basic_given && monitor.auth_method == "none" {
-        monitor.auth_method = "basic".into();
+    if !method_given && monitor.auth_method == "none" {
+        monitor.auth_method = crate::monitor::checkers::http_auth::implied_method(user_given.as_deref()).into();
     }
     // A masked password goes through to `form::validate`, which keeps the
     // stored one only while the target and proxy stay the same. Masked header

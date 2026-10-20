@@ -378,6 +378,18 @@ async fn raw_pending_results_are_recorded_without_changing_state() {
 }
 
 #[tokio::test]
+async fn reload_forgets_the_monitors_oauth_token() {
+    let db = test_db().await;
+    let (s, _rx) = scheduler(&db);
+    let id = insert(&db, push_monitor("p")).await;
+    let tokens = checkers::http_auth::cache();
+    let now = std::time::Instant::now();
+    tokens.put(id, "reload-test", "tok", Some(3600), now);
+    s.reload(id).await;
+    assert_eq!(tokens.get(id, "reload-test", now), None);
+}
+
+#[tokio::test]
 async fn reload_installs_and_stops_tasks_without_double_spawn() {
     let db = test_db().await;
     let (s, _rx) = scheduler(&db);

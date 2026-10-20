@@ -489,3 +489,28 @@ fn bad_http_auth_in_a_document_is_reported_with_the_forms_messages() {
         assert!(plan.errors.iter().any(|e| e.field.as_deref() == Some(field)), "{field}: {:?}", plan.errors);
     }
 }
+
+#[test]
+fn explicit_auth_method_none_is_respected_and_legacy_documents_mean_basic() {
+    let doc = serde_json::json!({
+        "version": 1,
+        "monitors": [
+            {"name": "Off", "monitor_type": "http", "target": "https://off.example.com/", "auth_method": "none",
+             "basic_auth_user": "bot", "basic_auth_pass": "hunter2"},
+            {"name": "Legacy", "monitor_type": "http", "target": "https://legacy.example.com/",
+             "basic_auth_user": "bot", "basic_auth_pass": "hunter2"},
+            {"name": "Empty", "monitor_type": "http", "target": "https://empty.example.com/", "auth_method": "",
+             "basic_auth_user": "bot", "basic_auth_pass": "hunter2"},
+        ],
+    })
+    .to_string();
+    let mut conn = test_conn();
+    let applied = apply(&mut conn, &parse_document(&doc).unwrap(), Mode::Merge).unwrap().unwrap();
+    assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
+    let off = monitor_named(&conn, "Off");
+    assert_eq!((off.auth_method.as_str(), off.basic_auth_user.as_deref(), off.basic_auth_pass.as_deref()), ("none", None, None));
+    for name in ["Legacy", "Empty"] {
+        let m = monitor_named(&conn, name);
+        assert_eq!((m.auth_method.as_str(), m.basic_auth_user.as_deref(), m.basic_auth_pass.as_deref()), ("basic", Some("bot"), Some("hunter2")), "{name}");
+    }
+}

@@ -151,6 +151,33 @@ pub(crate) mod test_support {
         tokio_rustls::TlsAcceptor::from(Arc::new(config))
     }
 
+    /// A server that speaks another protocol: for every connection it reads
+    /// the client's first bytes, answers `reply`, closes its sending side and
+    /// waits for the client to hang up. Reading first matters: a socket
+    /// closed with unread data is reset, and on Windows a reset discards
+    /// the reply before the client reads it.
+    pub async fn foreign_server(reply: &'static [u8]) -> std::net::SocketAddr {
+        use std::time::Duration;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut tcp, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let _ = tokio::time::timeout(Duration::from_secs(2), tcp.read(&mut buf)).await;
+                    if tcp.write_all(reply).await.is_err() || tcp.shutdown().await.is_err() {
+                        return;
+                    }
+                    let drain = async { while matches!(tcp.read(&mut buf).await, Ok(n) if n > 0) {} };
+                    let _ = tokio::time::timeout(Duration::from_secs(10), drain).await;
+                });
+            }
+        });
+        addr
+    }
+
     /// A monitor with schema defaults, for checker tests.
     pub fn monitor(monitor_type: MonitorType, target: &str) -> Monitor {
         let n = crate::db::models::NewMonitor::default();

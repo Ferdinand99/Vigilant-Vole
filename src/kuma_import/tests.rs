@@ -335,3 +335,37 @@ fn service_monitors_map_to_ours() {
     let warned = |name: &str| import.warnings.iter().any(|w| w.starts_with(&format!("“{name}”")));
     assert!(warned("PG") && warned("Kafka") && warned("MQ"), "{:?}", import.warnings);
 }
+
+#[test]
+fn mqtt_topics_survive_and_secrets_keep_their_spaces() {
+    let json = r##"{
+      "version": "2.0.0",
+      "monitorList": [
+        {"id": 1, "name": "All", "type": "mqtt", "hostname": "broker.local", "port": 1883, "mqttTopic": "home/#", "mqttPassword": " p w ", "mqttUsername": "u"},
+        {"id": 2, "name": "One", "type": "mqtt", "hostname": "broker.local", "port": 1883, "mqttTopic": "a/+/b"},
+        {"id": 3, "name": "Odd", "type": "mqtt", "hostname": "broker.local", "port": 1883, "mqttTopic": "sensors/100%?x"},
+        {"id": 4, "name": "Radius", "type": "radius", "hostname": "radius.local", "port": 1812, "radiusUsername": "u", "radiusPassword": " rp ", "radiusSecret": " s3 "},
+        {"id": 5, "name": "Router", "type": "snmp", "hostname": "router.local", "snmpOid": "1.3.6.1.2.1.1.3.0", "radiusPassword": " public "},
+        {"id": 6, "name": "MQ", "type": "rabbitmq", "rabbitmqNodes": ["https://mq.local:15671/"], "rabbitmqUsername": "guest", "rabbitmqPassword": " guest "}
+      ],
+      "notificationList": [
+        {"id": 1, "name": "Mail", "config": "{\"type\":\"smtp\",\"smtpHost\":\"mail.local\",\"smtpPort\":587,\"smtpTo\":\"a@b.c\",\"smtpUsername\":\"u\",\"smtpPassword\":\" mail pw \"}"}
+      ]
+    }"##;
+    let import = read_json(json).unwrap();
+    let doc = |name: &str| monitor(&import, name);
+    // The topic reads back exactly as Kuma had it.
+    for (name, topic) in [("All", "home/#"), ("One", "a/+/b"), ("Odd", "sensors/100%?x")] {
+        let target = doc(name).target.clone();
+        assert_eq!(crate::monitor::checkers::mqtt::topic(&target).as_deref(), Some(topic), "{target}");
+        assert!(crate::api::monitors::form::validate_target(crate::db::models::MonitorType::Mqtt, &target).is_ok(), "{target}");
+    }
+    // Secrets are copied as stored, spaces included.
+    assert_eq!(doc("All").options["basic_auth_pass"], " p w ");
+    let radius = doc("Radius");
+    assert_eq!((&radius.options["basic_auth_pass"], &radius.options["secret"]), (&" rp ".into(), &" s3 ".into()));
+    assert_eq!(doc("Router").options["secret"], " public ");
+    assert_eq!(doc("MQ").options["basic_auth_pass"], " guest ");
+    let mail = import.doc.notification_channels.as_ref().unwrap().iter().find(|c| c.name == "Mail").unwrap();
+    assert_eq!(mail.config["password"], " mail pw ", "{:?}", mail.config);
+}

@@ -105,27 +105,27 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Ok(hp) => hp,
         Err(e) => return CheckOutcome::down(e),
     };
-    let addr = match util::resolve(&host, port).await {
-        Ok(addr) => addr,
+    let addrs = match util::resolve_all(&host, port).await {
+        Ok(addrs) => addrs,
         Err(e) => return CheckOutcome::down(e),
     };
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
-    match tokio::time::timeout(timeout, probe(&host, addr, port == 465, monitor.ignore_tls)).await {
+    match tokio::time::timeout(timeout, probe(&host, &addrs, port == 465, monitor.ignore_tls)).await {
         Ok(Ok(found)) => {
             let ms = util::elapsed_ms(start);
             let mut outcome = CheckOutcome::up(ms).with_message(found.message());
             outcome.expiry = found.cert.as_ref().and_then(CertSummary::expiry_info);
             outcome
         }
-        Ok(Err(Failure::Tls(err))) => {
+        Ok(Err(Failure::Tls(err, addr))) => {
             let implicit = port == 465;
             conn::tls_failure_with(&err, monitor.ignore_tls, timeout, || fetch_cert(&host, addr, implicit)).await
         }
         Ok(Err(Failure::Smtp(msg))) => CheckOutcome::down(msg),
         Err(_) => CheckOutcome::down(format!(
             "SMTP on {}:{port}: no answer within {}",
-            addr.ip(),
+            addrs[addrs.len() - 1].ip(),
             util::format_secs(timeout)
         )),
     }
@@ -148,7 +148,8 @@ async fn fetch_cert(host: &str, addr: SocketAddr, implicit_tls: bool) -> Option<
 
 enum Failure {
     Smtp(String),
-    Tls(std::io::Error),
+    /// The handshake failed with the server at this address.
+    Tls(std::io::Error, SocketAddr),
 }
 
 impl From<String> for Failure {
@@ -175,12 +176,13 @@ impl Found {
     }
 }
 
-async fn probe(host: &str, addr: SocketAddr, implicit_tls: bool, ignore_tls: bool) -> Result<Found, Failure> {
-    let tcp = TcpStream::connect(addr)
+async fn probe(host: &str, addrs: &[SocketAddr], implicit_tls: bool, ignore_tls: bool) -> Result<Found, Failure> {
+    let (tcp, addr) = util::connect_any(addrs)
         .await
-        .map_err(|e| Failure::Smtp(format!("Connection failed: {}", util::tidy_io_error(&e))))?;
+        .map_err(|(_, e)| Failure::Smtp(format!("Connection failed: {}", util::tidy_io_error(&e))))?;
+    let tls_err = |e| Failure::Tls(e, addr);
     if implicit_tls {
-        let stream = tls::upgrade(tcp, host, ignore_tls).await.map_err(Failure::Tls)?;
+        let stream = tls::upgrade(tcp, host, ignore_tls).await.map_err(tls_err)?;
         let (version, cert) = (tls::version_label(&stream), tls::peer_cert(&stream));
         let mut reader = BufReader::new(stream);
         let (greeting, ehlo) = converse(&mut reader).await?;
@@ -202,7 +204,7 @@ async fn probe(host: &str, addr: SocketAddr, implicit_tls: bool, ignore_tls: boo
     if !reader.buffer().is_empty() {
         return Err("Server sent data before the TLS handshake".to_string().into());
     }
-    let stream = tls::upgrade(reader.into_inner(), host, ignore_tls).await.map_err(Failure::Tls)?;
+    let stream = tls::upgrade(reader.into_inner(), host, ignore_tls).await.map_err(tls_err)?;
     let (version, cert) = (tls::version_label(&stream), tls::peer_cert(&stream));
     let mut reader = BufReader::new(stream);
     // The server forgets the session state after STARTTLS: say EHLO again.

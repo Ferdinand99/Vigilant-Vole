@@ -1343,9 +1343,11 @@ pub fn monitor_from_doc(m: &MonitorDoc) -> Result<NewMonitor, (String, String)> 
         let kinds: Vec<&str> = MonitorType::all().iter().map(|t| t.as_str()).collect();
         return Err(("monitor_type".into(), format!("Unknown monitor type “{}”. Use one of: {}.", m.monitor_type, kinds.join(", "))));
     };
-    // Documents written before `auth_method` existed: a user name means basic auth.
-    if !m.options.contains_key("auth_method") && m.options.get("basic_auth_user").and_then(Value::as_str).is_some_and(|u| !u.is_empty()) {
-        obj.insert("auth_method".into(), Value::String("basic".into()));
+    // Documents written before `auth_method` existed (or with an empty one):
+    // a user name means basic auth. An explicit method is respected.
+    if m.options.get("auth_method").is_none_or(|a| a.is_null() || a.as_str().is_some_and(|a| a.trim().is_empty())) {
+        let user = m.options.get("basic_auth_user").and_then(Value::as_str);
+        obj.insert("auth_method".into(), Value::String(crate::monitor::checkers::http_auth::implied_method(user).into()));
     }
     obj.insert("name".into(), Value::String(m.name.clone()));
     obj.insert("monitor_type".into(), serde_json::to_value(kind).unwrap_or(Value::Null));

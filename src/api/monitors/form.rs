@@ -11,6 +11,7 @@ use crate::db::models::{Monitor, MonitorType, NewMonitor};
 use crate::notification::SECRET_MASK;
 use crate::db::tags::{self as db_tags, MonitorTag};
 use crate::monitor::checkers::{self, BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METHODS, JSON_OPERATORS};
+use crate::monitor::checkers::conn::SslMode;
 use crate::monitor::checkers::http_auth::{self, AUTH_METHODS, MtlsError, OAUTH_CLIENT_AUTHS};
 
 pub const MAX_NAME_LEN: usize = 150;
@@ -166,7 +167,7 @@ pub struct FormValues {
     pub new_tag_name: String,
     pub new_tag_color: String,
     pub new_tag_value: String,
-    /// `none` | `basic` | `oauth2` | `mtls` ("" = derive from `basic_auth_user`).
+    /// `none` | `basic` | `oauth2` | `mtls`.
     pub auth_method: String,
     pub oauth_token_url: String,
     pub oauth_client_id: String,
@@ -229,11 +230,7 @@ impl FormValues {
             new_tag_name: String::new(),
             new_tag_color: db_tags::DEFAULT_COLOR.to_string(),
             new_tag_value: String::new(),
-            auth_method: if m.auth_method == "none" && !opt(&m.basic_auth_user).is_empty() {
-                "basic".to_string()
-            } else {
-                m.auth_method.clone()
-            },
+            auth_method: m.auth_method.clone(),
             oauth_token_url: opt(&m.oauth_token_url),
             oauth_client_id: opt(&m.oauth_client_id),
             oauth_client_secret: opt(&m.oauth_client_secret),
@@ -273,16 +270,6 @@ impl FormValues {
             }
         }
         self
-    }
-
-    /// The chosen authentication method; forms posted without the field
-    /// (older clients) mean basic auth when a user name is given.
-    pub fn auth_method_effective(&self) -> &str {
-        match self.auth_method.trim() {
-            "" if !self.basic_auth_user.trim().is_empty() => "basic",
-            "" => "none",
-            other => other,
-        }
     }
 
     /// Parse a submitted form. Controls hidden by `data-show-when` are
@@ -360,7 +347,12 @@ impl FormValues {
             new_tag_name: p.text("new_tag_name"),
             new_tag_color: p.text("new_tag_color"),
             new_tag_value: p.text("new_tag_value"),
-            auth_method: p.text("auth_method"),
+            // Forms posted without the field (older clients) mean basic auth
+            // when a user name is given.
+            auth_method: match p.text("auth_method") {
+                m if m.is_empty() => http_auth::implied_method(p.raw("basic_auth_user")).to_string(),
+                m => m,
+            },
             oauth_token_url: p.text("oauth_token_url"),
             oauth_client_id: p.text("oauth_client_id"),
             // Secrets and PEM text keep their whitespace.
@@ -628,16 +620,30 @@ fn same_destination(old: &NewMonitor, new: &NewMonitor) -> bool {
 }
 
 /// Whether a secret stored for `old` would still reach the same server in
-/// `new` (service monitors compare type, host and port, not the path).
+/// `new`, at least as well protected (service monitors compare type, host
+/// and port, not the path). Like the scheme in an HTTP [`destination`],
+/// dropping TLS (`rediss://` → `redis://`, a lower `sslmode`) puts the
+/// secret on the wire in the clear, so it has to be entered again.
 fn same_service(old: &NewMonitor, new: &NewMonitor) -> bool {
-    old.monitor_type == new.monitor_type
-        && match (
-            checkers::endpoint::parse(old.monitor_type, &old.target),
-            checkers::endpoint::parse(new.monitor_type, &new.target),
-        ) {
-            (Ok(a), Ok(b)) => a.host.eq_ignore_ascii_case(&b.host) && a.port == b.port,
+    let kind = old.monitor_type;
+    kind == new.monitor_type
+        && match (checkers::endpoint::parse(kind, &old.target), checkers::endpoint::parse(kind, &new.target)) {
+            (Ok(a), Ok(b)) => {
+                let (was, now) = (protection(kind, &a), protection(kind, &b));
+                a.host.eq_ignore_ascii_case(&b.host) && a.port == b.port && now.0 >= was.0 && now.1 >= was.1
+            }
             _ => false,
         }
+}
+
+/// How a service target protects what is sent over it: TLS from the first
+/// byte (from the scheme) and, for the databases, the `sslmode`.
+fn protection(kind: MonitorType, ep: &checkers::endpoint::Endpoint) -> (bool, SslMode) {
+    let sslmode = match kind {
+        MonitorType::Postgres | MonitorType::Mysql => SslMode::of(ep).unwrap_or(SslMode::Disable),
+        _ => SslMode::Disable,
+    };
+    (ep.tls, sslmode)
 }
 
 /// PEM text as stored: line endings normalised (browsers send CRLF), trimmed.
@@ -666,7 +672,10 @@ fn resolve_secret(e: &mut Errors, field: &'static str, submitted: &str, stored: 
 /// method's settings are kept; the others are cleared so no stale secret
 /// lingers (or travels in exports) after switching methods.
 fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut Errors) {
-    let method = v.auth_method_effective();
+    let method = match v.auth_method.trim() {
+        "" => "none",
+        m => m,
+    };
     if !AUTH_METHODS.contains(&method) {
         e.insert("auth_method", crate::i18n::t("httpauth.err_method").into());
     }
@@ -961,7 +970,8 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         m.keyword_invert = v.keyword_invert;
         if kind == MonitorType::Mqtt
             && m.keyword.is_some()
-            && checkers::endpoint::parse(kind, &m.target).is_ok_and(|ep| ep.path.is_empty())
+            && checkers::endpoint::parse(kind, &m.target).is_ok()
+            && checkers::mqtt::topic(&m.target).is_none()
         {
             e.insert("keyword", crate::i18n::t("validation.mqtt_keyword_topic").into());
         }
@@ -1569,12 +1579,53 @@ mod tests {
         );
         let ok = submit_with(&NewMonitor::default(), base_pairs("http", "https://x.io")).unwrap().monitor;
         assert_eq!(ok.auth_method, "none");
-        // A row with a user name from before auth_method existed shows as basic.
-        let legacy = NewMonitor { basic_auth_user: Some("bot".into()), ..NewMonitor::default() };
-        assert_eq!(FormValues::from_new(&legacy, Vec::new(), &[]).auth_method, "basic");
+        // A stored method is shown as it is: "none" stays none even with a
+        // leftover user name (migration 0096 turned old rows into "basic").
+        let off = NewMonitor { basic_auth_user: Some("bot".into()), ..NewMonitor::default() };
+        assert_eq!(FormValues::from_new(&off, Vec::new(), &[]).auth_method, "none");
+        let ok = submit_with(&off, with(base_pairs("http", "https://x.io"), "auth_method", "none")).unwrap().monitor;
+        assert_eq!((ok.auth_method.as_str(), ok.basic_auth_user.as_deref()), ("none", None));
         // Basic auth chosen explicitly needs a user name.
         let err = submit_with(&NewMonitor::default(), with(base_pairs("http", "https://x.io"), "auth_method", "basic")).unwrap_err();
         assert!(err.contains_key("basic_auth_user"));
+    }
+
+    #[test]
+    fn stored_service_secrets_are_not_kept_when_tls_is_dropped() {
+        let stored = |kind: MonitorType, target: &str| NewMonitor {
+            monitor_type: kind,
+            target: target.into(),
+            basic_auth_user: Some("vole".into()),
+            basic_auth_pass: Some("hunter2".into()),
+            ..NewMonitor::default()
+        };
+        let submit = |base: &NewMonitor, kind: &str, target: &str| {
+            let list = with(with(base_pairs(kind, target), "basic_auth_user", "vole"), "basic_auth_pass", SECRET_MASK);
+            submit_with(base, list)
+        };
+        for (kind, from, to) in [
+            (MonitorType::Redis, "rediss://cache.local:6380", "redis://cache.local:6380"),
+            (MonitorType::Mqtt, "mqtts://broker.local:8883", "mqtt://broker.local:8883"),
+            (MonitorType::Rabbitmq, "amqps://mq.local:5671", "amqp://mq.local:5671"),
+            (MonitorType::Postgres, "postgres://db.local/app?sslmode=require", "postgres://db.local/app?sslmode=disable"),
+            (MonitorType::Postgres, "postgres://db.local/app?sslmode=verify-full", "postgres://db.local/app"),
+            (MonitorType::Mysql, "mysql://db.local/app", "mysql://db.local/app?sslmode=disable"),
+        ] {
+            let base = stored(kind, from);
+            let err = submit(&base, kind.as_str(), to).unwrap_err();
+            assert_eq!(err.get("basic_auth_pass").map(String::as_str), Some(crate::i18n::t("validation.secret_reenter")), "{from} -> {to}");
+            // The same protection keeps the stored secret.
+            let kept = submit(&base, kind.as_str(), from).unwrap().monitor;
+            assert_eq!(kept.basic_auth_pass.as_deref(), Some("hunter2"), "{from}");
+        }
+        // More protection keeps it too.
+        for (kind, from, to) in [
+            (MonitorType::Redis, "redis://cache.local:6380", "rediss://cache.local:6380"),
+            (MonitorType::Postgres, "postgres://db.local/app", "postgres://db.local/app?sslmode=verify-full"),
+        ] {
+            let kept = submit(&stored(kind, from), kind.as_str(), to).unwrap().monitor;
+            assert_eq!(kept.basic_auth_pass.as_deref(), Some("hunter2"), "{from} -> {to}");
+        }
     }
 
     #[test]

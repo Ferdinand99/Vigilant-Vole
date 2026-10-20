@@ -218,7 +218,7 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 | `accepted_status_codes` | string | `200-399` | e.g. `200-299,301,2xx`. |
 | `max_redirects` | int | `10` | 0–30. |
 | `ignore_tls` | bool | `false` | Don't verify certificates. |
-| `auth_method` | string | `none` | HTTP family: `none`, `basic`, `oauth2` or `mtls`. A document that sets `basic_auth_user` without `auth_method` means `basic`. Only the chosen method's fields below are kept; the others are cleared. |
+| `auth_method` | string | `none` | HTTP family: `none`, `basic`, `oauth2` or `mtls`. A document that sets `basic_auth_user` without `auth_method` (or with an empty one) means `basic`; an explicit `none` is kept. Only the chosen method's fields below are kept; the others are cleared. |
 | `basic_auth_user` / `basic_auth_pass` | string | – | `basic`. The password is a secret. |
 | `oauth_token_url` | string | – | `oauth2` (client credentials grant): the token endpoint, `http://` or `https://`. |
 | `oauth_client_id` / `oauth_client_secret` | string | – | `oauth2`. The client secret is a secret; a masked value is only kept while `oauth_token_url` and `proxy_url` are unchanged. |

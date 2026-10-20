@@ -16,17 +16,24 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Ok(hp) => hp,
         Err(e) => return CheckOutcome::down(e),
     };
-    let addr = match util::resolve(&host, port).await {
-        Ok(addr) => addr,
+    let addrs = match util::resolve_all(&host, port).await {
+        Ok(addrs) => addrs,
         Err(e) => return CheckOutcome::down(e),
     };
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
+    // The address that answered (or the last one tried), for the messages.
+    let mut addr = addrs[0];
     let handshake = async {
-        let tcp = tokio::net::TcpStream::connect(addr).await?;
+        let (tcp, used) = util::connect_any(&addrs).await.map_err(|(tried, e)| {
+            addr = tried;
+            e
+        })?;
+        addr = used;
         tls::upgrade(tcp, &host, monitor.ignore_tls).await
     };
-    match tokio::time::timeout(timeout, handshake).await {
+    let result = tokio::time::timeout(timeout, handshake).await;
+    match result {
         Ok(Ok(stream)) => {
             let ms = util::elapsed_ms(start);
             let cert = tls::peer_cert(&stream);

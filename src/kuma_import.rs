@@ -697,11 +697,13 @@ fn map_monitor(
                 None => ("mqtt".to_string(), hostname.clone()),
             };
             let topic = s(row, &["mqtt_topic", "mqttTopic"]).unwrap_or_default();
-            let path = if topic.is_empty() { String::new() } else { format!("/{}", topic.trim_start_matches('/')) };
+            // The topic goes in as written (`mqtt::topic` reads it back
+            // raw); only `%` is escaped, since the path is percent-decoded.
+            let path = if topic.is_empty() { String::new() } else { format!("/{}", topic.replace('%', "%25")) };
             if let Some(msg) = s(row, &["mqtt_success_message", "mqttSuccessMessage"]) {
                 opts.insert("keyword".into(), json!(msg));
             }
-            insert_credentials(&mut opts, s(row, &["mqtt_username", "mqttUsername"]), s(row, &["mqtt_password", "mqttPassword"]));
+            insert_credentials(&mut opts, s(row, &["mqtt_username", "mqttUsername"]), raw(row, &["mqtt_password", "mqttPassword"]));
             ("mqtt", format!("{scheme}://{}{path}", host_port(&host, port)))
         }
         "kafka-producer" => {
@@ -726,8 +728,8 @@ fn map_monitor(
             ("kafka", format!("{scheme}://{first}{path}"))
         }
         "radius" => {
-            insert_credentials(&mut opts, s(row, &["radius_username", "radiusUsername"]), s(row, &["radius_password", "radiusPassword"]));
-            if let Some(secret) = s(row, &["radius_secret", "radiusSecret"]) {
+            insert_credentials(&mut opts, s(row, &["radius_username", "radiusUsername"]), raw(row, &["radius_password", "radiusPassword"]));
+            if let Some(secret) = raw(row, &["radius_secret", "radiusSecret"]) {
                 opts.insert("secret".into(), json!(secret));
             }
             ("radius", format!("radius://{}", host_port(&hostname, port)))
@@ -739,7 +741,7 @@ fn map_monitor(
             }
             let oid = s(row, &["snmp_oid", "snmpOid"]).unwrap_or_default();
             // Kuma keeps the community string in the RADIUS password column.
-            if let Some(community) = s(row, &["radius_password", "radiusPassword"]) {
+            if let Some(community) = raw(row, &["radius_password", "radiusPassword"]) {
                 opts.insert("secret".into(), json!(community));
             }
             if let Some(expected) = s(row, &["expected_value", "expectedValue"]) {
@@ -771,7 +773,7 @@ fn map_monitor(
                 warnings.push("only its first node is checked.".into());
             }
             warnings.push("it checks the management API's alarms endpoint over HTTP, like Uptime Kuma does.".into());
-            insert_credentials(&mut opts, s(row, &["rabbitmq_username", "rabbitmqUsername"]), s(row, &["rabbitmq_password", "rabbitmqPassword"]));
+            insert_credentials(&mut opts, s(row, &["rabbitmq_username", "rabbitmqUsername"]), raw(row, &["rabbitmq_password", "rabbitmqPassword"]));
             opts.insert("auth_method".into(), json!("basic"));
             ("http", format!("{}/api/health/checks/alarms/", node.trim_end_matches('/')))
         }
@@ -930,7 +932,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             "slack"
         }
         "telegram" => {
-            put(&mut out, "bot_token", s(c, &["telegramBotToken"]));
+            put(&mut out, "bot_token", raw(c, &["telegramBotToken"]));
             put(&mut out, "chat_id", s(c, &["telegramChatID"]));
             put(&mut out, "server_url", s(c, &["telegramServerUrl"]));
             if let Some(t) = i(c, &["telegramMessageThreadID"]) {
@@ -961,7 +963,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             out.insert("security".into(), json!(if secure { "tls" } else { "starttls" }));
             out.insert("ignore_tls".into(), json!(b(c, &["smtpIgnoreTLSError"]).unwrap_or(false)));
             put(&mut out, "username", s(c, &["smtpUsername"]));
-            put(&mut out, "password", s(c, &["smtpPassword"]));
+            put(&mut out, "password", raw(c, &["smtpPassword"]));
             put(&mut out, "from", s(c, &["smtpFrom"]));
             put(&mut out, "to", s(c, &["smtpTo"]));
             put(&mut out, "cc", s(c, &["smtpCC"]));
@@ -973,22 +975,22 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             put(&mut out, "topic", s(c, &["ntfytopic"]));
             let priority = i(c, &["ntfyPriority"]).filter(|p| (1..=5).contains(p)).map(|p| p.to_string());
             out.insert("priority".into(), json!(priority.unwrap_or_else(|| "auto".into())));
-            put(&mut out, "access_token", s(c, &["ntfyaccesstoken"]));
+            put(&mut out, "access_token", raw(c, &["ntfyaccesstoken"]));
             put(&mut out, "username", s(c, &["ntfyusername"]));
-            put(&mut out, "password", s(c, &["ntfypassword"]));
+            put(&mut out, "password", raw(c, &["ntfypassword"]));
             "ntfy"
         }
         "gotify" => {
             put(&mut out, "server", s(c, &["gotifyserverurl"]));
-            put(&mut out, "app_token", s(c, &["gotifyapplicationToken"]));
+            put(&mut out, "app_token", raw(c, &["gotifyapplicationToken"]));
             if let Some(p) = i(c, &["gotifyPriority"]) {
                 out.insert("priority".into(), json!(p));
             }
             "gotify"
         }
         "pushover" => {
-            put(&mut out, "user_key", s(c, &["pushoveruserkey"]));
-            put(&mut out, "app_token", s(c, &["pushoverapptoken"]));
+            put(&mut out, "user_key", raw(c, &["pushoveruserkey"]));
+            put(&mut out, "app_token", raw(c, &["pushoverapptoken"]));
             put(&mut out, "device", s(c, &["pushoverdevice"]));
             put(&mut out, "sound", s(c, &["pushoversounds"]));
             if let Some(p) = i(c, &["pushoverpriority"]) {
@@ -1005,7 +1007,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         "matrix" => {
             put(&mut out, "homeserver", s(c, &["homeserverUrl"]));
             put(&mut out, "room_id", s(c, &["internalRoomId"]));
-            put(&mut out, "access_token", s(c, &["accessToken"]));
+            put(&mut out, "access_token", raw(c, &["accessToken"]));
             "matrix"
         }
         "mattermost" => {
@@ -1027,7 +1029,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             "googlechat"
         }
         "pagerduty" => {
-            put(&mut out, "routing_key", s(c, &["pagerdutyIntegrationKey"]));
+            put(&mut out, "routing_key", raw(c, &["pagerdutyIntegrationKey"]));
             let severity = s(c, &["pagerdutyPriority"]).filter(|p| ["critical", "error", "warning", "info"].contains(&p.as_str()));
             out.insert("severity".into(), json!(severity.unwrap_or_else(|| "critical".into())));
             let eu = s(c, &["pagerdutyIntegrationUrl"]).is_some_and(|u| u.contains(".eu."));
@@ -1035,14 +1037,14 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             "pagerduty"
         }
         "opsgenie" => {
-            put(&mut out, "api_key", s(c, &["opsgenieApiKey"]));
+            put(&mut out, "api_key", raw(c, &["opsgenieApiKey"]));
             out.insert("region".into(), json!(if s(c, &["opsgenieRegion"]).as_deref() == Some("eu") { "eu" } else { "us" }));
             let p = i(c, &["opsgeniePriority"]).unwrap_or(1).clamp(1, 5);
             out.insert("priority".into(), json!(format!("P{p}")));
             "opsgenie"
         }
         "pushbullet" => {
-            put(&mut out, "access_token", s(c, &["pushbulletAccessToken"]));
+            put(&mut out, "access_token", raw(c, &["pushbulletAccessToken"]));
             "pushbullet"
         }
         "signal" => {
@@ -1058,7 +1060,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         }
         "homeassistant" => {
             put(&mut out, "url", s(c, &["homeAssistantUrl"]));
-            put(&mut out, "token", s(c, &["longLivedAccessToken"]));
+            put(&mut out, "token", raw(c, &["longLivedAccessToken"]));
             put(&mut out, "service", s(c, &["notificationService"]).map(|svc| svc.trim_start_matches("notify.").to_string()));
             "homeassistant"
         }
@@ -1082,12 +1084,12 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         }
         "dingding" => {
             put(&mut out, "url", s(c, &["webHookUrl"]));
-            put(&mut out, "secret", s(c, &["secretKey"]));
+            put(&mut out, "secret", raw(c, &["secretKey"]));
             "dingtalk"
         }
         "twilio" => {
             put(&mut out, "account_sid", s(c, &["twilioAccountSID"]));
-            put(&mut out, "auth_token", s(c, &["twilioAuthToken"]));
+            put(&mut out, "auth_token", raw(c, &["twilioAuthToken"]));
             put(&mut out, "from", s(c, &["twilioFromNumber"]));
             put(&mut out, "to", s(c, &["twilioToNumber"]));
             "twilio"

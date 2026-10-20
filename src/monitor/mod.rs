@@ -186,6 +186,8 @@ impl Scheduler {
         if self.inner.shut_down.load(Ordering::Acquire) {
             return;
         }
+        // New settings (or none): a cached OAuth2 token must not outlive them.
+        checkers::http_auth::forget_token(monitor_id);
         let monitor = match db::interact(&self.inner.pool, move |c| db_monitors::get_monitor(c, monitor_id)).await {
             Ok(m) => m,
             Err(err) => {

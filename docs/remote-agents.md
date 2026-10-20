@@ -105,8 +105,14 @@ Logging follows `RUST_LOG` (default `info`).
   (or 2× the monitor's interval, if longer) as stale.
 - Ctrl-C / SIGTERM stops the checks and flushes what's buffered.
 
+- An agent only receives the monitors its version can run: TLS, SMTP and the service types (Redis,
+  PostgreSQL, MySQL, MQTT, Kafka, RabbitMQ, gRPC, RADIUS, SNMP) and HTTP monitors with OAuth2 or mTLS need
+  agent 0.2.0 or newer; older agents keep running the rest, and the server logs which agent to upgrade.
+  An agent that gets a monitor it doesn't understand skips it with a warning and runs the others.
+
 **Trust model.** An agent token can read the full configuration of the monitors marked *Check from remote
-agents too* — including their own headers and basic-auth credentials, because the agent needs them to run the
+agents too* — including their own headers and credentials (basic-auth and service passwords, RADIUS/SNMP
+secrets, the OAuth2 client secret and the mTLS private key), because the agent needs them to run the
 check (push tokens are never sent). It can report results for those monitors only, and can't read or change
 anything else. Treat agent hosts accordingly, and rotate the token if one is compromised.
 

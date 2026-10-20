@@ -2,11 +2,14 @@
 //!
 //! Reads the server greeting; with a user name it also logs in
 //! (`mysql_native_password` and `caching_sha2_password`) and sends `COM_PING`.
-//! Without a user name only the greeting is checked. `sslmode` is `disable`,
-//! `prefer` (default: TLS when the server offers it) or `require`; certificates
-//! are verified unless the monitor ignores TLS errors. `caching_sha2_password`
-//! needs TLS (or a cached login) because the RSA key exchange isn't
-//! implemented. Response time = connect + login + ping.
+//! Without a user name only the greeting is checked. `sslmode` works like
+//! libpq's ([`conn::SslMode`]; MySQL's `--ssl-mode` names work too):
+//! `disable`, `prefer` (default: TLS when the server offers it), `require`,
+//! `verify-ca` and `verify-full`; only the `verify-*` modes check the
+//! certificate (and not when the monitor ignores TLS errors). The
+//! certificate's expiry is reported whenever TLS is used.
+//! `caching_sha2_password` needs TLS (or a cached login) because the RSA key
+//! exchange isn't implemented. Response time = connect + login + ping.
 
 use std::time::Instant;
 
@@ -15,7 +18,7 @@ use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-use super::conn::{self, Io};
+use super::conn::{self, Io, SslMode};
 use super::endpoint;
 use super::tls::{self, CertSummary};
 use super::util;
@@ -37,7 +40,7 @@ type Stream = Box<dyn Io>;
 
 enum Failure {
     Down(String),
-    Outcome(CheckOutcome),
+    Outcome(Box<CheckOutcome>),
 }
 
 impl From<String> for Failure {
@@ -232,30 +235,28 @@ fn handshake_response(login: &Login<'_>, flags: u32, greeting: &Greeting) -> Res
 
 async fn session(
     ep: &endpoint::Endpoint,
-    sslmode: &str,
+    sslmode: SslMode,
     ignore_tls: bool,
     login: Option<&Login<'_>>,
     timeout: std::time::Duration,
 ) -> Result<Found, Failure> {
-    let addr = util::resolve(&ep.host, ep.port).await.map_err(Failure::Down)?;
-    let mut tcp = TcpStream::connect(addr)
-        .await
-        .map_err(|e| Failure::Down(format!("Connection to {}:{} failed: {}", addr.ip(), ep.port, util::tidy_io_error(&e))))?;
+    let (mut tcp, addr) = conn::tcp(&ep.host, ep.port).await.map_err(Failure::Down)?;
     let (_, body) = read_packet(&mut tcp).await?;
     let greeting = parse_greeting(&body)?;
     let server_tls = greeting.capabilities & CLIENT_SSL != 0;
-    if sslmode == "require" && !server_tls {
-        return Err("The server doesn't support TLS (sslmode=require)".into());
+    if sslmode.requires_tls() && !server_tls {
+        return Err(sslmode.no_tls_message().into());
     }
     let Some(login) = login else {
         return Ok(Found { greeting, logged_in: false, cert: None, tls_version: None });
     };
 
-    let use_tls = server_tls && sslmode != "disable";
+    let use_tls = server_tls && sslmode != SslMode::Disable;
+    let verify = sslmode.verify(ignore_tls);
     let flags = client_flags(login, use_tls);
     let (mut stream, mut seq, cert, tls_version): (Stream, u8, _, _) = if use_tls {
         write_packet(&mut tcp, 1, &ssl_request(flags)).await?;
-        match tls::upgrade(tcp, &ep.host, ignore_tls).await {
+        match tls::upgrade_with(tcp, &ep.host, verify, &[]).await {
             Ok(stream) => {
                 let (cert, version) = (tls::peer_cert(&stream), tls::version_label(&stream));
                 (Box::new(stream), 2, cert, Some(version))
@@ -267,7 +268,8 @@ async fn session(
                     write_packet(&mut tcp, 1, &ssl_request(flags)).await.ok()?;
                     tls::peer_cert(&tls::upgrade(tcp, &ep.host, true).await.ok()?)
                 };
-                return Err(Failure::Outcome(conn::tls_failure_with(&err, ignore_tls, timeout, fetch).await));
+                let outcome = conn::tls_failure_with(&err, verify == tls::Verify::None, timeout, fetch).await;
+                return Err(Failure::Outcome(Box::new(outcome)));
             }
         }
     } else {
@@ -322,10 +324,10 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Ok(ep) => ep,
         Err(e) => return CheckOutcome::down(e),
     };
-    let sslmode = ep.query("sslmode").unwrap_or("prefer").to_ascii_lowercase();
-    if !matches!(sslmode.as_str(), "disable" | "prefer" | "require") {
-        return CheckOutcome::down(format!("Unsupported sslmode \"{}\" (use disable, prefer or require)", util::truncate(&sslmode, 20)));
-    }
+    let sslmode = match SslMode::of(&ep) {
+        Ok(mode) => mode,
+        Err(e) => return CheckOutcome::down(e),
+    };
     let login = monitor.basic_auth_user.as_deref().map(|user| Login {
         user,
         password: monitor.basic_auth_pass.as_deref().unwrap_or_default(),
@@ -333,7 +335,7 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     });
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
-    match tokio::time::timeout(timeout, session(&ep, &sslmode, monitor.ignore_tls, login.as_ref(), timeout)).await {
+    match tokio::time::timeout(timeout, session(&ep, sslmode, monitor.ignore_tls, login.as_ref(), timeout)).await {
         Ok(Ok(found)) => {
             let ms = util::elapsed_ms(start);
             let message = if found.logged_in {
@@ -344,7 +346,7 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
             conn::up(ms, message, found.cert.as_ref(), found.tls_version)
         }
         Ok(Err(Failure::Down(msg))) => CheckOutcome::down(msg),
-        Ok(Err(Failure::Outcome(outcome))) => outcome,
+        Ok(Err(Failure::Outcome(outcome))) => *outcome,
         Err(_) => conn::timed_out(&format!("MySQL on {}:{}", ep.host, ep.port), timeout),
     }
 }
@@ -533,14 +535,19 @@ mod tests {
     async fn caching_sha2_fast_and_full_authentication() {
         let addr = serve(Server::Sha2 { cached: true }).await;
         let target = format!("mysql://localhost:{}/app", addr.port());
-        let mut m = my(&target, Some("vole"), "pw");
-        let out = check(&m).await;
-        assert!(out.message.as_deref().unwrap().contains("not trusted"), "{:?}", out.message);
-        m.ignore_tls = true;
-        let out = check(&m).await;
+        // prefer (default): encrypted, certificate not checked, expiry reported.
+        let out = check(&my(&target, Some("vole"), "pw")).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
         assert!(out.message.unwrap().ends_with("· login OK · TLS 1.3"));
         assert!(out.expiry.is_some());
+        for mode in ["VERIFY_CA", "verify-full", "VERIFY_IDENTITY"] {
+            let mut m = my(&format!("{target}?sslmode={mode}"), Some("vole"), "pw");
+            let out = check(&m).await;
+            assert_eq!(out.status, HeartbeatStatus::Down, "{mode}");
+            assert!(out.message.as_deref().unwrap().contains("not trusted"), "{mode}: {:?}", out.message);
+            m.ignore_tls = true;
+            assert_eq!(check(&m).await.status, HeartbeatStatus::Up, "{mode} with TLS errors ignored");
+        }
 
         let addr = serve(Server::Sha2 { cached: false }).await;
         let mut m = my(&format!("mysql://localhost:{}/app", addr.port()), Some("vole"), "pw");

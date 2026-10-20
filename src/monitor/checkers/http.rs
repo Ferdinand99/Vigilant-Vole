@@ -197,7 +197,7 @@ impl ClientKey {
 
 /// The monitor's client certificate, key and extra CA (PEM), for mTLS.
 fn mtls_material(monitor: &Monitor) -> Option<(&str, &str, Option<&str>)> {
-    (http_auth::effective_method(monitor) == "mtls").then(|| {
+    (monitor.auth_method == "mtls").then(|| {
         (
             monitor.tls_client_cert.as_deref().unwrap_or_default(),
             monitor.tls_client_key.as_deref().unwrap_or_default(),
@@ -206,13 +206,46 @@ fn mtls_material(monitor: &Monitor) -> Option<(&str, &str, Option<&str>)> {
     })
 }
 
+/// Most HTTP clients kept at once.
+const MAX_CLIENTS: usize = 256;
+/// Clients unused for this long are dropped.
+const CLIENT_IDLE: Duration = Duration::from_secs(30 * 60);
+
+/// Built clients by settings. Bounded: every mTLS certificate (and proxy)
+/// makes its own client, so entries unused for [`CLIENT_IDLE`] are dropped
+/// and at most [`MAX_CLIENTS`] are kept (the least recently used goes
+/// first). A dropped client only closes its idle connections; requests in
+/// flight hold their own handle.
+struct ClientCache<V> {
+    entries: HashMap<ClientKey, (V, Instant)>,
+}
+
+impl<V: Clone> ClientCache<V> {
+    fn get(&mut self, key: &ClientKey, now: Instant) -> Option<V> {
+        let (value, used) = self.entries.get_mut(key)?;
+        *used = now;
+        Some(value.clone())
+    }
+
+    fn insert(&mut self, key: ClientKey, value: V, now: Instant) {
+        self.entries.retain(|_, (_, used)| now.duration_since(*used) < CLIENT_IDLE);
+        if self.entries.len() >= MAX_CLIENTS
+            && !self.entries.contains_key(&key)
+            && let Some(lru) = self.entries.iter().min_by_key(|(_, (_, used))| *used).map(|(k, _)| k.clone())
+        {
+            self.entries.remove(&lru);
+        }
+        self.entries.insert(key, (value, now));
+    }
+}
+
 fn client_for(key: &ClientKey, mtls: Option<(&str, &str, Option<&str>)>) -> Result<reqwest::Client, String> {
-    static CLIENTS: OnceLock<Mutex<HashMap<ClientKey, reqwest::Client>>> = OnceLock::new();
-    let cache = CLIENTS.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(map) = cache.lock()
-        && let Some(client) = map.get(key)
+    static CLIENTS: OnceLock<Mutex<ClientCache<reqwest::Client>>> = OnceLock::new();
+    let cache = CLIENTS.get_or_init(|| Mutex::new(ClientCache { entries: HashMap::new() }));
+    if let Ok(mut map) = cache.lock()
+        && let Some(client) = map.get(key, Instant::now())
     {
-        return Ok(client.clone());
+        return Ok(client);
     }
 
     let redirect = if key.max_redirects == 0 {
@@ -242,7 +275,7 @@ fn client_for(key: &ClientKey, mtls: Option<(&str, &str, Option<&str>)>) -> Resu
         .build()
         .map_err(|e| format!("Could not build HTTP client: {}", util::root_cause(&e)))?;
     if let Ok(mut map) = cache.lock() {
-        map.insert(key.clone(), client.clone());
+        map.insert(key.clone(), client.clone(), Instant::now());
     }
     Ok(client)
 }
@@ -288,7 +321,7 @@ async fn check_inner(monitor: &Monitor) -> Result<CheckOutcome, String> {
             .request(method.clone(), url.clone())
             .timeout(timeout)
             .headers(headers);
-        if http_auth::effective_method(monitor) == "basic"
+        if monitor.auth_method == "basic"
             && let Some(user) = monitor.basic_auth_user.as_deref().filter(|u| !u.is_empty())
         {
             req = req.basic_auth(user, monitor.basic_auth_pass.as_deref());
@@ -308,7 +341,7 @@ async fn check_inner(monitor: &Monitor) -> Result<CheckOutcome, String> {
             None,
         )
     };
-    let oauth = http_auth::effective_method(monitor) == "oauth2";
+    let oauth = monitor.auth_method == "oauth2";
     let (bearer, token_cached) = if oauth {
         let (value, cached) = http_auth::bearer(monitor, &token_client()?, timeout).await?;
         (Some(value), cached)
@@ -696,6 +729,27 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn client_cache_drops_idle_clients_and_stays_bounded() {
+        let key = |n: usize| ClientKey { ignore_tls: false, max_redirects: 0, proxy: None, mtls: Some(n.to_string()) };
+        let mut cache = ClientCache { entries: HashMap::new() };
+        let t0 = Instant::now();
+        cache.insert(key(0), 0, t0);
+        cache.insert(key(1), 1, t0);
+        // Key 0 stays in use; key 1 goes idle and is dropped on the next insert.
+        let later = t0 + CLIENT_IDLE;
+        assert_eq!(cache.get(&key(0), later - Duration::from_secs(1)), Some(0));
+        cache.insert(key(2), 2, later);
+        assert_eq!((cache.get(&key(1), later), cache.entries.len()), (None, 2));
+        for n in 3..3 + MAX_CLIENTS {
+            cache.insert(key(n), n, later + Duration::from_secs(n as u64));
+        }
+        assert_eq!(cache.entries.len(), MAX_CLIENTS);
+        // The least recently used made room; the newest is kept.
+        assert_eq!(cache.get(&key(0), later), None);
+        assert!(cache.get(&key(2 + MAX_CLIENTS), later).is_some());
+    }
+
+    #[test]
     fn error_messages_never_carry_url_credentials() {
         let url = Url::parse("https://user:hunter2@api.example.com/health?token=abc#x").unwrap();
         let message = format!("error sending request for url ({url})");
@@ -1024,6 +1078,9 @@ mod server_tests {
         );
         m.basic_auth_user = Some("user".into());
         m.basic_auth_pass = Some("pass".into());
+        // The method decides: leftover credentials with "none" are not sent.
+        assert_eq!(check(&m).await.message.as_deref(), Some("HTTP 401 Unauthorized"));
+        m.auth_method = "basic".into();
         assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
     }
 
