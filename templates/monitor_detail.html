@@ -99,6 +99,8 @@
 {{ p|safe }}
 {%- endif %}
 
+{%- include "partials/monitor_browser.html" %}
+
 {%- if self.is_type("group") %}
 <section class="section" aria-labelledby="children-title">
   {% call m::section_head(tr("detail.children_title"), tr("detail.children_sub"), "children-title") %}
@@ -225,7 +227,7 @@
         <div class="dl-row"><dt>{{ tr("form.upside_down") }}</dt><dd>{{ tr("common.on") }}</dd></div>
         {%- endif %}
         <div class="dl-row"><dt>{{ tr("detail.alerts") }}</dt><dd>{% if channels.is_empty() %}<span class="muted">{{ tr("common.none") }}</span>{% else %}{{ channels|join(", ") }}{% endif %}</dd></div>
-        {%- if monitor.run_on_agents || monitor.confirm_with_agents %}
+        {%- if monitor.monitor_type.runs_on_agents() && (monitor.run_on_agents || monitor.confirm_with_agents) %}
         <div class="dl-row"><dt>{{ tr("nav.agents") }}</dt><dd>{% if monitor.run_on_agents %}{{ tr("detail.checks_from_agents") }}{% endif %}{% if monitor.run_on_agents && monitor.confirm_with_agents %} · {% endif %}{% if monitor.confirm_with_agents %}{{ tr("detail.confirms_outages") }}{% endif %}</dd></div>
         {%- endif %}
         {%- if monitor.source == "docker" %}

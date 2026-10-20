@@ -12,22 +12,18 @@
 
 use std::time::Instant;
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as B64;
-use hmac::{Hmac, Mac as _};
-use sha2::{Digest as _, Sha256};
+use md5::Digest as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use super::conn::{self, Io, SslMode};
 use super::endpoint;
+use super::scram::{self, Hash};
 use super::tls::{self, CertSummary};
 use super::util;
 use crate::db::models::{CheckOutcome, Monitor, MonitorType};
 
 const MAX_MESSAGE: usize = 1024 * 1024;
-/// Refuse absurd SCRAM iteration counts from a hostile server (PostgreSQL's default is 4096).
-const MAX_SCRAM_ITERATIONS: u32 = 200_000;
 
 /// `SSLRequest`: length 8, code 80877103.
 const SSL_REQUEST: [u8; 8] = [0, 0, 0, 8, 0x04, 0xD2, 0x16, 0x2F];
@@ -98,67 +94,8 @@ fn explain(code: &str, message: &str, database: &str) -> String {
     }
 }
 
-fn hmac(key: &[u8], data: &[u8]) -> [u8; 32] {
-    let mut mac = <Hmac<Sha256> as hmac::KeyInit>::new_from_slice(key).expect("HMAC accepts any key length");
-    mac.update(data);
-    mac.finalize().into_bytes().into()
-}
-
-fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> [u8; 32] {
-    let mut first = salt.to_vec();
-    first.extend_from_slice(&1u32.to_be_bytes());
-    let mut u = hmac(password, &first);
-    let mut out = u;
-    for _ in 1..iterations {
-        u = hmac(password, &u);
-        for (o, b) in out.iter_mut().zip(u) {
-            *o ^= b;
-        }
-    }
-    out
-}
-
 fn md5_hex(data: &[u8]) -> String {
     hex::encode(md5::Md5::digest(data))
-}
-
-/// The client side of SCRAM-SHA-256 (RFC 5802 / 7677) after the server's first message.
-#[derive(Debug)]
-struct ScramFinal {
-    message: String,
-    server_signature: [u8; 32],
-}
-
-fn scram_final(password: &str, client_first_bare: &str, server_first: &str, client_nonce: &str) -> Result<ScramFinal, String> {
-    let bad = || "The server sent a malformed SCRAM message".to_string();
-    let (mut nonce, mut salt, mut iterations) = (None, None, None);
-    for part in server_first.split(',') {
-        match part.split_once('=') {
-            Some(("r", v)) => nonce = Some(v),
-            Some(("s", v)) => salt = Some(B64.decode(v).map_err(|_| bad())?),
-            Some(("i", v)) => iterations = Some(v.parse::<u32>().map_err(|_| bad())?),
-            _ => {}
-        }
-    }
-    let (nonce, salt, iterations) = (nonce.ok_or_else(bad)?, salt.ok_or_else(bad)?, iterations.ok_or_else(bad)?);
-    if !nonce.starts_with(client_nonce) {
-        return Err("The server's SCRAM nonce is wrong".into());
-    }
-    if iterations == 0 || iterations > MAX_SCRAM_ITERATIONS {
-        return Err("The server asked for an unreasonable SCRAM iteration count".into());
-    }
-    let salted = pbkdf2_sha256(password.as_bytes(), &salt, iterations);
-    let client_key = hmac(&salted, b"Client Key");
-    let stored_key: [u8; 32] = Sha256::digest(client_key).into();
-    let without_proof = format!("c=biws,r={nonce}");
-    let auth_message = format!("{client_first_bare},{server_first},{without_proof}");
-    let signature = hmac(&stored_key, auth_message.as_bytes());
-    let proof: Vec<u8> = client_key.iter().zip(signature).map(|(a, b)| a ^ b).collect();
-    let server_key = hmac(&salted, b"Server Key");
-    Ok(ScramFinal {
-        message: format!("{without_proof},p={}", B64.encode(proof)),
-        server_signature: hmac(&server_key, auth_message.as_bytes()),
-    })
 }
 
 enum Failure {
@@ -229,7 +166,7 @@ async fn login(s: &mut Stream, user: &str, password: Option<&str>, database: &st
     send(s, None, &startup).await?;
 
     let need_password = || Failure::Down("The server wants a password: set one on the monitor".into());
-    let mut scram: Option<(String, String, [u8; 32])> = None; // (client_first_bare, nonce, expected server signature)
+    let mut exchange: Option<(String, String, Vec<u8>)> = None; // (client_first_bare, nonce, expected server signature)
     let mut version = None;
     loop {
         let msg = read_message(s).await?;
@@ -252,31 +189,30 @@ async fn login(s: &mut Stream, user: &str, password: Option<&str>, database: &st
                         if !offered.split('\0').any(|m| m == "SCRAM-SHA-256") {
                             return Err("The server only offers authentication methods this monitor doesn't support".to_string().into());
                         }
-                        let nonce = B64.encode(rand::random::<[u8; 18]>());
+                        let nonce = scram::nonce();
                         let bare = format!("n=,r={nonce}");
                         let first = format!("n,,{bare}");
                         let mut body = cstr("SCRAM-SHA-256");
                         body.extend_from_slice(&(first.len() as i32).to_be_bytes());
                         body.extend_from_slice(first.as_bytes());
                         send(s, Some(b'p'), &body).await?;
-                        scram = Some((bare, nonce, [0; 32]));
+                        exchange = Some((bare, nonce, Vec::new()));
                     }
                     11 => {
-                        let (bare, nonce, _) = scram.take().ok_or("Unexpected SCRAM message from the server")?;
+                        let (bare, nonce, _) = exchange.take().ok_or("Unexpected SCRAM message from the server")?;
                         let server_first = String::from_utf8_lossy(&msg.body[4..]).into_owned();
                         let password = password.ok_or_else(need_password)?.to_string();
                         let (b, f, n) = (bare.clone(), server_first.clone(), nonce.clone());
-                        let fin = tokio::task::spawn_blocking(move || scram_final(&password, &b, &f, &n))
+                        let fin = tokio::task::spawn_blocking(move || scram::client_final(Hash::Sha256, password.as_bytes(), &b, &f, &n))
                             .await
                             .map_err(|_| "SCRAM computation failed".to_string())??;
                         send(s, Some(b'p'), fin.message.as_bytes()).await?;
-                        scram = Some((bare, nonce, fin.server_signature));
+                        exchange = Some((bare, nonce, fin.server_signature));
                     }
                     12 => {
-                        let (_, _, expected) = scram.take().ok_or("Unexpected SCRAM message from the server")?;
+                        let (_, _, expected) = exchange.take().ok_or("Unexpected SCRAM message from the server")?;
                         let text = String::from_utf8_lossy(&msg.body[4..]).into_owned();
-                        let ok = text.strip_prefix("v=").and_then(|v| B64.decode(v).ok()).is_some_and(|v| v == expected);
-                        if !ok {
+                        if !scram::server_final_ok(&text, &expected) {
                             return Err("The server failed to prove it knows the password".to_string().into());
                         }
                     }
@@ -355,6 +291,8 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD as B64;
     use crate::db::models::HeartbeatStatus;
     use crate::monitor::checkers::test_support::{monitor, tls_acceptor};
 
@@ -435,17 +373,17 @@ mod tests {
                 let (_, b) = msg(&mut s).await;
                 let fin = String::from_utf8_lossy(&b).into_owned();
                 let proof = B64.decode(fin.rsplit(",p=").next().unwrap()).unwrap();
-                let salted = pbkdf2_sha256(b"pw", b"saltsalt", 4096);
-                let client_key = hmac(&salted, b"Client Key");
-                let stored: [u8; 32] = Sha256::digest(client_key).into();
+                let salted = scram::salted_password(Hash::Sha256, b"pw", b"saltsalt", 4096);
+                let client_key = Hash::Sha256.hmac(&salted, b"Client Key");
+                let stored = Hash::Sha256.digest(&client_key);
                 let without_proof = fin.rsplit_once(",p=").unwrap().0.to_string();
                 let auth_message = format!("{bare},{server_first},{without_proof}");
-                let signature = hmac(&stored, auth_message.as_bytes());
+                let signature = Hash::Sha256.hmac(&stored, auth_message.as_bytes());
                 let recovered: Vec<u8> = proof.iter().zip(signature).map(|(a, b)| a ^ b).collect();
                 let good = recovered == client_key;
                 if good {
-                    let server_key = hmac(&salted, b"Server Key");
-                    let v = format!("v={}", B64.encode(hmac(&server_key, auth_message.as_bytes())));
+                    let server_key = Hash::Sha256.hmac(&salted, b"Server Key");
+                    let v = format!("v={}", B64.encode(Hash::Sha256.hmac(&server_key, auth_message.as_bytes())));
                     auth_request(&mut s, 12, v.as_bytes()).await;
                 }
                 good
@@ -622,30 +560,5 @@ mod tests {
         println!("{:?}", out.message);
         m.basic_auth_pass = Some("wrong".into());
         println!("{:?}", check(&m).await.message);
-    }
-
-    #[test]
-    fn scram_matches_the_rfc_7677_vector() {
-        // RFC 7677 §3 (user "user", password "pencil").
-        let fin = scram_final(
-            "pencil",
-            "n=user,r=rOprNGfwEbeRWgbNEkqO",
-            "r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096",
-            "rOprNGfwEbeRWgbNEkqO",
-        )
-        .unwrap();
-        assert_eq!(
-            fin.message,
-            "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ="
-        );
-        assert_eq!(B64.encode(fin.server_signature), "6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=");
-    }
-
-    #[test]
-    fn hostile_scram_parameters_are_refused() {
-        let err = scram_final("pw", "n=,r=abc", "r=abcdef,s=c2FsdA==,i=999999999", "abc").unwrap_err();
-        assert!(err.contains("iteration"));
-        let err = scram_final("pw", "n=,r=abc", "r=zzz,s=c2FsdA==,i=4096", "abc").unwrap_err();
-        assert!(err.contains("nonce"));
     }
 }

@@ -143,6 +143,11 @@
     <div class="card">
       {{ m::switch("run_on_agents", tr("form.run_on_agents"), f.v.run_on_agents, tr("form.run_on_agents_help")) }}
       {{ m::switch("confirm_with_agents", tr("form.confirm_agents"), f.v.confirm_with_agents, tr("form.confirm_agents_help")) }}
+      <div data-show-when="monitor_type=real_browser"{% if !f.is_type("real_browser") %} hidden{% endif %}>
+        <div data-show-when="run_on_agents=true"{% if !f.v.run_on_agents %} hidden{% endif %}>
+          {{ m::callout("info", tr("browser.agents_note_text"), tr("browser.agents_note_title")) }}
+        </div>
+      </div>
       {%- if !f.has_agents %}
       <p class="help">{{ tr("form.no_agents") }} <a href="/settings/agents">{{ tr("form.add_agent_link") }}</a>.</p>
       {%- endif %}

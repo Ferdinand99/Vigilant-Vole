@@ -16,6 +16,7 @@ use crate::api::AppState;
 use crate::auth::{CurrentUser, Role};
 use crate::config_io::{self, StatusPageDoc};
 use crate::db::incidents::{self as db_incidents, NewIncident};
+use crate::db::status_pages::extras::AnalyticsDoc;
 use crate::db::status_pages::{self as db_pages, StatusPage};
 
 pub fn router() -> Router<AppState> {
@@ -43,9 +44,18 @@ fn page_json(conn: &Connection, p: &StatusPage) -> rusqlite::Result<Value> {
         })
         .collect();
     let mut v = serde_json::to_value(p).unwrap_or_else(|_| json!({}));
+    add_extras(&mut v, p);
     v["sections"] = json!(sections);
     v["public_url"] = json!(format!("/status/{}", p.slug));
     Ok(v)
+}
+
+/// Password state (never the password), analytics and image URLs.
+fn add_extras(v: &mut Value, p: &StatusPage) {
+    v["password_protected"] = json!(p.is_protected());
+    v["analytics"] = json!(AnalyticsDoc::from_settings(&p.analytics));
+    v["logo_url"] = json!(p.logo_url());
+    v["favicon_url"] = json!(p.favicon_url());
 }
 
 async fn load(state: &AppState, id: i64) -> V1Result<Value> {
@@ -64,6 +74,7 @@ async fn list(State(state): State<AppState>, _user: CurrentUser, headers: Header
             let mut out = Vec::new();
             for s in db_pages::list(c)? {
                 let mut v = serde_json::to_value(&s.page).unwrap_or_else(|_| json!({}));
+                add_extras(&mut v, &s.page);
                 v["monitor_count"] = json!(s.monitor_count);
                 v["public_url"] = json!(format!("/status/{}", s.page.slug));
                 out.push(v);
@@ -96,6 +107,13 @@ struct PageIn {
     refresh_seconds: Option<i64>,
     /// Optional layout: `[{"name": "API", "monitor_ids": [1, 2]}]`.
     sections: Option<Vec<SectionIn>>,
+    /// Write-only: a new page password, or `""` to remove it.
+    password: Option<String>,
+    /// Built-in and third-party analytics (replaces the current settings).
+    analytics: Option<AnalyticsDoc>,
+    /// `data:image/…;base64,…` (PNG, JPEG, WebP, ICO; ≤ 1 MB), or `""` to remove.
+    logo: Option<String>,
+    favicon: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -124,6 +142,11 @@ fn merge(input: &PageIn, base: StatusPageDoc) -> StatusPageDoc {
         custom_css: input.custom_css.clone().or(base.custom_css),
         refresh_seconds: input.refresh_seconds.unwrap_or(base.refresh_seconds),
         sections: None,
+        password: input.password.clone(),
+        password_hash: None,
+        analytics: input.analytics.clone(),
+        logo: input.logo.clone(),
+        favicon: input.favicon.clone(),
     }
 }
 
@@ -143,6 +166,11 @@ fn doc_of(p: &StatusPage) -> StatusPageDoc {
         custom_css: p.custom_css.clone(),
         refresh_seconds: p.refresh_seconds,
         sections: None,
+        password: None,
+        password_hash: None,
+        analytics: None,
+        logo: None,
+        favicon: None,
     }
 }
 
@@ -161,14 +189,25 @@ fn sections_of(list: &[SectionIn]) -> V1Result<Vec<(String, Vec<i64>)>> {
         .collect()
 }
 
-/// Checks uniqueness and monitor ids, then writes. `id = None` creates.
+/// Checks uniqueness, monitor ids and the extras (password, analytics,
+/// images), then writes. `id = None` creates.
 fn save(
     conn: &mut Connection,
     id: Option<i64>,
     page: &db_pages::NewStatusPage,
     sections: Option<&[(String, Vec<i64>)]>,
     hosts: &[String],
+    doc: &StatusPageDoc,
 ) -> rusqlite::Result<Result<i64, V1Error>> {
+    let current = match id {
+        Some(id) => db_pages::get(conn, id)?,
+        None => None,
+    };
+    // Runs on the blocking database thread, so hashing a password is fine here.
+    let extras = match db_pages::extras::plan_doc_extras(doc.extras(), current.as_ref()) {
+        Ok((extras, _)) => extras,
+        Err(errors) => return Ok(Err(V1Error::fields(errors))),
+    };
     if db_pages::slug_taken(conn, &page.slug, id)? {
         return Ok(Err(V1Error::conflict("Another page already uses this slug.")));
     }
@@ -228,6 +267,7 @@ fn save(
     if let Some(list) = sections {
         config_io::write_sections(&tx, id, list, &HashMap::new())?;
     }
+    db_pages::extras::apply_extras(&tx, id, &extras)?;
     tx.commit()?;
     Ok(Ok(id))
 }
@@ -268,6 +308,11 @@ async fn create(State(state): State<AppState>, user: CurrentUser, headers: Heade
         refresh_seconds: 60,
         created_at: String::new(),
         updated_at: String::new(),
+        password_hash: None,
+        password_version: 0,
+        analytics: Default::default(),
+        logo_sha: None,
+        favicon_sha: None,
     });
     if input.slug.as_deref().is_none_or(|s| s.trim().is_empty()) {
         base.slug = db_pages::slugify(input.title.as_deref().unwrap_or_default());
@@ -279,7 +324,7 @@ async fn create(State(state): State<AppState>, user: CurrentUser, headers: Heade
     let page = config_io::validate_page(&doc).map_err(V1Error::fields)?;
     let sections = input.sections.as_deref().map(sections_of).transpose()?;
     let hosts = request_hosts(&headers);
-    let id = state.with_conn(move |c| save(c, None, &page, sections.as_deref(), &hosts)).await??;
+    let id = state.with_conn(move |c| save(c, None, &page, sections.as_deref(), &hosts, &doc)).await??;
     changed(&state);
     tracing::info!(user = %user.username, page_id = id, "status page created via API");
     Ok(created(format!("/api/v1/status-pages/{id}"), &load(&state, id).await?))
@@ -292,7 +337,7 @@ async fn update(State(state): State<AppState>, user: CurrentUser, headers: Heade
     let page = config_io::validate_page(&doc).map_err(V1Error::fields)?;
     let sections = input.sections.as_deref().map(sections_of).transpose()?;
     let hosts = request_hosts(&headers);
-    state.with_conn(move |c| save(c, Some(id), &page, sections.as_deref(), &hosts)).await??;
+    state.with_conn(move |c| save(c, Some(id), &page, sections.as_deref(), &hosts, &doc)).await??;
     changed(&state);
     Ok(json_ok(&HeaderMap::new(), &load(&state, id).await?))
 }
@@ -311,8 +356,9 @@ async fn set_sections(State(state): State<AppState>, user: CurrentUser, Id(id): 
     user.require(Role::Editor)?;
     let current = state.with_conn(move |c| db_pages::get(c, id)).await?.ok_or_else(V1Error::not_found)?;
     let page = current.to_new();
+    let doc = doc_of(&current);
     let sections = sections_of(&list)?;
-    state.with_conn(move |c| save(c, Some(id), &page, Some(&sections), &[])).await??;
+    state.with_conn(move |c| save(c, Some(id), &page, Some(&sections), &[], &doc)).await??;
     changed(&state);
     Ok(json_ok(&HeaderMap::new(), &load(&state, id).await?))
 }

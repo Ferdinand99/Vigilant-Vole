@@ -38,7 +38,10 @@ To pre-tick the second switch for every new monitor, set `agent_confirmation_def
 `settings:` in a [config-as-code](config-as-code.md) document (there's no UI toggle for it yet).
 
 Agents can run every active check type (HTTP, keyword, JSON query, TCP, ping, DNS, WebSocket, Docker, NTP,
-Steam, domain expiry). Push and group monitors have nothing to run.
+Steam, game servers, domain expiry, and the service types below) except **real browser**: those checks drive the server's
+remote browsers (Settings → Remote browsers), which agents don't have, so real-browser monitors are never sent
+to agents (the form says so when you tick *Check from remote agents too*). Push and group monitors have
+nothing to run.
 
 ## 3. Start the agent
 
@@ -70,7 +73,8 @@ services:
 Ping checks work as the image's non-root user through unprivileged ICMP sockets (Docker enables them by
 default). Add `cap_add: [NET_RAW]` only if your runtime disables them. Docker-container monitors run on an agent
 check the agent host's Docker, so mount its socket the same way as on the server
-(see [Docker discovery](docker-discovery.md#permissions)).
+(see [Docker discovery](docker-discovery.md#permissions)). Tailscale ping monitors use the agent host's
+`tailscaled` the same way: mount its socket ([Tailscale ping](tailscale-ping.md#giving-the-container-the-socket)).
 
 ### Plain binary
 
@@ -107,7 +111,8 @@ Logging follows `RUST_LOG` (default `info`).
 
 - An agent only receives the monitors its version can run: TLS, SMTP and the service types (Redis,
   PostgreSQL, MySQL, MQTT, Kafka, RabbitMQ, gRPC, RADIUS, SNMP) and HTTP monitors with OAuth2 or mTLS need
-  agent 0.2.0 or newer; older agents keep running the rest, and the server logs which agent to upgrade.
+  agent 0.2.0 or newer, SQL Server, MongoDB, gRPC keyword, game server, Tailscale ping and SNMPv3 (`?version=3`) monitors agent 0.3.0 or newer; older agents keep running the
+  rest, and the server logs which agent to upgrade.
   An agent that gets a monitor it doesn't understand skips it with a warning and runs the others.
 
 **Trust model.** An agent token can read the full configuration of the monitors marked *Check from remote

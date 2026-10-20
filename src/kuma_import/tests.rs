@@ -131,7 +131,7 @@ fn sqlite_monitors_map_to_our_types_and_options() {
     // The second "Website" gets a distinct key.
     assert_eq!(monitor(&import, "Website #10").name, "Website");
     // Unsupported types are listed with a reason.
-    assert!(import.skipped.iter().any(|s| s.name == "Broker" && s.reason.contains("MongoDB")));
+    assert!(import.skipped.iter().any(|s| s.name == "Broker" && s.reason.contains("no connection string")));
 }
 
 #[test]
@@ -329,7 +329,8 @@ fn service_monitors_map_to_ours() {
     assert_eq!(mq.options["auth_method"], "basic");
 
     let skipped: Vec<&str> = import.skipped.iter().map(|s| s.name.as_str()).collect();
-    for name in ["Bad conn", "Ws broker", "V3", "Mongo"] {
+    assert_eq!(doc("Mongo").target, "mongodb://x");
+    for name in ["Bad conn", "Ws broker", "V3"] {
         assert!(skipped.contains(&name), "{name} is skipped: {skipped:?}");
     }
     let warned = |name: &str| import.warnings.iter().any(|w| w.starts_with(&format!("“{name}”")));
@@ -368,4 +369,48 @@ fn mqtt_topics_survive_and_secrets_keep_their_spaces() {
     assert_eq!(doc("MQ").options["basic_auth_pass"], " guest ");
     let mail = import.doc.notification_channels.as_ref().unwrap().iter().find(|c| c.name == "Mail").unwrap();
     assert_eq!(mail.config["password"], " mail pw ", "{:?}", mail.config);
+}
+
+#[test]
+fn sqlserver_and_mongodb_connection_strings_map_to_targets_and_logins() {
+    let json = r##"{
+      "version": "2.0.0",
+      "monitorList": [
+        {"id": 1, "name": "SQL", "type": "sqlserver", "databaseConnectionString": "Server=db.local,1434;Database=app;User Id=sa;Password=\" p;w \";Encrypt=true;TrustServerCertificate=Yes;Connection Timeout=30", "databaseQuery": "SELECT COUNT(*) FROM orders"},
+        {"id": 2, "name": "SQL plain", "type": "sqlserver", "databaseConnectionString": "Data Source=tcp:sql.local\\SQLEXPRESS;Initial Catalog=My Db;UID=app;PWD={pa}}ss};Encrypt=False"},
+        {"id": 3, "name": "SQL windows", "type": "sqlserver", "databaseConnectionString": "Server=sql.local;Integrated Security=SSPI"},
+        {"id": 4, "name": "Mongo", "type": "mongodb", "databaseConnectionString": "mongodb://vole:p%40ss%20@m1.local:27017,m2.local:27018/app?replicaSet=rs0&authSource=admin"},
+        {"id": 5, "name": "Atlas", "type": "mongodb", "databaseConnectionString": "mongodb+srv://reader:pw@cluster0.example.net/?retryWrites=true"},
+        {"id": 6, "name": "Not mongo", "type": "mongodb", "databaseConnectionString": "postgres://db.local/app"},
+        {"id": 7, "name": "SQL none", "type": "sqlserver"}
+      ]
+    }"##;
+    let import = read_json(json).unwrap();
+    let doc = |name: &str| monitor(&import, name);
+
+    let sql = doc("SQL");
+    assert_eq!((sql.monitor_type.as_str(), sql.target.as_str()), ("sqlserver", "sqlserver://db.local:1434/app?encrypt=true&trustServerCertificate=true"));
+    assert_eq!((&sql.options["basic_auth_user"], &sql.options["basic_auth_pass"]), (&"sa".into(), &" p;w ".into()), "quoted passwords keep their spaces");
+    let plain = doc("SQL plain");
+    assert_eq!(plain.target, "sqlserver://sql.local/My%20Db?encrypt=false");
+    assert_eq!((&plain.options["basic_auth_user"], &plain.options["basic_auth_pass"]), (&"app".into(), &"pa}ss".into()));
+
+    let mongo = doc("Mongo");
+    assert_eq!((mongo.monitor_type.as_str(), mongo.target.as_str()), ("mongodb", "mongodb://m1.local:27017,m2.local:27018/app?replicaSet=rs0&authSource=admin"));
+    assert_eq!((&mongo.options["basic_auth_user"], &mongo.options["basic_auth_pass"]), (&"vole".into(), &"p@ss ".into()));
+    let atlas = doc("Atlas");
+    assert_eq!(atlas.target, "mongodb+srv://cluster0.example.net/?retryWrites=true");
+    assert_eq!(atlas.options["basic_auth_user"], "reader");
+
+    // Every imported target passes the form's validation.
+    use crate::db::models::MonitorType as Kind;
+    for (name, kind) in [("SQL", Kind::SqlServer), ("SQL plain", Kind::SqlServer), ("Mongo", Kind::Mongodb), ("Atlas", Kind::Mongodb)] {
+        assert!(crate::api::monitors::form::validate_target(kind, &doc(name).target).is_ok(), "{name}");
+    }
+    let reason = |name: &str| import.skipped.iter().find(|s| s.name == name).map(|s| s.reason.clone()).unwrap_or_default();
+    assert!(reason("SQL windows").contains("Windows authentication"));
+    assert!(reason("Not mongo").contains("postgres://"));
+    assert!(reason("SQL none").contains("no connection string"));
+    assert!(import.warnings.iter().any(|w| w.starts_with("“SQL”") && w.contains("SELECT COUNT")), "{:?}", import.warnings);
+    assert!(import.warnings.iter().any(|w| w.starts_with("“SQL plain”") && w.contains("SQLEXPRESS")), "{:?}", import.warnings);
 }

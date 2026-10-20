@@ -424,6 +424,8 @@ fn save(conn: &mut Connection, existing: Option<&Monitor>, req: WriteRequest) ->
         channel_ids,
         tag_ids: tag_views.iter().map(|t| t.tag_id).collect(),
         child_count,
+        remote_browser_ids: crate::db::remote_browsers::ids(conn)?,
+        browser_optional: false,
     };
     let base = existing.map(Monitor::to_new).unwrap_or_default();
     let valid = match form::validate(&values, &base, &cx) {

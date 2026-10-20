@@ -199,6 +199,7 @@ struct Tables {
     maintenance_pages: Vec<Row>,
     docker_hosts: Vec<Row>,
     proxies: Vec<Row>,
+    remote_browsers: Vec<Row>,
 }
 
 fn read_table(conn: &Connection, table: &str) -> rusqlite::Result<Vec<Row>> {
@@ -256,6 +257,7 @@ pub fn read_sqlite(path: &Path) -> Result<KumaImport, String> {
         maintenance_pages: load("maintenance_status_page")?,
         docker_hosts: load("docker_host")?,
         proxies: load("proxy")?,
+        remote_browsers: load("remote_browser")?,
     };
     Ok(convert(tables, "sqlite"))
 }
@@ -326,6 +328,7 @@ pub fn read_json(text: &str) -> Result<KumaImport, String> {
         maintenance_pages: Vec::new(),
         docker_hosts: Vec::new(),
         proxies: Vec::new(),
+        remote_browsers: Vec::new(),
     };
     let mut out = convert(tables, "json");
     out.warnings.push("Kuma’s JSON backup has no status pages or maintenance windows; import kuma.db to bring those too.".into());
@@ -355,10 +358,6 @@ pub fn read_file(path: &Path) -> Result<KumaImport, String> {
 /// Kuma monitor types we can't run, with the reason shown in the plan.
 fn unsupported_reason(kind: &str) -> Option<&'static str> {
     Some(match kind {
-        "sqlserver" | "mongodb" => "SQL Server and MongoDB monitors aren’t supported yet.",
-        "grpc-keyword" => "gRPC keyword monitors call any method and match text in the reply; the gRPC type here runs the standard health check, so add it by hand.",
-        "gamedig" => "GameDig monitors aren’t supported; Source-engine servers can use the Steam type.",
-        "tailscale-ping" => "Tailscale ping isn’t supported; use a ping monitor on the Tailscale address.",
         "manual" => "Manual monitors aren’t supported; use a push monitor.",
         _ => return None,
     })
@@ -414,6 +413,147 @@ fn host_port(host: &str, port: Option<i64>) -> String {
         (Some(p), false) => format!("{host}:{p}"),
         (None, _) => host.to_string(),
     }
+}
+
+/// Warn that a database monitor's own query isn't run.
+fn warn_query(row: &Row, warnings: &mut Vec<String>, check: &str) {
+    if let Some(query) = s(row, &["database_query", "databaseQuery"]).filter(|q| !q.trim().is_empty() && !q.trim().eq_ignore_ascii_case("select 1")) {
+        warnings.push(format!("its query “{}” isn’t run; the check is {check}.", query.chars().take(60).collect::<String>()));
+    }
+}
+
+/// The `key=value;…` pairs of an ADO.NET connection string, keys lowercased
+/// without spaces. Values may be quoted ('…', "…" with the quote doubled, or
+/// {…}); quoted values keep their spaces, others are trimmed.
+fn ado_pairs(raw: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut rest = raw;
+    while !rest.trim().is_empty() {
+        let Some((key, after)) = rest.split_once('=') else { break };
+        let key: String = key.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+        let after = after.trim_start();
+        let (value, tail) = match after.chars().next() {
+            Some(q @ ('\'' | '"' | '{')) => {
+                let close = if q == '{' { '}' } else { q };
+                let mut value = String::new();
+                let mut chars = after[1..].char_indices();
+                let mut end = after.len();
+                while let Some((i, c)) = chars.next() {
+                    if c == close {
+                        // A doubled closing quote stands for itself.
+                        if after[1 + i + 1..].starts_with(close) {
+                            value.push(c);
+                            chars.next();
+                            continue;
+                        }
+                        end = 1 + i + 1;
+                        break;
+                    }
+                    value.push(c);
+                }
+                let tail = after[end..].split_once(';').map_or("", |(_, t)| t);
+                (value, tail)
+            }
+            _ => match after.split_once(';') {
+                Some((v, t)) => (v.trim().to_string(), t),
+                None => (after.trim().to_string(), ""),
+            },
+        };
+        out.push((key, value));
+        rest = tail;
+    }
+    out
+}
+
+/// Kuma's SQL Server connection string
+/// (`Server=host,1433;Database=app;User Id=sa;Password=…;Encrypt=true;TrustServerCertificate=Yes`)
+/// as our target plus its login.
+fn sqlserver_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String, Option<String>, Option<String>), String> {
+    let raw = raw(row, &["database_connection_string", "databaseConnectionString"]).ok_or("It has no connection string.")?;
+    let pairs = ado_pairs(&raw);
+    let get = |keys: &[&str]| pairs.iter().rev().find(|(k, _)| keys.contains(&k.as_str())).map(|(_, v)| v.clone());
+    let yes = |v: &str| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "yes" | "sspi" | "1");
+    if get(&["integratedsecurity", "trusted_connection"]).is_some_and(|v| yes(&v)) {
+        return Err("It uses Windows authentication, which isn’t supported; use a SQL Server login.".into());
+    }
+    let server = get(&["server", "datasource", "address", "addr", "networkaddress"]).filter(|s| !s.is_empty()).ok_or("Its connection string has no server.")?;
+    let server = server.strip_prefix("tcp:").unwrap_or(&server);
+    let (host, port) = match server.rsplit_once(',') {
+        Some((h, p)) => (h.trim(), Some(p.trim().parse::<i64>().map_err(|_| format!("Its server port “{p}” isn’t a number."))?)),
+        None => (server.trim(), None),
+    };
+    let host = match host.split_once('\\') {
+        Some((h, instance)) => {
+            if port.is_none() {
+                warnings.push(format!("named instance “{instance}” isn’t looked up; port 1433 is used, so set the instance’s port if it differs."));
+            }
+            h
+        }
+        None => host,
+    };
+    let host = if matches!(host, "." | "(local)" | "(localdb)") { "localhost" } else { host };
+    let mut target = format!("sqlserver://{}", host_port(host, port));
+    if let Some(db) = get(&["database", "initialcatalog"]).filter(|d| !d.is_empty()) {
+        target.push('/');
+        for c in db.chars() {
+            match c {
+                '%' | '/' | '?' | '#' | ' ' => target.push_str(&format!("%{:02X}", c as u32)),
+                c => target.push(c),
+            }
+        }
+    }
+    let mut query = Vec::new();
+    if let Some(encrypt) = get(&["encrypt"]) {
+        let e = encrypt.trim().to_ascii_lowercase();
+        query.push(format!("encrypt={}", match e.as_str() {
+            "true" | "yes" | "mandatory" => "true",
+            "strict" => "strict",
+            _ => "false",
+        }));
+    }
+    if let Some(trust) = get(&["trustservercertificate"]) {
+        query.push(format!("trustServerCertificate={}", yes(&trust)));
+    }
+    if !query.is_empty() {
+        target.push('?');
+        target.push_str(&query.join("&"));
+    }
+    warn_query(row, warnings, "a login and SELECT 1");
+    let user = get(&["userid", "uid", "user", "username"]).filter(|u| !u.trim().is_empty()).map(|u| u.trim().to_string());
+    let pass = get(&["password", "pwd"]).filter(|p| !p.is_empty());
+    Ok((target, user, pass))
+}
+
+/// Kuma's MongoDB connection string (`mongodb://user:pass@h1,h2/db?…` or
+/// `mongodb+srv://…`) as our target plus its login.
+fn mongodb_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String, Option<String>, Option<String>), String> {
+    let raw = raw(row, &["database_connection_string", "databaseConnectionString"]).ok_or("It has no connection string.")?;
+    let raw = raw.trim();
+    let (scheme, rest) = raw.split_once("://").ok_or("Its connection string couldn’t be read.")?;
+    let scheme = scheme.to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "mongodb" | "mongodb+srv") {
+        return Err(format!("Its connection string uses “{scheme}://”, which this type can’t check."));
+    }
+    let split = rest.find(['/', '?']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(split);
+    let (userinfo, hosts) = match authority.rsplit_once('@') {
+        Some((u, h)) => (Some(u), h),
+        None => (None, authority),
+    };
+    let decode = crate::monitor::checkers::endpoint::percent_decode;
+    let (user, pass) = match userinfo {
+        Some(u) => match u.split_once(':') {
+            Some((user, pass)) => (Some(decode(user)), Some(decode(pass))),
+            None => (Some(decode(u)), None),
+        },
+        None => (None, None),
+    };
+    if hosts.is_empty() {
+        return Err("Its connection string has no host.".into());
+    }
+    let target = format!("{scheme}://{hosts}{tail}");
+    warn_query(row, warnings, "hello and ping (with a login when it has credentials)");
+    Ok((target, user.filter(|u| !u.is_empty()), pass.filter(|p| !p.is_empty())))
 }
 
 /// Unique keys for Kuma objects by name (later duplicates get `#<kuma id>`).
@@ -508,6 +648,7 @@ fn convert(t: Tables, source: &str) -> KumaImport {
             Some((i(r, &["id"])?, format!("{protocol}://{auth}{}", host_port(&host, port))))
         })
         .collect();
+    let (browser_docs, browser_names) = remote_browsers(&t.remote_browsers, &mut out.warnings);
     let mut tags_of: HashMap<i64, Vec<TagRef>> = HashMap::new();
     for link in &t.monitor_tags {
         let (Some(mid), Some(tid)) = (i(link, &["monitor_id"]), i(link, &["tag_id"])) else { continue };
@@ -532,7 +673,7 @@ fn convert(t: Tables, source: &str) -> KumaImport {
     for row in &t.monitors {
         let id = i(row, &["id"]).unwrap_or_default();
         let key = monitor_keys.get(&id).cloned().unwrap_or_default();
-        match map_monitor(row, &docker_hosts, &proxies) {
+        match map_monitor(row, &docker_hosts, &proxies, &browser_names) {
             Ok((mut doc, warnings)) => {
                 for w in warnings {
                     out.warnings.push(format!("“{key}”: {w}"));
@@ -585,10 +726,17 @@ fn convert(t: Tables, source: &str) -> KumaImport {
             .iter()
             .filter(|d| i(d, &["status_page_id"]) == Some(id))
             .find_map(|d| s(d, &["domain"]));
-        if b(row, &["password"]).is_some() && s(row, &["password"]).is_some() {
-            out.warnings.push(format!("Status page “{title}”: password protection isn’t supported; the page is imported as a draft."));
-        }
+        // Kuma has a password column but never shipped page passwords, and
+        // whatever it holds isn't an Argon2 hash we could verify. Import as a
+        // draft so nothing goes public that wasn't; the owner sets a password.
         let protected = s(row, &["password"]).is_some();
+        if protected {
+            out.warnings.push(format!(
+                "Status page “{title}”: its password can’t be carried over, so the page is imported as a draft. Set a password in its settings, then publish it."
+            ));
+        }
+        let (logo, favicon) = kuma_page_icon(row, &title, &mut out.warnings);
+        let analytics = kuma_page_analytics(row, &title, &mut out.warnings);
         let theme = match s(row, &["theme"]).as_deref() {
             Some("dark") => "dark",
             Some("light") => "light",
@@ -610,6 +758,11 @@ fn convert(t: Tables, source: &str) -> KumaImport {
             custom_css: s(row, &["custom_css"]),
             refresh_seconds: i(row, &["auto_refresh_interval"]).unwrap_or(60).clamp(10, 3600),
             sections: Some(sections),
+            password: None,
+            password_hash: None,
+            analytics,
+            logo,
+            favicon,
         });
     }
 
@@ -645,6 +798,7 @@ fn convert(t: Tables, source: &str) -> KumaImport {
         settings: None,
         tags: Some(tag_docs),
         notification_channels: Some(channel_docs),
+        remote_browsers: (!browser_docs.is_empty()).then_some(browser_docs),
         monitors: Some(monitor_docs.into_iter().map(|(_, _, d)| d).collect()),
         status_pages: Some(page_docs),
         maintenance: Some(window_docs),
@@ -652,11 +806,98 @@ fn convert(t: Tables, source: &str) -> KumaImport {
     out
 }
 
+/// Kuma's status page `icon`: a data URL is imported as logo and favicon
+/// (Kuma uses one image for both); an uploaded file (`/upload/logo1.png`)
+/// isn't in the database, so the plan asks for a re-upload.
+fn kuma_page_icon(row: &Row, title: &str, warnings: &mut Vec<String>) -> (Option<String>, Option<String>) {
+    let Some(icon) = s(row, &["icon"]) else {
+        return (None, None);
+    };
+    if icon == "/icon.svg" {
+        return (None, None);
+    }
+    if icon.starts_with("data:") {
+        return match crate::db::status_pages::extras::parse_data_url(&icon) {
+            Ok(_) => (Some(icon.clone()), Some(icon)),
+            Err(e) => {
+                warnings.push(format!("Status page “{title}”: its logo wasn’t imported ({}) Upload it again.", e.message()));
+                (None, None)
+            }
+        };
+    }
+    warnings.push(format!(
+        "Status page “{title}”: its logo ({icon}) is a file in Kuma’s data folder, not in the database. Upload it again in the page’s settings."
+    ));
+    (None, None)
+}
+
+/// Kuma 1.x `google_analytics_tag_id`, or 2.x `analytics_type` +
+/// `analytics_id` + `analytics_script_url`. Settings that don't validate are
+/// dropped with a warning instead of skipping the page.
+fn kuma_page_analytics(row: &Row, title: &str, warnings: &mut Vec<String>) -> Option<crate::db::status_pages::extras::AnalyticsDoc> {
+    use crate::db::status_pages::extras::AnalyticsDoc;
+    let id = s(row, &["analytics_id", "google_analytics_tag_id", "googleAnalyticsId"])?;
+    let kind = s(row, &["analytics_type", "analyticsType"]).unwrap_or_else(|| "google".into()).to_ascii_lowercase();
+    let mut url = s(row, &["analytics_script_url", "analyticsScriptUrl"]).unwrap_or_default();
+    if kind == "matomo" && !url.is_empty() && !url.contains("://") {
+        // Kuma stores Matomo's host without a scheme.
+        url = format!("https://{}", url.trim_start_matches('/'));
+    }
+    if !matches!(kind.as_str(), "google" | "plausible" | "umami" | "matomo") {
+        warnings.push(format!("Status page “{title}”: {kind} analytics isn’t supported, so it wasn’t imported."));
+        return None;
+    }
+    let doc = AnalyticsDoc {
+        enabled: true,
+        unique_visitors: true,
+        provider: kind,
+        site_id: id,
+        script_url: url,
+    };
+    match doc.to_settings() {
+        Ok(a) => Some(AnalyticsDoc::from_settings(&a)),
+        Err(errors) => {
+            let why = errors.into_iter().map(|(_, m)| m).collect::<Vec<_>>().join(" ");
+            warnings.push(format!("Status page “{title}”: its analytics settings weren’t imported. {why}"));
+            None
+        }
+    }
+}
+
 /// Maps one Kuma monitor row. `Err` = reason it's skipped.
+/// Kuma's `remote_browser` rows as our remote browsers, and their names by
+/// Kuma id. Kuma connects with Playwright; browserless's Playwright path is
+/// turned into its CDP endpoint (same host and token).
+fn remote_browsers(rows: &[Row], warnings: &mut Vec<String>) -> (Vec<config_io::RemoteBrowserDoc>, HashMap<i64, String>) {
+    let keys = keyed_names(rows);
+    let mut docs = Vec::new();
+    let mut names = HashMap::new();
+    for row in rows {
+        let id = i(row, &["id"]).unwrap_or_default();
+        let Some(raw) = s(row, &["url"]) else { continue };
+        let name: String = keys.get(&id).cloned().unwrap_or_default().chars().take(crate::db::remote_browsers::MAX_NAME_LEN).collect();
+        let mut url = raw.trim().to_string();
+        if let Ok(mut parsed) = url::Url::parse(&url) {
+            let path = parsed.path().trim_end_matches('/').to_string();
+            if let Some(cdp) = path.strip_suffix("/playwright") {
+                parsed.set_path(if cdp.is_empty() { "/" } else { cdp });
+                url = parsed.to_string();
+                warnings.push(format!("Remote browser “{name}”: its Playwright address now points at the browser’s DevTools (CDP) endpoint; test it in Settings → Remote browsers."));
+            } else {
+                warnings.push(format!("Remote browser “{name}”: Uptime Kuma connects with Playwright, this server with the DevTools protocol (CDP); test the address in Settings → Remote browsers."));
+            }
+        }
+        names.insert(id, name.clone());
+        docs.push(config_io::RemoteBrowserDoc { name, url });
+    }
+    (docs, names)
+}
+
 fn map_monitor(
     row: &Row,
     docker_hosts: &HashMap<i64, String>,
     proxies: &HashMap<i64, String>,
+    browsers: &HashMap<i64, String>,
 ) -> Result<(MonitorDoc, Vec<String>), String> {
     let mut warnings = Vec::new();
     let kuma_type = s(row, &["type"]).unwrap_or_else(|| "http".into());
@@ -671,24 +912,35 @@ fn map_monitor(
 
     let (our_type, target) = match kuma_type.as_str() {
         "http" => ("http", url),
-        "real-browser" => {
-            warnings.push("real-browser monitors are checked with a plain HTTP request.".into());
-            ("http", url)
-        }
+        "real-browser" => ("real_browser", url),
         "keyword" => ("keyword", url),
         "json-query" => ("json_query", url),
         "port" => ("tcp", host_port(&hostname, port)),
         "ping" => ("ping", hostname),
+        // `tailscale ping --c 1 <hostname>`: the same disco ping, through the socket.
+        "tailscale-ping" => ("tailscale_ping", hostname),
         "dns" => ("dns", hostname),
         "docker" => ("docker", s(row, &["docker_container", "dockerContainer"]).unwrap_or_default()),
         "push" => ("push", String::new()),
         "steam" => ("steam", host_port(&hostname, port)),
+        "gamedig" => gamedig::map(row, &hostname, port, &mut opts, &mut warnings)?,
         "group" => ("group", String::new()),
+        "grpc-keyword" => grpc::map(row, &mut opts, &mut warnings)?,
         "websocket-upgrade" | "websocket" => ("websocket", url),
         "postgres" | "mysql" | "redis" => {
             let (target, user, pass) = connection_string(row, &kuma_type, &mut warnings)?;
             insert_credentials(&mut opts, user, pass);
             (if kuma_type == "mysql" { "mysql" } else { &kuma_type }, target)
+        }
+        "sqlserver" => {
+            let (target, user, pass) = sqlserver_connection(row, &mut warnings)?;
+            insert_credentials(&mut opts, user, pass);
+            ("sqlserver", target)
+        }
+        "mongodb" => {
+            let (target, user, pass) = mongodb_connection(row, &mut warnings)?;
+            insert_credentials(&mut opts, user, pass);
+            ("mongodb", target)
         }
         "mqtt" => {
             let (scheme, host) = match hostname.split_once("://") {
@@ -736,12 +988,13 @@ fn map_monitor(
         }
         "snmp" => {
             let version = s(row, &["snmp_version", "snmpVersion"]).unwrap_or_else(|| "2c".into());
-            if version.trim() == "3" {
-                return Err("SNMPv3 isn’t supported; only v1 and v2c.".into());
-            }
             let oid = s(row, &["snmp_oid", "snmpOid"]).unwrap_or_default();
-            // Kuma keeps the community string in the RADIUS password column.
-            if let Some(community) = raw(row, &["radius_password", "radiusPassword"]) {
+            if version.trim() == "3" {
+                // Kuma's SNMPv3 is noAuthNoPriv: a user name, no passwords.
+                let user = s(row, &["snmp_v3_username", "snmpV3Username"]).ok_or("It uses SNMPv3 but has no user name.")?;
+                opts.insert("basic_auth_user".into(), json!(user));
+            } else if let Some(community) = raw(row, &["radius_password", "radiusPassword"]) {
+                // Kuma keeps the community string in the RADIUS password column.
                 opts.insert("secret".into(), json!(community));
             }
             if let Some(expected) = s(row, &["expected_value", "expectedValue"]) {
@@ -880,6 +1133,22 @@ fn map_monitor(
                 None => server,
             };
             opts.insert("dns_resolver".into(), json!(resolver));
+        }
+    }
+    if our_type == "real_browser" {
+        // Kuma accepts 200-399 and checks nothing else on the page (the
+        // defaults here); it ignores TLS errors when asked.
+        if b(row, &["ignore_tls", "ignoreTls"]).unwrap_or(false) {
+            opts.insert("ignore_tls".into(), json!(true));
+        }
+        match i(row, &["remote_browser", "remoteBrowser"]) {
+            Some(bid) => match browsers.get(&bid) {
+                Some(name) => {
+                    opts.insert("remote_browser".into(), json!(name));
+                }
+                None => warnings.push("its remote browser wasn’t in the export; set a remote browser for it.".into()),
+            },
+            None => warnings.push("it used Uptime Kuma’s built-in Chromium; set a remote browser for it (Settings → Remote browsers).".into()),
         }
     }
     if our_type == "docker"
@@ -1205,7 +1474,7 @@ pub fn plan(conn: &Connection, import: &mut KumaImport) -> rusqlite::Result<Plan
         let mut removed = false;
         // Referenced objects first: dropping a bad channel or tag also drops the
         // references to it, which may be the only problem its monitors have.
-        let referenced = |k: &str| k == config_io::KIND_CHANNEL || k == config_io::KIND_TAG;
+        let referenced = |k: &str| k == config_io::KIND_CHANNEL || k == config_io::KIND_TAG || k == config_io::KIND_BROWSER;
         let first_round = plan.errors.iter().any(|e| referenced(&e.kind));
         for e in plan.errors.iter().filter(|e| !first_round || referenced(&e.kind)) {
             let reason = match &e.field {
@@ -1265,6 +1534,21 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
                 import.skipped.push(Skipped { kind: "notification".into(), name: key.into(), reason: reason.into() });
             }
         }
+        config_io::KIND_BROWSER => {
+            if let Some(list) = &mut doc.remote_browsers {
+                let before = list.len();
+                list.retain(|b| !eq(&b.name));
+                removed = list.len() != before;
+            }
+            for m in doc.monitors.iter_mut().flatten() {
+                if m.options.get("remote_browser").and_then(Value::as_str).is_some_and(eq) {
+                    m.options.remove("remote_browser");
+                }
+            }
+            if removed {
+                import.skipped.push(Skipped { kind: "remote_browser".into(), name: key.into(), reason: reason.into() });
+            }
+        }
         config_io::KIND_TAG => {
             if let Some(list) = &mut doc.tags {
                 let before = list.len();
@@ -1308,5 +1592,12 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
     removed
 }
 
+mod gamedig;
+mod grpc;
+
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod browser_tests;
+#[cfg(test)]
+mod snmp_tailscale_tests;

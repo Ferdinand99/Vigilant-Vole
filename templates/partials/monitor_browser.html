@@ -1,0 +1,44 @@
+{#- Real-browser card on the monitor detail page (included by
+    monitor_detail.html; expects `browser: Option<api::remote_browsers::BrowserPanel>`).
+    The screenshot is served to signed-in users only, never on public pages. -#}
+{%- if let Some(b) = browser %}
+<section class="section" aria-labelledby="browser-title">
+  {% call m::section_head(tr("browser.detail_title"), tr("browser.detail_sub"), "browser-title") %}{% endcall %}
+  <div class="grid-2">
+    <section class="card stack-sm" aria-labelledby="shot-title">
+      <div class="card-head">
+        <div>
+          <h3 class="card-title" id="shot-title">{{ tr("browser.shot_title") }}</h3>
+          {%- if let Some(s) = b.shot %}
+          <p class="card-sub">{{ tr("browser.shot_taken") }} {{ m::time_ago(&s.taken_at) }}</p>
+          {%- endif %}
+        </div>
+      </div>
+      {%- if let Some(s) = b.shot %}
+      <a class="screenshot-link" href="/monitors/{{ b.monitor_id }}/screenshot?v={{ s.version }}" target="_blank" rel="noopener" aria-label="{{ tr("browser.shot_open") }}">
+        <img class="screenshot" src="/monitors/{{ b.monitor_id }}/screenshot?v={{ s.version }}" alt="{{ tr1("browser.shot_alt", "message", s.message) }}" loading="lazy" decoding="async">
+      </a>
+      {%- if !s.message.is_empty() %}
+      <p class="help break">{{ s.message }}</p>
+      {%- endif %}
+      {%- else %}
+      {{ m::empty_state("browser", tr("browser.no_shot_title"), tr("browser.no_shot_text")) }}
+      {%- endif %}
+    </section>
+
+    <section class="card" aria-labelledby="browser-settings-title">
+      <div class="card-head"><h3 class="card-title" id="browser-settings-title">{{ tr("browser.settings_title") }}</h3></div>
+      <dl class="dl">
+        <div class="dl-row"><dt>{{ tr("browser.remote") }}</dt><dd>{% match b.browser %}{% when Some(name) %}{{ name }}{% when None %}<a href="/settings/browsers">{{ tr("browser.none_short") }}</a>{% endmatch %}</dd></div>
+        <div class="dl-row"><dt>{{ tr("browser.wait") }}</dt><dd>{{ b.wait }}</dd></div>
+        <div class="dl-row"><dt>{{ tr("browser.viewport") }}</dt><dd>{{ b.viewport }}</dd></div>
+        <div class="dl-row"><dt>{{ tr("browser.accepts") }}</dt><dd>{{ monitor.accepted_status_codes }}</dd></div>
+        {%- if !b.expect.is_empty() %}
+        <div class="dl-row"><dt>{{ tr("browser.look_for") }}</dt><dd class="break">{{ b.expect }}</dd></div>
+        {%- endif %}
+        <div class="dl-row"><dt>{{ tr("browser.js_errors") }}</dt><dd>{% if b.js_errors %}{{ tr("browser.js_fail") }}{% else %}{{ tr("browser.js_ignore") }}{% endif %}</dd></div>
+      </dl>
+    </section>
+  </div>
+</section>
+{%- endif %}

@@ -56,7 +56,7 @@ fn record_type(s: &str) -> Option<RecordType> {
     })
 }
 
-fn build_resolver(custom: Option<&str>, timeout: Duration) -> Result<TokioResolver, String> {
+pub(crate) fn build_resolver(custom: Option<&str>, timeout: Duration) -> Result<TokioResolver, String> {
     let mut builder = match custom.map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => {
             let addr = parse_dns_resolver(s)?;

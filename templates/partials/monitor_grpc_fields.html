@@ -1,0 +1,59 @@
+{#- gRPC keyword sections of the monitor form (included by
+    monitor_form_fields.html; expects `f`, api::monitors::FormData). -#}
+{% import "macros.html" as m %}
+{% import "partials/monitor_form_macros.html" as fm %}
+
+<section class="form-section" aria-labelledby="sec-grpc" data-show-when="monitor_type=grpc_keyword"{% if !f.shows("grpc_keyword") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-grpc">{{ tr("grpckw.section") }}</h2>
+  <p class="form-section-sub">{{ tr("grpckw.section_sub") }}</p>
+  <div class="card">
+    {{ fm::area("grpc_proto", tr("grpckw.proto"), &f.v.grpc_proto, 8, "syntax = \"proto3\";…", tr("grpckw.proto_help"), f.err("grpc_proto"), true) }}
+    <div class="field{% if f.has_err("http_body") %} is-invalid{% endif %}">
+      <label class="label" for="f-http_body-grpc">{{ tr("grpckw.body") }}</label>
+      <textarea id="f-http_body-grpc" name="http_body" rows="3" class="textarea-code" spellcheck="false" placeholder="{&quot;name&quot;: &quot;vole&quot;}…" aria-describedby="f-http_body-grpc-help{% if f.has_err("http_body") %} f-http_body-error{% endif %}"{% if f.has_err("http_body") %} aria-invalid="true"{% endif %}>{{ f.v.http_body }}</textarea>
+      <p class="help" id="f-http_body-grpc-help">{{ tr("grpckw.body_help") }}</p>
+      {{ fm::error_line("http_body", f.err("http_body")) }}
+    </div>
+    <details class="disclosure"{% if !f.v.http_headers.is_empty() || f.v.ignore_tls || f.has_err("http_headers") %} open{% endif %}>
+      <summary>{{ tr("grpckw.advanced") }} <span class="disclosure-sub">{{ tr("grpckw.advanced_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+      <div class="disclosure-body">
+        <div class="field{% if f.has_err("http_headers") %} is-invalid{% endif %}">
+          <span class="label" id="grpc-metadata-label">{{ tr("grpckw.metadata") }}</span>
+          <div class="kv-editor" data-kv data-kv-json="#f-http_headers-grpc" role="group" aria-labelledby="grpc-metadata-label">
+            <div class="kv-head" aria-hidden="true"><span>{{ tr("common.name") }}</span><span>{{ tr("form.value") }}</span><span></span></div>
+            <div class="kv-rows" data-kv-rows>
+              {%- for (k, val) in f.header_rows %}
+              <div class="kv-row">
+                <input type="text" value="{{ k }}" placeholder="authorization…" aria-label="{{ tr("form.header_name") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <input type="text" value="{{ val }}" placeholder="Bearer …" aria-label="{{ tr("form.header_value") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("x") }}</button>
+              </div>
+              {%- endfor %}
+            </div>
+            <template data-kv-template>
+              <div class="kv-row">
+                <input type="text" placeholder="authorization…" aria-label="{{ tr("form.header_name") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <input type="text" placeholder="Bearer …" aria-label="{{ tr("form.header_value") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <button type="button" class="btn btn-icon btn-plain btn-sm" data-kv-remove aria-label="{{ tr("form.remove_header") }}">{{ m::icon("x") }}</button>
+              </div>
+            </template>
+            <div class="cluster"><button type="button" class="btn btn-plain btn-sm" data-kv-add>{{ m::icon("plus") }}<span>{{ tr("form.add_header") }}</span></button></div>
+            <input type="hidden" id="f-http_headers-grpc" name="http_headers" value="{{ f.v.http_headers }}" disabled>
+          </div>
+          <p class="help">{{ tr("grpckw.metadata_help") }}</p>
+          {{ fm::error_line("http_headers", f.err("http_headers")) }}
+        </div>
+        {{ m::switch("ignore_tls", tr("form.ignore_tls"), f.v.ignore_tls, tr("form.ignore_tls_help"), sfx="-grpc") }}
+      </div>
+    </details>
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-grpc-check" data-show-when="monitor_type=grpc_keyword"{% if !f.shows("grpc_keyword") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-grpc-check">{{ tr("grpckw.check_title") }}</h2>
+  <p class="form-section-sub">{{ tr("grpckw.check_sub") }}</p>
+  <div class="card">
+    {{ m::field_text("keyword", tr("grpckw.keyword"), value=&f.v.keyword, placeholder=tr("form.optional_placeholder"), help=tr("grpckw.keyword_help"), error=f.err("keyword"), sfx="-grpc") }}
+    {{ m::switch("keyword_invert", tr("form.invert"), f.v.keyword_invert, tr("grpckw.invert_help"), sfx="-grpc") }}
+  </div>
+</section>

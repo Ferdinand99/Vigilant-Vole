@@ -1,0 +1,52 @@
+{% extends "public_layout.html" %}
+{% import "macros.html" as m %}
+{#- Unlock form for a password-protected status page. Needs `page`, `error`. -#}
+
+{% block icons %}
+  {%- if let Some(src) = page.favicon_url() %}
+  <link rel="icon" href="{{ src }}">
+  {%- else %}
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  {%- endif %}
+{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block header %}
+<div class="public-brand">
+  {%- if let Some(src) = page.logo_url() %}
+  <img class="public-logo" src="{{ src }}" alt="{{ page.title }}" height="44">
+  {%- endif %}
+  <h1 class="public-title">{{ page.title }}</h1>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="auth-card public-lock" aria-labelledby="lock-title">
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("lock") }}</span>
+    <h2 class="auth-title" id="lock-title">{{ tr("spx.locked_title") }}</h2>
+    <p class="auth-sub">{{ tr("spx.locked_sub") }}</p>
+  </div>
+  {%- if let Some(err) = error %}
+  {{ m::callout("danger", err) }}
+  {%- endif %}
+  <form class="form" method="post" action="/status/{{ page.slug }}/unlock">
+    <div class="field">
+      <label class="label" for="f-password">{{ tr("spx.password") }}</label>
+      <input id="f-password" name="password" type="password" required autocomplete="current-password" autofocus
+        {%- if error.is_some() %} aria-invalid="true"{% endif %}>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">{{ m::icon("lock") }}<span>{{ tr("spx.unlock") }}</span></button>
+  </form>
+</section>
+{% endblock %}
+
+{% block footer %}
+{%- if page.show_powered_by %}
+<p>{{ tr("common.powered_by") }} <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a></p>
+{%- endif %}
+{% endblock %}

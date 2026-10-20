@@ -62,6 +62,10 @@ pub struct MonitorsResponse {
 /// monitors without their authentication, so the server holds those back.
 pub const SERVICE_MONITORS_SINCE: &str = "0.2.0";
 
+/// The first agent version that runs the monitor types of the 0.3.0 batch
+/// (SQL Server, MongoDB, and the types that follow in that release).
+pub const BATCH_0_3_SINCE: &str = "0.3.0";
+
 /// The agent version that introduced `kind` (`None`: every agent runs it).
 /// No wildcard arm, so a new type needs a decision here.
 pub fn introduced_in(kind: MonitorType) -> Option<&'static str> {
@@ -69,11 +73,23 @@ pub fn introduced_in(kind: MonitorType) -> Option<&'static str> {
     match kind {
         Http | Keyword | JsonQuery | Tcp | Ping | Dns | Push | Docker | Websocket | DomainExpiry | Ntp | Steam | Group => None,
         Tls | Smtp | Redis | Postgres | Mysql | Mqtt | Kafka | Rabbitmq | Grpc | Radius | Snmp => Some(SERVICE_MONITORS_SINCE),
+        SqlServer | Mongodb => Some(BATCH_0_3_SINCE),
+        TailscalePing => Some(BATCH_0_3_SINCE),
+        GameServer => Some(BATCH_0_3_SINCE),
+        // Agents also need `grpc_proto`, which older ones don't read.
+        GrpcKeyword => Some(BATCH_0_3_SINCE),
+        // Never sent to agents (see `agent_can_run`); an agent that got one
+        // anyway from a 0.3.0 server would at least read the list.
+        RealBrowser => Some(BATCH_0_3_SINCE),
     }
 }
 
 /// The agent version `m` needs, if not every agent can run it.
 pub fn version_needed(m: &Monitor) -> Option<&'static str> {
+    // Older agents read `?version=3` as an unsupported version.
+    if m.monitor_type == MonitorType::Snmp && crate::monitor::checkers::snmp::is_v3(&m.target) {
+        return Some(BATCH_0_3_SINCE);
+    }
     introduced_in(m.monitor_type).or(matches!(m.auth_method.as_str(), "oauth2" | "mtls").then_some(SERVICE_MONITORS_SINCE))
 }
 
@@ -92,6 +108,10 @@ fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
 /// than this build counts as this build's own version: unreleased builds
 /// still carry the last release's number until the release bumps it.
 pub fn agent_can_run(m: &Monitor, agent_version: Option<&str>) -> bool {
+    // Real-browser checks drive the server's remote browsers: no agent runs them.
+    if !m.monitor_type.runs_on_agents() {
+        return false;
+    }
     let Some(needed) = version_needed(m).and_then(parse_version) else {
         return true;
     };
@@ -243,7 +263,34 @@ mod tests {
         assert!(!agent_can_run(&m, Some("0.0.9")) && agent_can_run(&m, Some(SERVICE_MONITORS_SINCE)));
         // This build's own agents always qualify, released or not.
         assert!(agent_can_run(&m, Some(env!("CARGO_PKG_VERSION"))));
+        for kind in [MonitorType::SqlServer, MonitorType::Mongodb, MonitorType::GameServer] {
+            m.monitor_type = kind;
+            assert_eq!(introduced_in(kind), Some(BATCH_0_3_SINCE));
+            assert!(!agent_can_run(&m, Some("0.1.9")) && !agent_can_run(&m, None));
+            assert!(agent_can_run(&m, Some("0.3.0")) && agent_can_run(&m, Some(env!("CARGO_PKG_VERSION"))));
+        }
         assert_eq!(parse_version("1.2"), Some((1, 2, 0)));
+    }
+
+    #[test]
+    fn snmpv3_and_tailscale_ping_need_a_batch_agent() {
+        let mut m = crate::monitor::checkers::test_support::monitor(MonitorType::Snmp, "snmp://router.local?version=2c");
+        assert_eq!(version_needed(&m), Some(SERVICE_MONITORS_SINCE));
+        m.target = "snmp://router.local/1.3.6.1.2.1.1.3.0?version=3&auth=sha".into();
+        assert_eq!(version_needed(&m), Some(BATCH_0_3_SINCE));
+        assert!(!agent_can_run(&m, Some("0.1.9")) && agent_can_run(&m, Some("0.3.0")));
+        let ts = crate::monitor::checkers::test_support::monitor(MonitorType::TailscalePing, "nas");
+        assert_eq!(version_needed(&ts), Some(BATCH_0_3_SINCE));
+        assert!(!agent_can_run(&ts, Some("0.1.9")) && agent_can_run(&ts, Some("0.3.0")));
+    }
+
+    #[test]
+    fn real_browser_monitors_never_go_to_agents() {
+        let m = crate::monitor::checkers::test_support::monitor(MonitorType::RealBrowser, "https://x.io");
+        assert_eq!(introduced_in(MonitorType::RealBrowser), Some(BATCH_0_3_SINCE));
+        for v in [None, Some("0.3.0"), Some(env!("CARGO_PKG_VERSION")), Some("99.0.0")] {
+            assert!(!agent_can_run(&m, v), "{v:?}");
+        }
     }
 
     #[test]

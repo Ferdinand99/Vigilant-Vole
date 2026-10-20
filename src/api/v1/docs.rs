@@ -220,13 +220,24 @@ pub static ROUTES: &[RouteDoc] = &[
     r("DELETE", "/api/v1/notification-channels/{id}", "editor", "Notifications", "Delete a channel."),
     r("POST", "/api/v1/notification-channels/{id}/test", "editor", "Notifications", "Send a test notification (502 with the provider's error when delivery fails).")
         .res(r#"{"ok": true}"#),
+    // -- Remote browsers --
+    r("GET", "/api/v1/remote-browsers", "viewer", "Remote browsers", "List the remote browsers (CDP endpoints) real-browser monitors use. Tokens and passwords in URLs are masked; the first one is the default.")
+        .res(r#"{"data": [{"id": 1, "name": "Chrome", "url": "ws://chrome:9222/devtools/browser/…", "monitors": 3, "default": true}], "next_cursor": null}"#),
+    r("POST", "/api/v1/remote-browsers", "admin", "Remote browsers", "Add a remote browser: ws(s)://…/devtools/browser/<id>, http(s)://host:port (discovered through /json/version) or wss://host?token=….")
+        .req(r#"{"name": "Chrome", "url": "http://chrome:9222"}"#),
+    r("GET", "/api/v1/remote-browsers/{id}", "viewer", "Remote browsers", "Get one remote browser (secrets masked)."),
+    r("PUT", "/api/v1/remote-browsers/{id}", "admin", "Remote browsers", "Change a remote browser. A masked URL keeps its token while the host stays the same."),
+    r("PATCH", "/api/v1/remote-browsers/{id}", "admin", "Remote browsers", "Rename a remote browser or change its URL.").req(r#"{"name": "Chrome (LAN)"}"#),
+    r("DELETE", "/api/v1/remote-browsers/{id}", "admin", "Remote browsers", "Remove a remote browser; monitors that used it fall back to the default one."),
+    r("POST", "/api/v1/remote-browsers/{id}/test", "admin", "Remote browsers", "Connect and ask the browser for its version.")
+        .res(r#"{"ok": true, "product": "HeadlessChrome/156.0.8078.36", "protocol_version": "1.3"}"#),
     // -- Status pages --
     r("GET", "/api/v1/status-pages", "viewer", "Status pages", "List status pages."),
     r("POST", "/api/v1/status-pages", "editor", "Status pages", "Create a status page (slug defaults to the title).")
         .req(r#"{"title": "Acme status", "slug": "acme", "sections": [{"name": "API", "monitor_ids": [7, 8]}]}"#),
     r("GET", "/api/v1/status-pages/{id}", "viewer", "Status pages", "Get a page with its sections and monitors.")
         .res(r#"{"id": 1, "slug": "acme", "title": "Acme status", "published": true, "theme": "auto", "sections": [{"id": 3, "name": "API", "monitors": [{"id": 7, "name": "Website"}]}], "public_url": "/status/acme"}"#),
-    r("PATCH", "/api/v1/status-pages/{id}", "editor", "Status pages", "Change page settings (and optionally its sections).").req(r#"{"theme": "dark", "refresh_seconds": 30}"#),
+    r("PATCH", "/api/v1/status-pages/{id}", "editor", "Status pages", "Change page settings (and optionally its sections). Also: password (write-only, \"\" removes), analytics, logo/favicon as data: URLs (\"\" removes).").req(r#"{"theme": "dark", "refresh_seconds": 30, "password": "correct horse", "analytics": {"provider": "plausible", "site_id": "status.example.com", "script_url": "https://plausible.io/js/script.js"}}"#),
     r("DELETE", "/api/v1/status-pages/{id}", "editor", "Status pages", "Delete a page."),
     r("PUT", "/api/v1/status-pages/{id}/sections", "editor", "Status pages", "Replace the page layout: sections in order, monitors in order.")
         .req(r#"[{"name": "API", "monitor_ids": [7, 8]}, {"name": "Website", "monitor_ids": [9]}]"#),

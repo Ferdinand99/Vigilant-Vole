@@ -24,6 +24,12 @@
   </div>
 </section>
 
+{% include "partials/monitor_browser_fields.html" %}
+
+{% include "partials/monitor_grpc_fields.html" %}
+
+{% include "partials/monitor_tailscale_fields.html" %}
+
 <section class="form-section" aria-labelledby="sec-http" data-show-when="monitor_type=http,keyword,json_query"{% if !f.shows("http,keyword,json_query") %} hidden{% endif %}>
   <h2 class="form-section-title" id="sec-http">{{ tr("detail.request") }}</h2>
   <div class="card">
@@ -99,10 +105,10 @@
   </div>
 </section>
 
-<section class="form-section" aria-labelledby="sec-service" data-show-when="monitor_type=tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,radius,snmp"{% if !f.shows("tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,radius,snmp") %} hidden{% endif %}>
+<section class="form-section" aria-labelledby="sec-service" data-show-when="monitor_type=tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,radius,snmp,sqlserver,mongodb"{% if !f.shows("tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,radius,snmp,sqlserver,mongodb") %} hidden{% endif %}>
   <h2 class="form-section-title" id="sec-service">{{ tr("form.connection") }}</h2>
   <div class="card">
-    <div data-show-when="monitor_type=redis,postgres,mysql,mqtt,rabbitmq,radius"{% if !f.shows("redis,postgres,mysql,mqtt,rabbitmq,radius") %} hidden{% endif %}>
+    <div data-show-when="monitor_type=redis,postgres,mysql,mqtt,rabbitmq,radius,sqlserver,mongodb"{% if !f.shows("redis,postgres,mysql,mqtt,rabbitmq,radius,sqlserver,mongodb") %} hidden{% endif %}>
       <div class="field-row">
         {{ m::field_text("basic_auth_user", tr("form.user_name"), value=&f.v.basic_auth_user, placeholder=tr("form.optional_placeholder"), error=f.err("basic_auth_user"), sfx="-svc") }}
         {{ m::field_text("basic_auth_pass", tr("login.password"), value=&f.v.basic_auth_pass, kind="password", autocomplete="new-password", error=f.err("basic_auth_pass"), sfx="-svc") }}
@@ -112,7 +118,7 @@
       {{ m::field_text("secret", tr("form.radius_secret"), value=&f.v.secret, kind="password", autocomplete="new-password", help=tr("form.radius_secret_help"), error=f.err("secret"), sfx="-radius") }}
     </div>
     <div data-show-when="monitor_type=snmp"{% if !f.shows("snmp") %} hidden{% endif %}>
-      {{ m::field_text("secret", tr("form.snmp_community"), value=&f.v.secret, kind="password", autocomplete="new-password", placeholder="public…", help=tr("form.snmp_community_help"), error=f.err("secret"), sfx="-snmp") }}
+      {% include "partials/monitor_snmp_fields.html" %}
     </div>
     <div data-show-when="monitor_type=mqtt"{% if !f.shows("mqtt") %} hidden{% endif %}>
       {{ m::field_text("keyword", tr("form.message_contains"), value=&f.v.keyword, placeholder=tr("form.optional_placeholder"), help=tr("form.message_contains_help"), error=f.err("keyword"), sfx="-mqtt") }}
@@ -122,9 +128,27 @@
       {{ m::field_text("keyword", tr("form.value_contains"), value=&f.v.keyword, placeholder=tr("form.optional_placeholder"), help=tr("form.value_contains_help"), error=f.err("keyword"), sfx="-snmp") }}
       {{ m::switch("keyword_invert", tr("form.invert"), f.v.keyword_invert, tr("form.invert_help"), sfx="-snmp") }}
     </div>
-    <div data-show-when="monitor_type=tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc"{% if !f.shows("tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc") %} hidden{% endif %}>
+    <div data-show-when="monitor_type=tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,sqlserver,mongodb"{% if !f.shows("tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,sqlserver,mongodb") %} hidden{% endif %}>
       {{ m::switch("ignore_tls", tr("form.ignore_tls"), f.v.ignore_tls, tr("form.ignore_tls_help"), sfx="-svc") }}
     </div>
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="sec-game" data-show-when="monitor_type=game_server"{% if !f.shows("game_server") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-game">{{ tr("form.game_section") }}</h2>
+  <div class="card">
+    <div class="field">
+      <label class="label" for="f-game_preset">{{ tr("form.game") }}</label>
+      <select id="f-game_preset" data-game-preset aria-describedby="f-game_preset-help">
+        {%- for (scheme, label, port, selected) in f.game_presets() %}
+        <option value="{{ scheme }}" data-port="{{ port }}"{% if selected %} selected{% endif %}>{{ label }}</option>
+        {%- endfor %}
+      </select>
+      <p class="help" id="f-game_preset-help">{{ tr("form.game_help") }}</p>
+    </div>
+    {{ m::field_text("keyword", tr("form.server_name_contains"), value=&f.v.keyword, placeholder=tr("form.optional_placeholder"), help=tr("form.server_name_contains_help"), error=f.err("keyword"), sfx="-game") }}
+    {{ m::switch("keyword_invert", tr("form.invert"), f.v.keyword_invert, tr("form.invert_help"), sfx="-game") }}
+    {{ m::field_text("secret", tr("form.game_token"), value=&f.v.secret, kind="password", autocomplete="new-password", placeholder=tr("form.optional_placeholder"), help=tr("form.game_token_help"), error=f.err("secret"), sfx="-game") }}
   </div>
 </section>
 
@@ -162,7 +186,7 @@
   </div>
 </section>
 
-<section class="form-section" aria-labelledby="sec-expiry" data-show-when="monitor_type=http,keyword,json_query,domain_expiry,tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc"{% if !f.shows("http,keyword,json_query,domain_expiry,tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc") %} hidden{% endif %}>
+<section class="form-section" aria-labelledby="sec-expiry" data-show-when="monitor_type=http,keyword,json_query,domain_expiry,tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,grpc_keyword,sqlserver,mongodb"{% if !f.shows("http,keyword,json_query,domain_expiry,tls,smtp,redis,postgres,mysql,mqtt,kafka,rabbitmq,grpc,grpc_keyword,sqlserver,mongodb") %} hidden{% endif %}>
   <h2 class="form-section-title" id="sec-expiry">{{ tr("form.expiry_alerts") }}</h2>
   <div class="card">
     {{ m::switch("expiry_notify", tr("form.expiry_notify"), f.v.expiry_notify, tr("form.expiry_notify_help")) }}
