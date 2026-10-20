@@ -16,7 +16,7 @@
 | notification channel | canal de notificação | |
 | notification | notificação | |
 | alert | alerta | |
-| escalation | escalonamento | |
+| escalation | escalonamento | Rótulo curto no seletor móvel: «Escalada». |
 | flapping | oscilação | «A oscilar». |
 | retry / retries | nova tentativa / novas tentativas | |
 | push monitor | monitor push | «Push» mantido. |
