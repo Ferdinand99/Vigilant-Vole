@@ -119,6 +119,11 @@ pub enum ClientError {
 }
 
 impl ClientError {
+    /// The server refused the token (revoked, wrong) or the agent is disabled.
+    pub fn is_auth(&self) -> bool {
+        matches!(self, ClientError::Unauthorized | ClientError::Disabled)
+    }
+
     /// Errors worth retrying soon (network, 5xx, 429).
     pub fn is_transient(&self) -> bool {
         match self {
@@ -291,7 +296,8 @@ async fn flush(client: &Client, buffer: &Buffer) -> Result<usize, ClientError> {
                 }
             }
             Err(err) => {
-                if err.is_transient() {
+                // A refused token may be fixed or restored later: keep the results.
+                if err.is_transient() || err.is_auth() {
                     let dropped = buffer.requeue(batch);
                     if dropped > 0 {
                         tracing::warn!(dropped, "result buffer full; dropped oldest results");
@@ -465,6 +471,7 @@ pub async fn run_loop(client: Client, concurrency: usize, mut stop: watch::Recei
     let mut connected_once = false;
     let mut poll_failures = 0u32;
     let mut flush_failures = 0u32;
+    let mut auth_failures = 0u32;
     let mut next_poll = tokio::time::Instant::now();
     let mut next_flush = tokio::time::Instant::now() + FLUSH_EVERY;
 
@@ -487,10 +494,15 @@ pub async fn run_loop(client: Client, concurrency: usize, mut stop: watch::Recei
                         }
                         etag = tag;
                         poll_failures = 0;
+                        if auth_failures > 0 {
+                            tracing::info!("server accepts the agent token again");
+                            auth_failures = 0;
+                        }
                         next_poll = tokio::time::Instant::now() + poll_every;
                     }
                     Ok(Fetch::NotModified) => {
                         poll_failures = 0;
+                        auth_failures = 0;
                         next_poll = tokio::time::Instant::now() + poll_every;
                     }
                     Err(err @ (ClientError::Unauthorized | ClientError::Disabled)) => {
@@ -498,10 +510,12 @@ pub async fn run_loop(client: Client, concurrency: usize, mut stop: watch::Recei
                             stop_all(&mut running);
                             return Err(err.into());
                         }
-                        tracing::error!(%err, "server refused the agent; pausing checks");
+                        auth_failures += 1;
+                        let wait = backoff_after(auth_failures).max(poll_every);
+                        tracing::error!(%err, retry_in = ?wait, "server refused the agent; checks are paused until the token works again");
                         stop_all(&mut running);
                         etag = None;
-                        next_poll = tokio::time::Instant::now() + poll_every;
+                        next_poll = tokio::time::Instant::now() + wait;
                     }
                     Err(err) => {
                         poll_failures += 1;
@@ -523,7 +537,11 @@ pub async fn run_loop(client: Client, concurrency: usize, mut stop: watch::Recei
                     Err(err) => {
                         flush_failures += 1;
                         let wait = backoff_after(flush_failures).max(FLUSH_EVERY);
-                        tracing::warn!(%err, buffered = buffer.len(), retry_in = ?wait, "posting results failed");
+                        if err.is_auth() {
+                            tracing::error!(%err, buffered = buffer.len(), retry_in = ?wait, "server refused the agent's results; keeping them for a retry");
+                        } else {
+                            tracing::warn!(%err, buffered = buffer.len(), retry_in = ?wait, "posting results failed");
+                        }
                         next_flush = tokio::time::Instant::now() + wait;
                     }
                 }
@@ -614,6 +632,55 @@ mod tests {
         assert_eq!(backoff_after(1), Duration::from_secs(2));
         assert_eq!(backoff_after(3), Duration::from_secs(8));
         assert_eq!(backoff_after(30), MAX_BACKOFF);
+    }
+
+    /// A server that answers every agent request with `status`.
+    async fn refusing_server(status: StatusCode) -> Client {
+        let app = axum::Router::new().fallback(move || async move { status });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let args = AgentArgs {
+            server: format!("http://{addr}"),
+            token: "vva_x".into(),
+            name: None,
+            once: false,
+            concurrency: 1,
+        };
+        Client::new(&args).unwrap()
+    }
+
+    #[tokio::test]
+    async fn refused_results_stay_buffered_for_a_retry() {
+        for status in [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN] {
+            let client = refusing_server(status).await;
+            let buffer = Buffer::new(10);
+            buffer.push(item(1));
+            buffer.push(item(2));
+            let err = flush(&client, &buffer).await.unwrap_err();
+            assert!(err.is_auth(), "{err}");
+            assert_eq!(buffer.len(), 2, "results must survive a refused token ({status})");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_token_at_startup_ends_the_loop_with_an_error() {
+        for (status, needle) in [(StatusCode::UNAUTHORIZED, "401"), (StatusCode::FORBIDDEN, "403")] {
+            let client = refusing_server(status).await;
+            let (_stop_tx, stop_rx) = watch::channel(false);
+            let result = tokio::time::timeout(Duration::from_secs(5), run_loop(client, 1, stop_rx)).await;
+            let err = result.expect("the agent must not hang").unwrap_err();
+            assert!(err.to_string().contains(needle), "{err}");
+        }
+    }
+
+    #[test]
+    fn only_refusals_count_as_auth_errors() {
+        assert!(ClientError::Unauthorized.is_auth() && ClientError::Disabled.is_auth());
+        assert!(!ClientError::Status(StatusCode::BAD_GATEWAY, String::new()).is_auth());
+        assert!(ClientError::Status(StatusCode::BAD_GATEWAY, String::new()).is_transient());
     }
 
     #[test]

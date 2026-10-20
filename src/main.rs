@@ -36,7 +36,7 @@ async fn main() {
         Command::Serve => server::run(Config::from_env()).await,
         Command::Agent(args) => {
             if let Err(err) = agent::run(args).await {
-                tracing::error!(%err, "agent stopped");
+                tracing::error!(%err, "agent could not run; exiting");
                 std::process::exit(1);
             }
         }
