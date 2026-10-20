@@ -1,0 +1,7 @@
+{#- "Test connection" result (htmx fragment). -#}
+{% import "macros.html" as m %}
+{%- if ok %}
+{{ m::callout("success", text, title) }}
+{%- else %}
+{{ m::callout("danger", text, title) }}
+{%- endif %}

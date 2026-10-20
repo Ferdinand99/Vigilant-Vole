@@ -41,6 +41,14 @@ services:
     # with CONTAINERS=1 EVENTS=1) and Docker host "tcp://docker-proxy:2375"
     # in Settings → Integrations / on the monitor.
 
+    # --- Optional: Tailscale ping monitors ----------------------------------
+    # The host's tailscaled answers on its socket (see docs/tailscale-ping.md).
+    # The `vole` user gets read-only access (status, ping) unless it is
+    # Tailscale's operator. Another path: set VV_TAILSCALE_SOCKET.
+    # volumes:
+    #   - ./data:/data
+    #   - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
+
     # --- Optional: config-as-code ---------------------------------------------
     # volumes:
     #   - ./data:/data

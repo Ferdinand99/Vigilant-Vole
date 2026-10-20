@@ -21,11 +21,14 @@ pub mod dns;
 pub mod docker;
 pub mod domain;
 pub mod endpoint;
+pub mod game_server;
 pub mod grpc;
+pub mod grpc_keyword;
 pub mod handshake;
 pub mod http;
 pub mod http_auth;
 pub mod kafka;
+pub mod mongodb;
 pub mod mqtt;
 pub mod mysql;
 pub mod ntp;
@@ -33,10 +36,14 @@ pub mod ping;
 pub mod postgres;
 pub mod rabbitmq;
 pub mod radius;
+pub mod real_browser;
 pub mod redis;
+pub mod scram;
 pub mod smtp;
 pub mod snmp;
+pub mod sqlserver;
 pub mod steam;
+pub mod tailscale;
 pub mod tcp;
 pub mod tls;
 pub mod util;
@@ -90,12 +97,14 @@ async fn dispatch(monitor: &Monitor) -> CheckOutcome {
         }
         MonitorType::Tcp => tcp::check(monitor).await,
         MonitorType::Ping => ping::check(monitor).await,
+        MonitorType::TailscalePing => tailscale::check(monitor).await,
         MonitorType::Dns => dns::check(monitor).await,
         MonitorType::Docker => docker::check(monitor).await,
         MonitorType::Websocket => websocket::check(monitor).await,
         MonitorType::DomainExpiry => domain::check(monitor).await,
         MonitorType::Ntp => ntp::check(monitor).await,
         MonitorType::Steam => steam::check(monitor).await,
+        MonitorType::GameServer => game_server::check(monitor).await,
         MonitorType::Tls => handshake::check(monitor).await,
         MonitorType::Smtp => smtp::check(monitor).await,
         MonitorType::Redis => redis::check(monitor).await,
@@ -107,6 +116,10 @@ async fn dispatch(monitor: &Monitor) -> CheckOutcome {
         MonitorType::Snmp => snmp::check(monitor).await,
         MonitorType::Radius => radius::check(monitor).await,
         MonitorType::Grpc => grpc::check(monitor).await,
+        MonitorType::GrpcKeyword => grpc_keyword::check(monitor).await,
+        MonitorType::SqlServer => sqlserver::check(monitor).await,
+        MonitorType::Mongodb => mongodb::check(monitor).await,
+        MonitorType::RealBrowser => real_browser::check(monitor).await,
         MonitorType::Push | MonitorType::Group => CheckOutcome {
             status: HeartbeatStatus::Down,
             response_time_ms: None,
@@ -237,6 +250,12 @@ pub(crate) mod test_support {
             tls_client_cert: None,
             tls_client_key: None,
             tls_ca_cert: None,
+            remote_browser_id: None,
+            browser_selector: None,
+            browser_wait: n.browser_wait,
+            browser_viewport: n.browser_viewport,
+            browser_js_errors: false,
+            grpc_proto: None,
         }
     }
 }

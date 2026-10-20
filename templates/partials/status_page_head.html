@@ -6,6 +6,7 @@
       <div class="page-title-group">
         <h1 class="page-title">{{ page.title }}</h1>
         {%- if !page.published %}<span class="pill status-paused pill-lg">{{ tr("sp.draft") }}</span>{% endif %}
+        {%- if page.is_protected() %}<span class="pill status-info pill-lg">{{ tr("spx.protected_pill") }}</span>{% endif %}
       </div>
       <p class="page-sub"><bdi class="break">/status/{{ page.slug }}</bdi>{% match page.custom_domain %}{% when Some(d) %} · <bdi class="break">{{ d }}</bdi>{% when None %}{% endmatch %}</p>
     </div>
@@ -24,5 +25,6 @@
 <nav class="tabs" aria-label="{{ tr("sp.tabs_aria") }}">
   <a class="tab" href="/status-pages/{{ page.id }}/edit"{% if tab == "content" %} aria-current="page"{% endif %}>{{ tr("sp.tab_content") }}</a>
   <a class="tab" href="/status-pages/{{ page.id }}/edit?tab=settings"{% if tab == "settings" %} aria-current="page"{% endif %}>{{ tr("nav.settings") }}</a>
+  <a class="tab" href="/status-pages/{{ page.id }}/edit?tab=analytics"{% if tab == "analytics" %} aria-current="page"{% endif %}>{{ tr("spx.tab_analytics") }}</a>
   <a class="tab" href="/status-pages/{{ page.id }}/incidents"{% if tab == "incidents" %} aria-current="page"{% endif %}>{{ tr("sp.incidents") }}</a>
 </nav>

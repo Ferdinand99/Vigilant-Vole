@@ -242,6 +242,7 @@ fn kind_label(kind: &str) -> &'static str {
         config_io::KIND_MONITOR => crate::i18n::t("backup.kind_monitor"),
         config_io::KIND_PAGE => crate::i18n::t("backup.kind_page"),
         config_io::KIND_MAINTENANCE => crate::i18n::t("backup.kind_maintenance"),
+        config_io::KIND_BROWSER => crate::i18n::t("backup.kind_browser"),
         "notification" => crate::i18n::t("backup.kind_channel"),
         _ => crate::i18n::t("backup.kind_item"),
     }

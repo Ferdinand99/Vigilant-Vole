@@ -6,6 +6,15 @@
 //!
 //! Nothing here exposes monitor targets, URLs or check messages: only names,
 //! statuses, uptime and (optionally) response times.
+//!
+//! Password protection is in [`access`], logo/favicon uploads in [`assets`]
+//! and analytics (built-in counters, third-party providers) in [`analytics`].
+
+pub mod access;
+pub mod analytics;
+pub mod assets;
+#[cfg(test)]
+mod extras_tests;
 
 use crate::i18n::Tr as _;
 use std::collections::HashMap;
@@ -14,8 +23,8 @@ use std::time::{Duration, Instant};
 
 use askama::Template;
 use axum::Router;
-use axum::extract::{Path, Request, State};
-use axum::http::{HeaderValue, Method, header};
+use axum::extract::{ConnectInfo, Path, Request, State};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
@@ -46,7 +55,10 @@ pub fn public_router() -> Router<AppState> {
     Router::new()
         .route("/status/{slug}", get(page))
         .route("/status/{slug}/fragment", get(fragment))
+        .route("/status/{slug}/unlock", axum::routing::post(access::unlock))
+        .route("/status/{slug}/analytics.js", get(analytics::analytics_js))
         .route("/api/status-page/{slug}", get(json_summary))
+        .merge(assets::public_routes())
 }
 
 // ---------------------------------------------------------------------------
@@ -731,6 +743,10 @@ struct PublicPageTemplate {
     custom_css: Option<String>,
     meta_description: String,
     v: PublicView,
+    /// Drafts and password-protected pages stay out of search engines.
+    noindex: bool,
+    /// Third-party analytics script (published pages only).
+    analytics: Option<analytics::Snippet>,
 }
 
 #[derive(Template)]
@@ -740,15 +756,17 @@ struct LiveFragment {
 }
 
 /// Resolves a page for a public request: published pages for everyone,
-/// unpublished ones only for logged-in editors (as a preview).
-async fn resolve(state: &AppState, slug: String, jar: &SignedCookieJar) -> ApiResult<PublicView> {
+/// unpublished ones only for logged-in editors (as a preview). The access
+/// says whether a password-protected page's content may be shown.
+async fn resolve(state: &AppState, slug: String, jar: &SignedCookieJar) -> ApiResult<(PublicView, access::Access)> {
     let user = super::auth::session_user(state, jar).await.unwrap_or(None);
     let can_edit = user.as_ref().is_some_and(|u| u.can_edit());
     let view = cached_view(state, slug)
         .await?
         .filter(|v| v.page.published || can_edit)
         .ok_or(ApiError::NotFound)?;
-    Ok(PublicView { can_edit, ..view })
+    let access = access::access_for(jar, &view.page, user.is_some());
+    Ok((PublicView { can_edit, ..view }, access))
 }
 
 // ---------------------------------------------------------------------------
@@ -767,11 +785,13 @@ type ViewKey = (std::path::PathBuf, String, crate::i18n::Lang);
 
 static VIEWS: LazyLock<Mutex<HashMap<ViewKey, (Instant, PublicView)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Forget cached public views (after a page, incident or maintenance change).
+/// Forget cached public views (after a page, incident or maintenance change),
+/// and rendered badges, whose visibility depends on the pages.
 pub fn invalidate_views() {
     if let Ok(mut m) = VIEWS.lock() {
         m.clear();
     }
+    super::badges::invalidate_cache();
 }
 
 /// The page's view (published or not — callers decide who may see it),
@@ -835,33 +855,62 @@ fn page_response(view: PublicView) -> Response {
     } else {
         page.description.clone()
     };
+    let protected = page.is_protected();
+    // Third-party analytics only on the real, published page (not previews).
+    let snippet = if view.preview { None } else { analytics::snippet(page) };
+    let csp = snippet.as_ref().and_then(|_| analytics::csp(&page.analytics));
     let tpl = PublicPageTemplate {
         page_title: page.title.clone(),
         theme: page.theme.clone(),
         custom_css: page.custom_css.clone().filter(|c| !c.trim().is_empty()),
         meta_description,
+        noindex: view.preview || protected,
+        analytics: snippet,
         v: view,
     };
-    let preview = tpl.v.preview;
+    let noindex = tpl.noindex;
     let mut resp = HtmlTemplate(tpl).into_response();
     resp.extensions_mut().insert(PublicPage);
     let h = resp.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    if preview {
+    h.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(if protected { "private, no-store" } else { "no-cache" }),
+    );
+    if noindex {
         h.insert("x-robots-tag", HeaderValue::from_static("noindex"));
+    }
+    if let Some(policy) = csp.and_then(|p| HeaderValue::from_str(&p).ok()) {
+        h.insert(header::CONTENT_SECURITY_POLICY, policy);
     }
     resp
 }
 
-async fn page(State(state): State<AppState>, jar: SignedCookieJar, Path(slug): Path<String>) -> ApiResult<Response> {
-    Ok(page_response(resolve(&state, slug, &jar).await?))
+async fn page(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+    headers: HeaderMap,
+    peer: super::auth::PeerAddr,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
+    let (view, access) = resolve(&state, slug, &jar).await?;
+    if !access.allows(&view.page) {
+        return Ok(access::locked_response(&view.page, None, StatusCode::UNAUTHORIZED));
+    }
+    analytics::count_view(&state, &view.page, &headers, peer.0, access.logged_in).await;
+    Ok(page_response(view))
 }
 
 async fn fragment(State(state): State<AppState>, jar: SignedCookieJar, Path(slug): Path<String>) -> ApiResult<Response> {
-    let v = resolve(&state, slug, &jar).await?;
+    let (v, access) = resolve(&state, slug, &jar).await?;
+    if !access.allows(&v.page) {
+        return Ok((StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")]).into_response());
+    }
+    let protected = v.page.is_protected();
     let mut resp = HtmlTemplate(LiveFragment { v }).into_response();
-    resp.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    resp.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(if protected { "private, no-store" } else { "no-cache" }),
+    );
     Ok(resp)
 }
 
@@ -874,19 +923,33 @@ struct JsonSummary {
     view: PublicView,
 }
 
-/// `GET /api/status-page/{slug}`: public summary for integrations (published pages only).
-async fn json_summary(State(state): State<AppState>, Path(slug): Path<String>) -> ApiResult<Response> {
+/// `GET /api/status-page/{slug}`: public summary for integrations (published
+/// pages only). Password-protected pages answer 401 unless the request
+/// carries an unlock cookie or a session.
+async fn json_summary(State(state): State<AppState>, jar: SignedCookieJar, Path(slug): Path<String>) -> ApiResult<Response> {
     let view = published_view(&state, slug).await?.ok_or(ApiError::NotFound)?;
+    if view.page.is_protected() {
+        let logged_in = super::auth::session_user(&state, &jar).await.unwrap_or(None).is_some();
+        if !access::access_for(&jar, &view.page, logged_in).allows(&view.page) {
+            let body = serde_json::json!({ "error": "password_required", "message": "This status page is password protected." });
+            return Ok((StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")], Json(body)).into_response());
+        }
+    }
     let body = JsonSummary {
         slug: view.page.slug.clone(),
         title: view.page.title.clone(),
         description: view.page.description.clone(),
         view,
     };
+    let protected = body.view.page.is_protected();
     let mut resp = Json(body).into_response();
     let h = resp.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=30"));
-    h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    if protected {
+        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    } else {
+        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=30"));
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    }
     Ok(resp)
 }
 
@@ -964,11 +1027,14 @@ async fn slug_for_host(state: &AppState, host: &str) -> Option<String> {
 
 /// Middleware wrapping the whole app (outside auth): when the request `Host`
 /// matches a published status page's `custom_domain`, `GET /` serves that
-/// page instead of the dashboard. Every other path passes through (static
-/// assets, the `/status/{slug}/fragment` refresh, badges, …).
+/// page instead of the dashboard (and `/favicon.ico` its uploaded favicon).
+/// Every other path passes through (static assets, the
+/// `/status/{slug}/fragment` refresh, logo, unlock, badges, …).
 pub async fn custom_domain(State(state): State<AppState>, request: Request, next: Next) -> Response {
-    let is_root = matches!(*request.method(), Method::GET | Method::HEAD) && request.uri().path() == "/";
-    if !is_root {
+    let get = matches!(*request.method(), Method::GET | Method::HEAD);
+    let is_root = get && request.uri().path() == "/";
+    let is_favicon = get && request.uri().path() == "/favicon.ico";
+    if !is_root && !is_favicon {
         return next.run(request).await;
     }
     let Some(host) = request_host(&request) else {
@@ -977,6 +1043,12 @@ pub async fn custom_domain(State(state): State<AppState>, request: Request, next
     let Some(slug) = slug_for_host(&state, &host).await else {
         return next.run(request).await;
     };
+    if is_favicon {
+        return match assets::custom_domain_favicon(&state, slug, request.headers()).await {
+            Some(resp) => resp,
+            None => next.run(request).await,
+        };
+    }
     // Public pages follow the visitor's browser language.
     let lang = crate::i18n::negotiate(request.headers()).unwrap_or_else(crate::i18n::current);
     crate::i18n::scope(lang, serve_custom_domain(state, slug, request, next)).await
@@ -984,7 +1056,17 @@ pub async fn custom_domain(State(state): State<AppState>, request: Request, next
 
 async fn serve_custom_domain(state: AppState, slug: String, request: Request, next: Next) -> Response {
     match published_view(&state, slug).await {
-        Ok(Some(view)) => page_response(view),
+        Ok(Some(view)) => {
+            let jar = SignedCookieJar::from_headers(request.headers(), state.session_key.clone());
+            let logged_in = super::auth::session_user(&state, &jar).await.unwrap_or(None).is_some();
+            let access = access::access_for(&jar, &view.page, logged_in);
+            if !access.allows(&view.page) {
+                return access::locked_response(&view.page, None, StatusCode::UNAUTHORIZED);
+            }
+            let peer = request.extensions().get::<ConnectInfo<std::net::SocketAddr>>().map(|c| c.0);
+            analytics::count_view(&state, &view.page, request.headers(), peer, logged_in).await;
+            page_response(view)
+        }
         Ok(None) => next.run(request).await,
         Err(err) => err.into_response(),
     }
@@ -1412,9 +1494,9 @@ mod router_tests {
 
     static NEXT: AtomicU32 = AtomicU32::new(0);
 
-    struct TestApp {
-        state: AppState,
-        router: Router,
+    pub(super) struct TestApp {
+        pub(super) state: AppState,
+        pub(super) router: Router,
         dir: std::path::PathBuf,
     }
 
@@ -1424,7 +1506,7 @@ mod router_tests {
         }
     }
 
-    async fn app() -> TestApp {
+    pub(super) async fn app() -> TestApp {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let dir = std::env::temp_dir().join(format!(
             "vv-sp-test-{}-{}",
@@ -1454,7 +1536,7 @@ mod router_tests {
     }
 
     /// Page "acme" (published as given) with one up monitor whose target is secret.
-    async fn seed(t: &TestApp, published: bool, domain: Option<&str>) -> (i64, i64) {
+    pub(super) async fn seed(t: &TestApp, published: bool, domain: Option<&str>) -> (i64, i64) {
         let domain = domain.map(str::to_owned);
         t.state
             .with_conn(move |c| {
@@ -1496,7 +1578,7 @@ mod router_tests {
             .unwrap()
     }
 
-    async fn get(t: &TestApp, uri: &str, host: Option<&str>, cookie: Option<&str>) -> (StatusCode, HeaderMapLite, String) {
+    pub(super) async fn get(t: &TestApp, uri: &str, host: Option<&str>, cookie: Option<&str>) -> (StatusCode, HeaderMapLite, String) {
         let mut req = Request::builder().uri(uri);
         if let Some(h) = host {
             req = req.header(header::HOST, h);
@@ -1516,14 +1598,14 @@ mod router_tests {
         (status, headers, body)
     }
 
-    struct HeaderMapLite(Vec<(String, String)>);
+    pub(super) struct HeaderMapLite(pub(super) Vec<(String, String)>);
     impl HeaderMapLite {
-        fn get(&self, k: &str) -> Option<&str> {
+        pub(super) fn get(&self, k: &str) -> Option<&str> {
             self.0.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str())
         }
     }
 
-    fn assert_no_leaks(body: &str) {
+    pub(super) fn assert_no_leaks(body: &str) {
         assert!(!body.contains("secret-target"), "monitor target leaked");
         assert!(!body.contains("secret-message"), "check message leaked");
     }
@@ -1670,7 +1752,7 @@ mod router_tests {
         assert!(body.contains("unknown"));
     }
 
-    async fn login(t: &TestApp, name: &str, role: Role) -> String {
+    pub(super) async fn login(t: &TestApp, name: &str, role: Role) -> String {
         let name = name.to_string();
         let user = t
             .state
@@ -1689,7 +1771,7 @@ mod router_tests {
         set_cookie.split(';').next().unwrap().to_string()
     }
 
-    async fn send(t: &TestApp, method: &str, uri: &str, cookie: &str, body: &str) -> (StatusCode, HeaderMapLite, String) {
+    pub(super) async fn send(t: &TestApp, method: &str, uri: &str, cookie: &str, body: &str) -> (StatusCode, HeaderMapLite, String) {
         let req = Request::builder()
             .method(method)
             .uri(uri)

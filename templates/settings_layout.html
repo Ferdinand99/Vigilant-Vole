@@ -20,6 +20,7 @@
       {%- if ctx.is_admin() %}
       <a class="settings-link" href="/settings/agents"{% if ctx.subnav == "agents" %} aria-current="page"{% endif %}>{{ m::icon("server") }}{{ tr("nav.agents") }}</a>
       <a class="settings-link" href="/settings/integrations"{% if ctx.subnav == "integrations" %} aria-current="page"{% endif %}>{{ m::icon("plug") }}{{ tr("nav.integrations") }}</a>
+      <a class="settings-link" href="/settings/browsers"{% if ctx.subnav == "browsers" %} aria-current="page"{% endif %}>{{ m::icon("browser") }}{{ tr("nav.browsers") }}</a>
       <a class="settings-link" href="/settings/backup"{% if ctx.subnav == "backup" %} aria-current="page"{% endif %}>{{ m::icon("archive") }}{{ tr("nav.backup") }}</a>
       {%- endif %}
     </nav>

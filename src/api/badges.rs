@@ -378,6 +378,14 @@ type BadgeCache = HashMap<CacheKey, (Instant, String)>;
 
 static CACHE: LazyLock<Mutex<BadgeCache>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Forget rendered badges (a page was unpublished or got a password, so a
+/// monitor may no longer be public).
+pub fn invalidate_cache() {
+    if let Ok(mut c) = CACHE.lock() {
+        c.clear();
+    }
+}
+
 fn svg_response(svg: String) -> Response {
     let mut resp = ([(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")], svg).into_response();
     let h = resp.headers_mut();

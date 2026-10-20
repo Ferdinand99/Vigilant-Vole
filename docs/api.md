@@ -43,6 +43,7 @@ API tokens only work under `/api/` and for `/metrics`; they can't open the web U
 |---|---|
 | Monitors | `GET/POST /api/v1/monitors`, `GET/PUT/PATCH/DELETE /api/v1/monitors/{id}`, `POST …/{id}/pause`, `…/resume`, `…/check`, `GET …/{id}/heartbeats`, `…/uptime`, `…/events`, `PUT …/{id}/tags` |
 | Tags | `GET/POST /api/v1/tags`, `GET/PATCH/DELETE /api/v1/tags/{id}` |
+| Remote browsers | `GET/POST /api/v1/remote-browsers`, `GET/PUT/PATCH/DELETE /api/v1/remote-browsers/{id}`, `POST …/{id}/test` (writes: admin; URLs come back with their token masked) |
 | Notifications | `GET /api/v1/notification-providers`, `GET/POST /api/v1/notification-channels`, `GET/PATCH/DELETE …/{id}`, `POST …/{id}/test` |
 | Status pages | `GET/POST /api/v1/status-pages`, `GET/PATCH/DELETE …/{id}`, `PUT …/{id}/sections`, `GET/POST …/{id}/incidents`, `GET/PATCH/DELETE …/{id}/incidents/{iid}` |
 | Maintenance | `GET/POST /api/v1/maintenance`, `GET/PATCH/DELETE /api/v1/maintenance/{id}` |
@@ -55,12 +56,19 @@ Public and machine endpoints (no API token):
 |---|---|---|
 | `GET/POST /api/push/{token}?status=up\|down&msg=&ping=` | push token in the URL | Push monitors (max 1 request/second per monitor) |
 | `GET /api/badge/{id}/{status\|uptime\|ping\|cert-exp}?duration=24h\|7d\|30d&style=flat\|flat-square&label=` | public* | SVG badges |
-| `GET /api/status-page/{slug}` | public | A published status page as JSON (CORS `*`) |
+| `GET /api/status-page/{slug}` | public | A published status page as JSON (CORS `*`); `401 {"error": "password_required"}` for a password-protected page without a session |
+| `GET /status/{slug}/logo`, `/status/{slug}/favicon` | public | Uploaded logo and browser icon (ETag; `?v=<hash>` URLs are cached for a year) |
 | `GET /api/agent/v1/monitors`, `POST /api/agent/v1/results` | agent token | [Remote agents](remote-agents.md) |
 | `GET /metrics` | API token | [Prometheus](metrics.md) |
 | `GET /healthz` | public | Liveness probe (`ok`) |
 
-\* Badges are public for monitors on a published status page, or for all monitors when *Public badges* is on.
+\* Badges are public for monitors on a published status page without a password, or for all monitors when *Public badges* is on.
+
+Status pages in `/api/v1/status-pages` also carry `password_protected` (bool), `analytics` (as in [config-as-code](config-as-code.md#status_pages)), `logo_url` and `favicon_url`. Writes accept `password` (write-only; `""` removes), `analytics`, and `logo`/`favicon` as `data:image/…;base64,…` URLs (`""` removes):
+
+```bash
+curl -X PATCH -H "$AUTH" -H 'Content-Type: application/json' $BASE/api/v1/status-pages/1   -d '{"password": "correct horse", "analytics": {"provider": "plausible", "site_id": "status.example.com", "script_url": "https://plausible.io/js/script.js"}}'
+```
 
 ## Examples
 
@@ -100,25 +108,83 @@ curl -fsS "$BASE/api/push/AbCdEf0123456789AbCdEf0123456789?status=up&msg=backup%
 ## Service monitors
 
 `monitor_type` also accepts `tls`, `smtp`, `redis`, `postgres`, `mysql`, `mqtt`, `kafka`, `rabbitmq`, `grpc`,
-`radius` and `snmp`. Their `target` is `host[:port]` (`tls`, `smtp`) or `scheme://host[:port][/path]` where the path
-is the database (`redis`, `postgres`, `mysql`), topic (`mqtt`, `kafka`), virtual host (`rabbitmq`), gRPC service
-or OID (`snmp`). Credentials never go into the target:
+`radius`, `snmp`, `sqlserver` and `mongodb`. Their `target` is `host[:port]` (`tls`, `smtp`) or
+`scheme://host[:port][/path]` where the path is the database (`redis`, `postgres`, `mysql`, `sqlserver`; for
+`mongodb` the authentication database), topic (`mqtt`, `kafka`), virtual host (`rabbitmq`), gRPC service or OID
+(`snmp`). MongoDB targets take several hosts (`mongodb://a,b:27018/?replicaSet=rs0`) or `mongodb+srv://`.
+Credentials never go into the target:
 
 | Field | Used by |
 |---|---|
-| `basic_auth_user`, `basic_auth_pass` | `redis` (password alone is fine), `postgres` (user required), `mysql`, `mqtt`, `rabbitmq`, `radius` |
-| `secret` | `radius` (shared secret, required), `snmp` (community, default `public`) |
-| `keyword`, `keyword_invert` | `mqtt` (message payload, needs a topic), `snmp` (value text) |
+| `basic_auth_user`, `basic_auth_pass` | `redis` (password alone is fine), `postgres` (user required), `mysql`, `mqtt`, `rabbitmq`, `radius`, `sqlserver` (SQL Server login), `mongodb` (SCRAM), `snmp` v3 (user and authentication password) |
+| `secret` | `radius` (shared secret, required), `snmp` (v1/v2c: community, default `public`; v3: privacy password), `game_server` (Satisfactory API token, optional) |
+| `keyword`, `keyword_invert` | `mqtt` (message payload, needs a topic), `snmp` (value text), `game_server` (server name or MOTD) |
 | `ignore_tls` | every type that can use TLS |
 
 `secret` is masked like the other secrets: responses carry `"••••••"`, sending that value back keeps the stored one
-while the host and port of `target` are unchanged and its protection isn't lowered (`rediss://` → `redis://`, a
-lower PostgreSQL/MySQL `sslmode`): then the secret has to be sent again.
+while the host and port of `target` (every MongoDB host) are unchanged and its protection isn't lowered
+(`rediss://` → `redis://`, a lower PostgreSQL/MySQL `sslmode`, a lower SQL Server `encrypt`, MongoDB TLS turned off
+or its certificate no longer checked): then the secret has to be sent again.
 
 The MQTT topic is the rest of the target after the host and port, as written: `mqtt://broker/home/#` subscribes
 to `home/#` (escape a literal `%` as `%25`). PostgreSQL and MySQL take `?sslmode=` with libpq's meaning:
 `disable`, `prefer` (default: TLS when offered), `require`, `verify-ca` or `verify-full`; only the `verify-*`
 modes check the certificate (unless `ignore_tls`).
+
+SQL Server takes `?encrypt=`: absent (default: the whole session is encrypted when the server can), `false`
+(only the login is encrypted), `disable` (no TLS), `true` (encrypt or fail) or `strict` (TDS 8.0, TLS first); the
+certificate is checked only with `encrypt=true|strict&trustServerCertificate=false`. Without `basic_auth_user`
+only the pre-login handshake runs. MongoDB uses TLS with `?tls=true` (and for `mongodb+srv://`) and checks the
+certificate unless `tlsAllowInvalidCertificates=true` or `tlsInsecure=true`; `replicaSet=` makes a set without a
+primary *down*, and `authSource=` (default: the path, else `admin`) and `authMechanism=SCRAM-SHA-256|SCRAM-SHA-1`
+are honoured.
+
+### SNMP versions
+
+`snmp` takes `?version=1|2c|3` (default `2c`). Version 3 uses the User-based Security Model: `basic_auth_user` is
+the user (required), and which passwords are set picks the security level — none (noAuthNoPriv), `basic_auth_pass`
+(authNoPriv) or both it and `secret` (authPriv; a privacy password alone is refused). `?auth=` names the
+authentication protocol, `md5`, `sha` (SHA-1, the default), `sha224`, `sha256`, `sha384` or `sha512`; `?priv=` the
+privacy protocol, `des`, `aes` (AES-128, the default), `aes192` or `aes256` (AES-192/256 extend the key the way
+net-snmp does; Cisco's "-C" variant isn't supported). `?context=` sets the context name. Passwords have at least 8
+characters. Example: `snmp://core.local/1.3.6.1.2.1.1.5.0?version=3&auth=sha256&priv=aes`.
+
+Changing the version from 3 to 1 or 2c counts as lowering the protection (the community travels in the clear), so
+a masked `secret` has to be sent again. Agents older than 0.3.0 don't get SNMPv3 monitors.
+
+### Tailscale ping monitors
+
+`tailscale_ping` asks the `tailscaled` of the machine running the check to ping a peer. Its `target` is the peer's
+machine name, MagicDNS name or Tailscale IP, optionally with `?type=tsmp` or `?type=icmp` (default: a disco ping,
+like `tailscale ping`). It needs the daemon's socket: see [tailscale-ping.md](tailscale-ping.md).
+
+### Game server monitors
+
+`game_server` queries a game server in its own protocol. The `target` scheme names the game:
+`minecraft://host[:port]` (Java Edition Server List Ping, port 25565; without a port the `_minecraft._tcp.host` SRV
+record is tried first), `bedrock://` (Minecraft Bedrock, RakNet ping, 19132), `satisfactory://` (Lightweight Query
+API over UDP, 7777), `fivem://` (FiveM or RedM, `/info.json` and `/dynamic.json` over HTTP, 30120) or `mumble://`
+(UDP ping, 64738); no path or options. Valve/Source games (Counter-Strike, Rust, ARK, Valheim, …) use `steam`
+instead. `secret` is only used by Satisfactory: an API token makes the check also read the player count from the
+server's HTTPS API (its certificate isn't checked; it is self-signed unless the owner installed one).
+
+### gRPC keyword monitors
+
+`grpc_keyword` calls one unary method. Its `target` is `grpc[s]://host[:port]/package.Service/Method` (port 50051,
+443 for `grpcs://`); a short service name (`Greeter`) works when it is unique, and the method may be written in
+lowerCamel (`sayHello`) like Uptime Kuma does. The other fields:
+
+| Field | Meaning |
+|---|---|
+| `grpc_proto` | `.proto` source that defines the service (one file; `google/protobuf/*.proto` imports work). `null` = ask the server through server reflection (`grpc.reflection.v1`, falling back to `v1alpha`) |
+| `http_body` | The request message as a JSON object (unknown fields are ignored); empty = all defaults |
+| `http_headers` | Metadata sent with the call, a JSON object like `{"authorization": "Bearer …"}` (`content-type`, `te`, `grpc-*` are refused) |
+| `keyword`, `keyword_invert` | Text that must (or, inverted, must not) appear in the answer rendered as JSON: camelCase field names, enum names, 64-bit integers as strings, default values left out. Empty = any OK answer is up |
+| `ignore_tls` | Don't check the `grpcs://` certificate |
+
+A non-OK gRPC status is *down* (`gRPC status NOT_FOUND: …`), including `CANCELLED`. Saving checks the `.proto`
+(compiler errors come back on `grpc_proto` with the line), that the method exists and is unary, and that the body
+fits the request message.
 
 ## HTTP monitor authentication
 

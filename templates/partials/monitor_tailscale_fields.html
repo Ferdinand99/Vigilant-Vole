@@ -1,0 +1,20 @@
+{#- Tailscale ping section of the monitor form (included by
+    monitor_form_fields.html; expects `f`, api::monitors::FormData). The
+    ping type goes into the target's query (`?type=tsmp`). -#}
+{% import "macros.html" as m %}
+
+<section class="form-section" aria-labelledby="sec-tailscale" data-show-when="monitor_type=tailscale_ping"{% if !f.shows("tailscale_ping") %} hidden{% endif %}>
+  <h2 class="form-section-title" id="sec-tailscale">Tailscale</h2>
+  <div class="card">
+    <div class="field">
+      <span class="label" id="tailscale-type-label">{{ tr("tailscale.ping_type") }}</span>
+      <div class="segmented" role="radiogroup" aria-labelledby="tailscale-type-label" aria-describedby="tailscale-type-help">
+        <label><input type="radio" name="tailscale_type" value="disco"{% if f.opt_is("tailscale_type", "disco") %} checked{% endif %}><span>Disco</span></label>
+        <label><input type="radio" name="tailscale_type" value="tsmp"{% if f.opt_is("tailscale_type", "tsmp") %} checked{% endif %}><span>TSMP</span></label>
+        <label><input type="radio" name="tailscale_type" value="icmp"{% if f.opt_is("tailscale_type", "icmp") %} checked{% endif %}><span>ICMP</span></label>
+      </div>
+      <p class="help" id="tailscale-type-help">{{ tr("tailscale.ping_type_help") }}</p>
+    </div>
+    {{ m::callout("info", tr("tailscale.socket_text"), tr("tailscale.socket_title")) }}
+  </div>
+</section>

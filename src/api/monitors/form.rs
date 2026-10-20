@@ -14,6 +14,10 @@ use crate::monitor::checkers::{self, BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METH
 use crate::monitor::checkers::conn::SslMode;
 use crate::monitor::checkers::http_auth::{self, AUTH_METHODS, MtlsError, OAUTH_CLIENT_AUTHS};
 
+mod browser;
+mod grpc;
+mod target_opts;
+
 pub const MAX_NAME_LEN: usize = 150;
 pub const MAX_DESCRIPTION_LEN: usize = 2_000;
 pub const MAX_TARGET_LEN: usize = 2_048;
@@ -96,11 +100,13 @@ pub fn target_field(kind: MonitorType) -> &'static str {
         MonitorType::Websocket => "target_ws",
         MonitorType::Tcp => "target_hostport",
         MonitorType::Ping => "target_host",
+        MonitorType::TailscalePing => "target_tailscale",
         MonitorType::Dns => "target_dns",
         MonitorType::Docker => "target_docker",
         MonitorType::DomainExpiry => "target_domain",
         MonitorType::Ntp => "target_ntp",
         MonitorType::Steam => "target_steam",
+        MonitorType::GameServer => "target_game",
         MonitorType::Tls => "target_tls",
         MonitorType::Smtp => "target_smtp",
         MonitorType::Redis => "target_redis",
@@ -110,8 +116,12 @@ pub fn target_field(kind: MonitorType) -> &'static str {
         MonitorType::Kafka => "target_kafka",
         MonitorType::Rabbitmq => "target_rabbitmq",
         MonitorType::Grpc => "target_grpc",
+        MonitorType::GrpcKeyword => "target_grpc_keyword",
         MonitorType::Radius => "target_radius",
         MonitorType::Snmp => "target_snmp",
+        MonitorType::SqlServer => "target_sqlserver",
+        MonitorType::Mongodb => "target_mongodb",
+        MonitorType::RealBrowser => "target_browser",
         MonitorType::Push | MonitorType::Group => "target",
     }
 }
@@ -123,6 +133,9 @@ pub struct FormValues {
     pub description: String,
     pub monitor_type: String,
     pub target: String,
+    /// `(field, value)` of the target options shown as choices (SNMP
+    /// version and v3 protocols, Tailscale ping type): see `target_opts`.
+    pub target_opts: Vec<(String, String)>,
     /// "" = no group.
     pub parent_id: String,
     pub interval: String,
@@ -178,6 +191,16 @@ pub struct FormValues {
     pub tls_client_cert: String,
     pub tls_client_key: String,
     pub tls_ca_cert: String,
+    /// Real browser: remote browser id ("" = the first one).
+    pub remote_browser_id: String,
+    /// Real browser: `keyword` | `selector` (what the page is checked for).
+    pub browser_check: String,
+    pub browser_selector: String,
+    pub browser_wait: String,
+    pub browser_viewport: String,
+    pub browser_js_errors: bool,
+    /// gRPC keyword: `.proto` text ("" = server reflection).
+    pub grpc_proto: String,
 }
 
 fn opt(s: &Option<String>) -> String {
@@ -187,11 +210,13 @@ fn opt(s: &Option<String>) -> String {
 impl FormValues {
     /// Values for a monitor (edit / clone) or for `NewMonitor::default()` (create).
     pub fn from_new(m: &NewMonitor, channels: Vec<(i64, ChannelMode)>, tags: &[MonitorTag]) -> Self {
+        let (target, target_opts) = target_opts::split(m.monitor_type, &m.target);
         Self {
             name: m.name.clone(),
             description: m.description.clone(),
             monitor_type: m.monitor_type.as_str().to_string(),
-            target: m.target.clone(),
+            target,
+            target_opts,
             parent_id: m.parent_id.map(|p| p.to_string()).unwrap_or_default(),
             interval: m.interval_seconds.to_string(),
             retry_interval: m.retry_interval_seconds.map(|r| r.to_string()).unwrap_or_default(),
@@ -240,6 +265,13 @@ impl FormValues {
             tls_client_cert: opt(&m.tls_client_cert),
             tls_client_key: opt(&m.tls_client_key),
             tls_ca_cert: opt(&m.tls_ca_cert),
+            remote_browser_id: m.remote_browser_id.map(|id| id.to_string()).unwrap_or_default(),
+            browser_check: if m.browser_selector.is_some() { "selector" } else { "keyword" }.to_string(),
+            browser_selector: opt(&m.browser_selector),
+            browser_wait: m.browser_wait.clone(),
+            browser_viewport: m.browser_viewport.clone(),
+            browser_js_errors: m.browser_js_errors,
+            grpc_proto: opt(&m.grpc_proto),
         }
     }
 
@@ -308,6 +340,7 @@ impl FormValues {
                     .trim()
                     .to_string()
             },
+            target_opts: target_opts::read(MonitorType::parse(&p.text("monitor_type")).unwrap_or_default(), p),
             parent_id: p.text("parent_id"),
             interval: p.text("interval_seconds"),
             retry_interval: p.text("retry_interval_seconds"),
@@ -363,6 +396,14 @@ impl FormValues {
             tls_client_cert: p.raw("tls_client_cert").unwrap_or_default().to_string(),
             tls_client_key: p.raw("tls_client_key").unwrap_or_default().to_string(),
             tls_ca_cert: p.raw("tls_ca_cert").unwrap_or_default().to_string(),
+            remote_browser_id: p.text("remote_browser_id"),
+            browser_check: p.text("browser_check"),
+            browser_selector: p.text("browser_selector"),
+            browser_wait: p.text("browser_wait"),
+            browser_viewport: p.text("browser_viewport"),
+            browser_js_errors: p.flag("browser_js_errors"),
+            // Source text keeps its whitespace.
+            grpc_proto: p.raw("grpc_proto").unwrap_or_default().to_string(),
         }
     }
 
@@ -421,6 +462,11 @@ pub struct FormContext {
     pub tag_ids: Vec<i64>,
     /// Number of direct children (blocks turning a group into another type).
     pub child_count: usize,
+    /// Remote browser ids (oldest first; the first is the default).
+    pub remote_browser_ids: Vec<i64>,
+    /// Real-browser monitors may be saved without any remote browser
+    /// (config imports, which warn about it instead).
+    pub browser_optional: bool,
 }
 
 /// A validated submission.
@@ -462,6 +508,29 @@ fn non_empty(s: &str) -> Option<String> {
     (!t.is_empty()).then(|| t.to_string())
 }
 
+/// Types whose checks can report a certificate or domain expiry, i.e. the ones
+/// the form shows the expiry section for (keep in sync with `sec-expiry` in
+/// `monitor_form_fields.html`).
+pub(crate) fn reports_expiry(kind: MonitorType) -> bool {
+    kind.is_http_family()
+        || matches!(
+            kind,
+            MonitorType::DomainExpiry
+                | MonitorType::Tls
+                | MonitorType::Smtp
+                | MonitorType::Redis
+                | MonitorType::Postgres
+                | MonitorType::Mysql
+                | MonitorType::Mqtt
+                | MonitorType::Kafka
+                | MonitorType::Rabbitmq
+                | MonitorType::Grpc
+                | MonitorType::GrpcKeyword
+                | MonitorType::SqlServer
+                | MonitorType::Mongodb
+        )
+}
+
 fn first_line(msg: &str) -> String {
     let mut s = msg.trim().to_string();
     if let Some(first) = s.chars().next() {
@@ -484,6 +553,7 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
         return Err(match kind {
             k if k.is_http_family() => crate::i18n::t("validation.target_url").into(),
             MonitorType::Websocket => crate::i18n::t("validation.target_ws").into(),
+            MonitorType::RealBrowser => crate::i18n::t("validation.target_url").into(),
             MonitorType::Docker => crate::i18n::t("validation.target_docker").into(),
             MonitorType::DomainExpiry => crate::i18n::t("validation.target_domain").into(),
             _ => crate::i18n::t("validation.target_host").into(),
@@ -502,7 +572,7 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
         Ok(())
     };
     match kind {
-        MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery => {
+        MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery | MonitorType::RealBrowser => {
             let url = url::Url::parse(t)
                 .map_err(|_| crate::i18n::t("validation.url_full").to_string())?;
             if !matches!(url.scheme(), "http" | "https") {
@@ -554,13 +624,25 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
         | MonitorType::Rabbitmq
         | MonitorType::Grpc
         | MonitorType::Radius
-        | MonitorType::Snmp => checkers::endpoint::parse(kind, t)
+        | MonitorType::SqlServer
+        | MonitorType::Mongodb
+        | MonitorType::GameServer => checkers::endpoint::parse(kind, t)
+            .map(|_| t.to_string())
+            .map_err(|e| first_line(&e)),
+        MonitorType::GrpcKeyword => checkers::grpc_keyword::parse_target(t)
             .map(|_| t.to_string())
             .map_err(|e| first_line(&e)),
         MonitorType::Ping | MonitorType::Dns => {
             host_like(t)?;
             Ok(t.to_string())
         }
+        MonitorType::Snmp => checkers::endpoint::parse(kind, t)
+            .and_then(|ep| checkers::snmp::options(&ep))
+            .map(|_| t.to_string())
+            .map_err(|e| first_line(&e)),
+        MonitorType::TailscalePing => checkers::tailscale::Target::parse(t)
+            .map(|_| t.to_string())
+            .map_err(|e| first_line(&e)),
         MonitorType::Docker => {
             if t.chars().any(char::is_whitespace) {
                 return Err(crate::i18n::t("validation.container_spaces").into());
@@ -630,17 +712,30 @@ fn same_service(old: &NewMonitor, new: &NewMonitor) -> bool {
         && match (checkers::endpoint::parse(kind, &old.target), checkers::endpoint::parse(kind, &new.target)) {
             (Ok(a), Ok(b)) => {
                 let (was, now) = (protection(kind, &a), protection(kind, &b));
-                a.host.eq_ignore_ascii_case(&b.host) && a.port == b.port && now.0 >= was.0 && now.1 >= was.1
+                let same_host = |(h1, p1): &(String, u16), (h2, p2): &(String, u16)| h1.eq_ignore_ascii_case(h2) && p1 == p2;
+                a.host.eq_ignore_ascii_case(&b.host)
+                    && a.port == b.port
+                    && a.srv == b.srv
+                    && a.more_hosts.len() == b.more_hosts.len()
+                    && a.more_hosts.iter().zip(&b.more_hosts).all(|(x, y)| same_host(x, y))
+                    && now.0 >= was.0
+                    && now.1 >= was.1
             }
             _ => false,
         }
 }
 
 /// How a service target protects what is sent over it: TLS from the first
-/// byte (from the scheme) and, for the databases, the `sslmode`.
+/// byte (from the scheme) and, for the databases, the `sslmode` (or what
+/// SQL Server's `encrypt` and MongoDB's TLS options amount to on that scale).
 fn protection(kind: MonitorType, ep: &checkers::endpoint::Endpoint) -> (bool, SslMode) {
     let sslmode = match kind {
         MonitorType::Postgres | MonitorType::Mysql => SslMode::of(ep).unwrap_or(SslMode::Disable),
+        MonitorType::SqlServer => checkers::sqlserver::Settings::of(ep).map_or(SslMode::Disable, |s| s.protection()),
+        MonitorType::Mongodb => checkers::mongodb::protection(ep),
+        // SNMPv3 never sends its passwords; v1/v2c sends the secret (the
+        // community) in the clear, so going back from v3 asks for it again.
+        MonitorType::Snmp if checkers::snmp::options(ep).is_ok_and(|o| o.version == checkers::snmp::Version::V3) => SslMode::Require,
         _ => SslMode::Disable,
     };
     (ep.tls, sslmode)
@@ -833,11 +928,12 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
     }
     m.description = v.description.trim().to_string();
 
-    match validate_target(kind, &v.target) {
+    let typed_target = target_opts::merge(kind, &v.target, &v.target_opts);
+    match validate_target(kind, &typed_target) {
         Ok(t) => m.target = t,
         Err(msg) => {
             e.insert("target", msg);
-            m.target = v.target.trim().to_string();
+            m.target = typed_target.trim().to_string();
         }
     }
 
@@ -976,6 +1072,9 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
             e.insert("keyword", crate::i18n::t("validation.mqtt_keyword_topic").into());
         }
     }
+    if kind == MonitorType::Snmp {
+        target_opts::snmp_security(&mut m, &mut e);
+    }
 
     if kind == MonitorType::Keyword {
         if v.keyword.trim().is_empty() {
@@ -1035,9 +1134,17 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         }
     }
 
-    if kind.is_http_family() || kind == MonitorType::DomainExpiry {
+    if reports_expiry(kind) {
         m.expiry_notify = v.expiry_notify;
         m.expiry_days = int_in(&mut e, "expiry_days", &v.expiry_days, 1, 365, crate::i18n::t("validation.what_days")).unwrap_or(m.expiry_days);
+    }
+
+    if kind == MonitorType::RealBrowser {
+        browser::validate(v, base, cx, &mut m, &mut e);
+    }
+
+    if kind == MonitorType::GrpcKeyword {
+        grpc::validate(v, &mut m, &mut e);
     }
 
     // -- alerting --------------------------------------------------------
@@ -1357,6 +1464,21 @@ mod tests {
     }
 
     #[test]
+    fn service_types_save_their_expiry_settings() {
+        let base = NewMonitor { expiry_notify: true, expiry_days: 14, ..NewMonitor::default() };
+        for (kind, target) in [("redis", "rediss://cache:6380"), ("mongodb", "mongodb://db"), ("sqlserver", "sqlserver://db")] {
+            let mut pairs: Vec<(String, String)> =
+                base_pairs(kind, target).into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            pairs.retain(|(k, _)| k != "expiry_notify" && k != "expiry_days");
+            pairs.push(("expiry_days".into(), "7".into()));
+            let v = FormValues::from_pairs(&Pairs(pairs), &[]);
+            let ok = validate(&v, &base, &FormContext::default()).unwrap_or_else(|e| panic!("{kind}: {e:?}"));
+            assert!(!ok.monitor.expiry_notify, "{kind}: switching expiry alerts off must stick");
+            assert_eq!(ok.monitor.expiry_days, 7, "{kind}: expiry days must be saved");
+        }
+    }
+
+    #[test]
     fn parent_channels_and_tags_are_checked_against_context() {
         let cx = FormContext {
             allowed_parents: vec![5],
@@ -1610,6 +1732,14 @@ mod tests {
             (MonitorType::Postgres, "postgres://db.local/app?sslmode=require", "postgres://db.local/app?sslmode=disable"),
             (MonitorType::Postgres, "postgres://db.local/app?sslmode=verify-full", "postgres://db.local/app"),
             (MonitorType::Mysql, "mysql://db.local/app", "mysql://db.local/app?sslmode=disable"),
+            (MonitorType::SqlServer, "sqlserver://db.local", "sqlserver://db.local?encrypt=disable"),
+            (MonitorType::SqlServer, "sqlserver://db.local?encrypt=true", "sqlserver://db.local?encrypt=false"),
+            (MonitorType::SqlServer, "sqlserver://db.local?encrypt=true&trustServerCertificate=false", "sqlserver://db.local?encrypt=true"),
+            (MonitorType::Mongodb, "mongodb://m.local/?tls=true", "mongodb://m.local/"),
+            (MonitorType::Mongodb, "mongodb://m.local/?tls=true", "mongodb://m.local/?tls=true&tlsAllowInvalidCertificates=true"),
+            (MonitorType::Mongodb, "mongodb://a.local,b.local", "mongodb://a.local,evil.example"),
+            (MonitorType::Mongodb, "mongodb://a.local,b.local", "mongodb://a.local"),
+            (MonitorType::Mongodb, "mongodb+srv://c.example.net", "mongodb://c.example.net/?tls=true"),
         ] {
             let base = stored(kind, from);
             let err = submit(&base, kind.as_str(), to).unwrap_err();
@@ -1622,6 +1752,8 @@ mod tests {
         for (kind, from, to) in [
             (MonitorType::Redis, "redis://cache.local:6380", "rediss://cache.local:6380"),
             (MonitorType::Postgres, "postgres://db.local/app", "postgres://db.local/app?sslmode=verify-full"),
+            (MonitorType::SqlServer, "sqlserver://db.local?encrypt=false", "sqlserver://db.local/app"),
+            (MonitorType::Mongodb, "mongodb://A.local,b.local/app", "mongodb://a.local:27017,b.local/other?tls=true"),
         ] {
             let kept = submit(&stored(kind, from), kind.as_str(), to).unwrap().monitor;
             assert_eq!(kept.basic_auth_pass.as_deref(), Some("hunter2"), "{from} -> {to}");

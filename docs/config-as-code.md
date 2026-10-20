@@ -92,6 +92,7 @@ fresh instance:
 |---|---|
 | `tags` | `name` |
 | `notification_channels` | `name` |
+| `remote_browsers` | `name` |
 | `monitors` | `key` (defaults to `name`) |
 | `status_pages` | `slug` |
 | `maintenance` | `title` |
@@ -101,14 +102,15 @@ Keys are compared case-insensitively. Monitors created by an import get `source:
 give monitors an explicit `key` if you expect to rename them. Duplicate names on export are disambiguated as
 `"Name #id"`.
 
-References use these keys: a monitor's `parent` (a group's key), `tags`, `notifications`; a status page section's
+References use these keys: a monitor's `parent` (a group's key), `tags`, `notifications`, `remote_browser`; a status page section's
 `monitors`; a maintenance window's `monitors` and `status_pages` (slugs).
 
 ## Secrets
 
 Exports mask secrets as `••••••` unless an admin asks for them (`secrets=1` / *Include secrets*): channel
 credentials, monitors' `basic_auth_pass`, `oauth_client_secret` and `tls_client_key`, sensitive HTTP header values (names containing `authorization`, `cookie`,
-`token`, `secret`, `key`, `password`, `auth`, `session`, `signature`) and push tokens. **Importing a masked value
+`token`, `secret`, `key`, `password`, `auth`, `session`, `signature`), push tokens, and the token or password in a
+remote browser's `url`. **Importing a masked value
 keeps the value already stored**, so a masked export round-trips safely and can live in git. For a new object a
 masked secret is an error — supply the real value (e.g. by templating the file in CI).
 
@@ -119,6 +121,7 @@ version: 1                    # format version (optional; currently 1)
 settings: { … }               # every section is optional
 tags: [ … ]
 notification_channels: [ … ]
+remote_browsers: [ … ]
 monitors: [ … ]
 status_pages: [ … ]
 maintenance: [ … ]
@@ -192,14 +195,33 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 `{{status}}`, `{{event}}`, `{{message}}`, `{{summary}}`, `{{headline}}`, `{{url}}`, `{{downtime}}`,
 `{{downtime_seconds}}`, `{{expires_in_days}}`, `{{occurred_at}}`.
 
+### `remote_browsers`
+
+The headless Chromium endpoints that `real_browser` monitors drive (Settings → Remote browsers; see
+[real-browser.md](real-browser.md)). The first one is the default for monitors that don't name one.
+
+| Key | Type | Notes |
+|---|---|---|
+| `name` | string | Required, unique, up to 80 characters. |
+| `url` | string | `ws(s)://host:port/devtools/browser/<id>`, `http(s)://host:port` (discovered through `/json/version`) or a service address like `wss://host?token=…`. A token or password in it is exported masked; a masked URL keeps the stored secret while scheme, host and port stay the same. |
+
+```yaml
+remote_browsers:
+  - name: Chrome
+    url: http://chrome:9222
+```
+
+In `replace` mode, remote browsers the document doesn't list are deleted; their monitors fall back to the
+default one.
+
 ### `monitors`
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `key` | string | `name` | Stable identity, see above. |
 | `name` | string | – | Required. |
-| `monitor_type` | string | – | `http`, `keyword`, `json_query`, `tcp`, `ping`, `dns`, `push`, `docker`, `websocket`, `domain_expiry`, `ntp`, `steam`, `tls`, `smtp`, `redis`, `postgres`, `mysql`, `mqtt`, `kafka`, `rabbitmq`, `grpc`, `radius`, `snmp`, `group`. |
-| `target` | string | `""` | URL (`http`, `keyword`, `json_query`; `ws://`/`wss://` for `websocket`), `host:port` (`tcp`, `steam`; `ntp` port optional), host (`ping`, `dns`), domain (`domain_expiry`), container name or id (`docker`); `host[:port]` for `tls` and `smtp`; `scheme://host[:port][/path]` for the service types (`redis://`, `rediss://`, `postgres://`, `mysql://`, `mqtt://`, `mqtts://`, `kafka://`, `kafkas://`, `amqp://`, `amqps://`, `grpc://`, `grpcs://`, `radius://`, `snmp://`), where the path is the database, topic, virtual host, gRPC service or OID. Credentials never go into the target: use `basic_auth_user` / `basic_auth_pass`, and `secret` for the RADIUS shared secret and the SNMP community. Empty for `push` and `group`. |
+| `monitor_type` | string | – | `http`, `keyword`, `json_query`, `tcp`, `ping`, `tailscale_ping`, `dns`, `push`, `docker`, `websocket`, `domain_expiry`, `ntp`, `steam`, `game_server`, `tls`, `smtp`, `redis`, `postgres`, `mysql`, `mqtt`, `kafka`, `rabbitmq`, `grpc`, `grpc_keyword`, `radius`, `snmp`, `sqlserver`, `mongodb`, `real_browser`, `group`. |
+| `target` | string | `""` | URL (`http`, `keyword`, `json_query`, `real_browser`; `ws://`/`wss://` for `websocket`), `host:port` (`tcp`, `steam`; `ntp` port optional), `minecraft://`, `bedrock://`, `satisfactory://`, `fivem://` or `mumble://` + `host[:port]` (`game_server`; the scheme picks the game and its default port), host (`ping`, `dns`), Tailscale peer name or IP with optional `?type=tsmp|icmp` (`tailscale_ping`), domain (`domain_expiry`), container name or id (`docker`); `host[:port]` for `tls` and `smtp`; `scheme://host[:port][/path]` for the service types (`redis://`, `rediss://`, `postgres://`, `mysql://`, `mqtt://`, `mqtts://`, `kafka://`, `kafkas://`, `amqp://`, `amqps://`, `grpc://`, `grpcs://`, `radius://`, `snmp://`, `sqlserver://`, `mongodb://`, `mongodb+srv://`), where the path is the database, topic, virtual host, gRPC service or OID (MongoDB targets may list several hosts: `mongodb://a,b:27018/?replicaSet=rs0`); `grpc_keyword` takes `grpc[s]://host[:port]/package.Service/Method`; `snmp://` takes `?version=1|2c|3` and, for v3, `&auth=md5|sha|sha224|sha256|sha384|sha512&priv=des|aes|aes192|aes256&context=…`. Credentials never go into the target: use `basic_auth_user` / `basic_auth_pass` (SNMPv3: user and authentication password), and `secret` for the RADIUS shared secret, the SNMP community (SNMPv3: the privacy password) and the Satisfactory API token (`game_server`). Empty for `push` and `group`. |
 | `parent` | string | – | Key of a `group` monitor. |
 | `tags` | list | keep | `["production", {name: env, value: prod}]`. Unknown tag names are created. |
 | `notifications` | list | keep (new: default channels) | Channel names: `["Ops Discord", {name: PagerDuty, escalation: true}]`. Escalation channels are only used after `escalation_minutes`. |
@@ -212,8 +234,8 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 | `retries` | int | `0` | 0–20 failed checks (recorded as *pending*) before *down*. |
 | `upside_down` | bool | `false` | Invert up/down. |
 | `http_method` | string | `GET` | HTTP family. |
-| `http_headers` | object\|string | – | `{Authorization: "Bearer …"}` or JSON text. |
-| `http_body` | string | – | Up to 64 KB. |
+| `http_headers` | object\|string | – | `{Authorization: "Bearer …"}` or JSON text. For `grpc_keyword`: the call's metadata. |
+| `http_body` | string | – | Up to 64 KB. For `grpc_keyword`: the request message as a JSON object. |
 | `http_body_encoding` | string | `json` | `json`, `form`, `raw`. |
 | `accepted_status_codes` | string | `200-399` | e.g. `200-299,301,2xx`. |
 | `max_redirects` | int | `10` | 0–30. |
@@ -227,7 +249,7 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 | `tls_client_cert` / `tls_client_key` | string | – | `mtls`: PEM client certificate (chain) and its unencrypted PEM private key (a secret; a masked key is only kept while `target` and `proxy_url` are unchanged). The target must be `https://`. Use a YAML block scalar (`\|`) for the PEM text. |
 | `tls_ca_cert` | string | – | `mtls`, optional: extra PEM CA certificate(s) to trust for the monitored server. |
 | `proxy_url` | string | – | `http://`, `https://`, `socks5://` or `socks5h://` proxy. |
-| `keyword` | string | – | `keyword` type: text to find (case-sensitive). |
+| `keyword` | string | – | `keyword` type: text to find (case-sensitive). `grpc_keyword`: text to find in the answer rendered as JSON (camelCase field names, enum names, 64-bit numbers as strings); optional. `game_server`: text the server name or MOTD must contain; optional. |
 | `keyword_invert` | bool | `false` | Down when the keyword *is* found. |
 | `json_path` | string | – | `json_query`: RFC 9535 JSONPath, e.g. `$.status`. |
 | `json_operator` | string | `==` | `==`, `!=`, `contains`, `<`, `<=`, `>`, `>=`. |
@@ -244,6 +266,12 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 | `run_on_agents` | bool | `false` | Remote agents run this check too. |
 | `confirm_with_agents` | bool | `false` | Only alert when agents confirm the outage. |
 | `sort_order` | int | `0` | Dashboard order. |
+| `remote_browser` | string | first one | `real_browser`: the remote browser's `name`. Without one, the first remote browser is used (the plan warns when there is none yet). |
+| `browser_selector` | string | – | `real_browser`: CSS selector that must match; checked instead of `keyword` (which is the visible text to find). `keyword_invert` inverts either. |
+| `browser_wait` | string | `load` | `real_browser`: `load` or `network_idle`. |
+| `browser_viewport` | string | `desktop` | `real_browser`: `desktop` (1280×800) or `mobile` (390×844). |
+| `browser_js_errors` | bool | `false` | `real_browser`: an uncaught JavaScript exception fails the check. |
+| `grpc_proto` | string | – | `grpc_keyword`: the `.proto` source defining the called service (one file; `google/protobuf/*.proto` imports work), checked on import. Leave it out to ask the server through server reflection. Use a YAML block scalar (`\|`). |
 
 ### `status_pages`
 
@@ -263,6 +291,10 @@ webhook `body_template` supports `{{monitor_name}}`, `{{monitor_id}}`, `{{monito
 | `custom_css` | string | – | Added to the page (`</style`, `<script` and HTML comments are rejected). |
 | `refresh_seconds` | int | `60` | Auto-refresh interval. |
 | `sections` | list | keep (new: one empty "Services") | `[{name: API, monitors: [Website, "API health"]}]`, in display order. |
+| `password` | string | keep | Write-only page password (8+ characters): a new value sets it, `""` removes it. Exports without secrets show `"••••••"` for a protected page, which keeps the stored password (and is an error for a page that has none). Re-applying the same plain password changes nothing. |
+| `password_hash` | string | – | The Argon2 hash of the page password, in full exports (`?secrets=1`) instead of `password`, so a restore keeps the page protected. Use one of the two. |
+| `analytics` | object | keep | `{enabled: true, unique_visitors: true, provider: none, site_id: "", script_url: ""}`. `enabled`/`unique_visitors`: the built-in, cookie-free counters. `provider`: `none`, `plausible` (`site_id` = domain(s), `script_url` = script), `umami` (`site_id` = website UUID, `script_url` = script), `matomo` (`site_id` = numeric ID, `script_url` = Matomo base URL) or `google` (`site_id` = `G-…`). URLs must be `https://`; IDs are checked strictly. Exported only when not the defaults. |
+| `logo`, `favicon` | string | keep | `data:image/png;base64,…` (PNG, JPEG, WebP or ICO, ≤ 1 MB; checked by content, SVG refused); `""` removes. Included only in full exports (`?secrets=1`) because they can be large. |
 
 Incidents are not part of the document (post them in the UI or with `POST /api/v1/status-pages/{id}/incidents`).
 

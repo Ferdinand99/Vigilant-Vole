@@ -1,0 +1,116 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.browsers"), tr("rb.sub")) %}
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-browser" commandfor="new-browser" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("rb.add") }}</span></button>
+{% endcall %}
+
+{%- if let Some(f) = form %}
+<section class="section" aria-labelledby="rb-form-title">
+  {% call m::section_head(f.title(), "", "rb-form-title") %}{% endcall %}
+  <form id="rb-form" class="card form" method="post" action="{% if let Some(id) = f.id %}/settings/browsers/{{ id }}{% else %}/settings/browsers{% endif %}">
+    {%- if let Some(id) = f.id %}<input type="hidden" name="id" value="{{ id }}">{% endif %}
+    {{ m::field_text("name", tr("common.name"), value=&f.name, placeholder=tr("rb.name_placeholder"), required=true, error=f.err("name"), sfx="-edit") }}
+    {{ m::field_text("url", tr("rb.url"), value=&f.url, kind="url", placeholder="ws://chrome:9222…", help=tr("rb.url_help"), required=true, error=f.err("url"), sfx="-edit") }}
+    <div id="rb-form-test" aria-live="polite"></div>
+    <div class="form-actions">
+      {{ m::link_button("/settings/browsers", tr("common.cancel"), "secondary") }}
+      <button type="button" class="btn btn-secondary" hx-post="/settings/browsers/test" hx-include="#rb-form" hx-target="#rb-form-test">{{ m::icon("plug") }}<span>{{ tr("rb.test") }}</span></button>
+      {{ m::button(f.submit_label()) }}
+    </div>
+  </form>
+</section>
+{%- endif %}
+
+<section class="section" aria-labelledby="rb-title">
+  {% call m::section_head(tr("rb.list"), "", "rb-title") %}{% endcall %}
+  {%- if browsers.is_empty() %}
+  <div class="empty-card">
+    <div class="empty">
+      <div class="empty-icon">{{ m::icon("browser") }}</div>
+      <p class="empty-title">{{ tr("rb.empty_title") }}</p>
+      <p class="empty-text">{{ tr("rb.empty_text") }}</p>
+      <div class="empty-actions"><button type="button" class="btn btn-primary" data-sheet-open="#new-browser" commandfor="new-browser" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("rb.add") }}</span></button></div>
+    </div>
+  </div>
+  {%- else %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("common.name") }}</th><th class="num">{{ tr("rb.used_by") }}</th><th><span class="vh">{{ tr("common.actions") }}</span></th></tr></thead>
+        <tbody>
+          {%- for b in browsers %}
+          <tr id="rb-{{ b.id }}">
+            <td class="td-primary">
+              <span class="stack-xs">
+                <span>{{ b.name }}{% if b.is_default %} <span class="badge">{{ tr("rb.default") }}</span>{% endif %}</span>
+                <span class="muted t-footnote mono break">{{ b.url }}</span>
+                <span id="rb-test-{{ b.id }}" aria-live="polite"></span>
+              </span>
+            </td>
+            <td class="num" data-label="{{ tr("rb.used_by") }}">{{ trn("count.monitors", b.monitors) }}</td>
+            <td class="td-actions">
+              <button type="button" class="btn btn-icon btn-plain" popovertarget="rb-menu-{{ b.id }}" aria-label="{{ tr1("detail.more_actions_for", "name", b.name) }}">{{ m::icon("more") }}</button>
+              <div class="menu" id="rb-menu-{{ b.id }}" popover>
+                <button class="menu-item" type="button" hx-post="/settings/browsers/{{ b.id }}/test" hx-target="#rb-test-{{ b.id }}">{{ m::icon("plug") }}{{ tr("rb.test") }}</button>
+                <a class="menu-item" href="/settings/browsers/{{ b.id }}/edit">{{ m::icon("pencil") }}{{ tr("common.edit") }}</a>
+                <hr class="menu-sep">
+                <button class="menu-item menu-item-danger" type="button" hx-delete="/settings/browsers/{{ b.id }}"
+                  hx-target="#rb-{{ b.id }}" hx-swap="outerHTML" hx-confirm="{{ tr1("rb.delete_q", "name", b.name) }}"
+                  data-confirm-message="{% if b.monitors > 0 %}{{ tr("rb.delete_msg_used") }}{% else %}{{ tr("rb.delete_msg") }}{% endif %}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+              </div>
+            </td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="section-foot">{{ tr("rb.default_foot") }}</p>
+  {%- endif %}
+</section>
+
+<section class="section" aria-labelledby="rb-how-title">
+  {% call m::section_head(tr("rb.how"), "", "rb-how-title") %}{% endcall %}
+  <div class="card stack-sm">
+    <dl class="dl dl-stack">
+      <div class="dl-row"><dt>{{ tr("rb.how_why") }}</dt><dd>{{ tr("rb.how_why_text") }}</dd></div>
+      <div class="dl-row"><dt>{{ tr("rb.how_address") }}</dt><dd>{{ tr("rb.how_address_text") }}</dd></div>
+      <div class="dl-row"><dt>{{ tr("rb.how_agents") }}</dt><dd>{{ tr("rb.how_agents_text") }}</dd></div>
+    </dl>
+    {{ m::callout("warning", tr("rb.security_text"), tr("rb.security_title")) }}
+  </div>
+  <div class="card stack-sm">
+    {% call m::card_head(tr("rb.compose_example")) %}
+      <button type="button" class="btn btn-secondary btn-sm" data-copy="#rb-compose">{{ m::icon("copy") }}<span>{{ tr("common.copy") }}</span></button>
+    {% endcall %}
+    <pre class="code"><code id="rb-compose">services:
+  chrome:
+    image: chromedp/headless-shell:156.0.8078.36
+    restart: unless-stopped
+    # No ports: keep it private to this network.
+    shm_size: 1gb</code></pre>
+    <p class="help">{{ tr("rb.compose_help") }} <code>http://chrome:9222</code></p>
+  </div>
+</section>
+
+<dialog class="sheet" id="new-browser" aria-labelledby="new-browser-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-browser-title">{{ tr("rb.add") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-browser" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-browser-form" class="form" method="post" action="/settings/browsers">
+      {{ m::field_text("name", tr("common.name"), placeholder=tr("rb.name_placeholder"), required=true) }}
+      {{ m::field_text("url", tr("rb.url"), kind="url", placeholder="ws://chrome:9222…", help=tr("rb.url_help"), required=true) }}
+      <div id="new-browser-test" aria-live="polite"></div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" hx-post="/settings/browsers/test" hx-include="#new-browser-form" hx-target="#new-browser-test">{{ m::icon("plug") }}<span>{{ tr("rb.test") }}</span></button>
+    <button type="submit" class="btn btn-primary" form="new-browser-form">{{ tr("rb.add") }}</button>
+  </footer>
+</dialog>
+{% endblock %}

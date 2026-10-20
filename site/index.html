@@ -6,7 +6,7 @@
     <title>Vigilant Vole — lightweight, self-hosted uptime monitoring</title>
     <meta
       name="description"
-      content="Vigilant Vole is a lightweight, self-hosted uptime monitor written in Rust, an Uptime Kuma alternative. One ~18 MB image, SQLite, status pages, 24 alert providers and remote agents."
+      content="Vigilant Vole is a lightweight, self-hosted uptime monitor written in Rust, an Uptime Kuma alternative. One ~20 MB image, SQLite, status pages, 24 alert providers and remote agents."
     />
     <script>document.documentElement.classList.add("js");</script>
     <link rel="canonical" href="https://ferdinand99.github.io/Vigilant-Vole/" />
@@ -22,7 +22,7 @@
     <meta property="og:title" content="Vigilant Vole — lightweight, self-hosted uptime monitoring" />
     <meta
       property="og:description"
-      content="An Uptime Kuma alternative written in Rust. One ~18 MB image. SQLite. Runs anywhere Docker does."
+      content="An Uptime Kuma alternative written in Rust. One ~20 MB image. SQLite. Runs anywhere Docker does."
     />
     <meta property="og:image" content="https://ferdinand99.github.io/Vigilant-Vole/og-image.png" />
     <meta property="og:image:type" content="image/png" />
@@ -33,7 +33,7 @@
     <meta name="twitter:title" content="Vigilant Vole — lightweight, self-hosted uptime monitoring" />
     <meta
       name="twitter:description"
-      content="An Uptime Kuma alternative written in Rust. One ~18 MB image. SQLite. Runs anywhere Docker does."
+      content="An Uptime Kuma alternative written in Rust. One ~20 MB image. SQLite. Runs anywhere Docker does."
     />
     <meta name="twitter:image" content="https://ferdinand99.github.io/Vigilant-Vole/og-image.png" />
     <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
@@ -107,7 +107,7 @@
               Vigilant Vole is a lightweight, self-hosted uptime monitor written in Rust. Status pages,
               smart alerts and remote agents, in the spirit of Uptime Kuma.
             </p>
-            <p class="hero-fine">One ~18&nbsp;MB image. SQLite. Runs anywhere Docker does.</p>
+            <p class="hero-fine">One ~20&nbsp;MB image. SQLite. Runs anywhere Docker does.</p>
             <div class="hero-actions">
               <a class="btn btn-primary btn-lg" href="#install">Install</a>
               <a class="btn btn-ghost btn-lg" href="https://github.com/Ferdinand99/Vigilant-Vole">
@@ -152,7 +152,7 @@
           <header class="section-head reveal">
             <h2 class="headline" id="features-title">Watch everything you run.</h2>
             <p class="sub">
-              Twenty-four kinds of checks, alerts that don’t cry wolf, and status pages your users will
+              Thirty kinds of checks, alerts that don’t cry wolf, and status pages your users will
               actually read, from one small container.
             </p>
           </header>
@@ -161,17 +161,23 @@
             <!-- Monitor types -->
             <article class="row" id="monitor-types">
               <div class="row-copy reveal">
-                <h3 class="title">Twenty-four ways to check</h3>
+                <h3 class="title">Thirty ways to check</h3>
                 <p>
                   HTTP(S) with status codes, headers, auth and proxies, plus keyword and JSONPath checks.
                   TCP ports, ping, DNS with nine record types and your own resolver, push heartbeats for
                   cron jobs, Docker containers, WebSockets, domain expiry over RDAP, NTP, Steam game
-                  servers, and groups.
+                  servers, Minecraft (Java and Bedrock), Satisfactory, FiveM/RedM and Mumble servers, and groups.
                 </p>
                 <p>
-                  Services, too: PostgreSQL, MySQL/MariaDB, Redis, MQTT, Kafka, RabbitMQ, gRPC health
-                  checks, SMTP, RADIUS, SNMP and TLS handshakes. HTTP checks can sign in with basic auth,
+                  Services, too: PostgreSQL, MySQL/MariaDB, SQL Server, MongoDB, Redis, MQTT, Kafka,
+                  RabbitMQ, gRPC health checks and keyword calls (any unary method, from a .proto or server reflection), SMTP, RADIUS, SNMP (v1, v2c and v3) and TLS handshakes, plus Tailscale pings through the host’s tailscaled. HTTP checks can sign in with basic auth,
                   OAuth2 client credentials or a client certificate.
+                </p>
+                <p>
+                  And real browsers: a headless Chromium next to it (browserless or chromedp/headless-shell)
+                  loads the page with its scripts, looks for text or a CSS selector, can fail on JavaScript
+                  errors, and keeps a screenshot of the last failure. The browser is its own container, so
+                  this one stays small.
                 </p>
                 <p>
                   TLS certificates and domain registrations warn you before they expire. Tags, groups
@@ -550,7 +556,7 @@
           <ul class="stats">
             <li class="stat reveal">
               <span class="stat-label">Docker image</span>
-              <span class="stat-value">~18<small>MB</small></span>
+              <span class="stat-value">~20<small>MB</small></span>
               <span class="stat-meta">Compressed, about 61&nbsp;MB on disk</span>
             </li>
             <li class="stat reveal" style="--i: 1">
@@ -669,7 +675,7 @@
               <tbody>
                 <tr class="group"><th colspan="3" scope="rowgroup">Footprint</th></tr>
                 <tr><th scope="row">Runtime</th><td data-label="Vigilant Vole">One static Rust binary, server-rendered HTML (Askama + htmx)</td><td data-label="Uptime Kuma">Node.js + Vue SPA</td></tr>
-                <tr><th scope="row">Docker image</th><td data-label="Vigilant Vole">~18&nbsp;MB compressed (~61&nbsp;MB on disk)</td><td data-label="Uptime Kuma">Hundreds of MB</td></tr>
+                <tr><th scope="row">Docker image</th><td data-label="Vigilant Vole">~20&nbsp;MB compressed (~70&nbsp;MB on disk)</td><td data-label="Uptime Kuma">Hundreds of MB</td></tr>
                 <tr><th scope="row">Idle memory</th><td data-label="Vigilant Vole">A few&nbsp;MB</td><td data-label="Uptime Kuma">Typically 100&nbsp;MB+</td></tr>
                 <tr><th scope="row">Database</th><td data-label="Vigilant Vole">SQLite (bundled)</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>SQLite, or MariaDB/MySQL in 2.0</span></td></tr>
               </tbody>
@@ -677,11 +683,13 @@
                 <tr class="group"><th colspan="3" scope="rowgroup">Monitoring</th></tr>
                 <tr><th scope="row">HTTP(S), keyword, JSON query, TCP, ping, DNS, push, Docker, Steam, groups, WebSocket</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
                 <tr><th scope="row">Domain expiry (RDAP), NTP monitors</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma">No NTP; domain expiry varies by version</td></tr>
-                <tr><th scope="row">Database monitors: PostgreSQL, MySQL/MariaDB, Redis</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
-                <tr><th scope="row">Database monitors: SQL Server, MongoDB</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Database monitors: PostgreSQL, MySQL/MariaDB, Redis, SQL Server, MongoDB</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
                 <tr><th scope="row">MQTT, Kafka, RabbitMQ, gRPC health checks, RADIUS, SNMP v1/v2c, SMTP, TLS handshake</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma">Yes, except a TLS-handshake type</td></tr>
-                <tr><th scope="row">gRPC keyword calls, SNMPv3, GameDig, Tailscale</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
-                <tr><th scope="row">Real-browser (headless Chrome) monitor</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">gRPC keyword calls</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, from a .proto or server reflection; metadata is sent</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, with a pasted .proto</span></td></tr>
+                <tr><th scope="row">Game servers</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, a curated set: Valve/Source games, Minecraft Java and Bedrock, Satisfactory, FiveM/RedM, Mumble</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, about 360 games via GameDig</span></td></tr>
+                <tr><th scope="row">SNMPv3</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, every security level: MD5, SHA-1, SHA-2 authentication; DES, AES-128/192/256 privacy</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, noAuthNoPriv only</span></td></tr>
+                <tr><th scope="row">Tailscale ping</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, through the host’s mounted tailscaled socket</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, via the tailscale CLI (not in the Docker image)</span></td></tr>
+                <tr><th scope="row">Real-browser (headless Chrome) monitor</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, via a remote browser (CDP)</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
                 <tr><th scope="row">HTTP auth</th><td data-label="Vigilant Vole">Basic, OAuth2 client credentials, mTLS</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Basic, NTLM, mTLS, OAuth2 client credentials</span></td></tr>
               </tbody>
               <tbody>
@@ -695,7 +703,7 @@
               <tbody>
                 <tr class="group"><th colspan="3" scope="rowgroup">Status pages</th></tr>
                 <tr><th scope="row">Status pages, custom domains, badges</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
-                <tr><th scope="row">Status page logo upload, analytics, password protection</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Status page logo upload, analytics, password protection</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, with built-in cookie-free analytics</span></td><td data-label="Uptime Kuma">Logo and analytics; no password protection</td></tr>
                 <tr><th scope="row">Incidents</th><td data-label="Vigilant Vole">Multiple per page, pinned, history</td><td data-label="Uptime Kuma">One active incident per page</td></tr>
                 <tr><th scope="row">Maintenance windows</th><td data-label="Vigilant Vole">Manual, once, daily, weekly</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Also cron, day-of-month, every N days</span></td></tr>
               </tbody>
@@ -710,7 +718,7 @@
                 <tr><th scope="row">Long-range uptime after retention</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Daily rollups</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Aggregate tables in 2.0</span></td></tr>
                 <tr><th scope="row">Import from the other one</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Reads <code>kuma.db</code></span></td><td data-label="Uptime Kuma">–</td></tr>
                 <tr><th scope="row">Interface languages</th><td data-label="Vigilant Vole">English, Norwegian</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>About 50&nbsp;languages</span></td></tr>
-                <tr><th scope="row">Built-in Cloudflare Tunnel, remote browsers</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Built-in Cloudflare Tunnel</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -719,8 +727,9 @@
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
             <p>
               <span class="callout-title">When Kuma is the better fit</span>
-              If you need SQL Server, MongoDB or browser monitors, or a language other than English or
-              Norwegian, Uptime Kuma is the better choice today. Already on Kuma? The
+              If you need a language other than English or Norwegian, or real-browser
+              checks without running a separate browser container, Uptime Kuma is the
+              better choice today. Already on Kuma? The
               <a href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/migrating-from-uptime-kuma.md">importer</a>
               brings your setup across.
             </p>

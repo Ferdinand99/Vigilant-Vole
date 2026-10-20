@@ -526,6 +526,8 @@ fn service_form(kind: &str, extra: &str) -> String {
         "grpc" => "target_grpc=grpc%3A%2F%2Fapi.local%3A50051",
         "radius" => "target_radius=radius%3A%2F%2Fradius.local",
         "snmp" => "target_snmp=snmp%3A%2F%2Frouter.local%2F1.3.6.1.2.1.1.1.0",
+        "sqlserver" => "target_sqlserver=sqlserver%3A%2F%2Fdb.local%2Fapp%3Fencrypt%3Dtrue",
+        "mongodb" => "target_mongodb=mongodb%3A%2F%2Fm1.local%2Cm2.local%2F%3FreplicaSet%3Drs0",
         other => panic!("{other}"),
     };
     format!("monitor_type={kind}&name=Svc+{kind}&{target}{COMMON}{extra}")
@@ -547,6 +549,8 @@ async fn every_new_service_type_can_be_created_and_edited() {
         ("grpc", ""),
         ("radius", "&basic_auth_user=vole&basic_auth_pass=pw&secret=testing123"),
         ("snmp", "&secret=public"),
+        ("sqlserver", "&basic_auth_user=sa&basic_auth_pass=pw"),
+        ("mongodb", ""),
     ] {
         let res = send(&app, post_form("/monitors/new", &service_form(kind, extra))).await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER, "{kind}: {}", body_text(res).await);
@@ -620,10 +624,10 @@ async fn type_picker_and_fields_partial_know_the_new_types() {
     let t = app().await;
     let app = router(&t.state, Role::Editor);
     let html = body_text(send(&app, get("/monitors/new")).await).await;
-    for label in ["TLS handshake", "SMTP", "Redis", "PostgreSQL", "MySQL / MariaDB", "MQTT", "Kafka", "RabbitMQ", "gRPC", "RADIUS", "SNMP"] {
+    for label in ["TLS handshake", "SMTP", "Redis", "PostgreSQL", "MySQL / MariaDB", "MQTT", "Kafka", "RabbitMQ", "gRPC", "RADIUS", "SNMP", "SQL Server", "MongoDB"] {
         assert!(html.contains(label), "the type picker lists {label}");
     }
-    for (kind, want) in [("redis", "User name"), ("radius", "Shared secret"), ("snmp", "Community"), ("mqtt", "Message must contain")] {
+    for (kind, want) in [("redis", "User name"), ("radius", "Shared secret"), ("snmp", "Community"), ("mqtt", "Message must contain"), ("sqlserver", "User name"), ("mongodb", "User name")] {
         let html = body_text(send(&app, get(&format!("/monitors/form-fields?type={kind}"))).await).await;
         assert!(html.contains(want), "{kind} shows {want}");
     }
@@ -641,4 +645,95 @@ async fn the_monitor_form_never_repeats_an_element_id() {
             assert!(seen.insert(id.clone()), "{uri}: duplicate id \"{id}\"");
         }
     }
+}
+
+#[tokio::test]
+async fn snmpv3_and_tailscale_ping_monitors_round_trip_through_the_form() {
+    let t = app().await;
+    let app = router(&t.state, Role::Editor);
+    let form = "monitor_type=snmp&name=Core&target_snmp=core.local%2F1.3.6.1.2.1.1.5.0&snmp_version=3&snmp_auth=sha512&snmp_priv=aes192\
+        &basic_auth_user=watcher&basic_auth_pass=authpass123&secret=privpass123";
+    let res = send(&app, post_form("/monitors/new", &format!("{form}{COMMON}"))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    let id = created_id(&res);
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    assert_eq!(m.target, "core.local/1.3.6.1.2.1.1.5.0?version=3&auth=sha512&priv=aes192");
+    let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
+    assert!(html.contains("value=\"core.local/1.3.6.1.2.1.1.5.0\""), "the target shows without the choices");
+    assert!(html.contains("value=\"3\" checked") && html.contains("value=\"sha512\" selected") && html.contains("value=\"aes192\" selected"));
+    assert!(!html.contains("authpass123") && !html.contains("privpass123"), "passwords are masked");
+
+    let res = send(&app, post_form("/monitors/new", &format!("monitor_type=tailscale_ping&name=NAS&target_tailscale=nas&tailscale_type=icmp{COMMON}"))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    let id = created_id(&res);
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    assert_eq!((m.monitor_type.as_str(), m.target.as_str()), ("tailscale_ping", "nas?type=icmp"));
+    let html = body_text(send(&app, get("/monitors/form-fields?type=tailscale_ping")).await).await;
+    assert!(html.contains("value=\"tsmp\"") && html.contains("VV_TAILSCALE_SOCKET"));
+    let mut seen = std::collections::HashSet::new();
+    for (at, _) in html.match_indices(" id=\"") {
+        let id: String = html[at + 5..].chars().take_while(|c| *c != '"').collect();
+        assert!(seen.insert(id.clone()), "duplicate id \"{id}\"");
+    }
+}
+
+#[tokio::test]
+async fn game_server_monitors_keep_their_token_for_the_same_server_only() {
+    let t = app().await;
+    let app = router(&t.state, Role::Editor);
+    let enc = |s: &str| url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>();
+    let form = |target: &str, extra: &str| format!("monitor_type=game_server&name=Factory&target_game={}{COMMON}{extra}", enc(target));
+    let res = send(&app, post_form("/monitors/new", &form("satisfactory://factory.lan", "&secret=api-token-1&keyword=Vole"))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    let id = created_id(&res);
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    assert_eq!((m.monitor_type, m.secret.as_deref(), m.keyword.as_deref()), (crate::db::models::MonitorType::GameServer, Some("api-token-1"), Some("Vole")));
+
+    // The edit form picks the game, masks the token and shows the type's own fields.
+    let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
+    assert!(html.contains(r#"<option value="satisfactory" data-port="7777" selected>"#), "the game picker follows the target");
+    assert!(html.contains(r#"name="target_game""#) && html.contains("Server name must contain"));
+    assert!(!html.contains("api-token-1") && html.contains(crate::notification::SECRET_MASK));
+
+    let mask = enc(crate::notification::SECRET_MASK);
+    let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &form("satisfactory://factory.lan:7777", &format!("&secret={mask}")))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "the default port written out is the same server");
+    let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &form("satisfactory://elsewhere.example", &format!("&secret={mask}")))).await;
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "another host needs the token again");
+
+    // Unknown games point Valve titles at the Steam type.
+    let res = send(&app, post_form("/monitors/new", &form("csgo://1.2.3.4", ""))).await;
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body_text(res).await.contains("Steam type"));
+}
+
+#[tokio::test]
+async fn grpc_keyword_monitors_compile_their_proto_on_save() {
+    let t = app().await;
+    let app = router(&t.state, Role::Editor);
+    let enc = |s: &str| url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>();
+    let proto = "syntax = \"proto3\";\npackage demo.v1;\nservice Greeter { rpc SayHello (Req) returns (Rep); }\nmessage Req { string name = 1; }\nmessage Rep { string message = 1; }\n";
+    let form = |proto: &str, extra: &str| {
+        format!(
+            "monitor_type=grpc_keyword&name=Greeter&target_grpc_keyword={}&grpc_proto={}{COMMON}{extra}",
+            enc("grpcs://api.local/Greeter/sayHello"),
+            enc(proto)
+        )
+    };
+    let res = send(&app, post_form("/monitors/new", &form(proto, &format!("&http_body={}&keyword=Hello", enc("{\"name\":\"vole\"}"))))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    let id = created_id(&res);
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    assert_eq!(m.monitor_type, crate::db::models::MonitorType::GrpcKeyword);
+    assert_eq!((m.grpc_proto.as_deref(), m.http_body.as_deref(), m.keyword.as_deref()), (Some(proto.trim()), Some("{\"name\":\"vole\"}"), Some("Hello")));
+
+    let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
+    assert!(html.contains(r#"name="target_grpc_keyword""#) && html.contains(r#"name="grpc_proto""#) && html.contains("service Greeter"));
+    assert_eq!(send(&app, get(&format!("/monitors/{id}"))).await.status(), StatusCode::OK);
+
+    // Mistakes in the .proto show on the field, with the line.
+    let res = send(&app, post_form("/monitors/new", &form("syntax = \"proto3\";\nmessage X {\n  strin a = 1;\n}\n", ""))).await;
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let html = body_text(res).await;
+    assert!(html.contains("f-grpc_proto-error") && html.contains("line 3") && html.contains("is not defined"), "the compiler's message is shown");
 }

@@ -129,6 +129,7 @@ fn type_choices() -> Vec<TypeChoice> {
                 MonitorType::JsonQuery => (crate::i18n::t("monitor_type.sub_json_query"), "code"),
                 MonitorType::Tcp => (crate::i18n::t("monitor_type.sub_tcp"), "plug"),
                 MonitorType::Ping => (crate::i18n::t("monitor_type.sub_ping"), "pulse"),
+                MonitorType::TailscalePing => (crate::i18n::t("monitor_type.sub_tailscale_ping"), "link"),
                 MonitorType::Dns => (crate::i18n::t("monitor_type.sub_dns"), "dns"),
                 MonitorType::Push => (crate::i18n::t("monitor_type.sub_push"), "bolt"),
                 MonitorType::Docker => (crate::i18n::t("monitor_type.sub_docker"), "box"),
@@ -136,6 +137,7 @@ fn type_choices() -> Vec<TypeChoice> {
                 MonitorType::DomainExpiry => (crate::i18n::t("monitor_type.sub_domain_expiry"), "calendar"),
                 MonitorType::Ntp => (crate::i18n::t("monitor_type.sub_ntp"), "clock"),
                 MonitorType::Steam => (crate::i18n::t("monitor_type.sub_steam"), "server"),
+                MonitorType::GameServer => (crate::i18n::t("monitor_type.sub_game_server"), "gamepad"),
                 MonitorType::Tls => (crate::i18n::t("monitor_type.sub_tls"), "lock"),
                 MonitorType::Smtp => (crate::i18n::t("monitor_type.sub_smtp"), "mail"),
                 MonitorType::Redis => (crate::i18n::t("monitor_type.sub_redis"), "database"),
@@ -145,8 +147,12 @@ fn type_choices() -> Vec<TypeChoice> {
                 MonitorType::Kafka => (crate::i18n::t("monitor_type.sub_kafka"), "queue"),
                 MonitorType::Rabbitmq => (crate::i18n::t("monitor_type.sub_rabbitmq"), "queue"),
                 MonitorType::Grpc => (crate::i18n::t("monitor_type.sub_grpc"), "bolt"),
+                MonitorType::GrpcKeyword => (crate::i18n::t("monitor_type.sub_grpc_keyword"), "search"),
                 MonitorType::Radius => (crate::i18n::t("monitor_type.sub_radius"), "key"),
                 MonitorType::Snmp => (crate::i18n::t("monitor_type.sub_snmp"), "chart"),
+                MonitorType::SqlServer => (crate::i18n::t("monitor_type.sub_sqlserver"), "database"),
+                MonitorType::Mongodb => (crate::i18n::t("monitor_type.sub_mongodb"), "database"),
+                MonitorType::RealBrowser => (crate::i18n::t("monitor_type.sub_real_browser"), "browser"),
                 MonitorType::Group => (crate::i18n::t("monitor_type.sub_group"), "dashboard"),
             };
             TypeChoice {
@@ -217,6 +223,14 @@ const TARGETS: &[TargetSpec] = &[
         url: false,
     },
     TargetSpec {
+        field: "target_tailscale",
+        types: "tailscale_ping",
+        label: "Tailscale peer",
+        placeholder: "nas…",
+        help: "The peer’s machine name (as in the Tailscale admin console), its MagicDNS name or a Tailscale IP like 100.64.0.5.",
+        url: false,
+    },
+    TargetSpec {
         field: "target_dns",
         types: "dns",
         label: "Name to look up",
@@ -254,6 +268,14 @@ const TARGETS: &[TargetSpec] = &[
         label: "Server",
         placeholder: "203.0.113.5:27015…",
         help: "Uses port 27015 unless you add one.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_game",
+        types: "game_server",
+        label: "Game server",
+        placeholder: "minecraft://mc.example.com…",
+        help: "Start with the game: minecraft:// (port 25565; without a port the _minecraft._tcp SRV record is tried first), bedrock:// (19132), satisfactory:// (7777), fivem:// (30120, also RedM) or mumble:// (64738).",
         url: false,
     },
     TargetSpec {
@@ -329,6 +351,14 @@ const TARGETS: &[TargetSpec] = &[
         url: false,
     },
     TargetSpec {
+        field: "target_grpc_keyword",
+        types: "grpc_keyword",
+        label: "gRPC method",
+        placeholder: "grpc://api.local:50051/my.pkg.Greeter/SayHello…",
+        help: "Uses port 50051 (443 for grpcs://, which also checks the certificate). The path is the service and the unary method to call; a short service name works when it is unique.",
+        url: false,
+    },
+    TargetSpec {
         field: "target_radius",
         types: "radius",
         label: "RADIUS server",
@@ -343,6 +373,30 @@ const TARGETS: &[TargetSpec] = &[
         placeholder: "router.local:161/1.3.6.1.2.1.1.3.0…",
         help: "Uses port 161. The path is the OID to read; the default is sysUpTime (1.3.6.1.2.1.1.3.0).",
         url: false,
+    },
+    TargetSpec {
+        field: "target_sqlserver",
+        types: "sqlserver",
+        label: "SQL Server",
+        placeholder: "sqlserver://db.local:1433/app…",
+        help: "Uses port 1433. The path is the database. Without a user name only the pre-login is checked. Encrypted when the server can; add ?encrypt=true&trustServerCertificate=false to also check the certificate (or encrypt=false, disable, strict).",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_mongodb",
+        types: "mongodb",
+        label: "MongoDB server",
+        placeholder: "mongodb://db1.local,db2.local/?replicaSet=rs0…",
+        help: "Uses port 27017. List several hosts with commas, or use mongodb+srv://. Add ?tls=true for TLS (the certificate is checked; tlsAllowInvalidCertificates=true skips that) and ?replicaSet= to require a primary. The path or authSource is the authentication database (default admin).",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_browser",
+        types: "real_browser",
+        label: "Page URL",
+        placeholder: "https://shop.example.com/…",
+        help: "The page the remote browser opens, including https://.",
+        url: true,
     },
 ];
 
@@ -398,6 +452,10 @@ pub struct FormData {
     /// `(value, label)` for the authentication method select.
     pub auth_methods: Vec<(&'static str, String)>,
     pub oauth_client_auths: Vec<(&'static str, String)>,
+    /// Real browser: `(id, name)` of every remote browser (the first is the default).
+    pub remote_browsers: Vec<(String, String)>,
+    pub browser_waits: Vec<(&'static str, String)>,
+    pub browser_viewports: Vec<(&'static str, String)>,
 }
 
 impl FormData {
@@ -445,6 +503,14 @@ impl FormData {
         self.v.monitor_type == t
     }
 
+    /// The game picker of a game server monitor: (scheme, name, default
+    /// port, selected), the target's game selected.
+    pub fn game_presets(&self) -> Vec<(&'static str, &'static str, u16, bool)> {
+        use crate::monitor::checkers::game_server::Game;
+        let current = self.v.target.trim().split_once("://").and_then(|(scheme, _)| Game::from_scheme(scheme)).unwrap_or(Game::Minecraft);
+        Game::ALL.iter().map(|g| (g.scheme(), g.label(), g.default_port(), *g == current)).collect()
+    }
+
     pub fn tag_checked(&self, id: &i64) -> bool {
         self.v.tag_value(*id).is_some()
     }
@@ -484,6 +550,7 @@ struct FormEnv {
     has_agents: bool,
     base_url: Option<String>,
     agent_confirmation_default: bool,
+    remote_browsers: Vec<(i64, String)>,
 }
 
 fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<FormEnv> {
@@ -517,6 +584,7 @@ fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<Fo
         None => 0,
     };
     let settings = db_settings::load(conn)?;
+    let remote_browsers: Vec<(i64, String)> = crate::db::remote_browsers::list(conn)?.into_iter().map(|b| (b.id, b.name)).collect();
     Ok(FormEnv {
         cx: FormContext {
             editing_id: editing.map(|m| m.id),
@@ -524,7 +592,10 @@ fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<Fo
             channel_ids: channels.iter().map(|c| c.id).collect(),
             tag_ids: tags.iter().map(|t| t.id).collect(),
             child_count,
+            remote_browser_ids: remote_browsers.iter().map(|(id, _)| *id).collect(),
+            browser_optional: false,
         },
+        remote_browsers,
         groups,
         channels,
         tags,
@@ -607,6 +678,15 @@ fn form_data(env: FormEnv, meta: FormMeta, v: FormValues, errors: Errors, header
         oauth_client_auths: OAUTH_CLIENT_AUTHS
             .iter()
             .map(|m| (*m, crate::i18n::t_or(&format!("httpauth.{m}"), m).to_string()))
+            .collect(),
+        remote_browsers: env.remote_browsers.iter().map(|(id, name)| (id.to_string(), name.clone())).collect(),
+        browser_waits: crate::monitor::checkers::real_browser::WAITS
+            .iter()
+            .map(|w| (*w, crate::i18n::t_or(&format!("browser.wait_{w}"), w).to_string()))
+            .collect(),
+        browser_viewports: crate::monitor::checkers::real_browser::VIEWPORTS
+            .iter()
+            .map(|w| (*w, crate::i18n::t_or(&format!("browser.viewport_{w}"), w).to_string()))
             .collect(),
         v,
     }
@@ -1336,6 +1416,7 @@ struct DetailTemplate {
     agents: Vec<AgentResult>,
     children: Vec<ChildView>,
     push: Option<PushCardTemplate>,
+    browser: Option<super::remote_browsers::BrowserPanel>,
     channels: Vec<String>,
     interval_label: String,
     retry_label: String,
@@ -1387,6 +1468,7 @@ struct DetailBundle {
     children: Vec<ChildView>,
     channels: Vec<String>,
     base_url: Option<String>,
+    browser: Option<super::remote_browsers::BrowserPanel>,
 }
 
 fn load_detail(conn: &Connection, id: i64, range: Range) -> rusqlite::Result<Option<DetailBundle>> {
@@ -1447,6 +1529,7 @@ fn load_detail(conn: &Connection, id: i64, range: Range) -> rusqlite::Result<Opt
         children,
         channels,
         base_url: db_settings::load(conn)?.base_url,
+        browser: super::remote_browsers::detail_panel(conn, &monitor)?,
         monitor,
     }))
 }
@@ -1571,6 +1654,7 @@ async fn detail(
             agents: b.agents,
             children: b.children,
             push,
+            browser: b.browser,
             channels: b.channels,
             interval_label,
             retry_label,

@@ -5,21 +5,46 @@
 //! ("prior knowledge"). The path names the service to ask about; empty means
 //! the whole server. Up only when the answer is `SERVING`. Response time =
 //! connect + call.
+//!
+//! The transport ([`Channel`], [`Channel::unary`]) is shared with the gRPC
+//! keyword checker (`grpc_keyword`), which calls any unary method.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use http::{Request, StatusCode};
+use http::{HeaderMap, Request, StatusCode};
 
 use super::conn;
-use super::endpoint;
+use super::endpoint::{self, Endpoint};
+use super::tls::CertSummary;
 use super::util;
 use crate::db::models::{CheckOutcome, Monitor, MonitorType};
 
 const METHOD: &str = "/grpc.health.v1.Health/Check";
-const MAX_BODY: usize = 64 * 1024;
+/// Largest answer read (framing included); bigger ones fail the check.
+pub(crate) const MAX_BODY: usize = 64 * 1024;
 
-/// A `HealthCheckRequest`, framed for gRPC (no compression).
+/// A gRPC message frame: uncompressed flag, big-endian length, message.
+pub(crate) fn frame(message: &[u8]) -> Vec<u8> {
+    let mut framed = Vec::with_capacity(5 + message.len());
+    framed.push(0);
+    framed.extend_from_slice(&u32::try_from(message.len()).unwrap_or(u32::MAX).to_be_bytes());
+    framed.extend_from_slice(message);
+    framed
+}
+
+/// The first message of a framed answer.
+pub(crate) fn unframe(body: &[u8]) -> Result<&[u8], String> {
+    let (flag, rest) = body.split_first().ok_or("The server sent no answer")?;
+    if *flag != 0 {
+        return Err("The server compressed the answer, which this monitor doesn't support".into());
+    }
+    let truncated = || "The answer is cut short (not a gRPC message)".to_string();
+    let len = u32::from_be_bytes(rest.get(..4).ok_or_else(truncated)?.try_into().map_err(|_| truncated())?) as usize;
+    rest.get(4..4 + len).ok_or_else(truncated)
+}
+
+/// A `HealthCheckRequest` (unframed).
 fn request_message(service: &str) -> Vec<u8> {
     let mut proto = Vec::new();
     if !service.is_empty() {
@@ -36,21 +61,12 @@ fn request_message(service: &str) -> Vec<u8> {
         }
         proto.extend_from_slice(service.as_bytes());
     }
-    let mut framed = vec![0];
-    framed.extend_from_slice(&(proto.len() as u32).to_be_bytes());
-    framed.extend_from_slice(&proto);
-    framed
+    proto
 }
 
-/// `ServingStatus` from a framed `HealthCheckResponse` (UNKNOWN when absent).
-fn parse_status(body: &[u8]) -> Result<u64, String> {
+/// `ServingStatus` from a `HealthCheckResponse` message (UNKNOWN when absent).
+fn parse_status(msg: &[u8]) -> Result<u64, String> {
     let bad = || "Not a gRPC health answer".to_string();
-    let (flag, rest) = body.split_first().ok_or_else(bad)?;
-    if *flag != 0 {
-        return Err("The server compressed the answer, which this monitor doesn't support".into());
-    }
-    let len = u32::from_be_bytes(rest.get(..4).ok_or_else(bad)?.try_into().map_err(|_| bad())?) as usize;
-    let msg = rest.get(4..4 + len).ok_or_else(bad)?;
     let mut at = 0;
     while at < msg.len() {
         let tag = msg[at];
@@ -75,22 +91,32 @@ fn parse_status(body: &[u8]) -> Result<u64, String> {
         }
         let n = usize::from(*msg.get(at).ok_or_else(bad)?);
         at += 1 + n;
+        if at > msg.len() {
+            return Err(bad());
+        }
     }
     Ok(0)
 }
 
-fn grpc_status_name(code: u32) -> &'static str {
+/// The canonical name of a gRPC status code.
+pub(crate) fn grpc_status_name(code: u32) -> &'static str {
     match code {
+        0 => "OK",
         1 => "CANCELLED",
         2 => "UNKNOWN",
         3 => "INVALID_ARGUMENT",
         4 => "DEADLINE_EXCEEDED",
         5 => "NOT_FOUND",
+        6 => "ALREADY_EXISTS",
         7 => "PERMISSION_DENIED",
         8 => "RESOURCE_EXHAUSTED",
+        9 => "FAILED_PRECONDITION",
+        10 => "ABORTED",
+        11 => "OUT_OF_RANGE",
         12 => "UNIMPLEMENTED",
         13 => "INTERNAL",
         14 => "UNAVAILABLE",
+        15 => "DATA_LOSS",
         16 => "UNAUTHENTICATED",
         _ => "error",
     }
@@ -128,6 +154,117 @@ fn h2_err(e: &h2::Error) -> String {
     }
 }
 
+/// Why a unary call failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CallError {
+    /// Transport or protocol failure: the complete Down message.
+    Failed(String),
+    /// The server answered with a non-OK `grpc-status`.
+    Status { code: u32, message: String },
+}
+
+impl CallError {
+    /// "gRPC status NOT_FOUND: no such user".
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            CallError::Failed(msg) => msg.clone(),
+            CallError::Status { code, message } if message.trim().is_empty() => format!("gRPC status {}", grpc_status_name(*code)),
+            CallError::Status { code, message } => format!("gRPC status {}: {}", grpc_status_name(*code), util::truncate(message.trim(), 120)),
+        }
+    }
+}
+
+/// Request headers gRPC itself sets (or HTTP/2 forbids): never taken from
+/// the monitor's metadata.
+pub(crate) fn is_reserved_metadata(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.starts_with("grpc-")
+        || n.starts_with(':')
+        || matches!(n.as_str(), "content-type" | "te" | "host" | "connection" | "keep-alive" | "proxy-connection" | "transfer-encoding" | "upgrade")
+}
+
+/// One HTTP/2 connection to a gRPC server. The connection task is aborted
+/// when the channel is dropped.
+pub(crate) struct Channel {
+    client: h2::client::SendRequest<Bytes>,
+    _driver: AbortOnDrop<Result<(), h2::Error>>,
+    base: String,
+    deadline: Duration,
+    pub(crate) cert: Option<CertSummary>,
+    pub(crate) tls_version: Option<&'static str>,
+}
+
+impl Channel {
+    /// Connect (TLS with ALPN `h2` for `grpcs://`) and run the HTTP/2 handshake.
+    /// `deadline` is sent along as each call's `grpc-timeout`.
+    pub(crate) async fn open(ep: &Endpoint, ignore_tls: bool, deadline: Duration) -> Result<Channel, conn::Failed> {
+        let connected = conn::connect_alpn(ep, ignore_tls, deadline, &[b"h2"]).await?;
+        let (client, connection) = h2::client::handshake(connected.io).await.map_err(|e| conn::Failed::from(CheckOutcome::down(h2_err(&e))))?;
+        let driver = AbortOnDrop(tokio::spawn(connection));
+        let host = if ep.host.contains(':') { format!("[{}]", ep.host) } else { ep.host.clone() };
+        Ok(Channel {
+            client,
+            _driver: driver,
+            base: format!("{}://{host}:{}", if ep.tls { "https" } else { "http" }, ep.port),
+            deadline,
+            cert: connected.cert,
+            tls_version: connected.tls_version,
+        })
+    }
+
+    /// One unary call: sends `message` (unframed protobuf) to `path`
+    /// (`/package.Service/Method`) with `metadata`, returns the answer's
+    /// message (unframed). Answers over [`MAX_BODY`] fail.
+    pub(crate) async fn unary(&mut self, path: &str, metadata: &HeaderMap, message: &[u8]) -> Result<Vec<u8>, CallError> {
+        let fail = |e: &h2::Error| CallError::Failed(h2_err(e));
+        let mut client = self.client.clone().ready().await.map_err(|e| fail(&e))?;
+        let millis = self.deadline.as_millis().clamp(1, 99_999_999);
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(format!("{}{path}", self.base))
+            .header("content-type", "application/grpc")
+            .header("te", "trailers")
+            .header("grpc-timeout", format!("{millis}m"));
+        if !metadata.contains_key(http::header::USER_AGENT) {
+            builder = builder.header("user-agent", crate::server::USER_AGENT);
+        }
+        for (name, value) in metadata {
+            if !is_reserved_metadata(name.as_str()) {
+                builder = builder.header(name, value);
+            }
+        }
+        let request = builder.body(()).map_err(|_| CallError::Failed("Invalid address or metadata".into()))?;
+        let (response, mut send) = client.send_request(request, false).map_err(|e| fail(&e))?;
+        send.send_data(Bytes::from(frame(message)), true).map_err(|e| fail(&e))?;
+        let response = response.await.map_err(|e| fail(&e))?;
+        let (parts, mut body) = response.into_parts();
+        if parts.status != StatusCode::OK {
+            return Err(CallError::Failed(format!("The server answered HTTP {} (is this a gRPC endpoint?)", parts.status.as_u16())));
+        }
+        let mut data = Vec::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.map_err(|e| fail(&e))?;
+            let _ = body.flow_control().release_capacity(chunk.len());
+            data.extend_from_slice(&chunk);
+            if data.len() > MAX_BODY {
+                return Err(CallError::Failed(format!("The answer is larger than {} KiB", MAX_BODY / 1024)));
+            }
+        }
+        let trailers = body.trailers().await.map_err(|e| fail(&e))?;
+        // A "trailers-only" error puts grpc-status in the headers.
+        let status_of = |h: &HeaderMap| {
+            let code = h.get("grpc-status")?.to_str().ok()?.trim().parse::<u32>().ok()?;
+            let msg = h.get("grpc-message").and_then(|m| m.to_str().ok()).map(endpoint::percent_decode).unwrap_or_default();
+            Some((code, msg))
+        };
+        let (code, message) = trailers.as_ref().and_then(status_of).or_else(|| status_of(&parts.headers)).unwrap_or((0, String::new()));
+        if code != 0 {
+            return Err(CallError::Status { code, message });
+        }
+        unframe(&data).map(<[u8]>::to_vec).map_err(CallError::Failed)
+    }
+}
+
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
     let ep = match endpoint::parse(MonitorType::Grpc, &monitor.target) {
         Ok(ep) => ep,
@@ -137,57 +274,17 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
     let probe = async {
-        let connected = conn::connect_alpn(&ep, monitor.ignore_tls, timeout, &[b"h2"]).await?;
         let fail = CheckOutcome::down;
-        let (mut client, connection) = h2::client::handshake(connected.io).await.map_err(|e| fail(h2_err(&e)))?;
-        let driver = AbortOnDrop(tokio::spawn(connection));
-        let result = async {
-            client = client.ready().await.map_err(|e| fail(h2_err(&e)))?;
-            let host = if ep.host.contains(':') { format!("[{}]", ep.host) } else { ep.host.clone() };
-            let request = Request::builder()
-                .method("POST")
-                .uri(format!("{}://{host}:{}{METHOD}", if ep.tls { "https" } else { "http" }, ep.port))
-                .header("content-type", "application/grpc")
-                .header("te", "trailers")
-                .header("user-agent", crate::server::USER_AGENT)
-                .body(())
-                .map_err(|_| fail("Invalid address".into()))?;
-            let (response, mut send) = client.send_request(request, false).map_err(|e| fail(h2_err(&e)))?;
-            send.send_data(Bytes::from(request_message(service)), true).map_err(|e| fail(h2_err(&e)))?;
-            let response = response.await.map_err(|e| fail(h2_err(&e)))?;
-            let (parts, mut body) = response.into_parts();
-            if parts.status != StatusCode::OK {
-                return Err(fail(format!("The server answered HTTP {} (is this a gRPC endpoint?)", parts.status.as_u16())));
-            }
-            let mut data = Vec::new();
-            while let Some(chunk) = body.data().await {
-                let chunk = chunk.map_err(|e| fail(h2_err(&e)))?;
-                let _ = body.flow_control().release_capacity(chunk.len());
-                data.extend_from_slice(&chunk);
-                if data.len() > MAX_BODY {
-                    return Err(fail("The answer is unexpectedly large".into()));
-                }
-            }
-            let trailers = body.trailers().await.map_err(|e| fail(h2_err(&e)))?;
-            // A "trailers-only" error puts grpc-status in the headers.
-            let status_of = |h: &http::HeaderMap| {
-                let code = h.get("grpc-status")?.to_str().ok()?.parse::<u32>().ok()?;
-                let msg = h.get("grpc-message").and_then(|m| m.to_str().ok()).unwrap_or_default().to_string();
-                Some((code, msg))
-            };
-            let (code, message) = trailers.as_ref().and_then(status_of).or_else(|| status_of(&parts.headers)).unwrap_or((0, String::new()));
-            if code != 0 {
-                return Err(fail(explain(code, &message, service)));
-            }
-            parse_status(&data).map_err(fail)
-        }
-        .await;
-        drop(driver);
-        let status = result?;
+        let mut channel = Channel::open(&ep, monitor.ignore_tls, timeout).await?;
+        let answer = channel.unary(METHOD, &HeaderMap::new(), &request_message(service)).await.map_err(|e| match e {
+            CallError::Failed(msg) => fail(msg),
+            CallError::Status { code, message } => fail(explain(code, &message, service)),
+        })?;
+        let status = parse_status(&answer).map_err(fail)?;
         let ms = util::elapsed_ms(start);
         let what = if service.is_empty() { "server".to_string() } else { format!("service {}", util::truncate(service, 60)) };
         match status {
-            1 => Ok(conn::up(ms, format!("SERVING ({what})"), connected.cert.as_ref(), connected.tls_version)),
+            1 => Ok(conn::up(ms, format!("SERVING ({what})"), channel.cert.as_ref(), channel.tls_version)),
             2 => Err(fail(format!("NOT_SERVING ({what})"))),
             3 => Err(fail(format!("SERVICE_UNKNOWN: the server doesn't know {what}"))),
             _ => Err(fail(format!("The health status is UNKNOWN ({what})"))),
@@ -287,12 +384,23 @@ mod tests {
 
     #[test]
     fn health_request_is_framed() {
-        assert_eq!(request_message(""), [0, 0, 0, 0, 0]);
-        assert_eq!(request_message("ab"), [0, 0, 0, 0, 4, 0x0A, 2, b'a', b'b']);
-        assert_eq!(parse_status(&[0, 0, 0, 0, 2, 0x08, 1]), Ok(1));
-        assert_eq!(parse_status(&[0, 0, 0, 0, 0]), Ok(0));
-        assert!(parse_status(&[1, 0, 0, 0, 0]).is_err());
-        assert!(parse_status(&[0, 0, 0, 0, 9, 1]).is_err());
+        assert_eq!(frame(&request_message("")), [0, 0, 0, 0, 0]);
+        assert_eq!(frame(&request_message("ab")), [0, 0, 0, 0, 4, 0x0A, 2, b'a', b'b']);
+        assert_eq!(unframe(&[0, 0, 0, 0, 2, 0x08, 1]).and_then(parse_status), Ok(1));
+        assert_eq!(unframe(&[0, 0, 0, 0, 0]).and_then(parse_status), Ok(0));
+        assert!(unframe(&[1, 0, 0, 0, 0]).unwrap_err().contains("compressed"));
+        assert!(unframe(&[0, 0, 0, 0, 9, 1]).unwrap_err().contains("cut short"));
+        assert!(unframe(&[]).is_err());
+        assert!(parse_status(&[0x12, 9, 1]).is_err(), "a field running past the end");
+    }
+
+    #[test]
+    fn status_errors_read_like_grpc() {
+        let e = CallError::Status { code: 5, message: "no such user ".into() };
+        assert_eq!(e.describe(), "gRPC status NOT_FOUND: no such user");
+        assert_eq!(CallError::Status { code: 1, message: String::new() }.describe(), "gRPC status CANCELLED");
+        assert_eq!(grpc_status_name(15), "DATA_LOSS");
+        assert!(is_reserved_metadata("Content-Type") && is_reserved_metadata("grpc-timeout") && !is_reserved_metadata("authorization"));
     }
 
     #[tokio::test]

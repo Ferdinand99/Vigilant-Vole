@@ -9,7 +9,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.99%2B-orange.svg)](https://www.rust-lang.org/)
-[![Docker Image](https://img.shields.io/badge/docker%20image-~18MB-success.svg)](#-quick-start)
+[![Docker Image](https://img.shields.io/badge/docker%20image-~20MB-success.svg)](#-quick-start)
 [![Unraid Friendly](https://img.shields.io/badge/unraid-friendly-blueviolet.svg)](#-unraid)
 [![Website](https://img.shields.io/badge/website-ferdinand99.github.io%2FVigilant--Vole-black.svg)](https://ferdinand99.github.io/Vigilant-Vole/)
 
@@ -49,7 +49,8 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 ## ✨ Features
 
 **Monitoring**
-- **24 monitor types** — HTTP(S), HTTP keyword, HTTP JSON query (JSONPath), TCP port, ICMP ping, DNS (9 record types, custom resolver), push/heartbeat, Docker container, WebSocket, domain expiry (RDAP), NTP, Steam game server, **TLS handshake, SMTP, Redis, PostgreSQL, MySQL/MariaDB, MQTT, Kafka, RabbitMQ, gRPC, RADIUS, SNMP**, and groups
+- **30 monitor types** — HTTP(S), HTTP keyword, HTTP JSON query (JSONPath), TCP port, ICMP ping, Tailscale ping, DNS (9 record types, custom resolver), push/heartbeat, Docker container, WebSocket, domain expiry (RDAP), NTP, Steam game server, game server (Minecraft Java and Bedrock, Satisfactory, FiveM/RedM, Mumble), **TLS handshake, SMTP, Redis, PostgreSQL, MySQL/MariaDB, MQTT, Kafka, RabbitMQ, gRPC health, gRPC keyword, RADIUS, SNMP (v1/v2c/v3), SQL Server, MongoDB, real browser**, and groups
+- **Real-browser checks** — load a page in a headless Chromium (browserless, chromedp/headless-shell) over the DevTools protocol: status, text or CSS selector, JavaScript errors, desktop or mobile viewport, and a screenshot of the last failure. The browser runs as its own container, so this image stays small — see [docs/real-browser.md](docs/real-browser.md)
 - **TLS certificate and domain expiry** warnings, configurable per monitor
 - **Groups and tags** — nest monitors under group monitors (status = worst child), colour-coded tags with values, search and filters, bulk actions, clone
 - **Maintenance windows** — manual, one-off, daily or weekly (any time zone, across midnight); monitors record *maintenance* and stay quiet
@@ -60,7 +61,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Multi-location remote agents** — run checks from other networks and **only alert when agents confirm the outage**
 
 **Sharing**
-- **Status pages** — Apple-style public pages with sections, 90-day uptime bars, incidents (Markdown, pinned), scheduled maintenance, light/dark/auto theme, custom CSS, **custom domains**, embeddable JSON
+- **Status pages** — Apple-style public pages with sections, 90-day uptime bars, incidents (Markdown, pinned), scheduled maintenance, light/dark/auto theme, custom CSS, **custom domains**, logo and icon, password protection, built-in cookie-free analytics, embeddable JSON
 - **SVG badges** — status, uptime, response time and certificate expiry
 
 **Operating it**
@@ -74,7 +75,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Data retention** with daily rollups — long-range uptime survives deleting old heartbeats
 - **26 interface languages**, chosen per user: English, Norwegian (bokmål), Arabic, Chinese (Simplified and Traditional), Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Korean, Persian, Polish, Portuguese (Brazil and Portugal), Romanian, Russian, Spanish, Swedish, Turkish and Ukrainian. All but English and Norwegian are marked beta; [help improve a translation](docs/translating.md). Plural rules (including few/many and Arabic's six forms), number, digit and date formats follow each language, and Arabic, Hebrew and Persian run right-to-left
 - **Live dashboard** over Server-Sent Events, Apple-style UI in light and dark, works on a phone, installable as a PWA
-- **Tiny** — one ~32 MB static binary, ~18 MB compressed image, a few MB of RAM idle
+- **Tiny** — one ~38 MB static binary, ~20 MB compressed image, a few MB of RAM idle
 
 ## 📸 Screenshots
 
@@ -95,16 +96,19 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | | Vigilant Vole | Uptime Kuma |
 |---|---|---|
 | **Runtime** | One static Rust binary, server-rendered HTML ([Askama](https://askama.readthedocs.io/) + [htmx](https://htmx.org/)) | Node.js + Vue SPA |
-| **Docker image** | ~18 MB compressed (~61 MB on disk) | Hundreds of MB |
+| **Docker image** | ~20 MB compressed (~70 MB on disk) | Hundreds of MB |
 | **Idle memory** | A few MB | Typically 100 MB+ |
 | **Database** | SQLite (bundled) | SQLite, or MariaDB/MySQL in 2.0 ✅ |
 | HTTP(S), keyword, JSON query, TCP, ping, DNS, push, Docker, Steam, groups, WebSocket | ✅ | ✅ |
 | Domain expiry (RDAP), NTP monitors | ✅ | NTP ❌ · domain expiry varies by version |
 | Database monitors: PostgreSQL, MySQL/MariaDB, Redis | ✅ | ✅ |
-| Database monitors: SQL Server, MongoDB | ❌ | ✅ |
+| Database monitors: SQL Server, MongoDB | ✅ | ✅ |
 | MQTT, Kafka, RabbitMQ, gRPC health checks, RADIUS, SNMP v1/v2c, SMTP, TLS handshake | ✅ | ✅ (no TLS-handshake type) |
-| gRPC keyword calls, SNMPv3, GameDig, Tailscale | ❌ | ✅ |
-| Real-browser (headless Chrome) monitor | ❌ | ✅ |
+| gRPC keyword calls (any unary method, JSON request, text in the JSON answer) | ✅ `.proto` or server reflection; metadata is sent | ✅ pasted `.proto` only |
+| SNMPv3 | ✅ every security level: MD5, SHA-1, SHA-2 authentication; DES, AES-128/192/256 privacy | ✅ noAuthNoPriv only |
+| Tailscale ping | ✅ through the host's mounted `tailscaled` socket | ✅ via the `tailscale` CLI (not in the Docker image) |
+| Game servers | ✅ a curated set: Valve/Source games (A2S, Steam type), Minecraft Java and Bedrock, Satisfactory, FiveM/RedM, Mumble | ✅ ~360 games via GameDig |
+| Real-browser (headless Chrome) monitor | ✅ via a remote browser (CDP) | ✅ (built-in Chromium or a remote browser) |
 | HTTP auth | Basic, OAuth2 client credentials, mTLS ✅ | Basic, NTLM, mTLS, OAuth2 client credentials ✅ |
 | Notification providers | 24 native + Apprise (90+ services) | **90+ native** ✅ |
 | Reminders (resend while down) | ✅ | ✅ |
@@ -112,7 +116,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Flap detection | ✅ | ❌ |
 | Multi-location checks / outage confirmation | ✅ remote agents | ❌ |
 | Status pages, custom domains, badges | ✅ | ✅ |
-| Status page logo upload, analytics, password protection | ❌ | ✅ |
+| Status page logo upload, analytics, password protection | ✅ incl. built-in, cookie-free analytics | Logo and analytics ✅ · password protection ❌ |
 | Incidents | Multiple per page, pinned, history | One active incident per page |
 | Maintenance windows | Manual, once, daily, weekly | Also cron, day-of-month, every N days ✅ |
 | Multiple users with roles | ✅ admin / editor / viewer | ❌ single user |
@@ -123,10 +127,10 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Prometheus metrics | ✅ (Kuma-compatible names + more) | ✅ |
 | Long-range uptime after retention | ✅ daily rollups | ✅ aggregate tables in 2.0 |
 | Import from the other one | ✅ reads `kuma.db` | – |
-| Interface languages | 26 (English, Norwegian, and 24 beta languages incl. ar, he, fa, ja, ko, zh, ru, uk) | **~50 languages** ✅ |
+| Interface languages | English, Norwegian | **~50 languages** ✅ |
 | Built-in Cloudflare Tunnel, remote browsers | ❌ | ✅ |
 
-If you need SQL Server/MongoDB/browser monitors or a language outside the 26 above, Kuma is the better fit today.
+If you need SQL Server/MongoDB/browser monitors or a language other than English/Norwegian, Kuma is the better fit today.
 
 ## 🚀 Quick start
 
@@ -220,6 +224,7 @@ Settings → General (admins): site name, public base URL (used in notification 
 | HTTP(S) JSON query | URL | RFC 9535 JSONPath compared with `==`, `!=`, `contains`, `<`, `<=`, `>`, `>=` |
 | TCP port | `host:port` | Connection succeeds |
 | Ping | host or IP | ICMP echo (IPv4/IPv6), round-trip time |
+| Tailscale ping | peer name, MagicDNS name or Tailscale IP, `[?type=tsmp\|icmp]` | Asks the local `tailscaled` to ping the peer at the Tailscale layer (mount its socket — [guide](docs/tailscale-ping.md)); shows the route (direct or DERP relay) and latency, and why it failed (peer offline, Tailscale logged out) |
 | DNS | hostname | A, AAAA, CNAME, MX, NS, TXT, SOA, SRV, CAA; custom resolver; optional expected value |
 | Push | – | Your job calls `GET/POST /api/push/<token>?status=up&msg=OK&ping=`; down if nothing arrives within the interval (+10%) |
 | Docker container | container name/id | Running, and healthy if it has a healthcheck (local socket, `unix://`, `tcp://`) |
@@ -227,6 +232,7 @@ Settings → General (admins): site name, public base URL (used in notification 
 | Domain expiry | domain | Registration expiry via RDAP (IANA bootstrap) |
 | NTP | `host[:port]` | SNTP response, reports clock offset |
 | Steam game server | `host:port` | A2S_INFO query; players and map in the message |
+| Game server | `minecraft\|bedrock\|satisfactory\|fivem\|mumble://host[:port]` | The game's own status query: Minecraft Java Server List Ping (port 25565; without a port the `_minecraft._tcp` SRV record is tried first), Minecraft Bedrock RakNet ping (19132), Satisfactory Lightweight Query (7777; with an API token also the player count from its HTTPS API), FiveM/RedM `info.json` + `dynamic.json` (30120), Mumble UDP ping (64738). Version, players and server name/MOTD in the message; optional text the name must contain. Response time is the protocol's round trip. Valve/Source games use the Steam type |
 | TLS handshake | `host[:port]` | Handshake and certificate for any service that speaks TLS from the first byte (HTTPS, IMAPS, LDAPS, …); certificate expiry warnings |
 | SMTP | `host[:port]` | Greeting and `EHLO`; port 465 uses implicit TLS, other ports are upgraded with `STARTTLS` when offered, and the certificate is checked |
 | Redis | `redis[s]://host[:port][/db]` | `AUTH` (password or ACL user), `SELECT`, `PING`; shows the server version |
@@ -236,8 +242,12 @@ Settings → General (admins): site name, public base URL (used in notification 
 | Kafka | `kafka[s]://host[:port][/topic]` | Broker answers (`ApiVersions`, `Metadata`); with a topic, that it exists and every partition has a leader. Nothing is produced or created |
 | RabbitMQ | `amqp[s]://host[:port][/vhost]` | AMQP 0-9-1 greeting; with a user name, login and opening the virtual host |
 | gRPC | `grpc[s]://host[:port][/service]` | Standard `grpc.health.v1.Health/Check` over HTTP/2; up only when `SERVING` |
+| gRPC keyword | `grpc[s]://host[:port]/package.Service/Method` | Calls one unary method with a JSON request body and optional metadata; the message types come from a pasted `.proto` (well-known `google/protobuf` imports work) or, when that is empty, from the server's reflection service (v1, falling back to v1alpha). The answer is rendered as JSON (camelCase field names, enum names, 64-bit numbers as strings) and must contain the keyword (or must not, inverted); no keyword = any OK answer. A non-OK gRPC status is down. Answers are capped at 64 KiB; `grpcs://` checks the certificate unless TLS errors are ignored |
 | RADIUS | `radius://host[:port]` | `Access-Request` with a user name and password (or `Status-Server` without), verified with the shared secret |
-| SNMP | `snmp://host[:port][/oid][?version=1\|2c]` | GET of one OID with the community string; optional text the value must contain |
+| SNMP | `snmp://host[:port][/oid][?version=1\|2c\|3]` | GET of one OID; v1/v2c with the community string, v3 with a user name and, for authNoPriv/authPriv, an authentication password (MD5, SHA-1, SHA-224/256/384/512) and a privacy password (DES, AES-128/192/256); optional text the value must contain |
+| SQL Server | `sqlserver://host[:port][/db][?encrypt=…]` | TDS pre-login (server version); with a user name also a SQL Server login and `SELECT 1`. Encrypted when the server can (TLS inside TDS, or TDS 8.0 with `encrypt=strict`); `encrypt=false` encrypts only the login, `disable` never; the certificate is checked with `encrypt=true&trustServerCertificate=false`. No Windows authentication |
+| MongoDB | `mongodb://host[:port][,host2…][/db][?tls=true&replicaSet=…]` or `mongodb+srv://…` | `hello` (role and replica set), `buildInfo`; with a user name SCRAM-SHA-256/SCRAM-SHA-1; then `ping`. With `replicaSet` a set without a primary is down; with TLS the certificate is checked unless `tlsAllowInvalidCertificates=true` |
+| Real browser | URL | Loads the page in a remote headless Chromium over the DevTools protocol (set one up under Settings → Remote browsers — [guide](docs/real-browser.md)): main document status (`200-399` by default), optional text or CSS selector (or their absence), optionally fails on uncaught JavaScript errors; waits for load or network idle; desktop (1280×800) or mobile (390×844) viewport; optional headers and basic auth. Each check gets a fresh browser context; a failure saves a screenshot to the monitor page. Response time is request start → load. Not run by remote agents |
 | Group | – | Worst status of its children (down > pending > up) |
 
 Every type has interval (10 s – 24 h), timeout, retries, retry interval, upside-down mode, tags, description and per-monitor notification channels.
@@ -261,6 +271,10 @@ Events: down, up (with downtime), reminder, escalation, certificate expiring, do
 
 **Status pages** → New page. Each page has sections of monitors (drag to reorder), an overall status banner, 90-day uptime bars, optional response times and tags, incidents (Markdown, severity, pinned, history), the maintenance windows you attach, a theme (auto/light/dark), custom CSS, footer text, and an auto-refresh interval.
 
+- **Logo and browser icon**: upload PNG, JPEG, WebP or ICO (up to 1 MB; SVG is refused) in the page's Settings tab. Files are checked by content, kept in the database (backups stay one file) and served at `/status/<slug>/logo` and `/favicon`
+- **Password protection**: give a page a password and visitors get an unlock form; the unlock lasts 30 days in that browser (a signed, `HttpOnly` cookie for that page only) and changing or removing the password signs everyone out. While locked, the live refresh, the JSON and badges of monitors that are only on protected pages stay private. Signed-in users skip the lock
+- **Analytics** (Analytics tab): built-in, cookie-free counts of views, unique visitors and referring sites with a 30-day chart — no IP addresses are stored, unique visitors use a hash whose salt changes daily, bots and signed-in users don't count. Optionally add Plausible, Umami, Matomo or Google Analytics; its script loads on that page only and the page's CSP allows exactly that provider
+
 - Public at `/status/<slug>`, or at `/` on a **custom domain** (point the domain at Vigilant Vole / your reverse proxy and set it on the page)
 - `GET /api/status-page/<slug>` returns the page as JSON (CORS enabled) for embedding
 - Status pages can be framed; the admin UI can't
@@ -271,7 +285,7 @@ Events: down, up (with downtime), reminder, escalation, certificate expiring, do
 ![Website](https://status.example.com/api/badge/7/uptime?duration=30d)
 ```
 
-Badges are public for monitors on a published status page, or for every monitor when **Public badges** is on (Settings → General).
+Badges are public for monitors on a published status page without a password, or for every monitor when **Public badges** is on (Settings → General).
 
 ## 🌍 Remote agents
 
@@ -405,11 +419,12 @@ You get `vigilant_*` metrics (status, response time, 24h/30d uptime ratio, certi
 - **2FA**: Settings → Security → turn on TOTP; keep the recovery codes.
 - **API tokens** are stored as SHA-256 hashes, can expire, and only work under `/api/` and `/metrics`. Prefer `read` tokens for dashboards and scrapers.
 - Passwords are hashed with Argon2; login attempts are throttled with exponential backoff per IP and per user (counted before the password check, so parallel bursts can't get extra guesses); sessions are `HttpOnly`, `SameSite=Lax` signed cookies that end after 30 days idle and at most 30 days after login; state-changing browser requests are CSRF-checked; the admin UI can't be framed.
-- A strict Content-Security-Policy (`script-src 'self'`, no inline scripts or `eval`) applies to every page; public status pages differ only in allowing embedding.
+- A strict Content-Security-Policy (`script-src 'self'`, no inline scripts or `eval`) applies to every page; public status pages differ only in allowing embedding (plus, on a page with third-party analytics, exactly that provider's origin).
 - Live dashboard streams re-check the account before every update and end after an hour, so signing out everywhere, disabling a user or changing their role takes effect on open tabs too.
 - Saved monitor passwords (HTTP basic auth) are never sent back to the browser; they're kept on save only while the target host and proxy stay the same.
 - **Complete the setup wizard right after first start** — until the first admin exists, anyone who can reach the page can create it. Set `VV_SETUP_TOKEN` to require a secret in the setup URL (`/setup?token=…`) when the instance is reachable by others before you get to it.
 - Mounting `docker.sock` gives the container control over Docker; prefer a read-only socket proxy ([docs](docs/docker-discovery.md#permissions)).
+- A mounted `tailscaled.sock` (Tailscale ping monitors) gives the unprivileged app read access to the tailnet's status; running the container as root, or as Tailscale's operator, would give it control of Tailscale ([docs](docs/tailscale-ping.md#security)).
 - Agent tokens can read the configuration (including credentials) of monitors that run on agents; rotate them if a host is compromised.
 
 ## 🔨 Building from source
@@ -447,7 +462,7 @@ src/
 ├── auth/                # sessions, CSRF, login rate limit, TOTP, API tokens, roles
 ├── db/                  # SQLite (rusqlite + deadpool), migrations, queries, daily rollups
 ├── monitor/             # scheduler, pure alerting state machine, retention, engine metrics
-│   └── checkers/        # http, tcp, ping, dns, docker, websocket, domain (RDAP), ntp, steam, tls, smtp, redis, postgres, mysql, mqtt, kafka, rabbitmq, grpc, radius, snmp
+│   └── checkers/        # http, tcp, ping, tailscale, dns, docker, websocket, domain (RDAP), ntp, steam, game_server, tls, smtp, redis, postgres, mysql, mqtt, kafka, rabbitmq, grpc, grpc_keyword, radius, snmp, sqlserver, mongodb, real_browser (CDP)
 ├── notification/        # 24 providers behind one schema-driven registry
 ├── agent/               # remote probe agent + its wire protocol
 ├── discovery.rs         # Docker label discovery
@@ -474,7 +489,8 @@ Done:
 - [x] Multi-user, roles, 2FA, API tokens
 - [x] Tags and monitor groups
 - [x] Monitor pause/resume, clone, bulk actions
-- [x] 24 monitor types, 24 notification providers + Apprise
+- [x] 30 monitor types, 24 notification providers + Apprise
+- [x] Real-browser monitors with failure screenshots (external headless Chromium)
 - [x] Escalation, reminders, flap detection
 - [x] Remote agents with outage confirmation
 - [x] REST API + OpenAPI, config as code, backup/restore
@@ -484,10 +500,9 @@ Done:
 
 Ideas, not promises:
 
-- [ ] More monitor types: SQL Server, MongoDB, SNMPv3, gRPC keyword calls, common GameDig games
+- [ ] More monitor types: more game servers (TeamSpeak 3, Quake 3, Terraria/TShock, DayZ)
 - [ ] Status page subscribers (email/webhook)
 - [ ] Incident update timelines
-- [ ] Status page logo upload
 - [ ] MariaDB/PostgreSQL as an alternative storage backend
 - [ ] More interface languages (contributions welcome — see `locales/`)
 - [ ] NTLM HTTP authentication

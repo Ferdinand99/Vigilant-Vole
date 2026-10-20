@@ -29,6 +29,8 @@ pub async fn run(config: Config) {
 
     let pool = db::build_pool(&config.db_path());
     db::run_migrations(&pool, &config.data_dir.join("backups")).await;
+    // Real-browser checks read their remote browser and store screenshots.
+    crate::monitor::checkers::real_browser::install(pool.clone());
 
     let (update_tx, _) = tokio::sync::broadcast::channel(16);
     let http = build_http_client();

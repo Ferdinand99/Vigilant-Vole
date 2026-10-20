@@ -1,5 +1,11 @@
 //! Status pages, sections and their monitors (`status_pages`, `status_page_sections`,
 //! `status_page_monitors`). Owned by the statuspages agent.
+//!
+//! Logo/favicon uploads, password protection and analytics live in [`extras`].
+
+pub mod extras;
+#[cfg(test)]
+mod extras_import_tests;
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::Serialize;
@@ -24,6 +30,20 @@ pub struct StatusPage {
     pub refresh_seconds: i64,
     pub created_at: String,
     pub updated_at: String,
+    /// Argon2id PHC string; `None` = public. Never serialized.
+    #[serde(skip)]
+    pub password_hash: Option<String>,
+    /// Bumped on every password change; unlock cookies carry it.
+    #[serde(skip)]
+    pub password_version: i64,
+    #[serde(skip)]
+    pub analytics: extras::Analytics,
+    /// SHA-256 (hex) of the uploaded logo, if any.
+    #[serde(skip)]
+    pub logo_sha: Option<String>,
+    /// SHA-256 (hex) of the uploaded favicon, if any.
+    #[serde(skip)]
+    pub favicon_sha: Option<String>,
 }
 
 /// Fields written by create/update (already validated, see [`validate_slug`] etc.).
@@ -65,6 +85,21 @@ impl Default for NewStatusPage {
 }
 
 impl StatusPage {
+    /// Whether visitors need the page password.
+    pub fn is_protected(&self) -> bool {
+        self.password_hash.is_some()
+    }
+
+    /// Versioned (cache-busting) logo path, when a logo is uploaded.
+    pub fn logo_url(&self) -> Option<String> {
+        self.logo_sha.as_deref().map(|sha| extras::asset_path(&self.slug, extras::AssetKind::Logo, sha))
+    }
+
+    /// Versioned favicon path, when a favicon is uploaded.
+    pub fn favicon_url(&self) -> Option<String> {
+        self.favicon_sha.as_deref().map(|sha| extras::asset_path(&self.slug, extras::AssetKind::Favicon, sha))
+    }
+
     pub fn to_new(&self) -> NewStatusPage {
         NewStatusPage {
             slug: self.slug.clone(),
@@ -117,7 +152,11 @@ impl SectionMonitor {
 }
 
 const COLUMNS: &str = "id, slug, title, description, custom_domain, published, theme, show_tags, show_uptime, \
-                       show_response, show_powered_by, footer_text, custom_css, refresh_seconds, created_at, updated_at";
+                       show_response, show_powered_by, footer_text, custom_css, refresh_seconds, created_at, updated_at, \
+                       password_hash, password_version, analytics_enabled, analytics_unique, analytics_provider, \
+                       analytics_site_id, analytics_url, \
+                       (SELECT a.sha256 FROM status_page_assets a WHERE a.page_id = status_pages.id AND a.kind = 'logo') AS logo_sha, \
+                       (SELECT a.sha256 FROM status_page_assets a WHERE a.page_id = status_pages.id AND a.kind = 'favicon') AS favicon_sha";
 
 /// Slugs that would shadow app routes or read confusingly.
 pub const RESERVED_SLUGS: &[&str] = &[
@@ -166,6 +205,17 @@ pub fn row_to_page(row: &Row) -> rusqlite::Result<StatusPage> {
         refresh_seconds: row.get("refresh_seconds")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        password_hash: row.get("password_hash")?,
+        password_version: row.get("password_version")?,
+        analytics: extras::Analytics {
+            enabled: row.get("analytics_enabled")?,
+            unique: row.get("analytics_unique")?,
+            provider: extras::Provider::parse(&row.get::<_, String>("analytics_provider")?).unwrap_or_default(),
+            site_id: row.get("analytics_site_id")?,
+            url: row.get("analytics_url")?,
+        },
+        logo_sha: row.get("logo_sha")?,
+        favicon_sha: row.get("favicon_sha")?,
     })
 }
 
@@ -298,8 +348,8 @@ pub fn list(conn: &Connection) -> rusqlite::Result<Vec<StatusPageSummary>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS},
                 (SELECT COUNT(DISTINCT spm.monitor_id) FROM status_page_monitors spm
-                 JOIN status_page_sections s ON s.id = spm.section_id WHERE s.status_page_id = p.id) AS monitor_count
-         FROM status_pages p ORDER BY title COLLATE NOCASE, id"
+                 JOIN status_page_sections s ON s.id = spm.section_id WHERE s.status_page_id = status_pages.id) AS monitor_count
+         FROM status_pages ORDER BY title COLLATE NOCASE, id"
     ))?;
     let rows = stmt.query_map([], |r| {
         Ok(StatusPageSummary {
@@ -580,13 +630,14 @@ pub fn monitor_ids(conn: &Connection, page_id: i64) -> rusqlite::Result<Vec<i64>
     rows.collect()
 }
 
-/// Whether the monitor appears on at least one published page (badge gate).
+/// Whether the monitor appears on at least one published page without a
+/// password (badge gate: a monitor only on protected pages isn't public).
 pub fn monitor_is_public(conn: &Connection, monitor_id: i64) -> rusqlite::Result<bool> {
     conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM status_page_monitors spm
              JOIN status_page_sections s ON s.id = spm.section_id
              JOIN status_pages p ON p.id = s.status_page_id
-             WHERE spm.monitor_id = ?1 AND p.published = 1)",
+             WHERE spm.monitor_id = ?1 AND p.published = 1 AND p.password_hash IS NULL)",
         params![monitor_id],
         |r| r.get(0),
     )

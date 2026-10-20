@@ -13,6 +13,7 @@ use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signat
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{CertificateError, ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
 
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
@@ -240,6 +241,7 @@ impl ServerCertVerifier for AcceptAnyCert {
             dss,
             &self.0.signature_verification_algorithms,
         )
+        .or_else(|err| verify_with_any_cert(&self.0, message, cert, dss).ok_or(err))
     }
 
     fn verify_tls13_signature(
@@ -254,11 +256,34 @@ impl ServerCertVerifier for AcceptAnyCert {
             dss,
             &self.0.signature_verification_algorithms,
         )
+        .or_else(|err| verify_with_any_cert(&self.0, message, cert, dss).ok_or(err))
     }
 
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
         self.0.signature_verification_algorithms.supported_schemes()
     }
+}
+
+/// The handshake signature checked against the certificate's public key
+/// read with a lenient parser. webpki only reads X.509 v3, but SQL Server's
+/// self-generated fallback certificate is v1; when the certificate isn't
+/// verified anyway, the server must still prove it holds its key.
+fn verify_with_any_cert(
+    provider: &CryptoProvider,
+    message: &[u8],
+    cert: &CertificateDer<'_>,
+    dss: &DigitallySignedStruct,
+) -> Option<HandshakeSignatureValid> {
+    let (_, parsed) = x509_parser::parse_x509_certificate(cert).ok()?;
+    let key = &parsed.public_key().subject_public_key.data;
+    let (_, algs) = provider
+        .signature_verification_algorithms
+        .mapping
+        .iter()
+        .find(|(scheme, _)| *scheme == dss.scheme)?;
+    algs.iter()
+        .any(|alg| alg.verify_signature(key, message, dss.signature()).is_ok())
+        .then(HandshakeSignatureValid::assertion)
 }
 
 /// Run the TLS handshake over an established TCP connection. `host` is the
@@ -272,8 +297,9 @@ pub async fn upgrade_alpn(tcp: TcpStream, host: &str, ignore_tls: bool, alpn: &[
     upgrade_with(tcp, host, Verify::Full.unless_ignored(ignore_tls), alpn).await
 }
 
-/// [`upgrade`] with an explicit verification level.
-pub async fn upgrade_with(tcp: TcpStream, host: &str, verify: Verify, alpn: &[&[u8]]) -> std::io::Result<TlsStream<TcpStream>> {
+/// [`upgrade`] with an explicit verification level, over any byte stream
+/// (SQL Server runs its handshake inside its own packets).
+pub async fn upgrade_with<S: AsyncRead + AsyncWrite + Unpin>(tcp: S, host: &str, verify: Verify, alpn: &[&[u8]]) -> std::io::Result<TlsStream<S>> {
     let config = match verify {
         Verify::None => insecure_config(),
         Verify::Ca => ca_only_config(),
@@ -291,12 +317,12 @@ pub async fn upgrade_with(tcp: TcpStream, host: &str, verify: Verify, alpn: &[&[
 }
 
 /// The leaf certificate the peer presented.
-pub fn peer_cert(stream: &TlsStream<TcpStream>) -> Option<CertSummary> {
+pub fn peer_cert<S>(stream: &TlsStream<S>) -> Option<CertSummary> {
     parse_cert(stream.get_ref().1.peer_certificates()?.first()?)
 }
 
 /// "TLS 1.3" for the negotiated protocol version.
-pub fn version_label(stream: &TlsStream<TcpStream>) -> &'static str {
+pub fn version_label<S>(stream: &TlsStream<S>) -> &'static str {
     match stream.get_ref().1.protocol_version() {
         Some(rustls::ProtocolVersion::TLSv1_3) => "TLS 1.3",
         Some(rustls::ProtocolVersion::TLSv1_2) => "TLS 1.2",

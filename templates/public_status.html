@@ -1,6 +1,15 @@
 {% extends "public_layout.html" %}
 {% import "macros.html" as m %}
 
+{% block icons %}
+  {%- if let Some(src) = v.page.favicon_url() %}
+  <link rel="icon" href="{{ src }}">
+  {%- else %}
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  {%- endif %}
+{% endblock %}
+
 {% block head %}
   <meta name="description" content="{{ meta_description }}">
   <meta property="og:type" content="website">
@@ -8,18 +17,28 @@
   <meta property="og:description" content="{{ meta_description }}">
   <meta property="og:site_name" content="{{ page_title }}">
   <meta name="twitter:card" content="summary">
-  {%- if v.preview %}
+  {%- if noindex %}
   <meta name="robots" content="noindex">
   {%- endif %}
+  {%- if !v.page.is_protected() %}
   <link rel="alternate" type="application/json" href="/api/status-page/{{ v.page.slug }}">
+  {%- endif %}
+  {%- if let Some(s) = analytics %}
+  <script defer src="{{ s.src }}"{% if !s.attr.is_empty() %} {{ s.attr }}="{{ s.value }}"{% endif %}></script>
+  {%- endif %}
 {% endblock %}
 
 {% block header %}
-<div class="stack stack-xs">
-  <h1 class="public-title">{{ v.page.title }}</h1>
-  {%- if !v.page.description.is_empty() %}
-  <p class="page-sub">{{ v.page.description }}</p>
+<div class="public-brand">
+  {%- if let Some(src) = v.page.logo_url() %}
+  <img class="public-logo" src="{{ src }}" alt="{{ v.page.title }}" height="44">
   {%- endif %}
+  <div class="stack stack-xs">
+    <h1 class="public-title">{{ v.page.title }}</h1>
+    {%- if !v.page.description.is_empty() %}
+    <p class="page-sub">{{ v.page.description }}</p>
+    {%- endif %}
+  </div>
 </div>
 {%- if v.can_edit %}
 <a class="btn btn-secondary btn-sm" href="/status-pages/{{ v.page.id }}/edit">{{ m::icon("pencil") }}<span>{{ tr("pub.edit_page") }}</span></a>

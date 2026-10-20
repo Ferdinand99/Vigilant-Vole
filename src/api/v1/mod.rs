@@ -18,6 +18,7 @@ mod error;
 mod maintenance;
 mod monitors;
 mod pages;
+mod remote_browsers;
 mod resources;
 mod system;
 
@@ -53,6 +54,7 @@ pub fn router() -> Router<AppState> {
         .merge(monitors::router())
         .merge(resources::router())
         .merge(pages::router())
+        .merge(remote_browsers::router())
         .merge(maintenance::router())
         .merge(system::router())
         .merge(config::router())
