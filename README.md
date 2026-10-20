@@ -127,10 +127,10 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Prometheus metrics | ✅ (Kuma-compatible names + more) | ✅ |
 | Long-range uptime after retention | ✅ daily rollups | ✅ aggregate tables in 2.0 |
 | Import from the other one | ✅ reads `kuma.db` | – |
-| Interface languages | English, Norwegian | **~50 languages** ✅ |
-| Built-in Cloudflare Tunnel, remote browsers | ❌ | ✅ |
+| Interface languages | 26 (English, Norwegian, and 24 beta languages incl. ar, he, fa, ja, ko, zh, ru, uk) | **~50 languages** ✅ |
+| Built-in Cloudflare Tunnel | ❌ | ✅ |
 
-If you need SQL Server/MongoDB/browser monitors or a language other than English/Norwegian, Kuma is the better fit today.
+If you need a language outside the 26 above, or real-browser checks without running a separate browser container, Kuma is the better fit today.
 
 ## 🚀 Quick start
 
