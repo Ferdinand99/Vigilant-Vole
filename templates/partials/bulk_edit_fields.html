@@ -1,0 +1,150 @@
+{#- Fields of the bulk edit sheet (content of #bulk-edit-fields). Expects `b`
+    (api::monitors::BulkSheet). The sheet sits inside #bulk-form, which also
+    carries the selection. Empty / "Unchanged" leaves a setting alone. -#}
+{% import "macros.html" as m %}
+{% import "partials/monitor_form_macros.html" as fm %}
+{%- if !b.errors.is_empty() %}
+{{ m::callout("danger", &b.error_summary, tr("bulk.not_applied")) }}
+{%- endif %}
+<p class="help">{{ tr("bulk.sub") }}</p>
+
+<section class="form-section" aria-labelledby="bulk-sec-agents">
+  <h3 class="form-section-title" id="bulk-sec-agents">{{ tr("nav.agents") }}</h3>
+  <p class="form-section-sub">{{ tr("bulk.agents_sub") }}</p>
+  <div class="card">
+    {{ fm::tri("run_on_agents", tr("form.run_on_agents"), b.v.tri("run_on_agents")) }}
+    {{ fm::tri("confirm_with_agents", tr("form.confirm_agents"), b.v.tri("confirm_with_agents"), tr("form.confirm_agents_help")) }}
+    {%- if !b.has_agents %}
+    <p class="help">{{ tr("form.no_agents") }} <a href="/settings/agents">{{ tr("form.add_agent_link") }}</a>.</p>
+    {%- endif %}
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="bulk-sec-checks">
+  <h3 class="form-section-title" id="bulk-sec-checks">{{ tr("form.checks") }}</h3>
+  <p class="form-section-sub">{{ tr("bulk.checks_sub") }}</p>
+  <div class="card">
+    <div class="field-row">
+      {{ fm::num("interval_seconds", tr("detail.check_every"), &b.v.interval, tr("common.sec"), "10", "86400", "", b.err("interval_seconds"), tr("bulk.unchanged")) }}
+      {{ fm::num("retries", tr("form.retries"), &b.v.retries, "", "0", "20", "", b.err("retries"), tr("bulk.unchanged")) }}
+    </div>
+    <div class="field-row">
+      {{ fm::num("timeout_seconds", tr("detail.timeout"), &b.v.timeout, tr("common.sec"), "1", "300", "", b.err("timeout_seconds"), tr("bulk.unchanged")) }}
+      {{ fm::num("retry_interval_seconds", tr("detail.retry_every"), &b.v.retry_interval, tr("common.sec"), "10", "86400", "", b.err("retry_interval_seconds"), tr("bulk.unchanged")) }}
+    </div>
+  </div>
+</section>
+
+<section class="form-section" aria-labelledby="bulk-sec-channels">
+  <h3 class="form-section-title" id="bulk-sec-channels">{{ tr("bulk.channels") }}</h3>
+  {%- if b.channels.is_empty() %}
+  <div class="card card-flush">
+    <div class="empty">
+      <div class="empty-icon">{{ m::icon("bell") }}</div>
+      <p class="empty-title">{{ tr("form.no_channels_title") }}</p>
+      <p class="empty-text">{{ tr("bulk.no_channels_text") }}</p>
+      <div class="empty-actions"><a class="btn btn-secondary" href="/settings/notifications">{{ tr("form.setup_notifications") }}</a></div>
+    </div>
+  </div>
+  {%- else %}
+  <div class="segmented segmented-block" role="radiogroup" aria-label="{{ tr("bulk.channels_mode") }}">
+    <label><input type="radio" name="channels_mode" value="change"{% if !b.v.replaces_channels() %} checked{% endif %}><span>{{ tr("bulk.channels_change") }}</span></label>
+    <label><input type="radio" name="channels_mode" value="replace"{% if b.v.replaces_channels() %} checked{% endif %}><span>{{ tr("bulk.channels_replace") }}</span></label>
+  </div>
+  <div class="stack-sm" data-show-when="channels_mode!=replace"{% if b.v.replaces_channels() %} hidden{% endif %}>
+    <ul class="list" role="list">
+      {%- for c in b.channels %}
+      <li class="list-row list-row-wrap">
+        <span class="provider-tile provider-{{ c.kind }}" aria-hidden="true">
+          {%- if c.kind == "email" %}{{ m::icon("mail") }}{% else if c.kind == "webhook" %}{{ m::icon("link") }}{% else if c.kind == "telegram" || c.kind == "signal" %}{{ m::icon("send") }}{% else if c.kind == "homeassistant" %}{{ m::icon("server") }}{% else %}{{ m::icon("bell") }}{% endif -%}
+        </span>
+        <span class="list-main">
+          <span class="list-title">{{ c.name }}</span>
+          <span class="list-sub">{{ c.kind_label }}{% if !c.active %} · {{ tr("form.channel_off") }}{% endif %}</span>
+        </span>
+        <div class="segmented" role="radiogroup" aria-label="{{ tr1("bulk.channel_for", "name", c.name) }}">
+          <label><input type="radio" name="channel_{{ c.id }}" value=""{% if b.v.channel_op(c.id).is_empty() %} checked{% endif %}><span>{{ tr("bulk.unchanged") }}</span></label>
+          <label><input type="radio" name="channel_{{ c.id }}" value="add"{% if b.v.channel_op(c.id) == "add" %} checked{% endif %}><span>{{ tr("common.add") }}</span></label>
+          <label><input type="radio" name="channel_{{ c.id }}" value="remove"{% if b.v.channel_op(c.id) == "remove" %} checked{% endif %}><span>{{ tr("common.remove") }}</span></label>
+        </div>
+        <div class="list-full" data-show-when="channel_{{ c.id }}=add"{% if b.v.channel_op(c.id) != "add" %} hidden{% endif %}>
+          <label class="switch-row" for="f-channel_{{ c.id }}_escalation">
+            <span class="switch-row-text">
+              <span class="switch-row-label">{{ tr("bulk.as_escalation") }}</span>
+            </span>
+            <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-channel_{{ c.id }}_escalation" name="channel_{{ c.id }}_escalation" value="true"{% if b.v.channel_escalation(c.id) %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
+          </label>
+        </div>
+      </li>
+      {%- endfor %}
+    </ul>
+    <p class="section-foot">{{ tr("bulk.escalation_help") }}</p>
+  </div>
+  <div class="stack-sm" data-show-when="channels_mode=replace"{% if !b.v.replaces_channels() %} hidden{% endif %}>
+    <ul class="list" role="list">
+      {%- for c in b.channels %}
+      <li class="list-row list-row-wrap">
+        <span class="provider-tile provider-{{ c.kind }}" aria-hidden="true">
+          {%- if c.kind == "email" %}{{ m::icon("mail") }}{% else if c.kind == "webhook" %}{{ m::icon("link") }}{% else if c.kind == "telegram" || c.kind == "signal" %}{{ m::icon("send") }}{% else if c.kind == "homeassistant" %}{{ m::icon("server") }}{% else %}{{ m::icon("bell") }}{% endif -%}
+        </span>
+        <span class="list-main">
+          <span class="list-title">{{ c.name }}</span>
+          <span class="list-sub">{{ c.kind_label }}{% if !c.active %} · {{ tr("form.channel_off") }}{% endif %}</span>
+        </span>
+        <div class="segmented" role="radiogroup" aria-label="{{ tr1("form.alerts_to", "name", c.name) }}">
+          <label><input type="radio" name="replace_{{ c.id }}" value="off"{% if b.v.replace_mode(c.id) == "off" %} checked{% endif %}><span>{{ tr("common.off") }}</span></label>
+          <label><input type="radio" name="replace_{{ c.id }}" value="alert"{% if b.v.replace_mode(c.id) == "alert" %} checked{% endif %}><span>{{ tr("detail.alerts") }}</span></label>
+          <label><input type="radio" name="replace_{{ c.id }}" value="escalation"{% if b.v.replace_mode(c.id) == "escalation" %} checked{% endif %}><span>{{ tr("form.escalation") }}</span></label>
+        </div>
+      </li>
+      {%- endfor %}
+    </ul>
+    <p class="section-foot">{{ tr("bulk.replace_help") }}</p>
+  </div>
+  {%- endif %}
+</section>
+
+<section class="form-section" aria-labelledby="bulk-sec-tags">
+  <h3 class="form-section-title" id="bulk-sec-tags">{{ tr("dashboard.tags") }}</h3>
+  <div class="card">
+    {{ m::switch("tags_clear", tr("bulk.tags_clear"), b.v.tags_clear, tr("bulk.tags_clear_help")) }}
+  </div>
+  {%- if !b.tags.is_empty() %}
+  <ul class="list" role="list">
+    {%- for t in b.tags %}
+    <li class="list-row list-row-wrap">
+      <span class="list-main"><span class="list-title">{{ m::tag(&t.name, &t.color) }}</span></span>
+      <div class="segmented" role="radiogroup" aria-label="{{ tr1("bulk.tag_for", "name", t.name) }}">
+        <label><input type="radio" name="tag_{{ t.id }}" value=""{% if b.v.tag_op(t.id).is_empty() %} checked{% endif %}><span>{{ tr("bulk.unchanged") }}</span></label>
+        <label><input type="radio" name="tag_{{ t.id }}" value="add"{% if b.v.tag_op(t.id) == "add" %} checked{% endif %}><span>{{ tr("common.add") }}</span></label>
+        <label><input type="radio" name="tag_{{ t.id }}" value="remove"{% if b.v.tag_op(t.id) == "remove" %} checked{% endif %}><span>{{ tr("common.remove") }}</span></label>
+      </div>
+      <div class="list-full" data-show-when="tag_{{ t.id }}=add"{% if b.v.tag_op(t.id) != "add" %} hidden{% endif %}>
+        <input type="text" name="tag_value_{{ t.id }}" value="{{ b.v.tag_value(t.id) }}" maxlength="60" autocomplete="off"
+          placeholder="{{ tr("form.tag_value_placeholder") }}" aria-label="{{ tr1("form.tag_value_for", "name", t.name) }}">
+      </div>
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  <div class="card">
+    <details class="disclosure"{% if !b.v.new_tag_name.is_empty() || b.tags.is_empty() %} open{% endif %}>
+      <summary>{{ tr("form.new_tag") }} <span class="disclosure-sub">{{ tr("bulk.new_tag_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
+      <div class="disclosure-body">
+        <div class="field-row">
+          {{ m::field_text("new_tag_name", tr("common.name"), value=&b.v.new_tag_name, placeholder=tr("form.tag_name_placeholder"), error=b.err("new_tag_name")) }}
+          {{ m::field_text("new_tag_value", tr("form.value"), value=&b.v.new_tag_value, placeholder=tr("form.optional_placeholder")) }}
+        </div>
+        <div class="field">
+          <span class="label" id="bulk-new-tag-color-label">{{ tr("form.color") }}</span>
+          <div class="chips" role="radiogroup" aria-labelledby="bulk-new-tag-color-label">
+            {%- for (value, label) in b.palette %}
+            <label class="chip"><input type="radio" name="new_tag_color" value="{{ value }}"{% if b.v.new_tag_color == **value %} checked{% endif %}><span class="tag-swatch tag-{{ value }}" aria-hidden="true"></span>{{ label }}</label>
+            {%- endfor %}
+          </div>
+        </div>
+      </div>
+    </details>
+    {{ fm::error_line("tags", b.err("tags")) }}
+  </div>
+</section>

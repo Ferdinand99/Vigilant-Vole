@@ -2,31 +2,9 @@
 {% import "macros.html" as m %}
 
 {% block content %}
-<header class="page-head">
-  <div class="page-head-row">
-    <div class="page-head-text">
-      <h1 class="page-title">{{ tr("dashboard.title") }}</h1>
-      {%- if data.select_mode %}
-      <p class="page-sub">{{ tr("dashboard.select_sub") }}</p>
-      {%- else if data.total_all > 0 %}
-      <p class="page-sub">{{ m::live() }}</p>
-      {%- endif %}
-    </div>
-    <div class="page-actions">
-      {%- if data.select_mode %}
-      <a class="btn btn-secondary" href="{{ data.exit_select_href() }}">{{ tr("common.done") }}</a>
-      {%- else %}
-      {{ m::link_button("/tags", tr("dashboard.tags"), "secondary", "tag") }}
-      {%- if ctx.can_edit() && data.total_all > 0 %}
-      <a class="btn btn-secondary" href="/?{{ data.qs }}{% if !data.qs.is_empty() %}&amp;{% endif %}select=1">{{ m::icon("check-circle") }}<span>{{ tr("dashboard.select") }}</span></a>
-      {%- endif %}
-      {%- if ctx.can_edit() %}
-      {{ m::link_button("/monitors/new", tr("dashboard.new_monitor"), "primary", "plus") }}
-      {%- endif %}
-      {%- endif %}
-    </div>
-  </div>
-</header>
+<div id="dash-head">
+{% include "partials/dashboard_head.html" %}
+</div>
 
 {%- if data.total_all > 0 %}
 <form id="dash-filters" class="stack-sm" method="get" action="/" role="search" aria-label="{{ tr("dashboard.filter_aria") }}"
@@ -88,15 +66,41 @@
 {%- if data.select_mode %}
 <form id="bulk-form" method="post" action="/monitors/bulk">
   <input type="hidden" name="return_to" value="{{ data.exit_select_href() }}">
-  <div class="card">
-    <div class="cluster cluster-between">
-      <p class="muted">{{ tr("dashboard.tick_hint") }}</p>
-      <div class="toolbar">
-        <button type="submit" name="action" value="pause" class="btn btn-secondary btn-sm">{{ m::icon("pause") }}<span>{{ tr("dashboard.pause") }}</span></button>
-        <button type="submit" name="action" value="resume" class="btn btn-secondary btn-sm">{{ m::icon("play") }}<span>{{ tr("dashboard.resume") }}</span></button>
-        <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm"
-          data-confirm="{{ tr("dashboard.bulk_delete_q") }}" data-confirm-message="{{ tr("dashboard.bulk_delete_msg") }}"
-          data-confirm-label="{{ tr("common.delete") }}">{{ m::icon("trash") }}<span>{{ tr("common.delete") }}</span></button>
+  {%- if let Some(b) = bulk %}
+  {#- Before the bulk bar, so Apply is the form's default button (Enter in a field). #}
+  <dialog class="sheet sheet-lg" id="bulk-edit" aria-labelledby="bulk-edit-title" data-sheet-static>
+    <div class="sheet-grabber" aria-hidden="true"></div>
+    <header class="sheet-head">
+      <h2 class="sheet-title" id="bulk-edit-title">{{ tr("bulk.title") }}</h2>
+      <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="bulk-edit" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+    </header>
+    <div class="sheet-body">
+      <div class="form" id="bulk-edit-fields">
+        {% include "partials/bulk_edit_fields.html" %}
+      </div>
+    </div>
+    <footer class="sheet-foot">
+      <p class="help grow" id="bulk-edit-summary" aria-live="polite" data-no-progress
+        hx-post="/monitors/bulk/edit/summary" hx-trigger="vv:sheet-open from:#bulk-edit, input delay:250ms from:#bulk-edit" hx-swap="innerHTML">{{ tr("bulk.summary_none") }}</p>
+      <button type="button" class="btn btn-secondary" data-sheet-close commandfor="bulk-edit" command="close">{{ tr("common.cancel") }}</button>
+      <button type="submit" class="btn btn-primary" id="bulk-edit-apply" formaction="/monitors/bulk/edit"
+        hx-post="/monitors/bulk/edit" hx-target="#bulk-edit-fields" hx-swap="innerHTML">{{ tr("bulk.apply") }}</button>
+    </footer>
+  </dialog>
+  {%- endif %}
+  <div id="bulk-bar">
+    <div class="card">
+      <div class="cluster cluster-between">
+        <p class="muted">{{ tr("dashboard.tick_hint") }}</p>
+        <div class="toolbar">
+          <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#bulk-edit" commandfor="bulk-edit" command="show-modal"
+            data-requires-checked="input[form=bulk-form][name=ids], input[form=bulk-form][name=all]">{{ m::icon("pencil") }}<span>{{ tr("bulk.edit") }}</span></button>
+          <button type="submit" name="action" value="pause" class="btn btn-secondary btn-sm">{{ m::icon("pause") }}<span>{{ tr("dashboard.pause") }}</span></button>
+          <button type="submit" name="action" value="resume" class="btn btn-secondary btn-sm">{{ m::icon("play") }}<span>{{ tr("dashboard.resume") }}</span></button>
+          <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm"
+            data-confirm="{{ tr("dashboard.bulk_delete_q") }}" data-confirm-message="{{ tr("dashboard.bulk_delete_msg") }}"
+            data-confirm-label="{{ tr("common.delete") }}">{{ m::icon("trash") }}<span>{{ tr("common.delete") }}</span></button>
+        </div>
       </div>
     </div>
   </div>

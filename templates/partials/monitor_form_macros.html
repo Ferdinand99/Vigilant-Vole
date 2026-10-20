@@ -70,3 +70,19 @@
   {%- endif %}
 </div>
 {%- endmacro %}
+
+{#- Bulk edit tri-state setting: Unchanged ("") / On / Off. -#}
+{% macro tri(name, label, value, help = "") -%}
+<div class="field">
+  <span class="label" id="f-{{ name }}-label">{{ label }}</span>
+  <div class="segmented segmented-block" role="radiogroup" aria-labelledby="f-{{ name }}-label"
+    {%- if !help.is_empty() %} aria-describedby="f-{{ name }}-help"{% endif %}>
+    <label><input type="radio" name="{{ name }}" value=""{% if value != "on" && value != "off" %} checked{% endif %}><span>{{ tr("bulk.unchanged") }}</span></label>
+    <label><input type="radio" name="{{ name }}" value="on"{% if value == "on" %} checked{% endif %}><span>{{ tr("common.on") }}</span></label>
+    <label><input type="radio" name="{{ name }}" value="off"{% if value == "off" %} checked{% endif %}><span>{{ tr("common.off") }}</span></label>
+  </div>
+  {%- if !help.is_empty() %}
+  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}

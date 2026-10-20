@@ -4,8 +4,12 @@ The full, always-current reference lives **in the app**:
 
 - **`/api-docs`** — browsable reference with request/response examples (sign in first).
 - **`/api/v1/openapi.json`** — the same as an OpenAPI 3.1 document, for code generators, Postman, Insomnia, etc.
+- **`/api-docs.md`** (also at **`/llms.txt`**) — the same as one Markdown document for AI assistants: this instance's
+  base URL, authentication, conventions, error codes, every endpoint with a `curl` example (`$VV_URL`/`$VV_TOKEN`
+  placeholders), config as code and common tasks. The **Copy for AI** button on `/api-docs` puts it on your clipboard.
+  Like `/api-docs` it needs a signed-in session; it never contains tokens or secrets.
 
-Both are generated from one route table in the source, so they can't drift from the server.
+All of them are generated from one route table in the source, so they can't drift from the server.
 
 ## Authentication
 
@@ -41,7 +45,7 @@ API tokens only work under `/api/` and for `/metrics`; they can't open the web U
 
 | Area | Endpoints |
 |---|---|
-| Monitors | `GET/POST /api/v1/monitors`, `GET/PUT/PATCH/DELETE /api/v1/monitors/{id}`, `POST …/{id}/pause`, `…/resume`, `…/check`, `GET …/{id}/heartbeats`, `…/uptime`, `…/events`, `PUT …/{id}/tags` |
+| Monitors | `GET/POST /api/v1/monitors`, `POST /api/v1/monitors/bulk`, `GET/PUT/PATCH/DELETE /api/v1/monitors/{id}`, `POST …/{id}/pause`, `…/resume`, `…/check`, `GET …/{id}/heartbeats`, `…/uptime`, `…/events`, `PUT …/{id}/tags` |
 | Tags | `GET/POST /api/v1/tags`, `GET/PATCH/DELETE /api/v1/tags/{id}` |
 | Remote browsers | `GET/POST /api/v1/remote-browsers`, `GET/PUT/PATCH/DELETE /api/v1/remote-browsers/{id}`, `POST …/{id}/test` (writes: admin; URLs come back with their token masked) |
 | Notifications | `GET /api/v1/notification-providers`, `GET/POST /api/v1/notification-channels`, `GET/PATCH/DELETE …/{id}`, `POST …/{id}/test` |
@@ -94,6 +98,12 @@ curl -s -H "$AUTH" -H "Content-Type: application/json" -X POST "$BASE/api/v1/mon
 curl -s -H "$AUTH" -X POST "$BASE/api/v1/monitors/7/pause"
 curl -s -H "$AUTH" -X POST "$BASE/api/v1/monitors/7/resume"
 
+# Move every HTTP monitor tagged production to 2-minute checks from the agents too
+curl -s -H "$AUTH" -H "Content-Type: application/json" -X POST "$BASE/api/v1/monitors/bulk" -d '{
+  "filter": {"type": "http", "tag": "production"},
+  "set": {"interval_seconds": 120, "run_on_agents": true, "confirm_with_agents": true}
+}'
+
 # 30-day uptime with daily breakdown
 curl -s -H "$AUTH" "$BASE/api/v1/monitors/7/uptime?days=30" | jq '.uptime_pct'
 
@@ -104,6 +114,43 @@ curl -s -H "$AUTH" -H "Content-Type: application/json" -X POST "$BASE/api/v1/sta
 # Push monitor heartbeat from a cron job
 curl -fsS "$BASE/api/push/AbCdEf0123456789AbCdEf0123456789?status=up&msg=backup%20ok&ping=" > /dev/null
 ```
+
+## Bulk edit
+
+`POST /api/v1/monitors/bulk` (editor) changes a few settings on many monitors at once — the API side of
+*Select → Edit…* on the dashboard. Pick the monitors with **either** `ids` **or** `filter` (the list
+endpoint's filters: `status`, `type`, `tag` by name, `q`; `{}` selects every monitor), and say what to
+change in `set`. Every key of `set` is optional; leave one out (or send `null`) to keep each monitor's own value.
+
+| `set` key | Value |
+|---|---|
+| `run_on_agents`, `confirm_with_agents` | `true` / `false` |
+| `interval_seconds`, `retry_interval_seconds`, `timeout_seconds`, `retries` | whole numbers, same limits as the monitor form (the timeout can't exceed the interval) |
+| `channels` | `{"add": [...], "remove": [...]}` or `{"replace": [...]}`; entries are a channel id, a name, or `{"id"\|"name", "escalation": bool}` |
+| `tags` | `{"add": [...], "remove": [...], "clear": bool}`; `add` takes names, ids or `{"name", "color", "value"}` (unknown names are created with that palette colour), `remove` takes names or ids; order: clear, remove, add |
+
+```bash
+curl -s -H "$AUTH" -H "Content-Type: application/json" -X POST "$BASE/api/v1/monitors/bulk" -d '{
+  "ids": [3, 7, 12],
+  "set": {
+    "retries": 2,
+    "channels": {"add": [{"name": "Ops Discord"}, {"id": 4, "escalation": true}], "remove": ["Old pager"]},
+    "tags": {"add": [{"name": "eu", "color": "teal", "value": "west"}], "remove": ["legacy"]}
+  }
+}'
+# → {"updated": 2, "skipped": [{"id": 12, "reason": "escalation_needs_delay"}]}
+```
+
+Everything is validated first (422 with `fields` like `set.interval_seconds`) and applied in one
+transaction. `updated` counts monitors that actually changed. A setting that doesn't apply to a
+monitor is left alone and listed in `skipped` (one entry per monitor and reason):
+
+| Reason | When |
+|---|---|
+| `agents_unsupported` | agent settings on push, group or real-browser monitors |
+| `timing_unsupported` | any timing on a group; timeout or retry interval on a push monitor |
+| `timeout_exceeds_interval` | the monitor's timeout would end up longer than its interval |
+| `escalation_needs_delay` | an escalation channel on a monitor without an *Escalate after* delay |
 
 ## Service monitors
 

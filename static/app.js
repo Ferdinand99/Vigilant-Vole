@@ -875,6 +875,19 @@
     });
   }
 
+  /* ------------------------------------------------- requires-checked
+     <button data-requires-checked="input[form=bulk-form][name=ids]"> stays
+     disabled until a checkbox matching the selector is ticked (bulk actions).
+     Re-evaluated on every change, after swaps and on back/forward. */
+  function updateRequiresChecked() {
+    $$("[data-requires-checked]").forEach(function (el) {
+      el.disabled = !$$(el.getAttribute("data-requires-checked")).some(function (c) {
+        return c.checked && !c.disabled;
+      });
+    });
+  }
+  window.addEventListener("pageshow", updateRequiresChecked);
+
   /* ------------------------------------------------------- game preset
      <select data-game-preset> with <option value="minecraft" data-port="25565">
      rewrites the game server address: the scheme, and a port that was some
@@ -957,22 +970,100 @@
     }
     copyText(text.trim()).then(
       function () {
-        var label = $("span", btn);
-        var ic = $("use", btn);
-        if (!btn._vvLabel) btn._vvLabel = label ? label.textContent : null;
-        if (label) label.textContent = btn.getAttribute("data-copied-label") || L("copied", "Copied");
-        if (ic) ic.setAttribute("href", "/static/icons.svg#check");
+        markCopied(btn);
         VV.announce(L("copied_announce", "Copied to clipboard"));
-        clearTimeout(btn._vvCopyTimer);
-        btn._vvCopyTimer = setTimeout(function () {
-          if (label && btn._vvLabel != null) label.textContent = btn._vvLabel;
-          if (ic) ic.setAttribute("href", "/static/icons.svg#copy");
-        }, 1600);
       },
       function () {
         VV.toast(L("copy_failed", "Couldn’t copy. Select the text and copy it manually."), "error");
       }
     );
+  }
+  /* The button's label flips to "Copied" (and its icon to a check) for a moment. */
+  function markCopied(btn) {
+    var label = $("span", btn);
+    var ic = $("use", btn);
+    if (!btn._vvLabel) btn._vvLabel = label ? label.textContent : null;
+    if (label) label.textContent = btn.getAttribute("data-copied-label") || L("copied", "Copied");
+    if (ic) ic.setAttribute("href", "/static/icons.svg#check");
+    clearTimeout(btn._vvCopyTimer);
+    btn._vvCopyTimer = setTimeout(function () {
+      if (label && btn._vvLabel != null) label.textContent = btn._vvLabel;
+      if (ic) ic.setAttribute("href", "/static/icons.svg#copy");
+    }, 1600);
+  }
+
+  /* data-copy-url="/api-docs.md": copy a document fetched from the server
+     (Copy for AI). A ClipboardItem built from the pending fetch keeps the
+     click's user activation (Safari needs that); otherwise fetch, then copy.
+     When the clipboard is unavailable or denied, the file is downloaded
+     instead (data-download-name). */
+  function fetchText(url) {
+    return fetch(url, { credentials: "same-origin" }).then(function (r) {
+      // A lapsed session redirects to the login page: never copy that.
+      if (!r.ok || r.redirected) throw new Error("HTTP " + r.status);
+      return r.text();
+    });
+  }
+  function downloadText(text, name) {
+    var href = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+    var a = d.createElement("a");
+    a.href = href;
+    a.download = name;
+    a.hidden = true;
+    d.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () {
+      URL.revokeObjectURL(href);
+    }, 1000);
+  }
+  function writeClipboard(textPromise) {
+    var cb = navigator.clipboard;
+    if (cb && window.isSecureContext && typeof cb.write === "function" && typeof window.ClipboardItem === "function") {
+      var blob = textPromise.then(function (t) {
+        return new Blob([t], { type: "text/plain" });
+      });
+      var item;
+      try {
+        item = new window.ClipboardItem({ "text/plain": blob });
+      } catch (e) {
+        item = null;
+      }
+      // Browsers that refuse a pending blob still get the text the plain way.
+      if (item) {
+        return cb.write([item]).catch(function () {
+          return textPromise.then(copyText);
+        });
+      }
+    }
+    return textPromise.then(copyText);
+  }
+  function onCopyUrl(btn) {
+    if (btn.getAttribute("aria-busy") === "true") return;
+    btn.setAttribute("aria-busy", "true");
+    var text = fetchText(btn.getAttribute("data-copy-url"));
+    var done = function () {
+      btn.removeAttribute("aria-busy");
+    };
+    writeClipboard(text)
+      .then(
+        function () {
+          markCopied(btn);
+          VV.toast(L("ai_copied", "Copied the API reference. Paste it into your AI assistant."), "success");
+        },
+        function () {
+          return text.then(
+            function (t) {
+              downloadText(t, btn.getAttribute("data-download-name") || "document.md");
+              VV.toast(L("ai_downloaded", "Couldn’t copy, so the reference was downloaded as a Markdown file."), "info");
+            },
+            function () {
+              VV.toast(L("ai_failed", "Couldn’t load the API reference. Try again."), "error");
+            }
+          );
+        }
+      )
+      .then(done, done);
   }
 
   /* ------------------------------------------------------- relative time
@@ -1562,6 +1653,11 @@
       onCopy(el);
       return;
     }
+    if ((el = t.closest("[data-copy-url]"))) {
+      e.preventDefault();
+      onCopyUrl(el);
+      return;
+    }
     if ((el = t.closest("[data-theme-set]")) && !el.matches("input")) {
       setTheme(el.getAttribute("data-theme-set"));
       return;
@@ -1614,6 +1710,7 @@
     if (t.matches("[data-theme-set]") && t.checked) setTheme(t.getAttribute("data-theme-set"));
     if (t.closest && t.closest(".segmented")) initSegmented(t.closest(".segmented").parentNode);
     if (t.name) updateShowWhen(d, t.name);
+    if (t.type === "checkbox") updateRequiresChecked();
     if (t.matches && t.matches("select[data-game-preset]")) applyGamePreset(t);
   });
   d.addEventListener("input", function (e) {
@@ -1721,6 +1818,7 @@
     initSegmented(scope);
     updateTimes(scope);
     updateShowWhen(scope.closest ? scope.closest("form") || scope : scope);
+    updateRequiresChecked();
     $$("dialog.sheet", scope).forEach(wireSheet);
     $$("[data-kv][data-kv-json]", scope).forEach(kvSync);
     $$("[data-tabs]", scope).forEach(function (tl) {

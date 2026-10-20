@@ -5,6 +5,7 @@
 //! - `form` parses and validates the big monitor form (pure, unit-tested).
 //! - `view` builds the SVG chart, the 90-day bar and formats numbers/times.
 
+pub mod bulk_edit;
 pub mod form;
 pub mod view;
 
@@ -45,6 +46,8 @@ pub fn router() -> Router<AppState> {
         .route("/monitors/new", get(new_form).post(create))
         .route("/monitors/form-fields", get(form_fields))
         .route("/monitors/bulk", post(bulk))
+        .route("/monitors/bulk/edit", post(bulk_edit))
+        .route("/monitors/bulk/edit/summary", post(bulk_edit_summary))
         .route("/monitors/{id}", get(detail).delete(delete))
         .route("/monitors/{id}/edit", get(edit_form).post(update))
         .route("/monitors/{id}/clone", get(clone_form))
@@ -59,7 +62,12 @@ pub fn router() -> Router<AppState> {
 /// `HX-Trigger` value that shows a toast. Non-ASCII is `\u`-escaped so the
 /// header stays valid (curly quotes, emoji in names, …).
 pub fn toast_header(message: &str, kind: &str) -> Option<HeaderValue> {
-    let json = serde_json::json!({ "vv:toast": { "message": message, "kind": kind } }).to_string();
+    trigger_header(&serde_json::json!({ "vv:toast": { "message": message, "kind": kind } }))
+}
+
+/// `HX-Trigger` value for any set of events (escaped like [`toast_header`]).
+pub fn trigger_header(events: &serde_json::Value) -> Option<HeaderValue> {
+    let json = events.to_string();
     let mut out = String::with_capacity(json.len());
     for c in json.chars() {
         if c.is_ascii() && !c.is_ascii_control() {
@@ -553,6 +561,20 @@ struct FormEnv {
     remote_browsers: Vec<(i64, String)>,
 }
 
+/// Every notification channel, for the channel pickers.
+fn channel_options(conn: &Connection) -> rusqlite::Result<Vec<ChannelOption>> {
+    Ok(db_notifications::list_channels(conn)?
+        .into_iter()
+        .map(|c| ChannelOption {
+            id: c.id,
+            name: c.name,
+            kind_label: crate::notification::provider(&c.kind).map_or_else(|| c.kind.clone(), |p| p.tr_label().to_string()),
+            kind: c.kind,
+            active: c.active,
+        })
+        .collect())
+}
+
 fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<FormEnv> {
     let excluded: Vec<i64> = match editing {
         Some(m) => {
@@ -567,16 +589,7 @@ fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<Fo
         .filter(|m| m.monitor_type == MonitorType::Group && !excluded.contains(&m.id))
         .map(|m| (m.id, m.name))
         .collect();
-    let channels: Vec<ChannelOption> = db_notifications::list_channels(conn)?
-        .into_iter()
-        .map(|c| ChannelOption {
-            id: c.id,
-            name: c.name,
-            kind_label: crate::notification::provider(&c.kind).map_or_else(|| c.kind.clone(), |p| p.tr_label().to_string()),
-            kind: c.kind,
-            active: c.active,
-        })
-        .collect();
+    let channels = channel_options(conn)?;
     let tags = db_tags::list_tags(conn)?;
     let has_agents: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM agents)", [], |r| r.get(0))?;
     let child_count = match editing {
@@ -1181,16 +1194,7 @@ async fn bulk(
         return Err(ApiError::bad_request(crate::i18n::t("monitor_form.bulk_bad_action")));
     }
 
-    let ids: Vec<i64> = if form.all.as_deref() == Some("true") {
-        let query = DashQuery::parse(Some(&form.filter));
-        let (monitors, tags) = state
-            .with_conn(|c| Ok((db_monitors::list_monitors_with_status(c)?, db_tags::tags_by_monitor(c)?)))
-            .await?;
-        let data = build_dashboard(&monitors, tags, &DashQuery { select: true, ..query }, true);
-        data.rows.iter().map(|r| r.id).collect()
-    } else {
-        form.ids.clone()
-    };
+    let ids = selected_ids(&state, form.all.as_deref() == Some("true"), &form.filter, &form.ids).await?;
     if ids.is_empty() {
         return Ok(respond(flash(jar, "info", crate::i18n::t("monitor_form.bulk_none")), &back));
     }
@@ -1240,6 +1244,227 @@ async fn bulk(
     };
     let kind = if n == 0 { "info" } else { "success" };
     Ok(respond(flash(jar, kind, message), &back))
+}
+
+/// The monitors a bulk action targets: the ticked `ids` (first occurrence
+/// order), or with `all` every monitor the dashboard shows for `filter`.
+async fn selected_ids(state: &AppState, all: bool, filter: &str, ids: &[i64]) -> ApiResult<Vec<i64>> {
+    if all {
+        let query = DashQuery::parse(Some(filter));
+        let (monitors, tags) = state
+            .with_conn(|c| Ok((db_monitors::list_monitors_with_status(c)?, db_tags::tags_by_monitor(c)?)))
+            .await?;
+        let data = build_dashboard(&monitors, tags, &DashQuery { select: true, ..query }, true);
+        return Ok(data.rows.iter().map(|r| r.id).collect());
+    }
+    let mut out: Vec<i64> = Vec::with_capacity(ids.len());
+    for id in ids {
+        if !out.contains(id) {
+            out.push(*id);
+        }
+    }
+    Ok(out)
+}
+
+// ===========================================================================
+// Bulk edit (select mode → "Edit…" sheet)
+// ===========================================================================
+
+/// The bulk edit sheet's fields (`partials/bulk_edit_fields.html`).
+pub struct BulkSheet {
+    pub v: bulk_edit::BulkValues,
+    pub errors: Errors,
+    /// Callout text when `errors` isn't empty.
+    pub error_summary: String,
+    pub channels: Vec<ChannelOption>,
+    pub tags: Vec<Tag>,
+    pub palette: Vec<(&'static str, String)>,
+    pub has_agents: bool,
+}
+
+impl BulkSheet {
+    pub fn err(&self, field: &str) -> &str {
+        self.errors.get(field).map(String::as_str).unwrap_or("")
+    }
+
+    fn channel_ids(&self) -> Vec<i64> {
+        self.channels.iter().map(|c| c.id).collect()
+    }
+
+    fn tag_ids(&self) -> Vec<i64> {
+        self.tags.iter().map(|t| t.id).collect()
+    }
+}
+
+/// An empty sheet with the current channels and tags.
+pub(crate) fn load_bulk_sheet(conn: &Connection) -> rusqlite::Result<BulkSheet> {
+    Ok(BulkSheet {
+        v: bulk_edit::BulkValues {
+            new_tag_color: db_tags::DEFAULT_COLOR.into(),
+            ..bulk_edit::BulkValues::default()
+        },
+        errors: Errors::new(),
+        error_summary: String::new(),
+        channels: channel_options(conn)?,
+        tags: db_tags::list_tags(conn)?,
+        palette: palette_options(),
+        has_agents: conn.query_row("SELECT EXISTS(SELECT 1 FROM agents)", [], |r| r.get(0))?,
+    })
+}
+
+#[derive(Template)]
+#[template(path = "partials/bulk_edit_fields.html")]
+struct BulkFieldsTemplate {
+    b: BulkSheet,
+}
+
+/// After a bulk edit: the results without select mode, plus out-of-band
+/// swaps for the page header and the (now empty) bulk bar.
+#[derive(Template)]
+#[template(path = "partials/bulk_edit_done.html")]
+struct BulkDoneTemplate {
+    data: super::dashboard::DashboardData,
+}
+
+/// Selection fields of the bulk form (`ids`, `all`, `filter`, `return_to`).
+struct BulkSelection {
+    ids: Vec<i64>,
+    all: bool,
+    filter: String,
+    return_to: String,
+}
+
+impl BulkSelection {
+    fn from_pairs(p: &Pairs) -> Self {
+        BulkSelection {
+            ids: p.all("ids").iter().filter_map(|v| v.trim().parse().ok()).collect(),
+            all: p.flag("all"),
+            filter: p.text("filter"),
+            return_to: p.raw("return_to").unwrap_or_default().to_string(),
+        }
+    }
+
+    /// The dashboard state to go back to (select mode off).
+    fn back_query(&self) -> DashQuery {
+        let back = safe_return(&self.return_to, "/");
+        let query = back.split_once('?').map(|(_, q)| q);
+        DashQuery {
+            select: false,
+            ..DashQuery::parse(query)
+        }
+    }
+}
+
+/// htmx answer that only shows a toast (nothing is swapped).
+fn toast_only(message: &str, kind: &str) -> Response {
+    let mut res = StatusCode::OK.into_response();
+    if let Some(v) = toast_header(message, kind) {
+        res.headers_mut().insert("hx-trigger", v);
+    }
+    res.headers_mut().insert("hx-reswap", HeaderValue::from_static("none"));
+    res
+}
+
+async fn bulk_edit(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    headers: HeaderMap,
+    axum_extra::extract::Form(pairs): axum_extra::extract::Form<Vec<(String, String)>>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    let p = Pairs(pairs);
+    let sel = BulkSelection::from_pairs(&p);
+    let back = sel.back_query();
+    let htmx = is_htmx(&headers);
+    // Plain form posts (no JavaScript) come back to select mode on problems.
+    let retry_href = DashQuery { select: true, ..back.clone() }.href();
+    let notice = |jar: SignedCookieJar, message: &str, kind: &str| -> Response {
+        if htmx {
+            toast_only(message, kind)
+        } else {
+            (flash(jar, kind, message), Redirect::to(&retry_href)).into_response()
+        }
+    };
+
+    let ids = selected_ids(&state, sel.all, &sel.filter, &sel.ids).await?;
+    if ids.is_empty() {
+        return Ok(notice(jar, crate::i18n::t("monitor_form.bulk_none"), "info"));
+    }
+    let mut sheet = state.with_conn(|c| load_bulk_sheet(c)).await?;
+    sheet.v = bulk_edit::BulkValues::from_pairs(&p, &sheet.channel_ids(), &sheet.tag_ids());
+    if sheet.v.change_count() == 0 {
+        return Ok(notice(jar, crate::i18n::t("bulk.nothing_chosen"), "info"));
+    }
+    let edit = match bulk_edit::validate(&sheet.v) {
+        Ok(edit) => edit,
+        Err(errors) => {
+            if !htmx {
+                let first = errors.values().next().cloned().unwrap_or_default();
+                return Ok(notice(jar, &first, "error"));
+            }
+            sheet.error_summary = crate::i18n::t("bulk.fix_fields").to_string();
+            sheet.errors = errors;
+            return Ok(HtmlTemplate(BulkFieldsTemplate { b: sheet }).into_response());
+        }
+    };
+
+    let outcome = state.with_conn(move |c| bulk_edit::apply(c, &ids, &edit)).await?;
+    crate::maintenance::invalidate();
+    for id in &outcome.updated {
+        state.scheduler.reload(*id).await;
+    }
+    state.notify_update();
+    tracing::info!(
+        user = %user.username,
+        updated = outcome.updated.len(),
+        skipped = outcome.skipped.len(),
+        "bulk edit applied"
+    );
+
+    let message = outcome.message();
+    let kind = if outcome.updated.is_empty() { "info" } else { "success" };
+    let back_href = back.href();
+    if !htmx {
+        return Ok((flash(jar, kind, message), Redirect::to(&back_href)).into_response());
+    }
+    let data = super::dashboard::load_dashboard_data(&state, &back, true).await?;
+    let mut res = HtmlTemplate(BulkDoneTemplate { data }).into_response();
+    let h = res.headers_mut();
+    if let Some(v) = trigger_header(&serde_json::json!({
+        "vv:toast": { "message": message, "kind": kind },
+        "vv:close-sheet": true,
+    })) {
+        h.insert("hx-trigger", v);
+    }
+    h.insert("hx-retarget", HeaderValue::from_static("#dash-results"));
+    h.insert("hx-reswap", HeaderValue::from_static("innerHTML"));
+    if let Ok(v) = HeaderValue::from_str(&back_href) {
+        h.insert("hx-push-url", v);
+    }
+    Ok(res)
+}
+
+/// htmx: the sheet's summary line for the current selection and choices.
+async fn bulk_edit_summary(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    axum_extra::extract::Form(pairs): axum_extra::extract::Form<Vec<(String, String)>>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    let p = Pairs(pairs);
+    let sel = BulkSelection::from_pairs(&p);
+    let monitors = selected_ids(&state, sel.all, &sel.filter, &sel.ids).await?.len();
+    let (channel_ids, tag_ids) = state
+        .with_conn(|c| {
+            let channels = db_notifications::list_channels(c)?.into_iter().map(|ch| ch.id).collect::<Vec<_>>();
+            let tags = db_tags::list_tags(c)?.into_iter().map(|t| t.id).collect::<Vec<_>>();
+            Ok((channels, tags))
+        })
+        .await?;
+    let v = bulk_edit::BulkValues::from_pairs(&p, &channel_ids, &tag_ids);
+    let text = bulk_edit::summary(v.change_count(), monitors);
+    Ok(axum::response::Html(super::error::escape_html(&text)).into_response())
 }
 
 // ===========================================================================

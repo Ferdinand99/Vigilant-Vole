@@ -1,5 +1,8 @@
-//! The API reference: one route table ([`ROUTES`]) drives both the
-//! `/api-docs` page and `/api/v1/openapi.json` (OpenAPI 3.1).
+//! The API reference: one route table ([`ROUTES`]) drives the `/api-docs`
+//! page, `/api/v1/openapi.json` (OpenAPI 3.1) and the Markdown version for AI
+//! assistants (`/api-docs.md`, `/llms.txt`, see [`markdown`]).
+
+mod markdown;
 
 use crate::i18n::Tr as _;
 use askama::Template;
@@ -11,13 +14,15 @@ use axum::routing::get;
 use axum_extra::extract::cookie::SignedCookieJar;
 use serde_json::{Map, Value, json};
 
-use super::json_ok;
+use super::{cached_ok, json_ok};
 use crate::api::{ApiResult, AppState, HtmlTemplate, PageCtx};
 use crate::auth::CurrentUser;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api-docs", get(page))
+        .route("/api-docs.md", get(markdown_doc))
+        .route("/llms.txt", get(llms_txt))
         .route("/api/v1/openapi.json", get(openapi))
 }
 
@@ -69,6 +74,22 @@ impl RouteDoc {
 
     pub fn is_public(&self) -> bool {
         !matches!(self.access, "viewer" | "editor" | "admin")
+    }
+
+    /// `/api/v1/config` takes and returns YAML (JSON works too).
+    pub fn is_yaml(&self) -> bool {
+        self.path == "/api/v1/config"
+    }
+
+    /// The status code of a successful call.
+    /// POST creates (201) only on a collection, i.e. a path that also lists;
+    /// actions like `/pause`, `/test` or `/bulk` answer 200.
+    pub fn success_status(&self) -> u16 {
+        match self.method {
+            "DELETE" => 204,
+            "POST" if self.path.starts_with("/api/v1/") && !self.is_yaml() && ROUTES.iter().any(|r| r.method == "GET" && r.path == self.path) => 201,
+            _ => 200,
+        }
     }
 
     /// Status class for the access badge.
@@ -198,6 +219,9 @@ pub static ROUTES: &[RouteDoc] = &[
     r("PUT", "/api/v1/monitors/{id}/tags", "editor", "Monitors", "Replace a monitor's tags (names are created if new).")
         .req(r#"["production", {"name": "env", "value": "prod"}, {"id": 4}]"#)
         .res(MONITOR_EXAMPLE),
+    r("POST", "/api/v1/monitors/bulk", "editor", "Monitors", "Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.")
+        .req(r#"{"filter": {"type": "http", "tag": "production"}, "set": {"run_on_agents": true, "confirm_with_agents": true, "interval_seconds": 120, "channels": {"add": [{"name": "Ops Discord", "escalation": false}], "remove": [3]}, "tags": {"add": [{"name": "eu", "color": "teal", "value": "west"}], "remove": ["legacy"]}}}"#)
+        .res(r#"{"updated": 38, "skipped": [{"id": 12, "reason": "agents_unsupported"}]}"#),
     // -- Tags --
     r("GET", "/api/v1/tags", "viewer", "Tags", "List tags with how many monitors use them.")
         .res(r#"{"data": [{"id": 2, "name": "production", "color": "green", "monitors": 12}], "next_cursor": null}"#),
@@ -316,12 +340,17 @@ struct DocsTemplate {
     error_example: &'static str,
 }
 
-async fn page(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, headers: HeaderMap) -> ApiResult<Response> {
-    let settings = state.settings().await?;
-    let base_url = settings.base_url.clone().unwrap_or_else(|| {
+/// This instance's address: the configured base URL, else the request's host.
+fn instance_url(base_url: Option<String>, headers: &HeaderMap) -> String {
+    base_url.unwrap_or_else(|| {
         let host = headers.get(axum::http::header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("localhost:3001");
         format!("http://{host}")
-    });
+    })
+}
+
+async fn page(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, headers: HeaderMap) -> ApiResult<Response> {
+    let settings = state.settings().await?;
+    let base_url = instance_url(settings.base_url.clone(), &headers);
     let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("docs.title"), "", "").await;
     let groups = groups()
         .into_iter()
@@ -340,6 +369,11 @@ fn path_params(path: &str) -> Vec<&str> {
     path.split('/').filter_map(|seg| seg.strip_prefix('{').and_then(|s| s.strip_suffix('}'))).collect()
 }
 
+/// JSON Schema type of a path parameter.
+fn path_param_type(name: &str) -> &'static str {
+    if matches!(name, "kind" | "token" | "slug") { "string" } else { "integer" }
+}
+
 fn example(text: &str) -> Value {
     serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
 }
@@ -354,7 +388,7 @@ pub fn openapi_document(server_url: &str) -> Value {
         op.insert("operationId".into(), json!(r.anchor()));
         let mut params: Vec<Value> = path_params(r.path)
             .into_iter()
-            .map(|p| json!({"name": p, "in": "path", "required": true, "schema": {"type": if p == "kind" || p == "token" || p == "slug" { "string" } else { "integer" }}}))
+            .map(|p| json!({"name": p, "in": "path", "required": true, "schema": {"type": path_param_type(p)}}))
             .collect();
         for q in r.query {
             let (name, desc) = q.split_once(':').unwrap_or((q, ""));
@@ -364,8 +398,7 @@ pub fn openapi_document(server_url: &str) -> Value {
             op.insert("parameters".into(), Value::Array(params));
         }
         if !r.request.is_empty() {
-            let is_yaml = r.path == "/api/v1/config";
-            let content = if is_yaml {
+            let content = if r.is_yaml() {
                 json!({
                     "application/yaml": {"schema": {"type": "string"}, "example": r.request},
                     "application/json": {"schema": {"type": "object"}},
@@ -375,18 +408,14 @@ pub fn openapi_document(server_url: &str) -> Value {
             };
             op.insert("requestBody".into(), json!({"required": true, "content": content}));
         }
-        let ok_code = match (r.method, r.path.ends_with('}')) {
-            ("POST", false) if r.path.starts_with("/api/v1/") && !r.path.ends_with("/config") => "201",
-            ("DELETE", _) => "204",
-            _ => "200",
-        };
+        let ok_code = r.success_status().to_string();
         let mut ok = json!({"description": "Success"});
         if !r.response.is_empty() {
-            let ct = if r.path == "/api/v1/config" && r.method == "GET" { "application/yaml" } else { "application/json" };
+            let ct = if r.is_yaml() && r.method == "GET" { "application/yaml" } else { "application/json" };
             ok["content"] = json!({ ct: {"example": example(r.response)} });
         }
         let mut responses = Map::new();
-        responses.insert(ok_code.into(), ok);
+        responses.insert(ok_code, ok);
         if !r.is_public() {
             responses.insert("401".into(), json!({"$ref": "#/components/responses/Error"}));
             responses.insert("403".into(), json!({"$ref": "#/components/responses/Error"}));
@@ -439,4 +468,16 @@ pub fn openapi_document(server_url: &str) -> Value {
 async fn openapi(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> ApiResult<Response> {
     let server = state.settings().await?.base_url.unwrap_or_else(|| "/".into());
     Ok(json_ok(&headers, &openapi_document(&server)))
+}
+
+/// The reference as Markdown, for AI assistants.
+async fn markdown_doc(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> ApiResult<Response> {
+    let base_url = instance_url(state.settings().await?.base_url, &headers);
+    Ok(cached_ok(&headers, markdown::document(&base_url).into_bytes(), "text/markdown; charset=utf-8"))
+}
+
+/// The same document at the conventional `llms.txt` address.
+async fn llms_txt(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> ApiResult<Response> {
+    let base_url = instance_url(state.settings().await?.base_url, &headers);
+    Ok(cached_ok(&headers, markdown::document(&base_url).into_bytes(), "text/plain; charset=utf-8"))
 }

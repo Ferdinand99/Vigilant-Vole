@@ -737,3 +737,130 @@ async fn grpc_keyword_monitors_compile_their_proto_on_save() {
     let html = body_text(res).await;
     assert!(html.contains("f-grpc_proto-error") && html.contains("line 3") && html.contains("is not defined"), "the compiler's message is shown");
 }
+
+// ---------------------------------------------------------------------------
+// Bulk edit
+// ---------------------------------------------------------------------------
+
+/// Inserts a monitor straight into the database (not scheduled yet).
+async fn seed(t: &TestApp, name: &str, kind: MonitorType, interval: i64) -> i64 {
+    let m = db::models::NewMonitor {
+        name: name.into(),
+        monitor_type: kind,
+        target: "127.0.0.1:9".into(),
+        interval_seconds: interval,
+        timeout_seconds: 5,
+        ..db::models::NewMonitor::default()
+    };
+    db::interact(&t.state.db, move |c| db::monitors::insert_monitor(c, &m)).await.unwrap()
+}
+
+async fn stored(t: &TestApp, id: i64) -> db::models::Monitor {
+    db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap()
+}
+
+fn header(res: &Response, name: &str) -> String {
+    res.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or_default().to_string()
+}
+
+#[tokio::test]
+async fn bulk_edit_sheet_renders_and_rerenders_with_errors() {
+    let t = app().await;
+    let app = router(&t.state, Role::Editor);
+    let id = seed(&t, "web", MonitorType::Http, 60).await;
+
+    let html = body_text(send(&app, get("/?select=1")).await).await;
+    assert!(html.contains(r#"id="bulk-edit""#) && html.contains(r#"id="bulk-edit-fields""#));
+    assert!(html.contains(r#"name="run_on_agents" value="on""#));
+    assert!(html.contains("/settings/notifications"), "no channels yet: link to settings");
+    assert!(!body_text(send(&app, get("/")).await).await.contains(r#"id="bulk-edit""#));
+
+    let res = send(&app, htmx_post("/monitors/bulk/edit", &format!("ids={id}&interval_seconds=5&retries=2"))).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(header(&res, "hx-retarget").is_empty(), "errors stay in the sheet");
+    let html = body_text(res).await;
+    assert!(html.contains("field-error") && html.contains(r#"aria-invalid="true""#), "{html}");
+    assert!(html.contains(r#"value="5""#) && html.contains(r#"value="2""#), "values kept");
+    assert_eq!(stored(&t, id).await.retries, 0, "nothing was applied");
+
+    // Nothing chosen / nothing selected: a toast, no swap.
+    let res = send(&app, htmx_post("/monitors/bulk/edit", &format!("ids={id}"))).await;
+    assert_eq!(header(&res, "hx-reswap"), "none");
+    assert!(header(&res, "hx-trigger").contains("vv:toast"));
+    let res = send(&app, htmx_post("/monitors/bulk/edit", "retries=1")).await;
+    assert_eq!(header(&res, "hx-reswap"), "none");
+
+    // The summary line.
+    let res = send(&app, htmx_post("/monitors/bulk/edit/summary", &format!("ids={id}&ids={id}&retries=1&run_on_agents=off"))).await;
+    assert_eq!(body_text(res).await, "Changes 2 settings on 1 monitor");
+}
+
+#[tokio::test]
+async fn bulk_edit_applies_skips_and_reloads_changed_monitors_only() {
+    let t = app().await;
+    let app = router(&t.state, Role::Editor);
+    let web = seed(&t, "web", MonitorType::Http, 60).await;
+    let same = seed(&t, "already", MonitorType::Http, 120).await;
+    let push = seed(&t, "cron", MonitorType::Push, 60).await;
+    let group = seed(&t, "prod", MonitorType::Group, 60).await;
+    let ops = db::interact(&t.state.db, |c| db::notifications::insert_channel(c, "Ops", "discord", "{}", false)).await.unwrap();
+
+    let ids = format!("ids={web}&ids={same}&ids={push}&ids={group}");
+    let res = send(&app, htmx_post("/monitors/bulk/edit", &format!("{ids}&interval_seconds=120&return_to=%2F%3Fstatus%3Dup"))).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(header(&res, "hx-retarget"), "#dash-results");
+    assert_eq!(header(&res, "hx-push-url"), "/?status=up");
+    let trigger = header(&res, "hx-trigger");
+    assert!(trigger.contains("vv:close-sheet") && trigger.contains("Updated 2 monitors"), "{trigger}");
+    assert!(trigger.contains("skipped 1"), "{trigger}");
+    let html = body_text(res).await;
+    assert!(html.contains(r#"id="dash-head" hx-swap-oob="true""#) && html.contains(r#"id="bulk-bar" hx-swap-oob="true""#));
+    assert!(!html.contains(r#"name="select""#), "select mode is over");
+    assert_eq!((stored(&t, web).await.interval_seconds, stored(&t, push).await.interval_seconds), (120, 120));
+    assert!(t.state.scheduler.is_running(web), "changed monitors are reloaded");
+    assert!(!t.state.scheduler.is_running(same), "unchanged monitors are left alone");
+
+    // Agents, a channel and a new tag.
+    let body = format!("{ids}&run_on_agents=on&confirm_with_agents=on&channel_{ops}=add&new_tag_name=eu&new_tag_color=teal&new_tag_value=west");
+    let res = send(&app, htmx_post("/monitors/bulk/edit", &body)).await;
+    let trigger = header(&res, "hx-trigger");
+    assert!(trigger.contains("Updated 4 monitors") && trigger.contains("skipped 2 (agents can"), "{trigger}");
+    let w = stored(&t, web).await;
+    assert!(w.run_on_agents && w.confirm_with_agents);
+    assert!(!stored(&t, push).await.run_on_agents);
+    let (links, tags) = db::interact(&t.state.db, move |c| {
+        Ok((db::notifications::monitor_channel_links(c, group)?, db::tags::tags_for_monitor(c, push)?))
+    })
+    .await
+    .unwrap();
+    assert_eq!(links, vec![(ops, false)]);
+    assert_eq!((tags[0].name.as_str(), tags[0].color.as_str(), tags[0].value.as_str()), ("eu", "teal", "west"));
+
+    // Without JavaScript: flash and redirect back.
+    let res = send(&app, post_form("/monitors/bulk/edit", &format!("ids={web}&retries=4&return_to=%2F"))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location(&res), "/");
+    assert_eq!(stored(&t, web).await.retries, 4);
+    t.state.scheduler.shutdown().await;
+}
+
+#[tokio::test]
+async fn bulk_edit_all_matching_the_filter_and_roles() {
+    let t = app().await;
+    let app = router(&t.state, Role::Editor);
+    let tcp = seed(&t, "db", MonitorType::Tcp, 60).await;
+    let http = seed(&t, "web", MonitorType::Http, 60).await;
+    let res = send(&app, htmx_post("/monitors/bulk/edit", &format!("ids={http}&all=true&filter=type%3Dtcp&retries=3"))).await;
+    assert!(header(&res, "hx-trigger").contains("Updated 1 monitor"));
+    assert_eq!((stored(&t, tcp).await.retries, stored(&t, http).await.retries), (3, 0));
+
+    let viewer = router(&t.state, Role::Viewer);
+    for uri in ["/monitors/bulk/edit", "/monitors/bulk/edit/summary"] {
+        let res = send(&viewer, htmx_post(uri, &format!("ids={tcp}&retries=5"))).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN, "{uri}");
+    }
+    assert_eq!(stored(&t, tcp).await.retries, 3);
+    let html = body_text(send(&viewer, get("/?select=1")).await).await;
+    assert!(!html.contains(r#"id="bulk-edit""#), "viewers never get select mode");
+    t.state.scheduler.shutdown().await;
+}

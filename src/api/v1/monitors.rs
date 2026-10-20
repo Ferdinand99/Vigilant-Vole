@@ -13,6 +13,9 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::{Body, Id, Params, V1Error, V1Result, created, json_ok, limit, no_content, paginate, parse_cursor};
+use bulk::bulk;
+
+mod bulk;
 use crate::api::AppState;
 use crate::api::monitors::form::{self, ChannelMode, FormContext, FormValues};
 use crate::auth::{CurrentUser, Role};
@@ -26,6 +29,7 @@ use crate::notification::SECRET_MASK;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/monitors", get(list).post(create))
+        .route("/monitors/bulk", post(bulk))
         .route("/monitors/{id}", get(show).put(replace).patch(patch).delete(remove))
         .route("/monitors/{id}/pause", post(pause))
         .route("/monitors/{id}/resume", post(resume))
@@ -123,18 +127,48 @@ struct ListQuery {
     cursor: Option<String>,
 }
 
+/// The list filters (also the bulk endpoint's `filter`).
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MonitorFilter {
+    status: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    tag: Option<String>,
+    q: Option<String>,
+}
+
+impl MonitorFilter {
+    /// Rejects unknown statuses and types; `prefix` goes before field names.
+    fn check(&self, prefix: &str) -> V1Result<()> {
+        if let Some(s) = &self.status
+            && !["up", "down", "pending", "maintenance", "paused", "unknown"].contains(&s.as_str())
+        {
+            return Err(V1Error::field(&format!("{prefix}status"), "Use up, down, pending, maintenance, paused or unknown."));
+        }
+        if let Some(t) = &self.kind
+            && MonitorType::parse(t).is_none()
+        {
+            return Err(V1Error::field(&format!("{prefix}type"), format!("Unknown monitor type “{t}”.")));
+        }
+        Ok(())
+    }
+
+    fn matches(&self, m: &Monitor, status: Option<HeartbeatStatus>, tags: &[MonitorTag]) -> bool {
+        let needle = self.q.as_deref().map(str::to_lowercase).filter(|s| !s.is_empty());
+        self.status.as_deref().is_none_or(|s| status_label(m, status) == s)
+            && self.kind.as_deref().is_none_or(|k| m.monitor_type.as_str() == k)
+            && self.tag.as_deref().is_none_or(|t| tags.iter().any(|x| x.name.eq_ignore_ascii_case(t)))
+            && needle.as_deref().is_none_or(|n| {
+                m.name.to_lowercase().contains(n) || m.target.to_lowercase().contains(n) || m.description.to_lowercase().contains(n)
+            })
+    }
+}
+
 async fn list(state: axum::extract::State<AppState>, user: CurrentUser, headers: HeaderMap, Params(q): Params<ListQuery>) -> V1Result<Response> {
     let cursor = parse_cursor(q.cursor.as_deref())?;
-    if let Some(s) = &q.status
-        && !["up", "down", "pending", "maintenance", "paused", "unknown"].contains(&s.as_str())
-    {
-        return Err(V1Error::field("status", "Use up, down, pending, maintenance, paused or unknown."));
-    }
-    if let Some(t) = &q.kind
-        && MonitorType::parse(t).is_none()
-    {
-        return Err(V1Error::field("type", format!("Unknown monitor type “{t}”.")));
-    }
+    let filter = MonitorFilter { status: q.status.clone(), kind: q.kind.clone(), tag: q.tag.clone(), q: q.q.clone() };
+    filter.check("")?;
     let can_edit = user.can_edit();
     let rows = state
         .with_conn(move |c| {
@@ -150,19 +184,9 @@ async fn list(state: axum::extract::State<AppState>, user: CurrentUser, headers:
         })
         .await?;
     let (monitors, tags, links) = rows;
-    let needle = q.q.as_deref().map(str::to_lowercase).filter(|s| !s.is_empty());
     let mut items: Vec<(i64, Value)> = monitors
         .into_iter()
-        .filter(|row| {
-            let m = &row.monitor;
-            let tag_list = tags.get(&m.id).map(Vec::as_slice).unwrap_or_default();
-            q.status.as_deref().is_none_or(|s| status_label(m, row.status) == s)
-                && q.kind.as_deref().is_none_or(|k| m.monitor_type.as_str() == k)
-                && q.tag.as_deref().is_none_or(|t| tag_list.iter().any(|x| x.name.eq_ignore_ascii_case(t)))
-                && needle.as_deref().is_none_or(|n| {
-                    m.name.to_lowercase().contains(n) || m.target.to_lowercase().contains(n) || m.description.to_lowercase().contains(n)
-                })
-        })
+        .filter(|row| filter.matches(&row.monitor, row.status, tags.get(&row.monitor.id).map(Vec::as_slice).unwrap_or_default()))
         .map(|row| {
             let m = &row.monitor;
             let v = monitor_json(
