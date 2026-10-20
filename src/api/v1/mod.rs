@@ -207,10 +207,14 @@ pub fn paginate<T: Serialize>(items: Vec<T>, id: impl Fn(&T) -> i64, cursor: Opt
 
 /// 200 JSON with a weak ETag; 304 when `If-None-Match` matches.
 pub fn json_ok<T: Serialize>(headers: &HeaderMap, value: &T) -> Response {
-    let body = match serde_json::to_vec(value) {
-        Ok(b) => b,
-        Err(e) => return V1Error::internal(e).into_response(),
-    };
+    match serde_json::to_vec(value) {
+        Ok(body) => cached_ok(headers, body, "application/json"),
+        Err(e) => V1Error::internal(e).into_response(),
+    }
+}
+
+/// 200 `body` as `content_type` with a weak ETag; 304 when `If-None-Match` matches.
+pub fn cached_ok(headers: &HeaderMap, body: Vec<u8>, content_type: &'static str) -> Response {
     let digest = Sha256::digest(&body);
     let etag = format!("W/\"{}\"", hex::encode(&digest[..12]));
     let matches = headers
@@ -220,7 +224,7 @@ pub fn json_ok<T: Serialize>(headers: &HeaderMap, value: &T) -> Response {
     let mut res = if matches {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
-        ([(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body).into_response()
+        ([(header::CONTENT_TYPE, HeaderValue::from_static(content_type))], body).into_response()
     };
     if let Ok(v) = HeaderValue::from_str(&etag) {
         res.headers_mut().insert(header::ETAG, v);

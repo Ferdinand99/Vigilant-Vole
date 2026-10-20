@@ -458,6 +458,29 @@ async fn openapi_document_lists_every_route() {
     assert_eq!(ops, ROUTES.len());
     assert!(doc["paths"]["/api/v1/monitors/{id}"]["patch"]["requestBody"].is_object());
     assert_eq!(doc["paths"]["/api/push/{token}"]["get"]["security"], json!([]));
+    // Creates answer 201, actions 200.
+    for (path, code) in [("/api/v1/monitors", "201"), ("/api/v1/status-pages/{id}/incidents", "201"), ("/api/v1/monitors/bulk", "200"), ("/api/v1/monitors/{id}/pause", "200"), ("/api/v1/notification-channels/{id}/test", "200"), ("/api/v1/config", "200")] {
+        assert!(doc["paths"][path]["post"]["responses"][code].is_object(), "POST {path} → {code}");
+    }
+}
+
+#[tokio::test]
+async fn documented_success_codes_match_the_server() {
+    let h = harness().await;
+    let res = h.call(Method::POST, "/api/v1/tags", &h.editor, Some(json!({"name": "web"}))).await;
+    assert_eq!(res.status().as_u16(), ROUTES.iter().find(|r| r.method == "POST" && r.path == "/api/v1/tags").unwrap().success_status());
+    let (status, monitor) = h.json(Method::POST, "/api/v1/monitors", &h.editor, Some(http_monitor("Docs"))).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = monitor["id"].as_i64().unwrap();
+    for (method, path, uri, body) in [
+        ("POST", "/api/v1/monitors/{id}/pause", format!("/api/v1/monitors/{id}/pause"), None),
+        ("POST", "/api/v1/monitors/bulk", "/api/v1/monitors/bulk".to_string(), Some(json!({"ids": [id], "set": {"retries": 2}}))),
+        ("DELETE", "/api/v1/monitors/{id}", format!("/api/v1/monitors/{id}"), None),
+    ] {
+        let doc = ROUTES.iter().find(|r| r.method == method && r.path == path).unwrap();
+        let res = h.call(Method::from_bytes(method.as_bytes()).unwrap(), &uri, &h.editor, body).await;
+        assert_eq!(res.status().as_u16(), doc.success_status(), "{method} {path}");
+    }
 }
 
 #[test]
@@ -540,6 +563,53 @@ async fn docs_and_backup_pages_render_for_the_right_roles() {
     assert!(res.headers()[header::CONTENT_DISPOSITION].to_str().unwrap().contains("vigilant-vole-backup-"));
     let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
     assert!(kuma_import_magic(&bytes));
+}
+
+#[tokio::test]
+async fn markdown_reference_follows_the_docs_page_access_and_caches() {
+    let h = harness().await;
+    for uri in ["/api-docs", "/api-docs.md", "/llms.txt"] {
+        // Signed out, even with an API token (tokens only work under /api/): the login page.
+        for token in ["", h.viewer.as_str()] {
+            let res = h.call(Method::GET, uri, token, None).await;
+            assert_eq!(res.status(), StatusCode::SEE_OTHER, "{uri}");
+            let next = url::form_urlencoded::byte_serialize(uri.as_bytes()).collect::<String>();
+            assert_eq!(res.headers()[header::LOCATION], format!("/login?next={next}").as_str());
+        }
+    }
+
+    let mut viewer = Browser::login(&h, "viewer").await;
+    let (status, html) = viewer.get("/api-docs").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("class=\"card ai-strip\"") && html.contains("data-copy-url=\"/api-docs.md\""));
+    assert!(html.contains("Copy for AI") && html.contains("Hand it the whole API in one paste."));
+
+    let res = viewer.send(Request::builder().uri("/api-docs.md"), ReqBody::empty()).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "text/markdown; charset=utf-8");
+    assert!(res.headers()[header::CACHE_CONTROL].to_str().unwrap().contains("no-cache"));
+    let etag = res.headers()[header::ETAG].clone();
+    let markdown = String::from_utf8(to_bytes(res.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert!(markdown.starts_with("# Vigilant Vole API\n"));
+    assert!(markdown.contains("- API base URL: http://vole.test/api/v1\n"));
+
+    let req = Request::builder().uri("/api-docs.md").header(header::IF_NONE_MATCH, etag.clone());
+    let res = viewer.send(req, ReqBody::empty()).await;
+    assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(res.headers()[header::ETAG], etag);
+
+    let res = viewer.send(Request::builder().uri("/llms.txt"), ReqBody::empty()).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "text/plain; charset=utf-8");
+    assert_eq!(res.headers()[header::ETAG], etag);
+    assert_eq!(to_bytes(res.into_body(), usize::MAX).await.unwrap(), markdown.as_bytes());
+
+    // The configured public URL wins over the request's host.
+    let (status, _) = h.json(Method::PATCH, "/api/v1/settings", &h.admin, Some(json!({"base_url": "https://status.example.com"}))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, markdown) = viewer.get("/api-docs.md").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(markdown.contains("export VV_URL=\"https://status.example.com\"") && !markdown.contains("vole.test"));
 }
 
 fn kuma_import_magic(bytes: &[u8]) -> bool {
@@ -933,4 +1003,102 @@ async fn auth_method_none_switches_basic_auth_off() {
     let (status, _) = h.json(Method::PATCH, &uri, &h.editor, Some(json!({"interval_seconds": 120}))).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(stored(&h).await.auth_method, "basic");
+}
+
+// ---------------------------------------------------------------------------
+// Bulk edit
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn bulk_edit_by_ids_and_filter() {
+    let h = harness().await;
+    let mut ids = Vec::new();
+    for body in [
+        http_monitor("Web"),
+        json!({"name": "Cron", "monitor_type": "push"}),
+        json!({"name": "Prod", "monitor_type": "group"}),
+        json!({"name": "DB", "monitor_type": "tcp", "target": "127.0.0.1:5432", "tags": ["db"]}),
+    ] {
+        let (status, m) = h.json(Method::POST, "/api/v1/monitors", &h.editor, Some(body)).await;
+        assert_eq!(status, StatusCode::CREATED, "{m}");
+        ids.push(m["id"].as_i64().unwrap());
+    }
+    let (_, ch) = h
+        .json(Method::POST, "/api/v1/notification-channels", &h.editor, Some(json!({"name": "Ops", "kind": "discord", "config": {"url": "https://discord.com/api/webhooks/1/x"}})))
+        .await;
+    let ops = ch["id"].as_i64().unwrap();
+
+    let body = json!({
+        "ids": ids[..3],
+        "set": {
+            "run_on_agents": true,
+            "interval_seconds": 120,
+            "channels": {"add": [{"name": "ops"}]},
+            "tags": {"add": [{"name": "eu", "color": "teal", "value": "west"}]},
+        },
+    });
+    let (status, out) = h.json(Method::POST, "/api/v1/monitors/bulk", &h.editor, Some(body)).await;
+    assert_eq!(status, StatusCode::OK, "{out}");
+    assert_eq!(out["updated"], 3);
+    let skipped = out["skipped"].as_array().unwrap();
+    assert!(skipped.contains(&json!({"id": ids[1], "reason": "agents_unsupported"})), "{out}");
+    assert!(skipped.contains(&json!({"id": ids[2], "reason": "timing_unsupported"})), "{out}");
+    let (_, web) = h.json(Method::GET, &format!("/api/v1/monitors/{}", ids[0]), &h.viewer, None).await;
+    assert_eq!((web["interval_seconds"].as_i64(), web["run_on_agents"].as_bool()), (Some(120), Some(true)));
+    assert_eq!(web["notifications"], json!([{"channel_id": ops, "escalation": false}]));
+    assert_eq!(web["tags"][0]["name"], "eu");
+
+    // Every monitor matching a filter (the list's semantics: tag by name).
+    let body = json!({"filter": {"tag": "DB"}, "set": {"retries": 4, "tags": {"remove": ["db"]}}});
+    let (status, out) = h.json(Method::POST, "/api/v1/monitors/bulk", &h.editor, Some(body)).await;
+    assert_eq!((status, out["updated"].as_i64()), (StatusCode::OK, Some(1)));
+    let (_, db) = h.json(Method::GET, &format!("/api/v1/monitors/{}", ids[3]), &h.viewer, None).await;
+    assert_eq!((db["retries"].as_i64(), db["tags"].as_array().map(Vec::len)), (Some(4), Some(0)));
+
+    // Replace channels with an escalation one: skipped without a delay.
+    let body = json!({"ids": [ids[0]], "set": {"channels": {"replace": [{"id": ops, "escalation": true}]}}});
+    let (_, out) = h.json(Method::POST, "/api/v1/monitors/bulk", &h.editor, Some(body)).await;
+    assert_eq!(out["skipped"], json!([{"id": ids[0], "reason": "escalation_needs_delay"}]));
+}
+
+#[tokio::test]
+async fn bulk_edit_validation_and_roles() {
+    let h = harness().await;
+    let post = |token: &str, body: Value| {
+        let token = token.to_string();
+        let h = &h;
+        async move { h.json(Method::POST, "/api/v1/monitors/bulk", &token, Some(body)).await }
+    };
+    let set = json!({"retries": 1});
+    let (status, _) = post(&h.viewer, json!({"ids": [1], "set": set})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = post(&h.admin_read, json!({"ids": [1], "set": set})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let cases = [
+        (json!({"set": set}), "ids"),
+        (json!({"ids": [1], "filter": {}, "set": set}), "ids"),
+        (json!({"ids": [1]}), "set"),
+        (json!({"ids": [1], "set": {}}), "set"),
+        (json!({"ids": [1], "set": {"interval_seconds": 5}}), "set.interval_seconds"),
+        (json!({"ids": [1], "set": {"interval_seconds": 30, "timeout_seconds": 60}}), "set.timeout_seconds"),
+        (json!({"ids": [1], "set": {"retries": "two"}}), "set.retries"),
+        (json!({"ids": [1], "set": {"color": "red"}}), "set.color"),
+        (json!({"ids": [1], "set": {"run_on_agents": "yes"}}), "set.run_on_agents"),
+        (json!({"ids": [1], "set": {"channels": {"add": ["Nope"]}}}), "set.channels.add"),
+        (json!({"ids": [1], "set": {"channels": {"add": [1], "replace": []}}}), "set.channels"),
+        (json!({"ids": [1], "set": {"tags": {"remove": ["missing"]}}}), "set.tags.remove"),
+        (json!({"ids": [1], "set": {"tags": {"add": [{"name": "x".repeat(80)}]}}}), "set.tags.add"),
+        (json!({"filter": {"status": "sideways"}, "set": set}), "filter.status"),
+        (json!({"filter": {"colour": "red"}, "set": set}), "filter"),
+        (json!({"ids": [1], "set": set, "dry_run": true}), "dry_run"),
+    ];
+    for (body, field) in cases {
+        let (status, err) = post(&h.editor, body.clone()).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body} → {err}");
+        assert!(err["error"]["fields"].get(field).is_some(), "{body}: expected {field} in {err}");
+    }
+    // Unknown ids are simply not there to change.
+    let (status, out) = post(&h.editor, json!({"ids": [424242], "set": set})).await;
+    assert_eq!((status, out["updated"].as_i64()), (StatusCode::OK, Some(0)));
 }

@@ -1,0 +1,8 @@
+{#- Answer to a successful bulk edit (htmx): the results region without select
+    mode, the page header and an empty bulk bar (both out of band). -#}
+{% import "macros.html" as m %}
+{% include "partials/monitor_results.html" %}
+<div id="dash-head" hx-swap-oob="true">
+{% include "partials/dashboard_head.html" %}
+</div>
+<div id="bulk-bar" hx-swap-oob="true"></div>

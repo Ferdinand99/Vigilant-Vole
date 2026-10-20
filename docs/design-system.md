@@ -483,7 +483,7 @@ Page-level (state in the URL — preferred): `<nav class="tabs"><a class="tab" h
 `api/error.rs` renders bare 404/500 pages as `body.error-page > main.container > .card.empty-state > h1 + p + p > a.btn`; style.css turns that into a centred card with the app mark, so keep that markup if it changes.
 
 ### Misc
-- Copy field (shown-once tokens): `{{ m::copy_field("new-token", &token) }}`; any button: `data-copy="#element-id"` (copies its value/text) or `data-copy-text="literal"`; label flips to "Copied" (override with `data-copied-label`).
+- Copy field (shown-once tokens): `{{ m::copy_field("new-token", &token) }}`; any button: `data-copy="#element-id"` (copies its value/text) or `data-copy-text="literal"`; label flips to "Copied" (override with `data-copied-label`). Large documents: `data-copy-url="/api-docs.md"` fetches the URL and copies the response (success/error toast; when the clipboard is unavailable or denied it downloads the file as `data-download-name` instead) — the API reference's **Copy for AI** button (`.card.ai-strip`).
 - Code: inline `<code>`, block `<pre class="code"><code>…</code></pre>`. Keys: `<kbd>`.
 - Avatar: `{{ m::avatar(&u.initials, "sm"|"lg") }}` → `.avatar`.
 - Relative time: `{{ m::time_ago(&row.checked_at) }}` → `<time datetime="2026-10-19 14:03:00" data-relative>` ("3 minutes ago", refreshed every 30s; DB UTC format, zone assumed UTC; future times read "in 3 days").
@@ -514,12 +514,14 @@ Page-level (state in the URL — preferred): `<nav class="tabs"><a class="tab" h
 | `data-show-when="field=a,b"` / `"field!=a"` | Show the element only for those values of the named control in the same form; hidden controls are disabled (not submitted, not validated) |
 | `data-kv` (+ `data-kv-rows`, `template[data-kv-template]`, `data-kv-add`, `data-kv-remove`, optional `data-kv-json="#hidden"`) | Key–value row editor. With `data-kv-json` the rows are serialised as a JSON object into the hidden input (give it `disabled` in markup so it only submits when JS runs, and add a `<noscript><textarea name="…">` fallback if needed). Without it, give the row inputs names like `header_name[]`. |
 | `data-copy="#id"` / `data-copy-text="…"` (+ `data-copied-label`) | Copy to clipboard |
+| `data-copy-url="/path"` (+ `data-download-name`) | Fetch a document and copy it; downloads it when the clipboard is unavailable |
 | `time[data-relative]` | Relative time |
 | `data-tip="…"` | Tooltip |
 | `data-sortable`, `data-sortable-item`, `data-sortable-handle`, `data-id`, `data-sortable-group`, `data-sortable-name`, `data-sortable-label` | Sortable lists, `vv:reorder` event |
 | `data-theme-set="auto|light|dark"` | Theme switch (already in the account menu) |
 | `form[data-warn-unsaved]` | Prompt before leaving with edits |
 | `data-no-progress` | Don't show the global progress bar for requests from inside this element |
+| `data-requires-checked="selector"` | The element stays `disabled` until a checkbox matching the selector is ticked (dashboard bulk "Edit…"); re-checked on every change, after swaps and on back/forward |
 | `data-toast="kind"` | Server-rendered toast (the layout uses it for `ctx.flash`) |
 | `input[data-password-strength]` + `[data-strength-meter]` + `[data-strength-label]` (same `.field`) | Password strength meter and hint |
 | `data-detect-timezone` (+ `[data-timezone-label]`) | Fill a time zone field from the browser |
@@ -587,7 +589,7 @@ Askama 0.16 notes (these bite):
 
 `<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#NAME"></use></svg>` or `{{ m::icon("NAME") }}`. Sizes: default 1.25em, `.icon-sm` (1em), `.icon-lg` (24px), `.icon-xl` (32px). Drawn for this project on a 24px grid, 1.5px stroke, `currentColor`.
 
-`dashboard pulse heart globe wrench gear bell user users lock shield shield-check key server plug archive plus minus pencil trash copy pause play chevron-right chevron-left chevron-down chevron-up chevron-up-down check x alert alert-circle info check-circle x-circle circle-dashed clock calendar search filter sliders sort tag link external refresh more grip menu logout sun moon theme-auto box dns bolt chart chart-bar eye eye-off megaphone code mail send download upload logo`
+`dashboard pulse heart globe wrench gear bell user users lock shield shield-check key server plug archive plus minus pencil trash copy pause play chevron-right chevron-left chevron-down chevron-up chevron-up-down check x alert alert-circle info check-circle x-circle circle-dashed clock calendar search filter sliders sort tag link external refresh more grip menu logout sun moon theme-auto box dns bolt sparkle chart chart-bar eye eye-off megaphone code mail send download upload logo`
 
 Suggested mapping: monitors `pulse`, status pages `globe`, maintenance `wrench`, settings `gear`/`sliders`, notifications `bell`, users `users`, security `shield`, tokens `key`, agents `server`, integrations `plug`, backup `archive`, incidents `megaphone`, Docker `box`, DNS `dns`, push `bolt`, API `code`, email `mail`, webhook `link`, Telegram/test send `send`, pending `circle-dashed`.
 

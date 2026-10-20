@@ -54,7 +54,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **30 monitor types** — HTTP(S), HTTP keyword, HTTP JSON query (JSONPath), TCP port, ICMP ping, Tailscale ping, DNS (9 record types, custom resolver), push/heartbeat, Docker container, WebSocket, domain expiry (RDAP), NTP, Steam game server, game server (Minecraft Java and Bedrock, Satisfactory, FiveM/RedM, Mumble), **TLS handshake, SMTP, Redis, PostgreSQL, MySQL/MariaDB, MQTT, Kafka, RabbitMQ, gRPC health, gRPC keyword, RADIUS, SNMP (v1/v2c/v3), SQL Server, MongoDB, real browser**, and groups
 - **Real-browser checks** — load a page in a headless Chromium (browserless, chromedp/headless-shell) over the DevTools protocol: status, text or CSS selector, JavaScript errors, desktop or mobile viewport, and a screenshot of the last failure. The browser runs as its own container, so this image stays small — see [docs/real-browser.md](docs/real-browser.md)
 - **TLS certificate and domain expiry** warnings, configurable per monitor
-- **Groups and tags** — nest monitors under group monitors (status = worst child), colour-coded tags with values, search and filters, bulk actions, clone
+- **Groups and tags** — nest monitors under group monitors (status = worst child), colour-coded tags with values, search and filters, clone, and bulk actions: select monitors (or every one matching a filter) to pause, resume, delete or **edit them together** — remote agents, check interval and timing, notification channels and tags — also via `POST /api/v1/monitors/bulk`
 - **Maintenance windows** — manual, one-off, daily or weekly (any time zone, across midnight); monitors record *maintenance* and stay quiet
 
 **Alerting**
@@ -369,7 +369,7 @@ Labels: `enable` (required), `name`, `type`, `target`, `interval`, `retries`, `t
 
 ## 🔌 REST API
 
-The browsable reference is at **`/api-docs`** in the app, and **`/api/v1/openapi.json`** is the OpenAPI 3.1 version. Create a token under **Settings → API tokens** (`read` = viewer, `write` = your role; expiry 30/90/365 days or never):
+The browsable reference is at **`/api-docs`** in the app, **`/api/v1/openapi.json`** is the OpenAPI 3.1 version, and **`/api-docs.md`** (or `/llms.txt`) is the whole API as one Markdown document for AI assistants — **Copy for AI** on the reference page copies it. Create a token under **Settings → API tokens** (`read` = viewer, `write` = your role; expiry 30/90/365 days or never):
 
 ```bash
 curl -H "Authorization: Bearer vv_…" https://status.example.com/api/v1/monitors?status=down

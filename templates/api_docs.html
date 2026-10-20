@@ -7,6 +7,15 @@
   <a class="btn btn-primary" href="/settings/tokens">{{ m::icon("key") }}<span>{{ tr("docs.create_token") }}</span></a>
 {% endcall %}
 
+<section class="card ai-strip" aria-labelledby="ai-strip-text">
+  <span class="ai-strip-icon" aria-hidden="true">{{ m::icon("sparkle") }}</span>
+  <p class="ai-strip-text" id="ai-strip-text"><strong>{{ tr("docs.ai_lead") }}</strong> {{ tr("docs.ai_text") }}</p>
+  <div class="ai-strip-actions">
+    <a class="btn btn-plain btn-sm" href="/api-docs.md" target="_blank" rel="noopener">{{ m::icon("external") }}<span>{{ tr("docs.open_markdown") }}</span></a>
+    <button type="button" class="btn btn-secondary btn-sm" data-copy-url="/api-docs.md" data-download-name="vigilant-vole-api.md">{{ m::icon("copy") }}<span>{{ tr("docs.copy_for_ai") }}</span></button>
+  </div>
+</section>
+
 <nav class="chips chips-scroll" aria-label="{{ tr("docs.sections") }}">
   <a class="chip" href="#getting-started">{{ tr("docs.getting_started") }}</a>
   {%- for g in groups %}

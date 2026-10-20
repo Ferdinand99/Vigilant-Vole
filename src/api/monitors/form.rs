@@ -503,6 +503,59 @@ fn int_in(errors: &mut Errors, field: &'static str, raw: &str, min: i64, max: i6
     }
 }
 
+// -- shared field rules (the monitor form and bulk edit) --------------------
+
+/// `interval_seconds`: the check interval.
+pub(crate) fn check_interval(e: &mut Errors, raw: &str) -> Option<i64> {
+    int_in(e, "interval_seconds", raw, MIN_INTERVAL, MAX_INTERVAL, crate::i18n::t("validation.what_interval"))
+}
+
+/// `retries`: failed checks before a monitor counts as down.
+pub(crate) fn check_retries(e: &mut Errors, raw: &str) -> Option<i64> {
+    int_in(e, "retries", raw, 0, MAX_RETRIES, crate::i18n::t("validation.what_retries"))
+}
+
+/// `retry_interval_seconds` (a value; the form treats "" as "same as the interval").
+pub(crate) fn check_retry_interval(e: &mut Errors, raw: &str) -> Option<i64> {
+    int_in(
+        e,
+        "retry_interval_seconds",
+        raw,
+        MIN_INTERVAL,
+        MAX_INTERVAL,
+        crate::i18n::t("validation.what_retry_interval"),
+    )
+}
+
+/// `timeout_seconds`: how long one check may take.
+pub(crate) fn check_timeout(e: &mut Errors, raw: &str) -> Option<i64> {
+    int_in(e, "timeout_seconds", raw, 1, MAX_TIMEOUT, crate::i18n::t("validation.what_timeout"))
+}
+
+/// Whether a check with this timeout fits in the interval.
+pub(crate) fn timeout_fits(timeout: i64, interval: i64) -> bool {
+    timeout <= interval
+}
+
+/// Flags `timeout_seconds` when the timeout is longer than the interval.
+pub(crate) fn check_timeout_fits(e: &mut Errors, timeout: i64, interval: i64) {
+    if !timeout_fits(timeout, interval) {
+        e.insert("timeout_seconds", crate::i18n::t("validation.timeout_gt_interval").into());
+    }
+}
+
+/// Why a tag name can't be used (`None` when it can; empty names are the caller's business).
+pub(crate) fn tag_name_error(name: &str) -> Option<String> {
+    (name.trim().chars().count() > db_tags::MAX_NAME_LEN)
+        .then(|| crate::i18n::tf("validation.tag_name_long", &[("max", &db_tags::MAX_NAME_LEN.to_string())]))
+}
+
+/// Why a tag value can't be used (`None` when it can).
+pub(crate) fn tag_value_error(value: &str) -> Option<String> {
+    (value.chars().count() > db_tags::MAX_VALUE_LEN)
+        .then(|| crate::i18n::tf("validation.tag_value_long", &[("max", &db_tags::MAX_VALUE_LEN.to_string())]))
+}
+
 fn non_empty(s: &str) -> Option<String> {
     let t = s.trim();
     (!t.is_empty()).then(|| t.to_string())
@@ -950,30 +1003,20 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
 
     // -- timing ----------------------------------------------------------
     if kind != MonitorType::Group {
-        if let Some(i) = int_in(&mut e, "interval_seconds", &v.interval, MIN_INTERVAL, MAX_INTERVAL, crate::i18n::t("validation.what_interval")) {
+        if let Some(i) = check_interval(&mut e, &v.interval) {
             m.interval_seconds = i;
         }
-        m.retries = int_in(&mut e, "retries", &v.retries, 0, MAX_RETRIES, crate::i18n::t("validation.what_retries")).unwrap_or(m.retries);
+        m.retries = check_retries(&mut e, &v.retries).unwrap_or(m.retries);
     }
     if kind.is_active_check() {
         m.retry_interval_seconds = match v.retry_interval.trim() {
             "" => None,
-            raw => int_in(
-                &mut e,
-                "retry_interval_seconds",
-                raw,
-                MIN_INTERVAL,
-                MAX_INTERVAL,
-                crate::i18n::t("validation.what_retry_interval"),
-            ),
+            raw => check_retry_interval(&mut e, raw),
         };
-        if let Some(t) = int_in(&mut e, "timeout_seconds", &v.timeout, 1, MAX_TIMEOUT, crate::i18n::t("validation.what_timeout")) {
+        if let Some(t) = check_timeout(&mut e, &v.timeout) {
             m.timeout_seconds = t;
-            if !e.contains_key("interval_seconds") && t > m.interval_seconds {
-                e.insert(
-                    "timeout_seconds",
-                    crate::i18n::t("validation.timeout_gt_interval").into(),
-                );
+            if !e.contains_key("interval_seconds") {
+                check_timeout_fits(&mut e, t, m.interval_seconds);
             }
         }
     }
@@ -1198,36 +1241,29 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         if !cx.tag_ids.contains(id) {
             continue;
         }
-        if value.chars().count() > db_tags::MAX_VALUE_LEN {
-            e.insert(
-                "tags",
-                crate::i18n::tf("validation.tag_value_long", &[("max", &db_tags::MAX_VALUE_LEN.to_string())]),
-            );
+        if let Some(msg) = tag_value_error(value) {
+            e.insert("tags", msg);
         }
         tags.push((*id, value.trim().to_string()));
     }
     let new_tag = match v.new_tag_name.trim() {
         "" => None,
-        name if name.chars().count() > db_tags::MAX_NAME_LEN => {
-            e.insert(
-                "new_tag_name",
-                crate::i18n::tf("validation.tag_name_long", &[("max", &db_tags::MAX_NAME_LEN.to_string())]),
-            );
-            None
-        }
-        name => {
-            if v.new_tag_value.chars().count() > db_tags::MAX_VALUE_LEN {
-                e.insert(
-                    "new_tag_name",
-                    crate::i18n::tf("validation.tag_value_long", &[("max", &db_tags::MAX_VALUE_LEN.to_string())]),
-                );
+        name => match tag_name_error(name) {
+            Some(msg) => {
+                e.insert("new_tag_name", msg);
+                None
             }
-            Some((
-                name.to_string(),
-                db_tags::normalize_color(&v.new_tag_color).to_string(),
-                v.new_tag_value.trim().to_string(),
-            ))
-        }
+            None => {
+                if let Some(msg) = tag_value_error(&v.new_tag_value) {
+                    e.insert("new_tag_name", msg);
+                }
+                Some((
+                    name.to_string(),
+                    db_tags::normalize_color(&v.new_tag_color).to_string(),
+                    v.new_tag_value.trim().to_string(),
+                ))
+            }
+        },
     };
 
     if e.is_empty() {

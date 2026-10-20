@@ -1,0 +1,28 @@
+{#- Dashboard page header (inside #dash-head). Only `data` is in scope, so the
+    bulk edit response can re-render it out of band when select mode ends. -#}
+{% import "macros.html" as m %}
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">{{ tr("dashboard.title") }}</h1>
+      {%- if data.select_mode %}
+      <p class="page-sub">{{ tr("dashboard.select_sub") }}</p>
+      {%- else if data.total_all > 0 %}
+      <p class="page-sub">{{ m::live() }}</p>
+      {%- endif %}
+    </div>
+    <div class="page-actions">
+      {%- if data.select_mode %}
+      <a class="btn btn-secondary" href="{{ data.exit_select_href() }}">{{ tr("common.done") }}</a>
+      {%- else %}
+      {{ m::link_button("/tags", tr("dashboard.tags"), "secondary", "tag") }}
+      {%- if data.can_edit && data.total_all > 0 %}
+      <a class="btn btn-secondary" href="/?{{ data.qs }}{% if !data.qs.is_empty() %}&amp;{% endif %}select=1">{{ m::icon("check-circle") }}<span>{{ tr("dashboard.select") }}</span></a>
+      {%- endif %}
+      {%- if data.can_edit %}
+      {{ m::link_button("/monitors/new", tr("dashboard.new_monitor"), "primary", "plus") }}
+      {%- endif %}
+      {%- endif %}
+    </div>
+  </div>
+</header>

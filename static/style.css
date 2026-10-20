@@ -1938,6 +1938,46 @@ a.stat:active {
   overflow-wrap: anywhere;
 }
 
+/* "Copy for AI" strip under the API reference header */
+.ai-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+  padding: 14px 16px;
+}
+.ai-strip-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: var(--info-fill);
+  color: var(--info-text);
+}
+.ai-strip-icon .icon {
+  width: 20px;
+  height: 20px;
+}
+.ai-strip-text {
+  flex: 1 1 18rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.ai-strip-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.ai-strip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
 /* Timeline / event log */
 .timeline {
   margin: 0;
@@ -4276,6 +4316,18 @@ html.is-sorting * {
   }
   .page-actions .btn-icon {
     flex: none;
+  }
+  .ai-strip {
+    align-items: flex-start;
+  }
+  .ai-strip-text {
+    flex-basis: calc(100% - 36px - var(--sp-4));
+  }
+  .ai-strip-actions {
+    flex: 1 1 100%;
+  }
+  .ai-strip-actions .btn {
+    flex: 1 1 auto;
   }
   /* .btn-collapse: icon-only on phones (give it an aria-label) */
   .btn-collapse {

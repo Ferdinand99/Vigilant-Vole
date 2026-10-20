@@ -590,6 +590,8 @@ struct DashboardTemplate {
     filters: FilterOptions,
     statuses: [(&'static str, &'static str); 6],
     sorts: [Sort; 5],
+    /// The "Edit…" sheet (select mode only).
+    bulk: Option<super::monitors::BulkSheet>,
 }
 
 /// The live results region (wrapper with the SSE connection + list).
@@ -622,6 +624,11 @@ async fn dashboard(
         return Ok(HtmlTemplate(ResultsTemplate { data }).into_response());
     }
     let tags = state.with_conn(|c| db_tags::list_tags(c)).await?;
+    let bulk = if data.select_mode {
+        Some(state.with_conn(|c| super::monitors::load_bulk_sheet(c)).await?)
+    } else {
+        None
+    };
     let mut present: Vec<MonitorType> = Vec::new();
     let monitors_types = state
         .with_conn(|c| {
@@ -648,6 +655,7 @@ async fn dashboard(
             filters,
             statuses: STATUS_FILTERS,
             sorts: Sort::ALL,
+            bulk,
         }),
     )
         .into_response())
