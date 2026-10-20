@@ -21,6 +21,9 @@
     {%- if !n.body_html.is_empty() %}
     <div class="incident-body prose">{{ n.body_html|safe }}</div>
     {%- endif %}
+    {%- if !n.updates.is_empty() %}
+    <div class="incident-body">{{ m::incident_updates(&n.updates) }}</div>
+    {%- endif %}
   </article>
   {%- endfor %}
 
@@ -103,6 +106,7 @@
                 {%- if !n.body_html.is_empty() %}
                 <div class="timeline-text">{{ n.body_html|safe }}</div>
                 {%- endif %}
+                {{ m::incident_updates(&n.updates) }}
               </div>
             </li>
             {%- endfor %}

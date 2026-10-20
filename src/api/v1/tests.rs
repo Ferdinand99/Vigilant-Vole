@@ -342,6 +342,26 @@ async fn status_pages_sections_and_incidents() {
     let (_, inc) = h.json(Method::PATCH, &format!("/api/v1/status-pages/{pid}/incidents/{iid}"), &h.editor, Some(json!({"resolved": true, "severity": "success"}))).await;
     assert!(inc["resolved_at"].is_string());
     assert_eq!(h.json(Method::POST, &format!("/api/v1/status-pages/{pid}/incidents"), &h.editor, Some(json!({"title": "x", "severity": "meh"}))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // The incident timeline: a non-resolving update reopens, a resolving one resolves.
+    let updates = format!("/api/v1/status-pages/{pid}/incidents/{iid}/updates");
+    let (status, u) = h.json(Method::POST, &updates, &h.editor, Some(json!({"status": "monitoring", "body": "Watching"}))).await;
+    assert_eq!((status, u["status"].as_str(), u["body"].as_str()), (StatusCode::CREATED, Some("monitoring"), Some("Watching")), "{u}");
+    let uid = u["id"].as_i64().unwrap();
+    let (_, inc) = h.json(Method::GET, &format!("/api/v1/status-pages/{pid}/incidents/{iid}"), &h.viewer, None).await;
+    assert!(inc["resolved_at"].is_null(), "an update that isn't 'resolved' reopens: {inc}");
+    assert_eq!(inc["updates"].as_array().map(Vec::len), Some(1));
+    h.json(Method::POST, &updates, &h.editor, Some(json!({"status": "resolved", "body": "Fixed"}))).await;
+    let (_, list) = h.json(Method::GET, &updates, &h.viewer, None).await;
+    assert_eq!(list["data"][0]["status"], "resolved", "newest first: {list}");
+    for bad in [json!({"status": "nope", "body": "x"}), json!({"status": "resolved", "body": " "}), json!({"body": "x"})] {
+        let (status, err) = h.json(Method::POST, &updates, &h.editor, Some(bad)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    }
+    assert_eq!(h.json(Method::POST, &updates, &h.viewer, Some(json!({"status": "resolved", "body": "x"}))).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(h.json(Method::POST, &format!("/api/v1/status-pages/{pid}/incidents/9999/updates"), &h.editor, Some(json!({"status": "resolved", "body": "x"}))).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(h.call(Method::DELETE, &format!("{updates}/{uid}"), &h.editor, None).await.status(), StatusCode::NO_CONTENT);
+    assert_eq!(h.call(Method::DELETE, &format!("{updates}/{uid}"), &h.editor, None).await.status(), StatusCode::NOT_FOUND);
     assert_eq!(h.call(Method::DELETE, &format!("/api/v1/status-pages/{pid}"), &h.editor, None).await.status(), StatusCode::NO_CONTENT);
 }
 

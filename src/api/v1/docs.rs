@@ -272,6 +272,10 @@ pub static ROUTES: &[RouteDoc] = &[
     r("PATCH", "/api/v1/status-pages/{id}/incidents/{iid}", "editor", "Status pages", "Update an incident; resolved: true resolves it, false reopens it.")
         .req(r#"{"body": "Fixed.", "severity": "success", "resolved": true}"#),
     r("DELETE", "/api/v1/status-pages/{id}/incidents/{iid}", "editor", "Status pages", "Delete an incident."),
+    r("GET", "/api/v1/status-pages/{id}/incidents/{iid}/updates", "viewer", "Status pages", "List an incident's updates, newest first."),
+    r("POST", "/api/v1/status-pages/{id}/incidents/{iid}/updates", "editor", "Status pages", "Post an update to an incident (status: investigating, identified, monitoring, resolved). A resolved update resolves the incident; any other status reopens it.")
+        .req(r#"{"status": "identified", "body": "A bad deploy. Rolling back."}"#),
+    r("DELETE", "/api/v1/status-pages/{id}/incidents/{iid}/updates/{uid}", "editor", "Status pages", "Delete one update."),
     // -- Maintenance --
     r("GET", "/api/v1/maintenance", "viewer", "Maintenance", "List maintenance windows with their current state."),
     r("POST", "/api/v1/maintenance", "editor", "Maintenance", "Create a window. Times: start_at/end_at in UTC, time_from/time_to local to timezone, weekdays ISO (1 = Monday). Strategies: manual, once, daily, weekly, interval (interval_days, counted from start_at), monthly (month_days like 1,15,-1) and cron (cron + duration_minutes).")

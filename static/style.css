@@ -1903,6 +1903,37 @@ a.stat:active {
   overflow-wrap: anywhere;
   text-wrap: pretty;
 }
+.incident-updates {
+  display: grid;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  padding-inline-start: var(--sp-4);
+  border-inline-start: 2px solid var(--line-strong);
+  list-style: none;
+}
+.incident-update-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+.incident-update-status {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.incident-update-time {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.incident-update-body {
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.incident-update.status-update-resolved .incident-update-status {
+  color: var(--ok-text);
+}
 .incident-actions {
   display: flex;
   flex-wrap: wrap;

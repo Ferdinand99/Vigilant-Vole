@@ -42,6 +42,8 @@ pub fn router() -> Router<AppState> {
         .route("/status-pages/{id}/incidents", get(incidents).post(create_incident))
         .route("/status-pages/{id}/incidents/{iid}", post(update_incident).delete(delete_incident))
         .route("/status-pages/{id}/incidents/{iid}/edit", get(incident_form))
+        .route("/status-pages/{id}/incidents/{iid}/updates", post(post_incident_update))
+        .route("/status-pages/{id}/incidents/{iid}/updates/{uid}", delete(delete_incident_update))
         .route("/status-pages/{id}/incidents/{iid}/resolve", post(resolve_incident))
         .route("/status-pages/{id}/incidents/{iid}/reopen", post(reopen_incident))
         .route("/status-pages/{id}/analytics", post(save_analytics))
@@ -1042,6 +1044,9 @@ struct IncidentRow {
     incident: Incident,
     body_html: String,
     meta: String,
+    updates: Vec<super::public_status::UpdateView>,
+    /// Base of the update endpoints for this incident.
+    updates_url: String,
 }
 
 #[derive(Template)]
@@ -1095,10 +1100,13 @@ async fn incidents(
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
-    let (page, list, settings) = state
+    let (page, list, mut timelines, settings) = state
         .with_conn(move |c| {
             let page = db_pages::get(c, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
-            Ok((page, db_incidents::list_for_page(c, id)?, crate::db::settings::load(c)?))
+            let list = db_incidents::list_for_page(c, id)?;
+            let ids: Vec<i64> = list.iter().map(|i| i.id).collect();
+            let timelines = db_incidents::updates_for(c, &ids)?;
+            Ok((page, list, timelines, crate::db::settings::load(c)?))
         })
         .await?;
     let tz = super::public_status::site_tz(&settings.timezone);
@@ -1114,9 +1122,25 @@ async fn incidents(
                     &[("when", &super::public_status::fmt_local(r, &tz))],
                 ));
             }
+            let updates = timelines
+                .remove(&i.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|u| super::public_status::UpdateView {
+                    id: u.id,
+                    label: u.status_label(),
+                    time: super::public_status::fmt_local(&u.created_at, &tz),
+                    body_html: super::public_status::markdown::render(&u.body),
+                    status: u.status,
+                    posted_at: u.created_at,
+                    body: u.body,
+                })
+                .collect();
             IncidentRow {
                 body_html: super::public_status::markdown::render(&i.body),
                 meta,
+                updates,
+                updates_url: format!("/status-pages/{id}/incidents/{}/updates", i.id),
                 incident: i,
             }
         })
@@ -1244,6 +1268,74 @@ async fn reopen_incident(
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
     set_resolved(&state, jar, id, iid, false).await
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateInput {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    body: String,
+}
+
+/// Longest update text, in characters.
+const UPDATE_MAX: usize = 5_000;
+
+/// Validates an update: a known status and some text.
+fn validate_update(input: UpdateInput) -> Result<(String, String), ApiError> {
+    let status = input.status.trim().to_string();
+    if !db_incidents::UPDATE_STATUSES.contains(&status.as_str()) {
+        return Err(ApiError::bad_request(crate::i18n::t("inc.err_update_status")));
+    }
+    let body = input.body.trim().to_string();
+    if body.is_empty() {
+        return Err(ApiError::bad_request(crate::i18n::t("inc.err_update_body")));
+    }
+    if body.chars().count() > UPDATE_MAX {
+        return Err(ApiError::bad_request(crate::i18n::tf(
+            "inc.err_update_long",
+            &[("max", &crate::i18n::fmt_int(UPDATE_MAX as i64))],
+        )));
+    }
+    Ok((status, body))
+}
+
+async fn post_incident_update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, iid)): Path<(i64, i64)>,
+    Form(input): Form<UpdateInput>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    let back = format!("/status-pages/{id}/incidents#incident-{iid}");
+    let (status, body) = match validate_update(input) {
+        Ok(v) => v,
+        Err(e) => return Ok((flash(jar, "error", e.public_message()), Redirect::to(&back)).into_response()),
+    };
+    if state
+        .with_conn(move |c| db_incidents::add_update(c, id, iid, &status, &body))
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound);
+    }
+    state.notify_update();
+    Ok((flash(jar, "success", crate::i18n::t("inc.update_posted")), Redirect::to(&back)).into_response())
+}
+
+async fn delete_incident_update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, iid, uid)): Path<(i64, i64, i64)>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    if !state.with_conn(move |c| db_incidents::delete_update(c, id, iid, uid)).await? {
+        return Err(ApiError::NotFound);
+    }
+    state.notify_update();
+    Ok(hx_refresh(flash(jar, "success", crate::i18n::t("inc.update_deleted"))))
 }
 
 async fn delete_incident(

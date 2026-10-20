@@ -13,8 +13,11 @@
 pub mod access;
 pub mod analytics;
 pub mod assets;
+pub mod feed;
 #[cfg(test)]
 mod extras_tests;
+#[cfg(test)]
+mod incident_updates_tests;
 
 use crate::i18n::Tr as _;
 use std::collections::HashMap;
@@ -55,6 +58,7 @@ pub fn public_router() -> Router<AppState> {
     Router::new()
         .route("/status/{slug}", get(page))
         .route("/status/{slug}/fragment", get(fragment))
+        .route("/status/{slug}/feed.xml", get(feed::feed))
         .route("/status/{slug}/unlock", axum::routing::post(access::unlock))
         .route("/status/{slug}/analytics.js", get(analytics::analytics_js))
         .route("/api/status-page/{slug}", get(json_summary))
@@ -288,6 +292,25 @@ pub struct NoticeView {
     #[serde(skip)]
     pub body_html: String,
     pub body: String,
+    /// Incident timeline, newest first (empty for maintenance notices).
+    pub updates: Vec<UpdateView>,
+}
+
+/// One entry of an incident's timeline.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UpdateView {
+    #[serde(skip)]
+    pub id: i64,
+    /// "investigating" | "identified" | "monitoring" | "resolved".
+    pub status: String,
+    #[serde(skip)]
+    pub label: &'static str,
+    pub posted_at: String,
+    #[serde(skip)]
+    pub time: String,
+    #[serde(skip)]
+    pub body_html: String,
+    pub body: String,
 }
 
 /// An automatic outage (from `monitor_events`).
@@ -506,7 +529,7 @@ fn latest_local(conn: &Connection, monitor_id: i64) -> rusqlite::Result<(Option<
     }
 }
 
-fn incident_notice(i: &Incident, tz: &TimeZone) -> NoticeView {
+fn incident_notice(i: &Incident, tz: &TimeZone, updates: &[db_incidents::IncidentUpdate]) -> NoticeView {
     let mut meta = crate::i18n::tf("inc.posted", &[("when", &fmt_local(&i.created_at, tz))]);
     if let Some(r) = &i.resolved_at {
         meta = crate::i18n::tf("inc.resolved_at", &[("when", &fmt_local(r, tz))]);
@@ -521,6 +544,18 @@ fn incident_notice(i: &Incident, tz: &TimeZone) -> NoticeView {
         meta,
         body_html: String::new(),
         body: i.body.clone(),
+        updates: updates
+            .iter()
+            .map(|u| UpdateView {
+                id: u.id,
+                status: u.status.clone(),
+                label: u.status_label(),
+                posted_at: u.created_at.clone(),
+                time: fmt_local(&u.created_at, tz),
+                body_html: String::new(),
+                body: u.body.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -539,6 +574,9 @@ fn render_markdown(mut view: PublicView) -> PublicView {
         .chain(view.history.iter_mut().flat_map(|d| d.incidents.iter_mut()));
     for n in notices {
         n.body_html = markdown::render(&n.body);
+        for u in &mut n.updates {
+            u.body_html = markdown::render(&u.body);
+        }
     }
     view.footer_html = view.page.footer_text.as_deref().map(markdown::render).unwrap_or_default();
     view
@@ -649,13 +687,16 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
             meta,
             body_html: String::new(),
             body: w.description,
+            updates: Vec::new(),
         });
     }
 
-    let pinned = db_incidents::list_pinned_open(conn, page.id)?
-        .iter()
-        .map(|i| incident_notice(i, &tz))
-        .collect();
+    let pinned_open = db_incidents::list_pinned_open(conn, page.id)?;
+    let history_incidents = db_incidents::list_history(conn, page.id, &maintenance::fmt_db_ts(now - jiff::SignedDuration::from_hours(24 * HISTORY_DAYS)))?;
+    let update_ids: Vec<i64> = pinned_open.iter().chain(&history_incidents).map(|i| i.id).collect();
+    let timelines = db_incidents::updates_for(conn, &update_ids)?;
+    let updates_of = |i: &Incident| timelines.get(&i.id).map(Vec::as_slice).unwrap_or(&[]).to_vec();
+    let pinned = pinned_open.iter().map(|i| incident_notice(i, &tz, &updates_of(i))).collect();
 
     // History: past announcements + automatic outages, grouped by local day.
     let since_14 = maintenance::fmt_db_ts(now - jiff::SignedDuration::from_hours(24 * HISTORY_DAYS));
@@ -677,9 +718,9 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
         Some(buckets.len() - 1)
     };
     let mut history_items: Vec<(usize, Result<NoticeView, OutageView>)> = Vec::new();
-    for i in db_incidents::list_history(conn, page.id, &since_14)? {
+    for i in history_incidents {
         if let Some(b) = bucket(&i.created_at) {
-            history_items.push((b, Ok(incident_notice(&i, &tz))));
+            history_items.push((b, Ok(incident_notice(&i, &tz, &updates_of(&i)))));
         }
     }
     for e in events.iter().filter(|e| e.started_at.as_str() >= since_14.as_str()) {

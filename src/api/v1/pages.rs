@@ -29,6 +29,8 @@ pub fn router() -> Router<AppState> {
             "/status-pages/{id}/incidents/{iid}",
             get(show_incident).put(update_incident).patch(update_incident).delete(delete_incident),
         )
+        .route("/status-pages/{id}/incidents/{iid}/updates", get(list_updates).post(post_update))
+        .route("/status-pages/{id}/incidents/{iid}/updates/{uid}", axum::routing::delete(delete_update))
         .layer(axum::middleware::from_fn(crate::api::public_status::invalidate_after_writes))
 }
 
@@ -408,8 +410,66 @@ async fn list_incidents(State(state): State<AppState>, _user: CurrentUser, heade
 }
 
 async fn show_incident(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id((id, iid)): Id<(i64, i64)>) -> V1Result<Response> {
-    let incident = state.with_conn(move |c| db_incidents::get(c, id, iid)).await?.ok_or_else(V1Error::not_found)?;
-    Ok(json_ok(&headers, &incident))
+    let (incident, updates) = state
+        .with_conn(move |c| match db_incidents::get(c, id, iid)? {
+            Some(i) => db_incidents::list_updates(c, iid).map(|u| Some((i, u))),
+            None => Ok(None),
+        })
+        .await?
+        .ok_or_else(V1Error::not_found)?;
+    let mut value = serde_json::to_value(&incident).unwrap_or_else(|_| json!({}));
+    value["updates"] = serde_json::to_value(&updates).unwrap_or_else(|_| json!([]));
+    Ok(json_ok(&headers, &value))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateIn {
+    status: Option<String>,
+    body: Option<String>,
+}
+
+async fn list_updates(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id((id, iid)): Id<(i64, i64)>) -> V1Result<Response> {
+    let updates = state
+        .with_conn(move |c| match db_incidents::get(c, id, iid)? {
+            Some(_) => db_incidents::list_updates(c, iid).map(Some),
+            None => Ok(None),
+        })
+        .await?
+        .ok_or_else(V1Error::not_found)?;
+    Ok(json_ok(&headers, &json!({ "data": updates, "next_cursor": null })))
+}
+
+async fn post_update(State(state): State<AppState>, user: CurrentUser, Id((id, iid)): Id<(i64, i64)>, Body(input): Body<UpdateIn>) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    let status = input.status.as_deref().map(str::trim).unwrap_or_default().to_string();
+    if !db_incidents::UPDATE_STATUSES.contains(&status.as_str()) {
+        return Err(V1Error::field("status", "Use investigating, identified, monitoring or resolved."));
+    }
+    let body = input.body.as_deref().map(str::trim).unwrap_or_default().to_string();
+    if body.is_empty() {
+        return Err(V1Error::field("body", "Write what changed."));
+    }
+    if body.chars().count() > 5_000 {
+        return Err(V1Error::field("body", "Keep the update to 5,000 characters or fewer."));
+    }
+    let update = state
+        .with_conn(move |c| match db_incidents::add_update(c, id, iid, &status, &body)? {
+            Some(uid) => Ok(db_incidents::list_updates(c, iid)?.into_iter().find(|u| u.id == uid)),
+            None => Ok(None),
+        })
+        .await?
+        .ok_or_else(V1Error::not_found)?;
+    state.notify_update();
+    Ok(created(format!("/api/v1/status-pages/{id}/incidents/{iid}/updates/{}", update.id), &update))
+}
+
+async fn delete_update(State(state): State<AppState>, user: CurrentUser, Id((id, iid, uid)): Id<(i64, i64, i64)>) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    if !state.with_conn(move |c| db_incidents::delete_update(c, id, iid, uid)).await? {
+        return Err(V1Error::not_found());
+    }
+    state.notify_update();
+    Ok(no_content())
 }
 
 async fn create_incident(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>, Body(input): Body<IncidentIn>) -> V1Result<Response> {

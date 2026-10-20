@@ -63,7 +63,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Multi-location remote agents** — run checks from other networks and **only alert when agents confirm the outage**
 
 **Sharing**
-- **Status pages** — Apple-style public pages with sections, 90-day uptime bars, incidents (Markdown, pinned), scheduled maintenance, light/dark/auto theme, custom CSS, **custom domains**, logo and icon, password protection, built-in cookie-free analytics, embeddable JSON
+- **Status pages** — Apple-style public pages with sections, 90-day uptime bars, incidents (Markdown, pinned) with a status timeline of updates (investigating → identified → monitoring → resolved) and an **Atom feed** per page, scheduled maintenance, light/dark/auto theme, custom CSS, **custom domains**, logo and icon, password protection, built-in cookie-free analytics, embeddable JSON
 - **SVG badges** — status, uptime, response time and certificate expiry
 
 **Operating it**
@@ -119,7 +119,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Multi-location checks / outage confirmation | ✅ remote agents | ❌ |
 | Status pages, custom domains, badges | ✅ | ✅ |
 | Status page logo upload, analytics, password protection | ✅ incl. built-in, cookie-free analytics | Logo and analytics ✅ · password protection ❌ |
-| Incidents | Multiple per page, pinned, history | One active incident per page |
+| Incidents | Multiple per page, pinned, history, update timeline, Atom feed | One active incident per page |
 | Maintenance windows | ✅ manual, once, daily, weekly, every N days, days of the month, cron | ✅ the same |
 | Multiple users with roles | ✅ admin / editor / viewer | ❌ single user |
 | 2FA (TOTP) | ✅ + recovery codes | ✅ |
@@ -313,7 +313,7 @@ Events: down, up (with downtime), reminder, escalation, certificate expiring, do
 
 ## 📊 Status pages and badges
 
-**Status pages** → New page. Each page has sections of monitors (drag to reorder), an overall status banner, 90-day uptime bars, optional response times and tags, incidents (Markdown, severity, pinned, history), the maintenance windows you attach, a theme (auto/light/dark), custom CSS, footer text, and an auto-refresh interval.
+**Status pages** → New page. Each page has sections of monitors (drag to reorder), an overall status banner, 90-day uptime bars, optional response times and tags, incidents (Markdown, severity, pinned, history, a timeline of updates, and an Atom feed at `/status/<slug>/feed.xml`), the maintenance windows you attach, a theme (auto/light/dark), custom CSS, footer text, and an auto-refresh interval.
 
 - **Logo and browser icon**: upload PNG, JPEG, WebP or ICO (up to 1 MB; SVG is refused) in the page's Settings tab. Files are checked by content, kept in the database (backups stay one file) and served at `/status/<slug>/logo` and `/favicon`
 - **Password protection**: give a page a password and visitors get an unlock form; the unlock lasts 30 days in that browser (a signed, `HttpOnly` cookie for that page only) and changing or removing the password signs everyone out. While locked, the live refresh, the JSON and badges of monitors that are only on protected pages stay private. Signed-in users skip the lock
