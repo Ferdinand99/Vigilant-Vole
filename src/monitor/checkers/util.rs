@@ -147,20 +147,76 @@ pub fn split_host_port(target: &str, default_port: Option<u16>) -> Result<(Strin
     }
 }
 
-/// Resolve `host:port` to the first socket address.
+/// Resolve `host:port` to the first socket address. For UDP probes, which
+/// can't tell a dead address from a slow one; TCP checkers use
+/// [`resolve_all`] + [`connect_any`].
 pub async fn resolve(host: &str, port: u16) -> Result<SocketAddr, String> {
+    resolve_all(host, port).await.map(|addrs| addrs[0])
+}
+
+/// Resolve `host:port` to every socket address, in the resolver's order
+/// (never empty on success).
+pub async fn resolve_all(host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
     if let Ok(ip) = host.parse::<IpAddr>() {
-        return Ok(SocketAddr::new(ip, port));
+        return Ok(vec![SocketAddr::new(ip, port)]);
     }
     match tokio::net::lookup_host((host, port)).await {
-        Ok(mut addrs) => addrs
-            .next()
-            .ok_or_else(|| format!("Could not resolve \"{host}\": no addresses")),
+        Ok(addrs) => {
+            let mut list: Vec<SocketAddr> = Vec::new();
+            for addr in addrs {
+                if !list.contains(&addr) {
+                    list.push(addr);
+                }
+            }
+            if list.is_empty() {
+                Err(format!("Could not resolve \"{host}\": no addresses"))
+            } else {
+                Ok(list)
+            }
+        }
         Err(err) => Err(format!(
             "Could not resolve \"{host}\": {}",
             tidy_io_error(&err)
         )),
     }
+}
+
+/// How long an address gets before the next one is tried alongside it.
+const CONNECT_STAGGER: Duration = Duration::from_millis(250);
+
+/// Open a TCP connection to the first of `addrs` that accepts, in their
+/// order. `localhost` often resolves to `::1` first while a service listens
+/// on IPv4 only, so the next address starts as soon as one fails, or after
+/// [`CONNECT_STAGGER`] if it hasn't answered yet (Happy Eyeballs, RFC 8305:
+/// Windows takes about two seconds to report a refused connection, and a
+/// black-holed address never does); the first connection wins and the
+/// others are dropped. The caller's timeout bounds the whole thing. `Err` =
+/// the last address that failed and its error.
+pub async fn connect_any(addrs: &[SocketAddr]) -> Result<(tokio::net::TcpStream, SocketAddr), (SocketAddr, std::io::Error)> {
+    use futures_util::StreamExt as _;
+    use futures_util::stream::FuturesUnordered;
+
+    let attempt = |addr: SocketAddr| async move { (addr, tokio::net::TcpStream::connect(addr).await) };
+    let mut rest = addrs.iter().copied();
+    let mut running = FuturesUnordered::new();
+    running.extend(rest.next().map(attempt));
+    let mut last = None;
+    while !running.is_empty() {
+        tokio::select! {
+            Some((addr, result)) = running.next() => match result {
+                Ok(tcp) => return Ok((tcp, addr)),
+                Err(err) => {
+                    last = Some((addr, err));
+                    running.extend(rest.next().map(attempt));
+                }
+            },
+            () = tokio::time::sleep(CONNECT_STAGGER), if rest.len() > 0 => running.extend(rest.next().map(attempt)),
+        }
+    }
+    Err(last.unwrap_or_else(|| {
+        let none = SocketAddr::from(([0, 0, 0, 0], 0));
+        (none, std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, "no addresses"))
+    }))
 }
 
 /// Friendly text for common I/O errors.
@@ -286,5 +342,49 @@ mod tests {
         assert_eq!(format_secs(Duration::from_secs(10)), "10s");
         assert_eq!(format_secs(Duration::from_millis(1500)), "1.5s");
         assert_eq!(format_secs(Duration::from_millis(250)), "250ms");
+    }
+
+    fn closed_port() -> SocketAddr {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap()
+    }
+
+    #[tokio::test]
+    async fn connect_any_moves_past_refused_addresses() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let open = listener.local_addr().unwrap();
+        let dead = closed_port();
+        let (_, used) = connect_any(&[dead, open]).await.unwrap();
+        assert_eq!(used, open);
+
+        let other = closed_port();
+        let (addr, err) = connect_any(&[dead, other]).await.unwrap_err();
+        assert_eq!(addr, other, "the last error is reported");
+        assert_eq!(tidy_io_error(&err), "Connection refused");
+    }
+
+    #[tokio::test]
+    async fn localhost_reaches_an_ipv4_only_listener() {
+        // `localhost` resolves to `::1` first on Windows and in Alpine.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let addrs = resolve_all("localhost", port).await.unwrap();
+        let start = Instant::now();
+        let (_, used) = connect_any(&addrs).await.unwrap();
+        assert_eq!(used, SocketAddr::from(([127, 0, 0, 1], port)));
+        // Not after waiting out a slow refusal from `::1` (about 2 s on Windows).
+        assert!(start.elapsed() < Duration::from_millis(1500), "{:?}", start.elapsed());
+    }
+
+    #[tokio::test]
+    async fn a_silent_address_does_not_hold_up_the_next() {
+        // 10.255.255.1 is unroutable here: the attempt hangs until dropped.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let open = listener.local_addr().unwrap();
+        let silent = SocketAddr::from(([10, 255, 255, 1], open.port()));
+        let start = Instant::now();
+        let (_, used) = tokio::time::timeout(Duration::from_secs(5), connect_any(&[silent, open])).await.unwrap().unwrap();
+        assert_eq!(used, open);
+        assert!(start.elapsed() < Duration::from_secs(2), "{:?}", start.elapsed());
     }
 }

@@ -125,21 +125,21 @@
 
 {#- Text-like input field. kind = text | email | password | url | search | tel -#}
 {#- autocomplete defaults to "off"; pass e.g. "username" / "current-password" / "email" on auth fields. -#}
-{% macro field_text(name, label, value = "", kind = "text", placeholder = "", help = "", required = false, autocomplete = "off", error = "") -%}
+{% macro field_text(name, label, value = "", kind = "text", placeholder = "", help = "", required = false, autocomplete = "off", error = "", sfx = "") -%}
 <div class="field{% if !error.is_empty() %} is-invalid{% endif %}">
-  <label class="label" for="f-{{ name }}">{{ label }}</label>
-  <input id="f-{{ name }}" name="{{ name }}" type="{{ kind }}" value="{{ value }}"
+  <label class="label" for="f-{{ name }}{{ sfx }}">{{ label }}</label>
+  <input id="f-{{ name }}{{ sfx }}" name="{{ name }}" type="{{ kind }}" value="{{ value }}"
     {%- if !placeholder.is_empty() %} placeholder="{{ placeholder }}"{% endif %}
     {%- if !autocomplete.is_empty() %} autocomplete="{{ autocomplete }}"{% endif %}
     {%- if kind == "url" || kind == "email" || autocomplete == "username" %} autocapitalize="none" spellcheck="false"{% endif %}
     {%- if required %} required{% endif %}
-    {%- if !help.is_empty() || !error.is_empty() %} aria-describedby="{% if !help.is_empty() %}f-{{ name }}-help{% endif %}{% if !error.is_empty() %} f-{{ name }}-error{% endif %}"{% endif %}
+    {%- if !help.is_empty() || !error.is_empty() %} aria-describedby="{% if !help.is_empty() %}f-{{ name }}{{ sfx }}-help{% endif %}{% if !error.is_empty() %} f-{{ name }}{{ sfx }}-error{% endif %}"{% endif %}
     {%- if !error.is_empty() %} aria-invalid="true"{% endif %}>
   {%- if !help.is_empty() %}
-  <p class="help" id="f-{{ name }}-help">{{ help }}</p>
+  <p class="help" id="f-{{ name }}{{ sfx }}-help">{{ help }}</p>
   {%- endif %}
   {%- if !error.is_empty() %}
-  <p class="field-error" id="f-{{ name }}-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ error }}</p>
+  <p class="field-error" id="f-{{ name }}{{ sfx }}-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ error }}</p>
   {%- endif %}
 </div>
 {%- endmacro %}
@@ -176,15 +176,15 @@
 
 {#- iOS-style switch row. Submits name=true when on, nothing when off
     (use #[serde(default)] bool on the Rust side). -#}
-{% macro switch(name, label, checked, help = "") -%}
-<label class="switch-row" for="f-{{ name }}">
+{% macro switch(name, label, checked, help = "", sfx = "") -%}
+<label class="switch-row" for="f-{{ name }}{{ sfx }}">
   <span class="switch-row-text">
     <span class="switch-row-label">{{ label }}</span>
     {%- if !help.is_empty() %}
     <span class="help">{{ help }}</span>
     {%- endif %}
   </span>
-  <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-{{ name }}" name="{{ name }}" value="true"{% if checked %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
+  <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-{{ name }}{{ sfx }}" name="{{ name }}" value="true"{% if checked %} checked{% endif %}><span class="switch-ui" aria-hidden="true"></span></span>
 </label>
 {%- endmacro %}
 

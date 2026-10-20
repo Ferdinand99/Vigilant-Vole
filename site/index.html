@@ -152,7 +152,7 @@
           <header class="section-head reveal">
             <h2 class="headline" id="features-title">Watch everything you run.</h2>
             <p class="sub">
-              Thirteen kinds of checks, alerts that don’t cry wolf, and status pages your users will
+              Twenty-four kinds of checks, alerts that don’t cry wolf, and status pages your users will
               actually read, from one small container.
             </p>
           </header>
@@ -161,12 +161,17 @@
             <!-- Monitor types -->
             <article class="row" id="monitor-types">
               <div class="row-copy reveal">
-                <h3 class="title">Thirteen ways to check</h3>
+                <h3 class="title">Twenty-four ways to check</h3>
                 <p>
                   HTTP(S) with status codes, headers, auth and proxies, plus keyword and JSONPath checks.
                   TCP ports, ping, DNS with nine record types and your own resolver, push heartbeats for
                   cron jobs, Docker containers, WebSockets, domain expiry over RDAP, NTP, Steam game
                   servers, and groups.
+                </p>
+                <p>
+                  Services, too: PostgreSQL, MySQL/MariaDB, Redis, MQTT, Kafka, RabbitMQ, gRPC health
+                  checks, SMTP, RADIUS, SNMP and TLS handshakes. HTTP checks can sign in with basic auth,
+                  OAuth2 client credentials or a client certificate.
                 </p>
                 <p>
                   TLS certificates and domain registrations warn you before they expire. Tags, groups
@@ -672,10 +677,12 @@
                 <tr class="group"><th colspan="3" scope="rowgroup">Monitoring</th></tr>
                 <tr><th scope="row">HTTP(S), keyword, JSON query, TCP, ping, DNS, push, Docker, Steam, groups, WebSocket</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
                 <tr><th scope="row">Domain expiry (RDAP), NTP monitors</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma">No NTP; domain expiry varies by version</td></tr>
-                <tr><th scope="row">Database monitors (PostgreSQL, MySQL/MariaDB, SQL Server, MongoDB, Redis)</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
-                <tr><th scope="row">MQTT, Kafka, RabbitMQ, gRPC, RADIUS, SNMP, SMTP, GameDig, Tailscale</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Database monitors: PostgreSQL, MySQL/MariaDB, Redis</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">Database monitors: SQL Server, MongoDB</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">MQTT, Kafka, RabbitMQ, gRPC health checks, RADIUS, SNMP v1/v2c, SMTP, TLS handshake</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td><td data-label="Uptime Kuma">Yes, except a TLS-handshake type</td></tr>
+                <tr><th scope="row">gRPC keyword calls, SNMPv3, GameDig, Tailscale</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
                 <tr><th scope="row">Real-browser (headless Chrome) monitor</th><td data-label="Vigilant Vole"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
-                <tr><th scope="row">HTTP auth</th><td data-label="Vigilant Vole">Basic auth</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Basic, NTLM, mTLS, OAuth2 client credentials</span></td></tr>
+                <tr><th scope="row">HTTP auth</th><td data-label="Vigilant Vole">Basic, OAuth2 client credentials, mTLS</td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Basic, NTLM, mTLS, OAuth2 client credentials</span></td></tr>
               </tbody>
               <tbody>
                 <tr class="group"><th colspan="3" scope="rowgroup">Alerting</th></tr>
@@ -712,7 +719,7 @@
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
             <p>
               <span class="callout-title">When Kuma is the better fit</span>
-              If you need database, MQTT or browser monitors, or a language other than English or
+              If you need SQL Server, MongoDB or browser monitors, or a language other than English or
               Norwegian, Uptime Kuma is the better choice today. Already on Kuma? The
               <a href="https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/migrating-from-uptime-kuma.md">importer</a>
               brings your setup across.

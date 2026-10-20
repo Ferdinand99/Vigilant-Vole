@@ -10,13 +10,18 @@ axum = { version = "0.8.9", features = ["multipart"] }
 axum-extra = { version = "0.12.6", features = ["cookie", "cookie-signed", "form"] }
 base64 = "0.23.1"
 bollard = "0.21.1"
+bytes = "1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 deadpool-sqlite = "0.14.0"
 futures-util = "0.3.34"
+h2 = "0.4.19"
 hex = "0.4.3"
 hickory-resolver = "0.26.3"
+hmac = "0.13.0"
+http = "1"
 jiff = { version = "0.2.38", features = ["serde"] }
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "tokio1", "builder", "hostname", "pool", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier"] }
+md-5 = "0.11.0"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 rand = "0.10.3"
 regex = "1.13.1"
@@ -29,11 +34,13 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 serde_json_path = "0.7.2"
 serde_yaml_ng = "0.10.0"
+sha1 = "0.11.0"
 sha2 = "0.11.1"
 surge-ping = "0.9.1"
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["serde", "formatting", "parsing"] }
 tokio = { version = "1.53.1", features = ["full"] }
+tokio-rustls = { version = "0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots", "url"] }
 totp-rs = { version = "6.0.0", features = ["otpauth", "gen_secret"] }
@@ -43,3 +50,8 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = "2.5.8"
 x509-parser = "0.18.1"
+
+[dev-dependencies]
+# mTLS tests: generate a throwaway CA, server and client certificates, and run
+# a TLS server that demands a client certificate. Test builds only.
+rcgen = { version = "0.14.7", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }

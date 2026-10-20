@@ -48,6 +48,10 @@ fn status_label(m: &Monitor, status: Option<HeartbeatStatus>) -> &'static str {
     status.map_or("unknown", HeartbeatStatus::as_str)
 }
 
+/// Authentication secrets besides `basic_auth_pass`: masked in every response,
+/// and protected like it when a request moves the monitor elsewhere.
+const AUTH_SECRETS: &[&str] = &["secret", "oauth_client_secret", "tls_client_key"];
+
 /// A monitor as JSON. Secrets are masked; push tokens only for editors.
 pub fn monitor_json(
     m: &Monitor,
@@ -60,6 +64,11 @@ pub fn monitor_json(
     if let Some(obj) = v.as_object_mut() {
         if m.basic_auth_pass.is_some() {
             obj.insert("basic_auth_pass".into(), json!(SECRET_MASK));
+        }
+        for secret in AUTH_SECRETS {
+            if obj.get(*secret).is_some_and(|v| !v.is_null()) {
+                obj.insert((*secret).into(), json!(SECRET_MASK));
+            }
         }
         if !can_edit && m.push_token.is_some() {
             obj.insert("push_token".into(), json!(SECRET_MASK));
@@ -240,6 +249,14 @@ fn read_body(body: Value, base: &NewMonitor, existing: Option<&Monitor>) -> V1Re
     let Value::Object(mut body) = body else {
         return Err(V1Error::bad_request("Send a JSON object."));
     };
+    // Clients that only know basic auth don't send `auth_method` (an empty or
+    // null one counts as not sent): a user name then means basic, as it
+    // always has. An explicit method, `none` included, is respected.
+    if body.get("auth_method").is_some_and(|m| m.is_null() || m.as_str().is_some_and(|m| m.trim().is_empty())) {
+        body.remove("auth_method");
+    }
+    let method_given = body.contains_key("auth_method");
+    let user_given = body.get("basic_auth_user").and_then(Value::as_str).map(str::to_string);
     let tags = body.remove("tags").map(|v| parse_tags(&v)).transpose()?;
     let channels = body.remove("notifications").map(|v| parse_links(&v)).transpose()?;
     let mut obj = match serde_json::to_value(base) {
@@ -248,8 +265,10 @@ fn read_body(body: Value, base: &NewMonitor, existing: Option<&Monitor>) -> V1Re
     };
     // Stored secrets carried over from `base` (PATCH) count as masked, so the
     // same "only while the destination stays the same" rule applies to them.
-    if obj.get("basic_auth_pass").is_some_and(|v| !v.is_null()) {
-        obj.insert("basic_auth_pass".into(), json!(SECRET_MASK));
+    for secret in ["basic_auth_pass"].iter().chain(AUTH_SECRETS) {
+        if obj.get(*secret).is_some_and(|v| !v.is_null()) {
+            obj.insert((*secret).into(), json!(SECRET_MASK));
+        }
     }
     if let Some(h) = obj.get("http_headers").and_then(Value::as_str) {
         let redacted = crate::config_io::redact_headers(h);
@@ -276,6 +295,9 @@ fn read_body(body: Value, base: &NewMonitor, existing: Option<&Monitor>) -> V1Re
         return Err(V1Error::validation("", unknown));
     }
     let mut monitor: NewMonitor = serde_json::from_value(Value::Object(obj)).map_err(|e| V1Error::validation(format!("Invalid field: {e}"), BTreeMap::new()))?;
+    if !method_given && monitor.auth_method == "none" {
+        monitor.auth_method = crate::monitor::checkers::http_auth::implied_method(user_given.as_deref()).into();
+    }
     // A masked password goes through to `form::validate`, which keeps the
     // stored one only while the target and proxy stay the same. Masked header
     // values follow the same rule here.

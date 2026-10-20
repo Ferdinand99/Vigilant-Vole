@@ -179,6 +179,14 @@ async fn agent_monitors(
     for m in &mut monitors {
         m.push_token = None;
     }
+    // Old agents can't read monitor types they don't know (and would skip
+    // OAuth2/mTLS): only send what this agent's version can run.
+    let version = headers.get(VERSION_HEADER).and_then(|v| v.to_str().ok()).map(str::trim);
+    let total = monitors.len();
+    monitors.retain(|m| crate::agent::protocol::agent_can_run(m, version));
+    if monitors.len() < total {
+        warn_held_back(agent.id, version, total - monitors.len());
+    }
     let body = MonitorsResponse {
         agent: AgentInfo {
             id: agent.id,
@@ -206,6 +214,25 @@ async fn agent_monitors(
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     Ok(response)
+}
+
+/// Logs once per agent and version that monitors were held back.
+fn warn_held_back(agent_id: i64, version: Option<&str>, count: usize) {
+    static WARNED: Mutex<Option<HashSet<(i64, String)>>> = Mutex::new(None);
+    let version = version.unwrap_or_default().to_string();
+    let first = WARNED
+        .lock()
+        .map(|mut w| w.get_or_insert_with(HashSet::new).insert((agent_id, version.clone())))
+        .unwrap_or(true);
+    if first {
+        tracing::warn!(
+            agent_id,
+            agent_version = %version,
+            held_back = count,
+            needs = crate::agent::protocol::SERVICE_MONITORS_SINCE,
+            "agent is too old for some of its monitors; upgrade it to run them there"
+        );
+    }
 }
 
 async fn agent_results(
@@ -704,6 +731,70 @@ mod tests {
         let agent = f.state.with_conn(move |c| db_agents::get_agent(c, id)).await.unwrap().unwrap();
         assert!(agent.last_seen_at.is_some());
         assert_eq!(agent.version.as_deref(), Some("9.9.9"));
+    }
+
+    #[tokio::test]
+    async fn old_agents_get_only_what_they_can_run_and_new_ones_get_auth_secrets() {
+        let f = fixture("127.0.0.1:1").await;
+        let (pg, oauth, mtls) = f
+            .state
+            .with_conn(|c| {
+                let on = |m: NewMonitor| NewMonitor { run_on_agents: true, interval_seconds: 60, ..m };
+                let pg = db_monitors::insert_monitor(
+                    c,
+                    &on(NewMonitor { name: "pg".into(), monitor_type: MonitorType::Postgres, target: "postgres://db/app".into(), ..NewMonitor::default() }),
+                )?;
+                let oauth = db_monitors::insert_monitor(
+                    c,
+                    &on(NewMonitor {
+                        name: "oauth".into(),
+                        target: "https://api.example.com/".into(),
+                        auth_method: "oauth2".into(),
+                        oauth_token_url: Some("https://login.example.com/token".into()),
+                        oauth_client_id: Some("vole".into()),
+                        oauth_client_secret: Some("client-secret-value".into()),
+                        ..NewMonitor::default()
+                    }),
+                )?;
+                let mtls = db_monitors::insert_monitor(
+                    c,
+                    &on(NewMonitor {
+                        name: "mtls".into(),
+                        target: "https://mtls.example.com/".into(),
+                        auth_method: "mtls".into(),
+                        tls_client_cert: Some("CERT".into()),
+                        tls_client_key: Some("KEY".into()),
+                        ..NewMonitor::default()
+                    }),
+                )?;
+                Ok((pg, oauth, mtls))
+            })
+            .await
+            .unwrap();
+        let fetch = |version: Option<&'static str>| {
+            let mut req = get_monitors(Some(&f.token));
+            if let Some(v) = version {
+                req = req.header(VERSION_HEADER, v);
+            }
+            let state = f.state.clone();
+            async move {
+                let (status, _, body) = send(&state, req.body(Body::empty()).unwrap()).await;
+                assert_eq!(status, StatusCode::OK);
+                serde_json::from_str::<MonitorsResponse>(&body).unwrap().monitors
+            }
+        };
+        for old in [None, Some("0.0.9")] {
+            let ids: Vec<i64> = fetch(old).await.iter().map(|m| m.id).collect();
+            assert_eq!(ids, vec![f.agent_monitor], "{old:?}");
+        }
+        let list = fetch(Some("9.9.9")).await;
+        let mut ids: Vec<i64> = list.iter().map(|m| m.id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec![f.agent_monitor, pg, oauth, mtls]);
+        // The agent runs the check itself, so it gets the settings it needs.
+        let by_id = |id: i64| list.iter().find(|m| m.id == id).unwrap();
+        assert_eq!(by_id(oauth).oauth_client_secret.as_deref(), Some("client-secret-value"));
+        assert_eq!((by_id(mtls).tls_client_cert.as_deref(), by_id(mtls).tls_client_key.as_deref()), (Some("CERT"), Some("KEY")));
     }
 
     #[tokio::test]

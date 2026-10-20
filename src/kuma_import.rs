@@ -58,6 +58,77 @@ fn get<'a>(row: &'a Row, keys: &[&str]) -> Option<&'a Value> {
     keys.iter().filter_map(|k| row.get(*k)).find(|v| !v.is_null())
 }
 
+/// Like [`s`] but keeps the text as stored (secrets and PEM blocks).
+fn raw(row: &Row, keys: &[&str]) -> Option<String> {
+    get(row, keys).and_then(Value::as_str).filter(|v| !v.trim().is_empty()).map(str::to_string)
+}
+
+/// Kuma's `authMethod` and its fields. Basic, OAuth2 client credentials and
+/// mTLS map across; NTLM has no equivalent and is reported. Rows without an
+/// `auth_method` (older Kuma) mean basic auth when a user name is set.
+fn import_auth(row: &Row, opts: &mut Map<String, Value>, warnings: &mut Vec<String>) {
+    let basic_user = s(row, &["basic_auth_user", "basicAuthUser"]);
+    let method = match s(row, &["auth_method", "authMethod"]).as_deref() {
+        Some("basic") => "basic",
+        Some("oauth2-cc") => "oauth2",
+        Some("mtls") => "mtls",
+        Some("ntlm") => {
+            warnings.push("NTLM authentication isn’t supported; set up its authentication again.".into());
+            return;
+        }
+        Some(other) => {
+            warnings.push(format!("the “{other}” authentication method isn’t supported; set up its authentication again."));
+            return;
+        }
+        None if basic_user.is_some() => "basic",
+        None => return,
+    };
+    opts.insert("auth_method".into(), json!(method));
+    match method {
+        "basic" => {
+            if let Some(user) = basic_user {
+                opts.insert("basic_auth_user".into(), json!(user));
+            }
+            if let Some(pass) = raw(row, &["basic_auth_pass", "basicAuthPass"]) {
+                opts.insert("basic_auth_pass".into(), json!(pass));
+            }
+        }
+        "oauth2" => {
+            for (ours, kuma) in [
+                ("oauth_token_url", ["oauth_token_url", "oauthTokenUrl"]),
+                ("oauth_client_id", ["oauth_client_id", "oauthClientId"]),
+                ("oauth_audience", ["oauth_audience", "oauthAudience"]),
+            ] {
+                if let Some(v) = s(row, &kuma) {
+                    opts.insert(ours.into(), json!(v));
+                }
+            }
+            if let Some(secret) = raw(row, &["oauth_client_secret", "oauthClientSecret"]) {
+                opts.insert("oauth_client_secret".into(), json!(secret));
+            }
+            // Kuma stores scopes as one space-separated string.
+            if let Some(scope) = s(row, &["oauth_scopes", "oauthScopes"]) {
+                opts.insert("oauth_scope".into(), json!(scope));
+            }
+            let style = match s(row, &["oauth_auth_method", "oauthAuthMethod"]).as_deref() {
+                Some("client_secret_post") => "client_secret_post",
+                _ => "client_secret_basic",
+            };
+            opts.insert("oauth_client_auth".into(), json!(style));
+        }
+        _ => {
+            for (ours, kuma) in [("tls_client_cert", ["tls_cert", "tlsCert"]), ("tls_ca_cert", ["tls_ca", "tlsCa"])] {
+                if let Some(v) = raw(row, &kuma) {
+                    opts.insert(ours.into(), json!(v));
+                }
+            }
+            if let Some(key) = raw(row, &["tls_key", "tlsKey"]) {
+                opts.insert("tls_client_key".into(), json!(key));
+            }
+        }
+    }
+}
+
 fn s(row: &Row, keys: &[&str]) -> Option<String> {
     match get(row, keys)? {
         Value::String(v) => Some(v.trim().to_string()).filter(|v| !v.is_empty()),
@@ -284,19 +355,55 @@ pub fn read_file(path: &Path) -> Result<KumaImport, String> {
 /// Kuma monitor types we can't run, with the reason shown in the plan.
 fn unsupported_reason(kind: &str) -> Option<&'static str> {
     Some(match kind {
-        "mqtt" => "MQTT monitors aren’t supported yet.",
-        "kafka-producer" => "Kafka monitors aren’t supported yet.",
-        "sqlserver" | "postgres" | "mysql" | "mongodb" | "redis" => "Database monitors aren’t supported yet.",
-        "radius" => "RADIUS monitors aren’t supported yet.",
-        "grpc-keyword" => "gRPC monitors aren’t supported yet.",
+        "sqlserver" | "mongodb" => "SQL Server and MongoDB monitors aren’t supported yet.",
+        "grpc-keyword" => "gRPC keyword monitors call any method and match text in the reply; the gRPC type here runs the standard health check, so add it by hand.",
         "gamedig" => "GameDig monitors aren’t supported; Source-engine servers can use the Steam type.",
         "tailscale-ping" => "Tailscale ping isn’t supported; use a ping monitor on the Tailscale address.",
-        "snmp" => "SNMP monitors aren’t supported yet.",
-        "rabbitmq" => "RabbitMQ monitors aren’t supported yet.",
-        "smtp" => "SMTP monitors aren’t supported yet.",
         "manual" => "Manual monitors aren’t supported; use a push monitor.",
         _ => return None,
     })
+}
+
+/// User name and password into the options (the monitor's credential fields).
+fn insert_credentials(opts: &mut Map<String, Value>, user: Option<String>, pass: Option<String>) {
+    if let Some(user) = user {
+        opts.insert("basic_auth_user".into(), json!(user));
+    }
+    if let Some(pass) = pass {
+        opts.insert("basic_auth_pass".into(), json!(pass));
+    }
+}
+
+/// A database monitor's connection string as our target plus its login:
+/// `postgres://user:pass@host:5432/db` becomes `postgres://host:5432/db`.
+fn connection_string(row: &Row, kind: &str, warnings: &mut Vec<String>) -> Result<(String, Option<String>, Option<String>), String> {
+    let raw = s(row, &["database_connection_string", "databaseConnectionString"]).ok_or("It has no connection string.")?;
+    let url = url::Url::parse(raw.trim()).map_err(|_| "Its connection string couldn’t be read.".to_string())?;
+    let allowed: &[&str] = match kind {
+        "postgres" => &["postgres", "postgresql"],
+        "mysql" => &["mysql", "mariadb"],
+        _ => &["redis", "rediss"],
+    };
+    if !allowed.contains(&url.scheme()) {
+        return Err(format!("Its connection string uses “{}://”, which this type can’t check.", url.scheme()));
+    }
+    let host = url.host_str().filter(|h| !h.is_empty()).ok_or("Its connection string has no host.")?;
+    let user = Some(url.username()).filter(|u| !u.is_empty()).map(crate::monitor::checkers::endpoint::percent_decode);
+    let pass = url.password().map(crate::monitor::checkers::endpoint::percent_decode);
+    let path = url.path().trim_matches('/');
+    let mut target = format!("{}://{}", url.scheme(), host_port(host, url.port().map(i64::from)));
+    if !path.is_empty() {
+        target.push('/');
+        target.push_str(path);
+    }
+    if let Some(q) = url.query() {
+        target.push('?');
+        target.push_str(q);
+    }
+    if let Some(query) = s(row, &["database_query", "databaseQuery"]).filter(|q| !q.trim().is_empty() && !q.trim().eq_ignore_ascii_case("select 1")) {
+        warnings.push(format!("its query “{}” isn’t run; the check is a login and SELECT 1 (or PING).", query.chars().take(60).collect::<String>()));
+    }
+    Ok((target, user, pass))
 }
 
 fn host_port(host: &str, port: Option<i64>) -> String {
@@ -578,6 +685,98 @@ fn map_monitor(
         "steam" => ("steam", host_port(&hostname, port)),
         "group" => ("group", String::new()),
         "websocket-upgrade" | "websocket" => ("websocket", url),
+        "postgres" | "mysql" | "redis" => {
+            let (target, user, pass) = connection_string(row, &kuma_type, &mut warnings)?;
+            insert_credentials(&mut opts, user, pass);
+            (if kuma_type == "mysql" { "mysql" } else { &kuma_type }, target)
+        }
+        "mqtt" => {
+            let (scheme, host) = match hostname.split_once("://") {
+                Some((sch @ ("mqtt" | "mqtts"), h)) => (sch.to_string(), h.to_string()),
+                Some((other, _)) => return Err(format!("MQTT over “{other}://” isn’t supported.")),
+                None => ("mqtt".to_string(), hostname.clone()),
+            };
+            let topic = s(row, &["mqtt_topic", "mqttTopic"]).unwrap_or_default();
+            // The topic goes in as written (`mqtt::topic` reads it back
+            // raw); only `%` is escaped, since the path is percent-decoded.
+            let path = if topic.is_empty() { String::new() } else { format!("/{}", topic.replace('%', "%25")) };
+            if let Some(msg) = s(row, &["mqtt_success_message", "mqttSuccessMessage"]) {
+                opts.insert("keyword".into(), json!(msg));
+            }
+            insert_credentials(&mut opts, s(row, &["mqtt_username", "mqttUsername"]), raw(row, &["mqtt_password", "mqttPassword"]));
+            ("mqtt", format!("{scheme}://{}{path}", host_port(&host, port)))
+        }
+        "kafka-producer" => {
+            let brokers: Vec<String> = match json_field(row, &["kafka_producer_brokers", "kafkaProducerBrokers"]) {
+                Some(Value::Array(list)) => list.iter().filter_map(|b| b.as_str().map(str::to_string)).collect(),
+                _ => Vec::new(),
+            };
+            let first = brokers.first().ok_or("It lists no Kafka brokers.")?;
+            if brokers.len() > 1 {
+                warnings.push("only its first broker is checked.".into());
+            }
+            warnings.push("no message is produced; the monitor checks that the broker answers and the topic exists.".into());
+            let topic = s(row, &["kafka_producer_topic", "kafkaProducerTopic"]).unwrap_or_default();
+            let scheme = if b(row, &["kafka_producer_ssl", "kafkaProducerSsl"]).unwrap_or(false) { "kafkas" } else { "kafka" };
+            let sasl = json_field(row, &["kafka_producer_sasl_options", "kafkaProducerSaslOptions"]);
+            if let Some(Value::Object(o)) = sasl
+                && o.get("mechanism").and_then(Value::as_str).is_some_and(|m| !m.eq_ignore_ascii_case("none"))
+            {
+                warnings.push("its SASL login isn’t supported, so brokers that require SASL will fail the check.".into());
+            }
+            let path = if topic.is_empty() { String::new() } else { format!("/{topic}") };
+            ("kafka", format!("{scheme}://{first}{path}"))
+        }
+        "radius" => {
+            insert_credentials(&mut opts, s(row, &["radius_username", "radiusUsername"]), raw(row, &["radius_password", "radiusPassword"]));
+            if let Some(secret) = raw(row, &["radius_secret", "radiusSecret"]) {
+                opts.insert("secret".into(), json!(secret));
+            }
+            ("radius", format!("radius://{}", host_port(&hostname, port)))
+        }
+        "snmp" => {
+            let version = s(row, &["snmp_version", "snmpVersion"]).unwrap_or_else(|| "2c".into());
+            if version.trim() == "3" {
+                return Err("SNMPv3 isn’t supported; only v1 and v2c.".into());
+            }
+            let oid = s(row, &["snmp_oid", "snmpOid"]).unwrap_or_default();
+            // Kuma keeps the community string in the RADIUS password column.
+            if let Some(community) = raw(row, &["radius_password", "radiusPassword"]) {
+                opts.insert("secret".into(), json!(community));
+            }
+            if let Some(expected) = s(row, &["expected_value", "expectedValue"]) {
+                opts.insert("keyword".into(), json!(expected));
+                warnings.push("its expected value is matched as text contained in the answer.".into());
+            }
+            let path = if oid.is_empty() { String::new() } else { format!("/{}", oid.trim_start_matches('.')) };
+            ("snmp", format!("snmp://{}{path}?version={}", host_port(&hostname, port), version.trim()))
+        }
+        "smtp" => {
+            let security = s(row, &["smtp_security", "smtpSecurity"]).unwrap_or_default();
+            let port = port.or(match security.as_str() {
+                "secure" => Some(465),
+                "starttls" => Some(587),
+                _ => Some(25),
+            });
+            if security == "secure" && port != Some(465) {
+                warnings.push("it uses implicit TLS on a port other than 465, which is checked without TLS here.".into());
+            }
+            ("smtp", host_port(&hostname, port))
+        }
+        "rabbitmq" => {
+            let nodes: Vec<String> = match json_field(row, &["rabbitmq_nodes", "rabbitmqNodes"]) {
+                Some(Value::Array(list)) => list.iter().filter_map(|n| n.as_str().map(str::to_string)).collect(),
+                _ => Vec::new(),
+            };
+            let node = nodes.first().ok_or("It lists no RabbitMQ nodes.")?;
+            if nodes.len() > 1 {
+                warnings.push("only its first node is checked.".into());
+            }
+            warnings.push("it checks the management API's alarms endpoint over HTTP, like Uptime Kuma does.".into());
+            insert_credentials(&mut opts, s(row, &["rabbitmq_username", "rabbitmqUsername"]), raw(row, &["rabbitmq_password", "rabbitmqPassword"]));
+            opts.insert("auth_method".into(), json!("basic"));
+            ("http", format!("{}/api/health/checks/alarms/", node.trim_end_matches('/')))
+        }
         other => return Err(format!("The “{other}” monitor type isn’t supported.")),
     };
 
@@ -639,16 +838,7 @@ fn map_monitor(
             };
             opts.insert("http_body_encoding".into(), json!(encoding));
         }
-        match s(row, &["auth_method", "authMethod"]).as_deref() {
-            Some("ntlm") | Some("mtls") | Some("oauth2-cc") => warnings.push("only basic authentication is supported; set up its auth again.".into()),
-            _ => {}
-        }
-        if let Some(user) = s(row, &["basic_auth_user", "basicAuthUser"]) {
-            opts.insert("basic_auth_user".into(), json!(user));
-            if let Some(pass) = get(row, &["basic_auth_pass", "basicAuthPass"]).and_then(Value::as_str).filter(|p| !p.is_empty()) {
-                opts.insert("basic_auth_pass".into(), json!(pass));
-            }
-        }
+        import_auth(row, &mut opts, &mut warnings);
         if let Some(pid) = i(row, &["proxy_id", "proxyId"])
             && let Some(proxy) = proxies.get(&pid)
         {
@@ -742,7 +932,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             "slack"
         }
         "telegram" => {
-            put(&mut out, "bot_token", s(c, &["telegramBotToken"]));
+            put(&mut out, "bot_token", raw(c, &["telegramBotToken"]));
             put(&mut out, "chat_id", s(c, &["telegramChatID"]));
             put(&mut out, "server_url", s(c, &["telegramServerUrl"]));
             if let Some(t) = i(c, &["telegramMessageThreadID"]) {
@@ -773,7 +963,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             out.insert("security".into(), json!(if secure { "tls" } else { "starttls" }));
             out.insert("ignore_tls".into(), json!(b(c, &["smtpIgnoreTLSError"]).unwrap_or(false)));
             put(&mut out, "username", s(c, &["smtpUsername"]));
-            put(&mut out, "password", s(c, &["smtpPassword"]));
+            put(&mut out, "password", raw(c, &["smtpPassword"]));
             put(&mut out, "from", s(c, &["smtpFrom"]));
             put(&mut out, "to", s(c, &["smtpTo"]));
             put(&mut out, "cc", s(c, &["smtpCC"]));
@@ -785,22 +975,22 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             put(&mut out, "topic", s(c, &["ntfytopic"]));
             let priority = i(c, &["ntfyPriority"]).filter(|p| (1..=5).contains(p)).map(|p| p.to_string());
             out.insert("priority".into(), json!(priority.unwrap_or_else(|| "auto".into())));
-            put(&mut out, "access_token", s(c, &["ntfyaccesstoken"]));
+            put(&mut out, "access_token", raw(c, &["ntfyaccesstoken"]));
             put(&mut out, "username", s(c, &["ntfyusername"]));
-            put(&mut out, "password", s(c, &["ntfypassword"]));
+            put(&mut out, "password", raw(c, &["ntfypassword"]));
             "ntfy"
         }
         "gotify" => {
             put(&mut out, "server", s(c, &["gotifyserverurl"]));
-            put(&mut out, "app_token", s(c, &["gotifyapplicationToken"]));
+            put(&mut out, "app_token", raw(c, &["gotifyapplicationToken"]));
             if let Some(p) = i(c, &["gotifyPriority"]) {
                 out.insert("priority".into(), json!(p));
             }
             "gotify"
         }
         "pushover" => {
-            put(&mut out, "user_key", s(c, &["pushoveruserkey"]));
-            put(&mut out, "app_token", s(c, &["pushoverapptoken"]));
+            put(&mut out, "user_key", raw(c, &["pushoveruserkey"]));
+            put(&mut out, "app_token", raw(c, &["pushoverapptoken"]));
             put(&mut out, "device", s(c, &["pushoverdevice"]));
             put(&mut out, "sound", s(c, &["pushoversounds"]));
             if let Some(p) = i(c, &["pushoverpriority"]) {
@@ -817,7 +1007,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         "matrix" => {
             put(&mut out, "homeserver", s(c, &["homeserverUrl"]));
             put(&mut out, "room_id", s(c, &["internalRoomId"]));
-            put(&mut out, "access_token", s(c, &["accessToken"]));
+            put(&mut out, "access_token", raw(c, &["accessToken"]));
             "matrix"
         }
         "mattermost" => {
@@ -839,7 +1029,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             "googlechat"
         }
         "pagerduty" => {
-            put(&mut out, "routing_key", s(c, &["pagerdutyIntegrationKey"]));
+            put(&mut out, "routing_key", raw(c, &["pagerdutyIntegrationKey"]));
             let severity = s(c, &["pagerdutyPriority"]).filter(|p| ["critical", "error", "warning", "info"].contains(&p.as_str()));
             out.insert("severity".into(), json!(severity.unwrap_or_else(|| "critical".into())));
             let eu = s(c, &["pagerdutyIntegrationUrl"]).is_some_and(|u| u.contains(".eu."));
@@ -847,14 +1037,14 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             "pagerduty"
         }
         "opsgenie" => {
-            put(&mut out, "api_key", s(c, &["opsgenieApiKey"]));
+            put(&mut out, "api_key", raw(c, &["opsgenieApiKey"]));
             out.insert("region".into(), json!(if s(c, &["opsgenieRegion"]).as_deref() == Some("eu") { "eu" } else { "us" }));
             let p = i(c, &["opsgeniePriority"]).unwrap_or(1).clamp(1, 5);
             out.insert("priority".into(), json!(format!("P{p}")));
             "opsgenie"
         }
         "pushbullet" => {
-            put(&mut out, "access_token", s(c, &["pushbulletAccessToken"]));
+            put(&mut out, "access_token", raw(c, &["pushbulletAccessToken"]));
             "pushbullet"
         }
         "signal" => {
@@ -870,7 +1060,7 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         }
         "homeassistant" => {
             put(&mut out, "url", s(c, &["homeAssistantUrl"]));
-            put(&mut out, "token", s(c, &["longLivedAccessToken"]));
+            put(&mut out, "token", raw(c, &["longLivedAccessToken"]));
             put(&mut out, "service", s(c, &["notificationService"]).map(|svc| svc.trim_start_matches("notify.").to_string()));
             "homeassistant"
         }
@@ -894,12 +1084,12 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         }
         "dingding" => {
             put(&mut out, "url", s(c, &["webHookUrl"]));
-            put(&mut out, "secret", s(c, &["secretKey"]));
+            put(&mut out, "secret", raw(c, &["secretKey"]));
             "dingtalk"
         }
         "twilio" => {
             put(&mut out, "account_sid", s(c, &["twilioAccountSID"]));
-            put(&mut out, "auth_token", s(c, &["twilioAuthToken"]));
+            put(&mut out, "auth_token", raw(c, &["twilioAuthToken"]));
             put(&mut out, "from", s(c, &["twilioFromNumber"]));
             put(&mut out, "to", s(c, &["twilioToNumber"]));
             "twilio"

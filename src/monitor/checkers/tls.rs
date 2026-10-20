@@ -1,16 +1,24 @@
-//! TLS helpers: leaf-certificate parsing into [`ExpiryInfo`] and cached rustls
-//! client configs (verified with native roots / verification disabled) for
-//! the non-reqwest checkers (WebSocket).
+//! TLS helpers: leaf-certificate parsing into [`ExpiryInfo`], cached rustls
+//! client configs (verified with native roots / verification disabled) and
+//! a plain-TCP-to-TLS upgrade for the non-reqwest checkers (WebSocket, TLS,
+//! SMTP, Redis, ...).
 
+use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
+use rustls::client::WebPkiServerVerifier;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signature};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
+use rustls::{CertificateError, ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
+
+use tokio::net::TcpStream;
+use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
 
 use super::util;
-use crate::db::models::{ExpiryInfo, ExpiryKind};
+use crate::db::models::{CheckOutcome, ExpiryInfo, ExpiryKind};
 
 /// Parsed facts about a server's leaf certificate.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +81,23 @@ fn provider() -> Arc<CryptoProvider> {
         .clone()
 }
 
+/// The OS trust store, loaded once. `None` if it holds no certificates.
+fn native_roots() -> Option<Arc<RootCertStore>> {
+    static ROOTS: OnceLock<Option<Arc<RootCertStore>>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            let loaded = rustls_native_certs::load_native_certs();
+            let mut roots = RootCertStore::empty();
+            let (added, _) = roots.add_parsable_certificates(loaded.certs);
+            if added == 0 {
+                tracing::warn!("no native root certificates found for TLS checks");
+                return None;
+            }
+            Some(Arc::new(roots))
+        })
+        .clone()
+}
+
 /// rustls config that verifies certificates against the OS trust store.
 /// `None` if the store could not be loaded (callers fall back to the
 /// library default).
@@ -80,19 +105,91 @@ pub fn verified_config() -> Option<Arc<ClientConfig>> {
     static CONFIG: OnceLock<Option<Arc<ClientConfig>>> = OnceLock::new();
     CONFIG
         .get_or_init(|| {
-            let loaded = rustls_native_certs::load_native_certs();
-            let mut roots = RootCertStore::empty();
-            let (added, _) = roots.add_parsable_certificates(loaded.certs);
-            if added == 0 {
-                tracing::warn!("no native root certificates found for WebSocket TLS");
-                return None;
-            }
+            let roots = native_roots()?;
             ClientConfig::builder_with_provider(provider())
                 .with_safe_default_protocol_versions()
                 .ok()
                 .map(|b| Arc::new(b.with_root_certificates(roots).with_no_client_auth()))
         })
         .clone()
+}
+
+/// rustls config that verifies the certificate chain against the OS trust
+/// store but not the host name (`sslmode=verify-ca`).
+fn ca_only_config() -> Option<Arc<ClientConfig>> {
+    static CONFIG: OnceLock<Option<Arc<ClientConfig>>> = OnceLock::new();
+    CONFIG
+        .get_or_init(|| {
+            let inner = WebPkiServerVerifier::builder_with_provider(native_roots()?, provider()).build().ok()?;
+            ClientConfig::builder_with_provider(provider())
+                .with_safe_default_protocol_versions()
+                .ok()
+                .map(|b| Arc::new(b.dangerous().with_custom_certificate_verifier(Arc::new(CaOnly(inner))).with_no_client_auth()))
+        })
+        .clone()
+}
+
+/// How much of the server's certificate a handshake checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verify {
+    /// Accept any certificate ("ignore TLS errors", `sslmode=prefer|require`).
+    None,
+    /// A trusted chain, any host name (`sslmode=verify-ca`).
+    Ca,
+    /// A trusted chain issued for the host name.
+    Full,
+}
+
+impl Verify {
+    /// The monitor option "ignore TLS errors" turns verification off.
+    pub fn unless_ignored(self, ignore_tls: bool) -> Self {
+        if ignore_tls { Verify::None } else { self }
+    }
+}
+
+/// The chain check of [`WebPkiServerVerifier`] without its host name check
+/// (which runs after a successful chain check, so only that error is waived).
+#[derive(Debug)]
+struct CaOnly(Arc<WebPkiServerVerifier>);
+
+impl ServerCertVerifier for CaOnly {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        match self.0.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now) {
+            Err(rustls::Error::InvalidCertificate(CertificateError::NotValidForName | CertificateError::NotValidForNameContext { .. })) => {
+                Ok(ServerCertVerified::assertion())
+            }
+            other => other,
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.0.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.0.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.0.supported_verify_schemes()
+    }
 }
 
 /// rustls config that accepts any certificate (monitor option "ignore TLS
@@ -164,6 +261,77 @@ impl ServerCertVerifier for AcceptAnyCert {
     }
 }
 
+/// Run the TLS handshake over an established TCP connection. `host` is the
+/// name to verify (and send as SNI); `ignore_tls` accepts any certificate.
+pub async fn upgrade(tcp: TcpStream, host: &str, ignore_tls: bool) -> std::io::Result<TlsStream<TcpStream>> {
+    upgrade_alpn(tcp, host, ignore_tls, &[]).await
+}
+
+/// [`upgrade`] offering ALPN protocols (`b"h2"` for gRPC).
+pub async fn upgrade_alpn(tcp: TcpStream, host: &str, ignore_tls: bool, alpn: &[&[u8]]) -> std::io::Result<TlsStream<TcpStream>> {
+    upgrade_with(tcp, host, Verify::Full.unless_ignored(ignore_tls), alpn).await
+}
+
+/// [`upgrade`] with an explicit verification level.
+pub async fn upgrade_with(tcp: TcpStream, host: &str, verify: Verify, alpn: &[&[u8]]) -> std::io::Result<TlsStream<TcpStream>> {
+    let config = match verify {
+        Verify::None => insecure_config(),
+        Verify::Ca => ca_only_config(),
+        Verify::Full => verified_config(),
+    };
+    let mut config = config.ok_or_else(|| std::io::Error::other("TLS is unavailable (no trusted root certificates)"))?;
+    if !alpn.is_empty() {
+        let mut own = (*config).clone();
+        own.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
+        config = Arc::new(own);
+    }
+    let name = ServerName::try_from(host.to_string())
+        .map_err(|_| std::io::Error::other(format!("Invalid server name \"{host}\"")))?;
+    TlsConnector::from(config).connect(name, tcp).await
+}
+
+/// The leaf certificate the peer presented.
+pub fn peer_cert(stream: &TlsStream<TcpStream>) -> Option<CertSummary> {
+    parse_cert(stream.get_ref().1.peer_certificates()?.first()?)
+}
+
+/// "TLS 1.3" for the negotiated protocol version.
+pub fn version_label(stream: &TlsStream<TcpStream>) -> &'static str {
+    match stream.get_ref().1.protocol_version() {
+        Some(rustls::ProtocolVersion::TLSv1_3) => "TLS 1.3",
+        Some(rustls::ProtocolVersion::TLSv1_2) => "TLS 1.2",
+        _ => "TLS",
+    }
+}
+
+/// Fetch the certificate of a server that speaks TLS from the first byte,
+/// without verifying it.
+pub async fn fetch_cert(host: &str, addr: SocketAddr) -> Option<CertSummary> {
+    let tcp = TcpStream::connect(addr).await.ok()?;
+    peer_cert(&upgrade(tcp, host, true).await.ok()?)
+}
+
+/// Explain a failed verified handshake. Certificate problems are classified;
+/// `fetch` gets the certificate again without verification (services that
+/// upgrade mid-protocol replay their prelude first) so the outcome can carry
+/// its expiry ("expired 3 days ago"). `None` if the error is not a
+/// certificate problem (the caller reports it as a connection failure).
+pub async fn explain_failure<F, Fut>(err: &std::io::Error, timeout: Duration, fetch: F) -> Option<CheckOutcome>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Option<CertSummary>>,
+{
+    let reason = classify_tls_error(&util::full_chain(err))?;
+    let cert = tokio::time::timeout(timeout.min(Duration::from_secs(5)), fetch()).await.ok().flatten();
+    let now = util::now_unix();
+    let mut outcome = match &cert {
+        Some(c) if c.is_expired(now) => CheckOutcome::down(c.expired_message(now)),
+        _ => CheckOutcome::down(reason),
+    };
+    outcome.expiry = cert.as_ref().and_then(CertSummary::expiry_info);
+    Some(outcome)
+}
+
 /// Map a TLS verification failure (from any layer's error text) to a clear
 /// message. `None` if the text does not look like a certificate problem.
 pub fn classify_tls_error(chain: &str) -> Option<&'static str> {
@@ -219,6 +387,13 @@ mod tests {
     #[test]
     fn configs_build() {
         assert!(insecure_config().is_some());
+        assert_eq!(ca_only_config().is_some(), verified_config().is_some());
+    }
+
+    #[test]
+    fn ignoring_tls_errors_turns_verification_off() {
+        assert_eq!(Verify::Full.unless_ignored(true), Verify::None);
+        assert_eq!(Verify::Ca.unless_ignored(false), Verify::Ca);
     }
 
     #[test]

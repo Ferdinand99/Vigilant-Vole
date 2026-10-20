@@ -12,23 +12,23 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Ok(hp) => hp,
         Err(e) => return CheckOutcome::down(e),
     };
-    let addr = match util::resolve(&host, port).await {
-        Ok(addr) => addr,
+    let addrs = match util::resolve_all(&host, port).await {
+        Ok(addrs) => addrs,
         Err(e) => return CheckOutcome::down(e),
     };
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
-    match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(addr)).await {
-        Ok(Ok(_stream)) => CheckOutcome::up(util::elapsed_ms(start))
+    match tokio::time::timeout(timeout, util::connect_any(&addrs)).await {
+        Ok(Ok((_stream, addr))) => CheckOutcome::up(util::elapsed_ms(start))
             .with_message(format!("Port {port} open on {}", addr.ip())),
-        Ok(Err(err)) => CheckOutcome::down(format!(
+        Ok(Err((addr, err))) => CheckOutcome::down(format!(
             "Port {port} on {}: {}",
             addr.ip(),
             util::tidy_io_error(&err)
         )),
         Err(_) => CheckOutcome::down(format!(
             "Port {port} on {}: no answer within {}",
-            addr.ip(),
+            addrs[addrs.len() - 1].ip(),
             util::format_secs(timeout)
         )),
     }
@@ -60,6 +60,15 @@ mod tests {
         let out = check(&monitor(MonitorType::Tcp, &addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().contains("Connection refused") || cfg!(windows));
+    }
+
+    #[tokio::test]
+    async fn localhost_reaches_an_ipv4_only_listener() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let out = check(&monitor(MonitorType::Tcp, &format!("localhost:{port}"))).await;
+        assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
+        assert_eq!(out.message, Some(format!("Port {port} open on 127.0.0.1")));
     }
 
     #[tokio::test]

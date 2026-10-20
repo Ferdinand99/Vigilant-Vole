@@ -33,6 +33,7 @@ use crate::db::monitors::{self as db_monitors, ExpiryRecord};
 use crate::db::tags::{self as db_tags, MonitorTag, Tag};
 use crate::db::{notifications as db_notifications, rollups, settings as db_settings};
 use crate::monitor::checkers::{BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METHODS, JSON_OPERATORS};
+use crate::monitor::checkers::{AUTH_METHODS, OAUTH_CLIENT_AUTHS};
 
 /// Heartbeats per page in the detail page's table.
 const HEARTBEAT_PAGE: i64 = 25;
@@ -135,6 +136,17 @@ fn type_choices() -> Vec<TypeChoice> {
                 MonitorType::DomainExpiry => (crate::i18n::t("monitor_type.sub_domain_expiry"), "calendar"),
                 MonitorType::Ntp => (crate::i18n::t("monitor_type.sub_ntp"), "clock"),
                 MonitorType::Steam => (crate::i18n::t("monitor_type.sub_steam"), "server"),
+                MonitorType::Tls => (crate::i18n::t("monitor_type.sub_tls"), "lock"),
+                MonitorType::Smtp => (crate::i18n::t("monitor_type.sub_smtp"), "mail"),
+                MonitorType::Redis => (crate::i18n::t("monitor_type.sub_redis"), "database"),
+                MonitorType::Postgres => (crate::i18n::t("monitor_type.sub_postgres"), "database"),
+                MonitorType::Mysql => (crate::i18n::t("monitor_type.sub_mysql"), "database"),
+                MonitorType::Mqtt => (crate::i18n::t("monitor_type.sub_mqtt"), "signal"),
+                MonitorType::Kafka => (crate::i18n::t("monitor_type.sub_kafka"), "queue"),
+                MonitorType::Rabbitmq => (crate::i18n::t("monitor_type.sub_rabbitmq"), "queue"),
+                MonitorType::Grpc => (crate::i18n::t("monitor_type.sub_grpc"), "bolt"),
+                MonitorType::Radius => (crate::i18n::t("monitor_type.sub_radius"), "key"),
+                MonitorType::Snmp => (crate::i18n::t("monitor_type.sub_snmp"), "chart"),
                 MonitorType::Group => (crate::i18n::t("monitor_type.sub_group"), "dashboard"),
             };
             TypeChoice {
@@ -171,7 +183,7 @@ impl TargetSpec {
     }
 }
 
-const TARGETS: [TargetSpec; 9] = [
+const TARGETS: &[TargetSpec] = &[
     TargetSpec {
         field: "target_url",
         types: "http,keyword,json_query",
@@ -244,6 +256,94 @@ const TARGETS: [TargetSpec; 9] = [
         help: "Uses port 27015 unless you add one.",
         url: false,
     },
+    TargetSpec {
+        field: "target_tls",
+        types: "tls",
+        label: "Server",
+        placeholder: "example.com:443…",
+        help: "Uses port 443 unless you add one.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_smtp",
+        types: "smtp",
+        label: "Mail server",
+        placeholder: "mail.example.com:587…",
+        help: "Uses port 25 unless you add one. Port 465 is treated as implicit TLS.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_redis",
+        types: "redis",
+        label: "Redis server",
+        placeholder: "cache.local:6379…",
+        help: "Uses port 6379. Add rediss:// for TLS and /2 to pick a database.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_postgres",
+        types: "postgres",
+        label: "PostgreSQL server",
+        placeholder: "db.local:5432/app…",
+        help: "Uses port 5432. The path is the database name. TLS is used when the server offers it; add ?sslmode=verify-full to also check the certificate (or disable, require, verify-ca).",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_mysql",
+        types: "mysql",
+        label: "MySQL or MariaDB server",
+        placeholder: "db.local:3306…",
+        help: "Uses port 3306. Without a user name only the server greeting is checked. TLS is used when the server offers it; add ?sslmode=verify-full to also check the certificate.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_mqtt",
+        types: "mqtt",
+        label: "MQTT broker",
+        placeholder: "broker.local:1883/home/status…",
+        help: "Uses port 1883 (8883 for mqtts://). Add a topic as the path to subscribe to it; wildcards (+ and #) work as written.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_kafka",
+        types: "kafka",
+        label: "Kafka broker",
+        placeholder: "broker.local:9092/orders…",
+        help: "Uses port 9092. Add a topic as the path to check that it exists.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_rabbitmq",
+        types: "rabbitmq",
+        label: "RabbitMQ broker",
+        placeholder: "mq.local:5672/vhost…",
+        help: "Uses port 5672 (5671 for amqps://). The path is the virtual host; the default is /.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_grpc",
+        types: "grpc",
+        label: "gRPC server",
+        placeholder: "api.local:50051/my.Service…",
+        help: "Uses port 50051 (443 for grpcs://). The path is the service name for the standard health check; leave it empty for the whole server.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_radius",
+        types: "radius",
+        label: "RADIUS server",
+        placeholder: "radius.local:1812…",
+        help: "Uses port 1812.",
+        url: false,
+    },
+    TargetSpec {
+        field: "target_snmp",
+        types: "snmp",
+        label: "SNMP device",
+        placeholder: "router.local:161/1.3.6.1.2.1.1.3.0…",
+        help: "Uses port 161. The path is the OID to read; the default is sysUpTime (1.3.6.1.2.1.1.3.0).",
+        url: false,
+    },
 ];
 
 /// Palette colours as `(value, "Label")` for colour pickers.
@@ -295,6 +395,9 @@ pub struct FormData {
     pub header_rows: Vec<(String, String)>,
     pub push_url: Option<String>,
     pub has_agents: bool,
+    /// `(value, label)` for the authentication method select.
+    pub auth_methods: Vec<(&'static str, String)>,
+    pub oauth_client_auths: Vec<(&'static str, String)>,
 }
 
 impl FormData {
@@ -310,6 +413,32 @@ impl FormData {
     /// Whether a `data-show-when` block for `types` is visible for the current type.
     pub fn shows(&self, types: &str) -> bool {
         types.split(',').any(|t| t == self.v.monitor_type)
+    }
+
+    /// Whether the chosen authentication method is `method` (for pre-hiding
+    /// the `data-show-when="auth_method=…"` blocks).
+    pub fn auth_is(&self, method: &str) -> bool {
+        self.v.auth_method == method
+    }
+
+    /// Whether any authentication field has an error (keeps the section open).
+    pub fn has_auth_err(&self) -> bool {
+        [
+            "auth_method",
+            "basic_auth_user",
+            "basic_auth_pass",
+            "oauth_token_url",
+            "oauth_client_id",
+            "oauth_client_secret",
+            "oauth_scope",
+            "oauth_audience",
+            "oauth_client_auth",
+            "tls_client_cert",
+            "tls_client_key",
+            "tls_ca_cert",
+        ]
+        .iter()
+        .any(|f| self.errors.contains_key(f))
     }
 
     pub fn is_type(&self, t: &str) -> bool {
@@ -415,6 +544,7 @@ struct FormMeta {
 }
 
 fn form_data(env: FormEnv, meta: FormMeta, v: FormValues, errors: Errors, headers: &HeaderMap) -> FormData {
+    let v = v.without_typed_secrets();
     let header_rows = v.header_rows();
     let summary = match errors.len() {
         0 => String::new(),
@@ -430,7 +560,7 @@ fn form_data(env: FormEnv, meta: FormMeta, v: FormValues, errors: Errors, header
         header_rows,
         errors,
         types: type_choices(),
-        targets: &TARGETS,
+        targets: TARGETS,
         groups: env.groups,
         channels: env.channels,
         tags: env.tags,
@@ -470,6 +600,14 @@ fn form_data(env: FormEnv, meta: FormMeta, v: FormValues, errors: Errors, header
             .as_deref()
             .map(|t| push_url(env.base_url.as_deref(), headers, t)),
         has_agents: env.has_agents,
+        auth_methods: AUTH_METHODS
+            .iter()
+            .map(|m| (*m, crate::i18n::t_or(&format!("httpauth.{m}"), m).to_string()))
+            .collect(),
+        oauth_client_auths: OAUTH_CLIENT_AUTHS
+            .iter()
+            .map(|m| (*m, crate::i18n::t_or(&format!("httpauth.{m}"), m).to_string()))
+            .collect(),
         v,
     }
 }

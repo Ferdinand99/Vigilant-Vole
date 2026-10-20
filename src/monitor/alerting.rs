@@ -992,6 +992,7 @@ mod tests {
             ignore_tls: false,
             basic_auth_user: None,
             basic_auth_pass: None,
+            secret: None,
             proxy_url: None,
             keyword: None,
             keyword_invert: false,
@@ -1015,6 +1016,16 @@ mod tests {
             sort_order: 0,
             created_at: String::new(),
             updated_at: String::new(),
+            auth_method: new.auth_method,
+            oauth_token_url: None,
+            oauth_client_id: None,
+            oauth_client_secret: None,
+            oauth_scope: None,
+            oauth_audience: None,
+            oauth_client_auth: new.oauth_client_auth,
+            tls_client_cert: None,
+            tls_client_key: None,
+            tls_ca_cert: None,
         }
     }
 

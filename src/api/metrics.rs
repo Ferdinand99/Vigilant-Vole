@@ -201,7 +201,7 @@ fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) 
         MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery | MonitorType::Websocket => {
             (redact_target(target), String::new(), String::new())
         }
-        MonitorType::Tcp | MonitorType::Steam | MonitorType::Ntp => match target.trim().rsplit_once(':') {
+        MonitorType::Tcp | MonitorType::Steam | MonitorType::Ntp | MonitorType::Tls | MonitorType::Smtp => match target.trim().rsplit_once(':') {
             Some((h, p)) if p.parse::<u16>().is_ok() => (
                 String::new(),
                 h.trim_start_matches('[').trim_end_matches(']').to_string(),
@@ -212,6 +212,18 @@ fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) 
         MonitorType::Ping | MonitorType::Dns | MonitorType::DomainExpiry => {
             (String::new(), target.trim().to_string(), String::new())
         }
+        MonitorType::Redis
+        | MonitorType::Postgres
+        | MonitorType::Mysql
+        | MonitorType::Mqtt
+        | MonitorType::Kafka
+        | MonitorType::Rabbitmq
+        | MonitorType::Grpc
+        | MonitorType::Radius
+        | MonitorType::Snmp => match crate::monitor::checkers::endpoint::parse(t, target) {
+            Ok(e) => (String::new(), e.host, e.port.to_string()),
+            Err(_) => (String::new(), target.trim().to_string(), String::new()),
+        },
         MonitorType::Docker | MonitorType::Push | MonitorType::Group => (String::new(), String::new(), String::new()),
     }
 }

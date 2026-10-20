@@ -37,6 +37,7 @@ The server log of a run lives in its temporary `DATA_DIR` (`server.log`) until t
 | `test_monitors.py` | HTTP, keyword (found / missing), TCP inside a group, push (pushing flips it up/down), pause/resume, detail page (status, chart, events), dashboard turns a row red live over SSE without reloading |
 | `test_notifications.py` | Webhook channel: “Send test”, then a real down alert and an up alert with the downtime |
 | `test_status_pages.py` | Create page, section, add monitors, mouse drag reorder (persists), publish, pinned incident with Markdown, logged-out public page (no monitor targets leaked), JSON API, SVG badges |
+| `test_service_monitors.py` | Redis monitor through the form (password never echoed, mask kept on save, check goes Up against a fake Redis), wrong password explained, switching type swaps the RADIUS / SNMP / credential fields |
 | `test_maintenance.py` | Manual window puts a monitor into maintenance; ending it brings it back |
 | `test_users_security.py` | Viewer sees no edit controls and gets 403 on writes; TOTP 2FA enrol + login, recovery codes are single-use; read/write API token scopes; `/metrics` after enabling it |
 | `test_ui_misc.py` | Config export (YAML) → import preview reports everything unchanged; Norwegian user language and `Accept-Language: nb` on a public page; 375 px phone layout (no sideways scroll, sheet opens/closes); theme choice persists; reduced motion |
