@@ -102,3 +102,4 @@ Right-to-left. Technical terms and product names stay in Latin script.
 - Dates: `20 באוקטובר 2026`; durations short (שנ׳, דק׳, שע׳, ימים).
 
 - cron expression: ביטוי cron (the word "cron" stays Latin).
+- subscriber: מנוי (pl. מנויים); subscribe / unsubscribe: הרשמה / ביטול מנוי; confirm subscription: אישור המנוי; webhook subscriber: מנוי Webhook; pending (sign-up): ממתין; maintenance started / ended: התחזוקה החלה / הסתיימה.

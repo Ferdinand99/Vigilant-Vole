@@ -109,3 +109,4 @@ Kilde: `locales/en.toml`. Ordforråd er sammenholdt med Uptime Kumas danske ord 
 | site ID | websted-ID | |
 
 - cron expression: cron-udtryk (the word "cron" stays Latin).
+- subscriber: abonnent; subscribe / unsubscribe: abonnér / afmeld; confirm subscription: bekræft abonnement; webhook subscriber: webhook-abonnent; pending (sign-up): afventer; maintenance started / ended: vedligeholdelse startet / afsluttet.

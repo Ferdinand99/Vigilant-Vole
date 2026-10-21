@@ -107,3 +107,9 @@ Word list for Vigilant Vole. Kuma column notes only where we differ from Uptime 
 - Product, protocol and technical terms stay English (HTTP, TLS, DNS, Docker, Prometheus ...).
 
 | cron expression | cron ifadesi | "cron" kept Latin |
+| subscriber | abone | |
+| subscribe / unsubscribe | abone ol / abonelikten çık | |
+| confirm subscription | aboneliği onayla | |
+| webhook subscriber | webhook abonesi | |
+| pending (sign-up) | bekliyor | |
+| maintenance started / ended | bakım başladı / bitti | |

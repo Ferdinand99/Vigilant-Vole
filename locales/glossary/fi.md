@@ -94,3 +94,4 @@ Word list so every string uses one term per concept. Kuma column differences are
 - Dates: `20. lokakuuta 2026`, time `klo 14:30`, 24-hour clock.
 
 - cron expression: cron-lauseke (the word "cron" stays Latin).
+- subscriber: tilaaja; subscribe / unsubscribe: tilaa / peruuta tilaus; confirm subscription: vahvista tilaus; webhook subscriber: webhook-tilaaja; pending (sign-up): odottaa; maintenance started / ended: huolto alkoi / päättyi.

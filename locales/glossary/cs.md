@@ -98,3 +98,4 @@
 - Status pills: Běží / Nedostupné / Čeká / Údržba / Pozastaveno.
 
 - cron expression: výraz cron (the word "cron" stays Latin).
+- subscriber: odběratel; subscribe / unsubscribe: odebírat / zrušit odběr; confirm subscription: potvrdit odběr; webhook subscriber: odběratel webhooku; pending (sign-up): čeká; maintenance started / ended: údržba začala / skončila.

@@ -192,7 +192,11 @@ pub fn html_body(event: &NotificationEvent) -> String {
 }
 
 pub async fn send(config: &Value, event: &NotificationEvent) -> Result<(), String> {
-    let message = build_message(config, event)?;
+    deliver(config, build_message(config, event)?).await
+}
+
+/// Sends an already-built message through the SMTP settings in `config`.
+pub async fn deliver(config: &Value, message: Message) -> Result<(), String> {
     let host = req(config, "host")?;
     let security = opt(config, "security").unwrap_or("starttls");
     let port = num(config, "port")

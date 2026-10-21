@@ -97,3 +97,4 @@
 - Product and protocol names stay in Latin script.
 
 - cron expression: cron式 (the word "cron" stays Latin).
+- subscriber: 購読者; subscribe / unsubscribe: 購読する / 購読を解除; confirm subscription: 購読を確認; webhook subscriber: Webhook購読者; pending (sign-up): 確認待ち (confirmed: 確認済み); maintenance started / ended: メンテナンス開始 / 終了.

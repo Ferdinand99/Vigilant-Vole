@@ -108,3 +108,9 @@ Vigilant Vole 界面翻译所用术语。每个术语只定一种译法，全文
 - 日期：`2026年10月20日`；星期短 `周一`，长 `星期一`；24 小时制。
 
 | cron expression | Cron 表达式 | "cron" kept Latin |
+| subscriber | 订阅者 | |
+| subscribe / unsubscribe | 订阅 / 取消订阅 | |
+| confirm subscription | 确认订阅 | |
+| webhook subscriber | Webhook 订阅者 | |
+| pending (sign-up) | 待定 | 同状态“待定” |
+| maintenance started / ended | 维护已开始 / 已结束 | |

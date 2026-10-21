@@ -103,3 +103,4 @@ Español neutro internacional. Kuma no se pudo consultar (sin acceso al archivo)
 | viewport | ventana gráfica | |
 
 - cron expression: expresión cron (the word "cron" stays Latin).
+- subscriber: suscriptor; subscribe / unsubscribe: suscribirse / cancelar suscripción; confirm subscription: confirmar suscripción; webhook subscriber: suscriptor por webhook; pending (sign-up): Pendiente; maintenance started / ended: mantenimiento iniciado / finalizado.

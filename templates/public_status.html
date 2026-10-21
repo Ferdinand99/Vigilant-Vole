@@ -59,7 +59,10 @@
   <div>{{ v.footer_html|safe }}</div>
   {%- endif %}
   {%- if !v.page.is_protected() %}
-  <p><a href="/status/{{ v.page.slug }}/feed.xml" rel="alternate" type="application/atom+xml">{{ tr("pub.feed") }}</a></p>
+  <p><a href="/status/{{ v.page.slug }}/feed.xml" rel="alternate" type="application/atom+xml">{{ tr("pub.feed") }}</a>
+  {%- if v.subscribe %} · <a href="/status/{{ v.page.slug }}/subscribe">{{ tr("sub.link") }}</a>{% endif %}</p>
+  {%- else if v.subscribe %}
+  <p><a href="/status/{{ v.page.slug }}/subscribe">{{ tr("sub.link") }}</a></p>
   {%- endif %}
   {%- if v.page.show_powered_by %}
   <p>{{ tr("common.powered_by") }} <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a></p>

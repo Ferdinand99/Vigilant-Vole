@@ -104,3 +104,9 @@ Aspas: “…” (e ‘…’ dentro). Maiúscula só no início da frase (sente
 - Textos curtos e calmos, sem exclamações; botões e abas curtos.
 
 | cron expression | expressão cron | "cron" kept Latin |
+| subscriber | assinante | |
+| subscribe / unsubscribe | assinar / cancelar assinatura | |
+| confirm subscription | confirmar assinatura | |
+| webhook subscriber | assinante por webhook | |
+| pending (sign-up) | pendente | |
+| maintenance started / ended | manutenção iniciada / concluída | |

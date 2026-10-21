@@ -24,6 +24,7 @@ use super::{ApiError, ApiResult, AppState, HtmlTemplate, PageCtx, flash};
 use crate::auth::{CurrentUser, Role};
 use crate::db::incidents::{self as db_incidents, Incident, NewIncident};
 use crate::db::models::MonitorType;
+use crate::db::subscribers as db_subscribers;
 use crate::db::status_pages::extras::{self as page_extras, Analytics, Provider};
 use crate::db::status_pages::{self as db_pages, NewStatusPage, Section, StatusPage, StatusPageSummary};
 
@@ -47,6 +48,8 @@ pub fn router() -> Router<AppState> {
         .route("/status-pages/{id}/incidents/{iid}/resolve", post(resolve_incident))
         .route("/status-pages/{id}/incidents/{iid}/reopen", post(reopen_incident))
         .route("/status-pages/{id}/analytics", post(save_analytics))
+        .route("/status-pages/{id}/subscribers", get(subscribers).post(save_subscribers))
+        .route("/status-pages/{id}/subscribers/{sid}", delete(remove_subscriber))
         .merge(super::public_status::assets::editor_routes())
         .layer(axum::middleware::from_fn(super::public_status::invalidate_after_writes))
 }
@@ -1181,8 +1184,9 @@ async fn create_incident(
         }
     };
     load_page(&state, id).await?;
-    state.with_conn(move |c| db_incidents::insert(c, id, &new)).await?;
+    let iid = state.with_conn(move |c| db_incidents::insert(c, id, &new)).await?;
     state.notify_update();
+    crate::subscribers::announce_incident(&state, id, iid, crate::subscribers::Kind::Incident);
     let jar = flash(jar, "success", crate::i18n::t("inc.posted_flash"));
     Ok((jar, Redirect::to(&back)).into_response())
 }
@@ -1242,6 +1246,9 @@ async fn set_resolved(state: &AppState, jar: SignedCookieJar, id: i64, iid: i64,
         return Err(ApiError::NotFound);
     }
     state.notify_update();
+    if resolved {
+        crate::subscribers::announce_incident(state, id, iid, crate::subscribers::Kind::Resolved);
+    }
     let jar = flash(
         jar,
         "success",
@@ -1313,6 +1320,7 @@ async fn post_incident_update(
         Ok(v) => v,
         Err(e) => return Ok((flash(jar, "error", e.public_message()), Redirect::to(&back)).into_response()),
     };
+    let kind = if status == "resolved" { crate::subscribers::Kind::Resolved } else { crate::subscribers::Kind::Update };
     if state
         .with_conn(move |c| db_incidents::add_update(c, id, iid, &status, &body))
         .await?
@@ -1321,6 +1329,7 @@ async fn post_incident_update(
         return Err(ApiError::NotFound);
     }
     state.notify_update();
+    crate::subscribers::announce_incident(&state, id, iid, kind);
     Ok((flash(jar, "success", crate::i18n::t("inc.update_posted")), Redirect::to(&back)).into_response())
 }
 
@@ -1484,4 +1493,123 @@ mod tests {
         assert_eq!(parsed["vv:toast"]["message"], "Saved “x” ✓ 😀");
         assert_eq!(parsed["vv:close-sheet"], true);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Subscribers
+// ---------------------------------------------------------------------------
+
+#[derive(Template)]
+#[template(path = "status_page_subscribers.html")]
+struct SubscribersTemplate {
+    ctx: PageCtx,
+    page: StatusPage,
+    tab: &'static str,
+    settings: db_subscribers::Settings,
+    /// Active email channels: (id, name, selected).
+    channels: Vec<(i64, String, bool)>,
+    rows: Vec<SubscriberRow>,
+}
+
+struct SubscriberRow {
+    id: i64,
+    target: String,
+    kind_label: &'static str,
+    confirmed: bool,
+    created: String,
+}
+
+async fn subscribers(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+) -> ApiResult<impl IntoResponse> {
+    user.require(Role::Editor)?;
+    let (page, settings, channels, list, site) = state
+        .with_conn(move |c| {
+            let page = db_pages::get(c, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            let channels: Vec<(i64, String)> = crate::db::notifications::list_channels(c)?
+                .into_iter()
+                .filter(|ch| ch.active && ch.kind == "email")
+                .map(|ch| (ch.id, ch.name))
+                .collect();
+            Ok((
+                page,
+                db_subscribers::settings(c, id)?,
+                channels,
+                db_subscribers::list(c, id)?,
+                crate::db::settings::load(c)?,
+            ))
+        })
+        .await?;
+    let channels = channels.into_iter().map(|(cid, name)| (cid, name, settings.channel_id == Some(cid))).collect();
+    let tz = super::public_status::site_tz(&site.timezone);
+    let rows = list
+        .into_iter()
+        .map(|s| SubscriberRow {
+            kind_label: if s.kind == "email" { crate::i18n::t("sub.type_email") } else { crate::i18n::t("sub.type_webhook") },
+            confirmed: s.is_confirmed(),
+            created: super::public_status::fmt_local(&s.created_at, &tz),
+            id: s.id,
+            target: s.target,
+        })
+        .collect();
+    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, format!("{} · {}", crate::i18n::t("sub.tab"), page.title), "status-pages", "").await;
+    Ok((jar, HtmlTemplate(SubscribersTemplate { ctx, page, tab: "subscribers", settings, channels, rows })))
+}
+
+#[derive(Debug, Deserialize)]
+struct SubscribersInput {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    channel_id: String,
+    #[serde(default)]
+    webhooks: bool,
+}
+
+async fn save_subscribers(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+    Form(input): Form<SubscribersInput>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    load_page(&state, id).await?;
+    let settings = db_subscribers::Settings {
+        enabled: input.enabled,
+        channel_id: input.channel_id.trim().parse().ok(),
+        webhooks: input.webhooks,
+    };
+    // Only an email channel can send the mails.
+    let valid = match settings.channel_id {
+        Some(cid) => state
+            .with_conn(move |c| crate::db::notifications::get_channel(c, cid))
+            .await?
+            .is_some_and(|ch| ch.kind == "email"),
+        None => true,
+    };
+    let back = format!("/status-pages/{id}/subscribers");
+    if !valid {
+        let jar = flash(jar, "error", crate::i18n::t("sub.err_channel"));
+        return Ok((jar, Redirect::to(&back)).into_response());
+    }
+    state.with_conn(move |c| db_subscribers::set_settings(c, id, &settings)).await?;
+    state.notify_update();
+    Ok((flash(jar, "success", crate::i18n::t("sub.saved")), Redirect::to(&back)).into_response())
+}
+
+async fn remove_subscriber(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, sid)): Path<(i64, i64)>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    if !state.with_conn(move |c| db_subscribers::delete(c, id, sid)).await? {
+        return Err(ApiError::NotFound);
+    }
+    Ok(hx_refresh(flash(jar, "success", crate::i18n::t("sub.removed"))))
 }

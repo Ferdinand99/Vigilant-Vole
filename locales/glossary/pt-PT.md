@@ -96,3 +96,9 @@
 - Nomes de produtos, termos técnicos, flags, variáveis e URLs ficam em inglês.
 
 | cron expression | expressão cron | "cron" kept Latin |
+| subscriber | subscritor | |
+| subscribe / unsubscribe | subscrever / cancelar subscrição | |
+| confirm subscription | confirmar subscrição | |
+| webhook subscriber | subscritor por webhook | |
+| pending (sign-up) | pendente | |
+| maintenance started / ended | manutenção iniciada / concluída | |

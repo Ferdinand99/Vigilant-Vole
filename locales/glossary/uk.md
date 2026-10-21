@@ -111,3 +111,9 @@
 - Множина: one / few / many / other; для other (дробові) форма родового відмінка однини, як «{n} монітора».
 
 | cron expression | вираз cron | "cron" kept Latin |
+| subscriber | підписник | |
+| subscribe / unsubscribe | підписатися / скасувати підписку | |
+| confirm subscription | підтвердити підписку | |
+| webhook subscriber | підписник через вебхук | |
+| pending (sign-up) | очікування | як у статусах |
+| maintenance started / ended | обслуговування розпочато / завершено | |

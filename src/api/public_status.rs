@@ -14,10 +14,13 @@ pub mod access;
 pub mod analytics;
 pub mod assets;
 pub mod feed;
+pub mod subscribe;
 #[cfg(test)]
 mod extras_tests;
 #[cfg(test)]
 mod incident_updates_tests;
+#[cfg(test)]
+mod subscribe_tests;
 
 use crate::i18n::Tr as _;
 use std::collections::HashMap;
@@ -60,6 +63,15 @@ pub fn public_router() -> Router<AppState> {
         .route("/status/{slug}/fragment", get(fragment))
         .route("/status/{slug}/feed.xml", get(feed::feed))
         .route("/status/{slug}/unlock", axum::routing::post(access::unlock))
+        .route("/status/{slug}/subscribe", get(subscribe::form).post(subscribe::sign_up))
+        .route(
+            "/status/{slug}/subscribe/confirm/{token}",
+            get(subscribe::confirm_page).post(subscribe::confirm),
+        )
+        .route(
+            "/status/{slug}/subscribe/unsubscribe/{token}",
+            get(subscribe::unsubscribe_page).post(subscribe::unsubscribe),
+        )
         .route("/status/{slug}/analytics.js", get(analytics::analytics_js))
         .route("/api/status-page/{slug}", get(json_summary))
         .merge(assets::public_routes())
@@ -348,6 +360,9 @@ pub struct PublicView {
     pub updated_label: String,
     #[serde(skip)]
     pub footer_html: String,
+    /// The page lets visitors subscribe to announcements.
+    #[serde(skip)]
+    pub subscribe: bool,
     /// Logged-in editor viewing an unpublished page.
     #[serde(skip)]
     pub preview: bool,
@@ -765,6 +780,7 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
         updated_at: maintenance::fmt_db_ts(now),
         updated_label: fmt_ts(now, &tz),
         footer_html: String::new(),
+        subscribe: crate::db::subscribers::settings(conn, page.id).is_ok_and(|s| s.enabled),
         preview: !page.published,
         can_edit: false,
         fragment_url: format!("/status/{}/fragment", page.slug),

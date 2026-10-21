@@ -123,6 +123,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Status pages, custom domains, badges | ✅ | ✅ |
 | Status page logo upload, analytics, password protection | ✅ incl. built-in, cookie-free analytics | Logo and analytics ✅ · password protection ❌ |
 | Incidents | Multiple per page, pinned, history, update timeline, Atom feed | One active incident per page |
+| Status page subscribers | ✅ email (double opt-in) and webhook | ❌ |
 | Maintenance windows | ✅ manual, once, daily, weekly, every N days, days of the month, cron | ✅ the same |
 | Multiple users with roles | ✅ admin / editor / viewer | ❌ single user |
 | 2FA (TOTP) | ✅ + recovery codes | ✅ |
@@ -321,6 +322,7 @@ Events: down, up (with downtime), reminder, escalation, certificate expiring, do
 
 - **Logo and browser icon**: upload PNG, JPEG, WebP or ICO (up to 1 MB; SVG is refused) in the page's Settings tab. Files are checked by content, kept in the database (backups stay one file) and served at `/status/<slug>/logo` and `/favicon`
 - **Password protection**: give a page a password and visitors get an unlock form; the unlock lasts 30 days in that browser (a signed, `HttpOnly` cookie for that page only) and changing or removing the password signs everyone out. While locked, the live refresh, the JSON and badges of monitors that are only on protected pages stay private. Signed-in users skip the lock
+- **Subscribers** (Subscribers tab): let visitors subscribe to incidents, incident updates and maintenance by **email** (double opt-in: nothing is sent until they click the confirmation link; sent through an SMTP channel you pick) or by **webhook** (a JSON POST; only public addresses are accepted, redirects are not followed). Every mail has an unsubscribe link and a `List-Unsubscribe` header, each subscriber gets their own message, the form answers the same whether or not an address is known, sign-ups are rate-limited and unconfirmed ones expire after three days. Subscribers who keep failing are dropped. The form follows a page's password lock
 - **Analytics** (Analytics tab): built-in, cookie-free counts of views, unique visitors and referring sites with a 30-day chart — no IP addresses are stored, unique visitors use a hash whose salt changes daily, bots and signed-in users don't count. Optionally add Plausible, Umami, Matomo or Google Analytics; its script loads on that page only and the page's CSP allows exactly that provider
 
 - Public at `/status/<slug>`, or at `/` on a **custom domain** (point the domain at Vigilant Vole / your reverse proxy and set it on the page)
@@ -539,6 +541,7 @@ A `Scheduler` runs one `tokio` task per active monitor under a global concurrenc
 Done:
 
 - [x] Public status pages, custom domains, incidents, badges
+- [x] Incident update timeline, Atom feed and status page subscribers (email, webhook)
 - [x] Maintenance windows
 - [x] TLS certificate and domain expiry checks
 - [x] Push/heartbeat monitors

@@ -276,6 +276,11 @@ pub static ROUTES: &[RouteDoc] = &[
     r("POST", "/api/v1/status-pages/{id}/incidents/{iid}/updates", "editor", "Status pages", "Post an update to an incident (status: investigating, identified, monitoring, resolved). A resolved update resolves the incident; any other status reopens it.")
         .req(r#"{"status": "identified", "body": "A bad deploy. Rolling back."}"#),
     r("DELETE", "/api/v1/status-pages/{id}/incidents/{iid}/updates/{uid}", "editor", "Status pages", "Delete one update."),
+    r("GET", "/api/v1/status-pages/{id}/subscription", "viewer", "Status pages", "Whether visitors can subscribe to the page's announcements, which email channel sends the mails and whether webhook subscribers are allowed."),
+    r("PUT", "/api/v1/status-pages/{id}/subscription", "editor", "Status pages", "Change the subscription settings (enabled, channel_id of an email notification channel or null, webhooks). Omitted fields stay as they are.")
+        .req(r#"{"enabled": true, "channel_id": 3, "webhooks": false}"#),
+    r("GET", "/api/v1/status-pages/{id}/subscribers", "editor", "Status pages", "List the page's subscribers (email addresses or webhook URLs) with their confirmation state."),
+    r("DELETE", "/api/v1/status-pages/{id}/subscribers/{sid}", "editor", "Status pages", "Remove a subscriber."),
     // -- Maintenance --
     r("GET", "/api/v1/maintenance", "viewer", "Maintenance", "List maintenance windows with their current state."),
     r("POST", "/api/v1/maintenance", "editor", "Maintenance", "Create a window. Times: start_at/end_at in UTC, time_from/time_to local to timezone, weekdays ISO (1 = Monday). Strategies: manual, once, daily, weekly, interval (interval_days, counted from start_at), monthly (month_days like 1,15,-1) and cron (cron + duration_minutes).")

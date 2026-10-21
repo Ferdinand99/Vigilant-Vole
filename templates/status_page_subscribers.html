@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+{#- Subscribers tab of the status page editor. Needs `page`, `tab`, `settings`, `channels`, `rows`, `public_url`. -#}
+
+{% block content %}
+{% include "partials/status_page_head.html" %}
+
+<form class="form" method="post" action="/status-pages/{{ page.id }}/subscribers">
+  <section class="form-section" aria-labelledby="sub-settings">
+    <h2 class="form-section-title" id="sub-settings">{{ tr("sub.settings_title") }}</h2>
+    <p class="form-section-sub">{{ tr("sub.settings_sub") }}</p>
+    <div class="card">
+      {{ m::switch("enabled", tr("sub.enable"), settings.enabled, tr("sub.enable_help")) }}
+      <div data-show-when="enabled=true">
+        <div class="field">
+          <label class="label" for="f-channel_id">{{ tr("sub.channel") }}</label>
+          <select id="f-channel_id" name="channel_id">
+            <option value="">{{ tr("sub.channel_none") }}</option>
+            {%- for ch in channels %}
+            <option value="{{ ch.0 }}"{% if ch.2 %} selected{% endif %}>{{ ch.1 }}</option>
+            {%- endfor %}
+          </select>
+          <p class="help">{{ tr("sub.channel_help") }}</p>
+        </div>
+        {{ m::switch("webhooks", tr("sub.webhooks"), settings.webhooks, tr("sub.webhooks_help")) }}
+      </div>
+    </div>
+  </section>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ tr("common.save") }}</button>
+    {%- if settings.enabled %}
+    <a class="btn btn-secondary" href="/status/{{ page.slug }}/subscribe" target="_blank" rel="noopener">{{ m::icon("external") }}<span>{{ tr("sub.open_form") }}</span></a>
+    {%- endif %}
+  </div>
+</form>
+
+<section class="section" aria-labelledby="sub-list">
+  {% call m::section_head(tr("sub.list_title"), tr("sub.list_sub"), "sub-list") %}{% endcall %}
+  {%- if rows.is_empty() %}
+  <div class="empty-card">
+    {{ m::empty_state("bell", tr("sub.empty_title"), tr("sub.empty_text")) }}
+  </div>
+  {%- else %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("sub.col_target") }}</th><th>{{ tr("sub.col_type") }}</th><th>{{ tr("dashboard.status") }}</th><th>{{ tr("common.created") }}</th><th><span class="vh">{{ tr("common.actions") }}</span></th></tr></thead>
+        <tbody>
+          {%- for r in rows %}
+          <tr id="subscriber-{{ r.id }}">
+            <td class="td-primary"><bdi class="break">{{ r.target }}</bdi></td>
+            <td data-label="{{ tr("sub.col_type") }}"><span class="badge">{{ r.kind_label }}</span></td>
+            <td data-label="{{ tr("dashboard.status") }}">{% if r.confirmed %}<span class="pill status-up">{{ tr("sub.st_confirmed") }}</span>{% else %}<span class="pill status-pending">{{ tr("sub.st_pending") }}</span>{% endif %}</td>
+            <td data-label="{{ tr("common.created") }}">{{ r.created }}</td>
+            <td class="td-actions">
+              <button type="button" class="btn btn-danger btn-sm" hx-delete="/status-pages/{{ page.id }}/subscribers/{{ r.id }}"
+                hx-swap="none" hx-confirm="{{ tr("sub.remove_q") }}" data-confirm-label="{{ tr("sub.remove") }}"
+                data-confirm-message="{{ tr("sub.remove_msg") }}">{{ tr("sub.remove") }}</button>
+            </td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {%- endif %}
+</section>
+{% endblock %}

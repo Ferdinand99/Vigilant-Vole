@@ -627,6 +627,13 @@ async fn handle_changes(
             tracing::info!(window = id, %title, "maintenance {}", if kind == EventKind::MaintenanceStart { "started" } else { "ended" });
             affected.extend(monitors.iter().copied());
             notify_window(state, kind, *id, title, monitors).await;
+            let ids: Vec<i64> = monitors.iter().copied().collect();
+            let sub_kind = if kind == EventKind::MaintenanceStart {
+                crate::subscribers::Kind::MaintenanceStart
+            } else {
+                crate::subscribers::Kind::MaintenanceEnd
+            };
+            crate::subscribers::announce_maintenance(state, sub_kind, title, &ids).await;
         }
     }
     if monitors_changed {

@@ -4647,3 +4647,6 @@ input[type="password"] {
 .uptime-legend {
   direction: ltr;
 }
+
+/* Status page subscription form: a honeypot field people never see. */
+.sub-trap { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

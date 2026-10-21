@@ -12,7 +12,7 @@
     </div>
     <div class="page-actions">
       <a class="btn btn-secondary" href="/status/{{ page.slug }}" target="_blank" rel="noopener">{{ m::icon("external") }}<span>{% if page.published %}{{ tr("sp.view_page") }}{% else %}{{ tr("sp.preview") }}{% endif %}</span></a>
-      {%- if tab != "incidents" %}
+      {%- if tab != "incidents" && tab != "subscribers" %}
       <button type="button" class="btn btn-secondary" data-sheet-open="#sp-badges" commandfor="sp-badges" command="show-modal">{{ m::icon("tag") }}<span>{{ tr("sp.badges") }}</span></button>
       {%- endif %}
       <button type="button" class="btn btn-icon btn-danger" hx-delete="/status-pages/{{ page.id }}" hx-swap="none"
@@ -27,4 +27,5 @@
   <a class="tab" href="/status-pages/{{ page.id }}/edit?tab=settings"{% if tab == "settings" %} aria-current="page"{% endif %}>{{ tr("nav.settings") }}</a>
   <a class="tab" href="/status-pages/{{ page.id }}/edit?tab=analytics"{% if tab == "analytics" %} aria-current="page"{% endif %}>{{ tr("spx.tab_analytics") }}</a>
   <a class="tab" href="/status-pages/{{ page.id }}/incidents"{% if tab == "incidents" %} aria-current="page"{% endif %}>{{ tr("sp.incidents") }}</a>
+  <a class="tab" href="/status-pages/{{ page.id }}/subscribers"{% if tab == "subscribers" %} aria-current="page"{% endif %}>{{ tr("sub.tab") }}</a>
 </nav>

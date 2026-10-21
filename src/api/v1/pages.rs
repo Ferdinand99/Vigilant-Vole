@@ -31,6 +31,9 @@ pub fn router() -> Router<AppState> {
         )
         .route("/status-pages/{id}/incidents/{iid}/updates", get(list_updates).post(post_update))
         .route("/status-pages/{id}/incidents/{iid}/updates/{uid}", axum::routing::delete(delete_update))
+        .route("/status-pages/{id}/subscription", get(show_subscription).put(set_subscription).patch(set_subscription))
+        .route("/status-pages/{id}/subscribers", get(list_subscribers))
+        .route("/status-pages/{id}/subscribers/{sid}", axum::routing::delete(delete_subscriber))
         .layer(axum::middleware::from_fn(crate::api::public_status::invalidate_after_writes))
 }
 
@@ -460,6 +463,8 @@ async fn post_update(State(state): State<AppState>, user: CurrentUser, Id((id, i
         .await?
         .ok_or_else(V1Error::not_found)?;
     state.notify_update();
+    let kind = if update.status == "resolved" { crate::subscribers::Kind::Resolved } else { crate::subscribers::Kind::Update };
+    crate::subscribers::announce_incident(&state, id, iid, kind);
     Ok(created(format!("/api/v1/status-pages/{id}/incidents/{iid}/updates/{}", update.id), &update))
 }
 
@@ -489,12 +494,16 @@ async fn create_incident(State(state): State<AppState>, user: CurrentUser, Id(id
         .await?
         .ok_or_else(|| V1Error::internal("incident vanished after insert"))?;
     state.notify_update();
+    if !incident.is_resolved() {
+        crate::subscribers::announce_incident(&state, id, incident.id, crate::subscribers::Kind::Incident);
+    }
     Ok(created(format!("/api/v1/status-pages/{id}/incidents/{}", incident.id), &incident))
 }
 
 async fn update_incident(State(state): State<AppState>, user: CurrentUser, Id((id, iid)): Id<(i64, i64)>, Body(input): Body<IncidentIn>) -> V1Result<Response> {
     user.require(Role::Editor)?;
     let current = state.with_conn(move |c| db_incidents::get(c, id, iid)).await?.ok_or_else(V1Error::not_found)?;
+    let was_resolved = current.is_resolved();
     let base = NewIncident { title: current.title, body: current.body, severity: current.severity, pinned: current.pinned };
     let new = validate_incident(&input, base)?;
     let resolved = input.resolved;
@@ -509,6 +518,9 @@ async fn update_incident(State(state): State<AppState>, user: CurrentUser, Id((i
         .await?
         .ok_or_else(V1Error::not_found)?;
     state.notify_update();
+    if incident.is_resolved() && !was_resolved {
+        crate::subscribers::announce_incident(&state, id, iid, crate::subscribers::Kind::Resolved);
+    }
     Ok(json_ok(&HeaderMap::new(), &incident))
 }
 
@@ -518,5 +530,74 @@ async fn delete_incident(State(state): State<AppState>, user: CurrentUser, Id((i
         return Err(V1Error::not_found());
     }
     state.notify_update();
+    Ok(no_content())
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions
+// ---------------------------------------------------------------------------
+
+fn subscription_json(s: &crate::db::subscribers::Settings) -> Value {
+    json!({ "enabled": s.enabled, "channel_id": s.channel_id, "webhooks": s.webhooks })
+}
+
+async fn show_subscription(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id(id): Id<i64>) -> V1Result<Response> {
+    page_exists(&state, id).await?;
+    let s = state.with_conn(move |c| crate::db::subscribers::settings(c, id)).await?;
+    Ok(json_ok(&headers, &subscription_json(&s)))
+}
+
+#[derive(Debug, Deserialize)]
+struct SubscriptionIn {
+    enabled: Option<bool>,
+    /// An email notification channel's id; `null` removes it.
+    #[serde(default, deserialize_with = "double_option")]
+    channel_id: Option<Option<i64>>,
+    webhooks: Option<bool>,
+}
+
+fn double_option<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<i64>>, D::Error> {
+    Option::<i64>::deserialize(d).map(Some)
+}
+
+async fn set_subscription(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>, Body(input): Body<SubscriptionIn>) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    page_exists(&state, id).await?;
+    let mut s = state.with_conn(move |c| crate::db::subscribers::settings(c, id)).await?;
+    if let Some(v) = input.enabled {
+        s.enabled = v;
+    }
+    if let Some(v) = input.webhooks {
+        s.webhooks = v;
+    }
+    if let Some(channel) = input.channel_id {
+        if let Some(cid) = channel {
+            let is_email = state
+                .with_conn(move |c| crate::db::notifications::get_channel(c, cid))
+                .await?
+                .is_some_and(|ch| ch.kind == "email");
+            if !is_email {
+                return Err(V1Error::field("channel_id", "Use the id of an email notification channel."));
+            }
+        }
+        s.channel_id = channel;
+    }
+    state.with_conn(move |c| crate::db::subscribers::set_settings(c, id, &s)).await?;
+    state.notify_update();
+    Ok(json_ok(&HeaderMap::new(), &subscription_json(&s)))
+}
+
+async fn list_subscribers(State(state): State<AppState>, user: CurrentUser, headers: HeaderMap, Id(id): Id<i64>) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    page_exists(&state, id).await?;
+    let data = state.with_conn(move |c| crate::db::subscribers::list(c, id)).await?;
+    Ok(json_ok(&headers, &json!({ "data": data, "next_cursor": null })))
+}
+
+async fn delete_subscriber(State(state): State<AppState>, user: CurrentUser, Id((id, sid)): Id<(i64, i64)>) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    if !state.with_conn(move |c| crate::db::subscribers::delete(c, id, sid)).await? {
+        return Err(V1Error::not_found());
+    }
     Ok(no_content())
 }

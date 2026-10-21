@@ -105,3 +105,4 @@ Decisions
 - OAuth2 field names (Client ID, Client secret, Scope, Audience) are kept in English as protocol terms.
 
 - cron expression: cron-kifejezés (the word "cron" stays Latin).
+- subscriber: feliratkozó; subscribe / unsubscribe: feliratkozás / leiratkozás; confirm subscription: feliratkozás megerősítése; webhook subscriber: webhook-feliratkozó; pending (sign-up): Függőben; maintenance started / ended: a karbantartás megkezdődött / befejeződött.

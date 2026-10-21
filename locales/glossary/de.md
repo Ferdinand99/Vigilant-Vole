@@ -103,3 +103,4 @@ Anrede: informelles „du“ (Imperative wie „Gib einen Namen ein“), nie „
 - Plural: `.one` (genau 1) und `.other` (alles andere, auch 0).
 
 - cron expression: Cron-Ausdruck (the word "cron" stays Latin).
+- subscriber: Abonnent; subscribe / unsubscribe: abonnieren / abbestellen; confirm subscription: Abonnement bestätigen; webhook subscriber: Webhook-Abonnent; pending (sign-up): Ausstehend; maintenance started / ended: Wartung gestartet / beendet.

@@ -16,5 +16,6 @@ pub mod mcp;
 pub mod mcp_bridge;
 pub mod monitor;
 pub mod notification;
+pub mod subscribers;
 pub mod server;
 pub mod tls_roots;

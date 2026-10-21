@@ -20,6 +20,7 @@ pub mod remote_browsers;
 pub mod rollups;
 pub mod settings;
 pub mod status_pages;
+pub mod subscribers;
 pub mod tags;
 pub mod users;
 

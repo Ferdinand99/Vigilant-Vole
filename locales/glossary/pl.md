@@ -104,3 +104,9 @@ Kuma = Uptime Kuma `pl.json`, used only as a word list.
 - Raw/plain text encoding: "zwykły tekst".
 
 | cron expression | wyrażenie cron | "cron" kept Latin |
+| subscriber | subskrybent | |
+| subscribe / unsubscribe | subskrybuj / wypisz się | |
+| confirm subscription | potwierdź subskrypcję | |
+| webhook subscriber | subskrybent webhook | |
+| pending (sign-up) | oczekuje | |
+| maintenance started / ended | konserwacja rozpoczęta / zakończona | |

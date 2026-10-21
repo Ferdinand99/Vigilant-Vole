@@ -112,3 +112,4 @@ word list (terms only); differences are noted.
 - Dates: Gregorian calendar with Persian transliterated month names.
 
 - cron expression: عبارت cron (the word "cron" stays Latin).
+- subscriber: مشترک (pl. مشترکان); subscribe / unsubscribe: اشتراک / لغو اشتراک; confirm subscription: تأیید اشتراک; webhook subscriber: مشترک Webhook; pending (sign-up): در انتظار; maintenance started / ended: نگهداری آغاز شد / پایان یافت.

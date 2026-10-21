@@ -99,3 +99,9 @@
 - Kompositer skrivs ihop på svenska (statussida, underhållsfönster); lånord med bindestreck (API-token).
 
 | cron expression | cron-uttryck | "cron" kept Latin |
+| subscriber | prenumerant | pl. prenumeranter |
+| subscribe / unsubscribe | prenumerera / avsluta prenumeration | |
+| confirm subscription | bekräfta prenumeration | |
+| webhook subscriber | webhook-prenumerant | |
+| pending (sign-up) | väntar | |
+| maintenance started / ended | underhåll startat / avslutat | |

@@ -366,6 +366,33 @@ async fn status_pages_sections_and_incidents() {
 }
 
 #[tokio::test]
+async fn status_page_subscriptions_are_configured_and_listed() {
+    let h = harness().await;
+    let (_, page) = h.json(Method::POST, "/api/v1/status-pages", &h.editor, Some(json!({"title": "Subs"}))).await;
+    let pid = page["id"].as_i64().unwrap();
+    let url = format!("/api/v1/status-pages/{pid}/subscription");
+    let (status, s) = h.json(Method::GET, &url, &h.viewer, None).await;
+    assert_eq!((status, s["enabled"].as_bool(), s["webhooks"].as_bool()), (StatusCode::OK, Some(false), Some(false)));
+    assert_eq!(h.json(Method::PUT, &url, &h.viewer, Some(json!({"enabled": true}))).await.0, StatusCode::FORBIDDEN);
+
+    let (_, hook) = h.json(Method::POST, "/api/v1/notification-channels", &h.editor, Some(json!({"name": "Hook", "kind": "webhook", "config": {"url": "https://example.com/h"}}))).await;
+    let (status, _) = h.json(Method::PUT, &url, &h.editor, Some(json!({"channel_id": hook["id"]}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "only email channels");
+
+    let (status, s) = h.json(Method::PUT, &url, &h.editor, Some(json!({"enabled": true, "webhooks": true}))).await;
+    assert_eq!((status, s["enabled"].as_bool(), s["webhooks"].as_bool(), s["channel_id"].is_null()), (StatusCode::OK, Some(true), Some(true), true));
+    let (_, s) = h.json(Method::PUT, &url, &h.editor, Some(json!({"webhooks": false}))).await;
+    assert_eq!((s["enabled"].as_bool(), s["webhooks"].as_bool()), (Some(true), Some(false)), "omitted fields stay");
+
+    let list = format!("/api/v1/status-pages/{pid}/subscribers");
+    assert_eq!(h.json(Method::GET, &list, &h.viewer, None).await.0, StatusCode::FORBIDDEN, "addresses are for editors");
+    let (status, l) = h.json(Method::GET, &list, &h.editor, None).await;
+    assert_eq!((status, l["data"].as_array().map(Vec::len)), (StatusCode::OK, Some(0)));
+    assert_eq!(h.call(Method::DELETE, &format!("{list}/99"), &h.editor, None).await.status(), StatusCode::NOT_FOUND);
+    assert_eq!(h.json(Method::GET, "/api/v1/status-pages/999/subscription", &h.viewer, None).await.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn maintenance_windows_validate_and_round_trip() {
     let h = harness().await;
     let (_, m) = h.json(Method::POST, "/api/v1/monitors", &h.editor, Some(http_monitor("Site"))).await;

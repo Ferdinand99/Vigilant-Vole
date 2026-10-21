@@ -99,3 +99,9 @@ Informeel “je/jouw”, korte gebiedende wijs. Termen komen als woordenlijst de
 - Productnamen en technische termen blijven Engels. Lange samenstellingen vermijden in knoppen en tabs.
 
 | cron expression | cron-expressie | "cron" kept Latin |
+| subscriber | abonnee | |
+| subscribe / unsubscribe | abonneren / afmelden | |
+| confirm subscription | abonnement bevestigen | |
+| webhook subscriber | webhook-abonnee | |
+| pending (sign-up) | in afwachting | als st_pending |
+| maintenance started / ended | onderhoud gestart / beëindigd | |
