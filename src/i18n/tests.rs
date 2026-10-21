@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use super::catalog;
-use super::middleware::parse_accept_language;
 use super::*;
+use crate::kit::i18n::catalog;
+use crate::kit::i18n::parse_accept_language;
 
 /// Languages whose locale file must be complete: every language except
 /// English (the source).

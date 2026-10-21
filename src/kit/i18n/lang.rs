@@ -229,12 +229,13 @@ pub struct LangInfo {
     /// Other tags that resolve to this language: a primary subtag (`no`, `nn`)
     /// or a longer prefix (`zh-hant`, `zh-hk`).
     pub aliases: &'static [&'static str],
-    /// The compiled-in `locales/<code>.toml`.
-    pub source: &'static str,
+    /// The language's locale file, as registered by the product.
+    pub source: &'static LocaleText,
 }
 
 const EN: LangInfo = LangInfo {
     code: "en",
+    source: &LocaleText::new("en"),
     english_name: "English",
     native_name: "English",
     dir: Dir::Ltr,
@@ -242,10 +243,10 @@ const EN: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new('.', ',', 1, None),
     aliases: &[],
-    source: include_str!("../../locales/en.toml"),
 };
 const NB: LangInfo = LangInfo {
     code: "nb",
+    source: &LocaleText::new("nb"),
     english_name: "Norwegian Bokmål",
     native_name: "Norsk bokmål",
     dir: Dir::Ltr,
@@ -253,10 +254,10 @@ const NB: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', NBSP, 2, Some(NBSP)),
     aliases: &["no", "nn"],
-    source: include_str!("../../locales/nb.toml"),
 };
 const DE: LangInfo = LangInfo {
     code: "de",
+    source: &LocaleText::new("de"),
     english_name: "German",
     native_name: "Deutsch",
     dir: Dir::Ltr,
@@ -264,10 +265,10 @@ const DE: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', '.', 1, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/de.toml"),
 };
 const FR: LangInfo = LangInfo {
     code: "fr",
+    source: &LocaleText::new("fr"),
     english_name: "French",
     native_name: "Français",
     dir: Dir::Ltr,
@@ -275,10 +276,10 @@ const FR: LangInfo = LangInfo {
     plural: PluralRule::FrenchLike,
     numbers: Numbers::new(',', NNBSP, 1, Some(NNBSP)),
     aliases: &[],
-    source: include_str!("../../locales/fr.toml"),
 };
 const ES: LangInfo = LangInfo {
     code: "es",
+    source: &LocaleText::new("es"),
     english_name: "Spanish",
     native_name: "Español",
     dir: Dir::Ltr,
@@ -286,10 +287,10 @@ const ES: LangInfo = LangInfo {
     plural: PluralRule::SpanishLike,
     numbers: Numbers::new(',', '.', 2, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/es.toml"),
 };
 const IT: LangInfo = LangInfo {
     code: "it",
+    source: &LocaleText::new("it"),
     english_name: "Italian",
     native_name: "Italiano",
     dir: Dir::Ltr,
@@ -297,10 +298,10 @@ const IT: LangInfo = LangInfo {
     plural: PluralRule::SpanishLike,
     numbers: Numbers::new(',', '.', 1, None),
     aliases: &[],
-    source: include_str!("../../locales/it.toml"),
 };
 const NL: LangInfo = LangInfo {
     code: "nl",
+    source: &LocaleText::new("nl"),
     english_name: "Dutch",
     native_name: "Nederlands",
     dir: Dir::Ltr,
@@ -308,10 +309,10 @@ const NL: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', '.', 1, None),
     aliases: &[],
-    source: include_str!("../../locales/nl.toml"),
 };
 const PT_BR: LangInfo = LangInfo {
     code: "pt-BR",
+    source: &LocaleText::new("pt-BR"),
     english_name: "Portuguese (Brazil)",
     native_name: "Português (Brasil)",
     dir: Dir::Ltr,
@@ -319,10 +320,10 @@ const PT_BR: LangInfo = LangInfo {
     plural: PluralRule::FrenchLike,
     numbers: Numbers::new(',', '.', 1, None),
     aliases: &[],
-    source: include_str!("../../locales/pt-BR.toml"),
 };
 const PL: LangInfo = LangInfo {
     code: "pl",
+    source: &LocaleText::new("pl"),
     english_name: "Polish",
     native_name: "Polski",
     dir: Dir::Ltr,
@@ -330,10 +331,10 @@ const PL: LangInfo = LangInfo {
     plural: PluralRule::Polish,
     numbers: Numbers::new(',', NBSP, 2, None),
     aliases: &[],
-    source: include_str!("../../locales/pl.toml"),
 };
 const SV: LangInfo = LangInfo {
     code: "sv",
+    source: &LocaleText::new("sv"),
     english_name: "Swedish",
     native_name: "Svenska",
     dir: Dir::Ltr,
@@ -341,10 +342,10 @@ const SV: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/sv.toml"),
 };
 const DA: LangInfo = LangInfo {
     code: "da",
+    source: &LocaleText::new("da"),
     english_name: "Danish",
     native_name: "Dansk",
     dir: Dir::Ltr,
@@ -352,11 +353,11 @@ const DA: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', '.', 1, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/da.toml"),
 };
 
 const AR: LangInfo = LangInfo {
     code: "ar",
+    source: &LocaleText::new("ar"),
     english_name: "Arabic",
     native_name: "العربية",
     dir: Dir::Rtl,
@@ -364,11 +365,11 @@ const AR: LangInfo = LangInfo {
     plural: PluralRule::Arabic,
     numbers: Numbers::new('.', ',', 1, None),
     aliases: &[],
-    source: include_str!("../../locales/ar.toml"),
 };
 
 const CS: LangInfo = LangInfo {
     code: "cs",
+    source: &LocaleText::new("cs"),
     english_name: "Czech",
     native_name: "Čeština",
     dir: Dir::Ltr,
@@ -376,11 +377,11 @@ const CS: LangInfo = LangInfo {
     plural: PluralRule::CzechSlovak,
     numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/cs.toml"),
 };
 
 const FA: LangInfo = LangInfo {
     code: "fa",
+    source: &LocaleText::new("fa"),
     english_name: "Persian",
     native_name: "فارسی",
     dir: Dir::Rtl,
@@ -388,11 +389,11 @@ const FA: LangInfo = LangInfo {
     plural: PluralRule::ZeroOne,
     numbers: Numbers::new('٫', '٬', 1, None).script('۰', '٪'),
     aliases: &[],
-    source: include_str!("../../locales/fa.toml"),
 };
 
 const FI: LangInfo = LangInfo {
     code: "fi",
+    source: &LocaleText::new("fi"),
     english_name: "Finnish",
     native_name: "Suomi",
     dir: Dir::Ltr,
@@ -400,11 +401,11 @@ const FI: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/fi.toml"),
 };
 
 const HE: LangInfo = LangInfo {
     code: "he",
+    source: &LocaleText::new("he"),
     english_name: "Hebrew",
     native_name: "עברית",
     dir: Dir::Rtl,
@@ -412,11 +413,11 @@ const HE: LangInfo = LangInfo {
     plural: PluralRule::Hebrew,
     numbers: Numbers::new('.', ',', 1, None),
     aliases: &["iw"],
-    source: include_str!("../../locales/he.toml"),
 };
 
 const HU: LangInfo = LangInfo {
     code: "hu",
+    source: &LocaleText::new("hu"),
     english_name: "Hungarian",
     native_name: "Magyar",
     dir: Dir::Ltr,
@@ -424,11 +425,11 @@ const HU: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', NBSP, 1, None),
     aliases: &[],
-    source: include_str!("../../locales/hu.toml"),
 };
 
 const JA: LangInfo = LangInfo {
     code: "ja",
+    source: &LocaleText::new("ja"),
     english_name: "Japanese",
     native_name: "日本語",
     dir: Dir::Ltr,
@@ -436,11 +437,11 @@ const JA: LangInfo = LangInfo {
     plural: PluralRule::Other,
     numbers: Numbers::new('.', ',', 1, None),
     aliases: &[],
-    source: include_str!("../../locales/ja.toml"),
 };
 
 const KO: LangInfo = LangInfo {
     code: "ko",
+    source: &LocaleText::new("ko"),
     english_name: "Korean",
     native_name: "한국어",
     dir: Dir::Ltr,
@@ -448,11 +449,11 @@ const KO: LangInfo = LangInfo {
     plural: PluralRule::Other,
     numbers: Numbers::new('.', ',', 1, None),
     aliases: &[],
-    source: include_str!("../../locales/ko.toml"),
 };
 
 const PT_PT: LangInfo = LangInfo {
     code: "pt-PT",
+    source: &LocaleText::new("pt-PT"),
     english_name: "Portuguese (Portugal)",
     native_name: "Português (Portugal)",
     dir: Dir::Ltr,
@@ -460,11 +461,11 @@ const PT_PT: LangInfo = LangInfo {
     plural: PluralRule::SpanishLike,
     numbers: Numbers::new(',', NBSP, 2, None),
     aliases: &["pt-ao", "pt-mz"],
-    source: include_str!("../../locales/pt-PT.toml"),
 };
 
 const RO: LangInfo = LangInfo {
     code: "ro",
+    source: &LocaleText::new("ro"),
     english_name: "Romanian",
     native_name: "Română",
     dir: Dir::Ltr,
@@ -472,11 +473,11 @@ const RO: LangInfo = LangInfo {
     plural: PluralRule::Romanian,
     numbers: Numbers::new(',', '.', 1, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/ro.toml"),
 };
 
 const RU: LangInfo = LangInfo {
     code: "ru",
+    source: &LocaleText::new("ru"),
     english_name: "Russian",
     native_name: "Русский",
     dir: Dir::Ltr,
@@ -484,11 +485,11 @@ const RU: LangInfo = LangInfo {
     plural: PluralRule::EastSlavic,
     numbers: Numbers::new(',', NBSP, 1, Some(NBSP)),
     aliases: &[],
-    source: include_str!("../../locales/ru.toml"),
 };
 
 const TR: LangInfo = LangInfo {
     code: "tr",
+    source: &LocaleText::new("tr"),
     english_name: "Turkish",
     native_name: "Türkçe",
     dir: Dir::Ltr,
@@ -496,11 +497,11 @@ const TR: LangInfo = LangInfo {
     plural: PluralRule::OneOther,
     numbers: Numbers::new(',', '.', 1, None).percent_before(),
     aliases: &[],
-    source: include_str!("../../locales/tr.toml"),
 };
 
 const UK: LangInfo = LangInfo {
     code: "uk",
+    source: &LocaleText::new("uk"),
     english_name: "Ukrainian",
     native_name: "Українська",
     dir: Dir::Ltr,
@@ -508,11 +509,11 @@ const UK: LangInfo = LangInfo {
     plural: PluralRule::EastSlavic,
     numbers: Numbers::new(',', NBSP, 1, None),
     aliases: &[],
-    source: include_str!("../../locales/uk.toml"),
 };
 
 const ZH_CN: LangInfo = LangInfo {
     code: "zh-CN",
+    source: &LocaleText::new("zh-CN"),
     english_name: "Chinese (Simplified)",
     native_name: "简体中文",
     dir: Dir::Ltr,
@@ -520,11 +521,11 @@ const ZH_CN: LangInfo = LangInfo {
     plural: PluralRule::Other,
     numbers: Numbers::new('.', ',', 1, None),
     aliases: &["zh-hans", "zh-sg"],
-    source: include_str!("../../locales/zh-CN.toml"),
 };
 
 const ZH_TW: LangInfo = LangInfo {
     code: "zh-TW",
+    source: &LocaleText::new("zh-TW"),
     english_name: "Chinese (Traditional)",
     native_name: "繁體中文",
     dir: Dir::Ltr,
@@ -532,7 +533,6 @@ const ZH_TW: LangInfo = LangInfo {
     plural: PluralRule::Other,
     numbers: Numbers::new('.', ',', 1, None),
     aliases: &["zh-hant", "zh-hk", "zh-mo"],
-    source: include_str!("../../locales/zh-TW.toml"),
 };
 
 /// Every interface language. The first entry is the source language
@@ -651,4 +651,35 @@ impl Display for Lang {
 /// Security): own names, "(beta)" where it applies.
 pub fn language_choices() -> Vec<(&'static str, String)> {
     Lang::all().map(|l| (l.code(), l.picker_label())).collect()
+}
+
+/// The text of a language's locale file. It derefs to `&str`; the text comes
+/// from the product's [`KitConfig::locales`](crate::kit::config::KitConfig)
+/// when it is read, which keeps the language registry free of any file path.
+pub struct LocaleText {
+    code: &'static str,
+}
+
+impl LocaleText {
+    pub const fn new(code: &'static str) -> Self {
+        Self { code }
+    }
+}
+
+impl std::ops::Deref for LocaleText {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        crate::kit::config::get()
+            .locales
+            .iter()
+            .find(|(code, _)| *code == self.code)
+            .map_or("", |(_, text)| text)
+    }
+}
+
+impl std::fmt::Debug for LocaleText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LocaleText({})", self.code)
+    }
 }

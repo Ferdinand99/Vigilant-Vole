@@ -28,6 +28,10 @@ pub struct KitConfig {
     /// Prefix of the database copy taken before a migration
     /// ("vigilant-vole-before-").
     pub backup_prefix: &'static str,
+    /// The product's translations: `(language code, locale file text)`.
+    /// The kit knows the languages ([`super::i18n::LANGS`]); the texts are
+    /// the product's.
+    pub locales: &'static [(&'static str, &'static str)],
 }
 
 unsafe extern "Rust" {

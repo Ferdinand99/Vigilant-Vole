@@ -9,4 +9,5 @@
 //! [`config::KitConfig`]; see `docs/vole-kit.md`.
 
 pub mod config;
+pub mod i18n;
 pub mod state;

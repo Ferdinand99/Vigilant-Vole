@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use super::Lang;
 use super::lang::LANGS;
 
-pub(super) type Catalog = HashMap<String, String>;
+pub type Catalog = HashMap<String, String>;
 
 static CATALOGS: OnceLock<Vec<Catalog>> = OnceLock::new();
 
@@ -31,12 +31,12 @@ fn catalogs() -> &'static [Catalog] {
     })
 }
 
-pub(super) fn get(lang: Lang, key: &str) -> Option<&'static str> {
+pub fn get(lang: Lang, key: &str) -> Option<&'static str> {
     catalogs()[lang.index()].get(key).map(String::as_str)
 }
 
 /// Keys of `lang` that start with `prefix`, sorted.
-pub(super) fn keys_with_prefix(lang: Lang, prefix: &str) -> Vec<&'static str> {
+pub fn keys_with_prefix(lang: Lang, prefix: &str) -> Vec<&'static str> {
     let mut keys: Vec<&'static str> = catalogs()[lang.index()]
         .keys()
         .filter(|k| k.starts_with(prefix))
@@ -46,19 +46,17 @@ pub(super) fn keys_with_prefix(lang: Lang, prefix: &str) -> Vec<&'static str> {
     keys
 }
 
-#[cfg(test)]
-pub(super) fn all(lang: Lang) -> &'static Catalog {
+pub fn all(lang: Lang) -> &'static Catalog {
     &catalogs()[lang.index()]
 }
 
 /// The text of a locale file as compiled in (tests re-parse it).
-#[cfg(test)]
-pub(super) fn source(lang: Lang) -> &'static str {
+pub fn source(lang: Lang) -> &'static str {
     lang.info().source
 }
 
 /// Parses one locale file. Errors name the 1-based line.
-pub(super) fn parse(src: &str) -> Result<Catalog, String> {
+pub fn parse(src: &str) -> Result<Catalog, String> {
     let mut map = Catalog::new();
     let mut section = String::new();
     for (i, raw) in src.lines().enumerate() {
