@@ -15,5 +15,7 @@ pub mod docs;
 pub mod http;
 pub mod i18n;
 pub mod mcp;
+pub mod notify;
 pub mod page;
 pub mod state;
+pub mod tls_roots;

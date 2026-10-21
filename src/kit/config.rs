@@ -58,6 +58,9 @@ pub struct KitConfig {
     pub browser_language_prefixes: &'static [&'static str],
     /// The product's API reference.
     pub docs: &'static super::docs::DocsSpec,
+    /// The label of a subject type (a monitor type) in the current language;
+    /// unknown types are returned as they are.
+    pub subject_type_label: fn(&str) -> String,
     pub locales: &'static [(&'static str, &'static str)],
 }
 

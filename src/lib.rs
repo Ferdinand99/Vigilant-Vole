@@ -20,4 +20,7 @@ pub mod notification;
 pub mod product;
 pub mod server;
 pub mod subscribers;
-pub mod tls_roots;
+pub mod tls_roots {
+    //! Moved to [`crate::kit::tls_roots`].
+    pub use crate::kit::tls_roots::*;
+}
