@@ -15,8 +15,8 @@
 #                     tests/upgrade.rs checks after upgrading
 #
 # Usage:
-#   tools/upgrade-fixtures/generate.sh                 # v0.1.0 … v0.5.0
-#   tools/upgrade-fixtures/generate.sh v0.5.1          # one (new) release
+#   tools/upgrade-fixtures/generate.sh                 # v0.1.0 … v0.5.1
+#   tools/upgrade-fixtures/generate.sh v0.5.2          # one (new) release
 #
 # Needs Docker and network access (to pull the release images). Everything
 # else (curl, jq, sqlite3, oathtool, openssl) runs in a helper container, so
@@ -35,7 +35,7 @@ set -euo pipefail
 # Git Bash would rewrite container paths such as /data into Windows paths.
 export MSYS_NO_PATHCONV=1
 
-DEFAULT_VERSIONS=(v0.1.0 v0.2.0 v0.3.0 v0.4.0 v0.5.0)
+DEFAULT_VERSIONS=(v0.1.0 v0.2.0 v0.3.0 v0.4.0 v0.5.0 v0.5.1)
 TOOLS_IMAGE=vv-upgrade-fixture-tools
 ADMIN_USER='admin'
 ADMIN_PASSWORD='Vole-Upgrade-Pass-2026!'

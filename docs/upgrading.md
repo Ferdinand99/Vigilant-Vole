@@ -198,12 +198,12 @@ backup from the oldest release.
 
 After the release's image is on GHCR:
 
-1. `tools/upgrade-fixtures/generate.sh v0.5.1` (needs Docker; takes about two minutes). The script
+1. `tools/upgrade-fixtures/generate.sh v0.5.2` (needs Docker; takes about two minutes). The script
    bind-mounts local folders, so with a remote Docker context (`ssh://`) copy `tools/upgrade-fixtures/`
    to that host and run it there with `OUT_DIR` set, then copy the result back.
 2. Add the version to `RELEASES` in `tests/upgrade.rs`.
 3. `cargo test --test upgrade --test backup_restore`.
-4. Commit `tests/fixtures/upgrade/v0.5.1/` (about 300 KB).
+4. Commit `tests/fixtures/upgrade/v0.5.2/` (about 300 KB).
 
 If the generator reports items the new release rejected, extend the seed data in the script (new
 monitor types, fields or providers go into its `MONITORS` list or the channel values) so the fixture
