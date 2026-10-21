@@ -1,0 +1,92 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: brevo (Brevo)
+
+## minimal config
+{
+  "api_key": "xkeysib-",
+  "from": "alerts@example.com",
+  "to": "ops@example.com"
+}
+
+### down
+POST https://api.brevo.com/v3/smtp/email
+api-key: xkeysib-
+(json)
+{
+  "sender": {
+    "email": "alerts@example.com",
+    "name": "Vigilant Vole"
+  },
+  "subject": "🔴 Payments API is down",
+  "textContent": "Payments API is down\nHTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "to": [
+    {
+      "email": "ops@example.com"
+    }
+  ]
+}
+
+### up
+POST https://api.brevo.com/v3/smtp/email
+api-key: xkeysib-
+(json)
+{
+  "sender": {
+    "email": "alerts@example.com",
+    "name": "Vigilant Vole"
+  },
+  "subject": "🟢 Payments API is back up",
+  "textContent": "Payments API is back up\ndown for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "to": [
+    {
+      "email": "ops@example.com"
+    }
+  ]
+}
+
+## full config
+{
+  "api_key": "xkeysib-",
+  "from": "alerts@example.com",
+  "from_name": "Vigilant Vole",
+  "to": "ops@example.com"
+}
+
+### down
+POST https://api.brevo.com/v3/smtp/email
+api-key: xkeysib-
+(json)
+{
+  "sender": {
+    "email": "alerts@example.com",
+    "name": "Vigilant Vole"
+  },
+  "subject": "🔴 Payments API is down",
+  "textContent": "Payments API is down\nHTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "to": [
+    {
+      "email": "ops@example.com"
+    }
+  ]
+}
+
+### up
+POST https://api.brevo.com/v3/smtp/email
+api-key: xkeysib-
+(json)
+{
+  "sender": {
+    "email": "alerts@example.com",
+    "name": "Vigilant Vole"
+  },
+  "subject": "🟢 Payments API is back up",
+  "textContent": "Payments API is back up\ndown for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "to": [
+    {
+      "email": "ops@example.com"
+    }
+  ]
+}

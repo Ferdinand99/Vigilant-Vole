@@ -1,0 +1,9 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 404
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>404 · غير موجود</title><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css"><script src="/static/theme.js"></script></head><body class="error-page"><main class="container"><div class="card empty-state"><h1>404 · غير موجود</h1><p>الصفحة أو العنصر الذي طلبته غير موجود.</p><p><a class="btn" href="/">العودة إلى لوحة المعلومات</a></p></div></main></body></html>

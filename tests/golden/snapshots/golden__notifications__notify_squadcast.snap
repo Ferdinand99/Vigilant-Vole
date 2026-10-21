@@ -1,0 +1,95 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: squadcast (Squadcast)
+
+## minimal config
+{
+  "url": "https://api.squadcast.com/v3/incidents/api/"
+}
+
+### down
+POST https://api.squadcast.com/v3/incidents/api/
+(json)
+{
+  "description": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "event_id": "vv-monitor-7",
+  "message": "Payments API is down",
+  "source": "Vigilant Vole",
+  "status": "trigger",
+  "tags": {
+    "AlertAddress": "https://pay.example/health",
+    "monitor": {
+      "value": "Payments API"
+    },
+    "severity": {
+      "value": "critical"
+    }
+  }
+}
+
+### up
+POST https://api.squadcast.com/v3/incidents/api/
+(json)
+{
+  "description": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "event_id": "vv-monitor-7",
+  "message": "Payments API is back up",
+  "source": "Vigilant Vole",
+  "status": "resolve",
+  "tags": {
+    "AlertAddress": "https://pay.example/health",
+    "monitor": {
+      "value": "Payments API"
+    },
+    "severity": {
+      "value": "ok"
+    }
+  }
+}
+
+## full config
+{
+  "url": "https://api.squadcast.com/v3/incidents/api/"
+}
+
+### down
+POST https://api.squadcast.com/v3/incidents/api/
+(json)
+{
+  "description": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "event_id": "vv-monitor-7",
+  "message": "Payments API is down",
+  "source": "Vigilant Vole",
+  "status": "trigger",
+  "tags": {
+    "AlertAddress": "https://pay.example/health",
+    "monitor": {
+      "value": "Payments API"
+    },
+    "severity": {
+      "value": "critical"
+    }
+  }
+}
+
+### up
+POST https://api.squadcast.com/v3/incidents/api/
+(json)
+{
+  "description": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "event_id": "vv-monitor-7",
+  "message": "Payments API is back up",
+  "source": "Vigilant Vole",
+  "status": "resolve",
+  "tags": {
+    "AlertAddress": "https://pay.example/health",
+    "monitor": {
+      "value": "Payments API"
+    },
+    "severity": {
+      "value": "ok"
+    }
+  }
+}

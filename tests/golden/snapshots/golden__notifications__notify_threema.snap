@@ -1,0 +1,57 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: threema (Threema)
+
+## minimal config
+{
+  "gateway_id": "*VOLE123",
+  "recipient": "ABCD1234",
+  "recipient_type": "identity",
+  "secret": "secret-secret"
+}
+
+### down
+POST https://msgapi.threema.ch/send_simple
+(form)
+from=*VOLE123
+to=ABCD1234
+secret=secret-secret
+text=🔴 Payments API is down — HTTP 503 (after 3 retries)
+https://vv.example/monitors/7
+
+### up
+POST https://msgapi.threema.ch/send_simple
+(form)
+from=*VOLE123
+to=ABCD1234
+secret=secret-secret
+text=🟢 Payments API is back up — down for 12m 4s
+https://vv.example/monitors/7
+
+## full config
+{
+  "gateway_id": "*VOLE123",
+  "recipient": "ABCD1234",
+  "recipient_type": "identity",
+  "secret": "secret-secret"
+}
+
+### down
+POST https://msgapi.threema.ch/send_simple
+(form)
+from=*VOLE123
+to=ABCD1234
+secret=secret-secret
+text=🔴 Payments API is down — HTTP 503 (after 3 retries)
+https://vv.example/monitors/7
+
+### up
+POST https://msgapi.threema.ch/send_simple
+(form)
+from=*VOLE123
+to=ABCD1234
+secret=secret-secret
+text=🟢 Payments API is back up — down for 12m 4s
+https://vv.example/monitors/7

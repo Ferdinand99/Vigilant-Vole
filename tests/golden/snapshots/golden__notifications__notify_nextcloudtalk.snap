@@ -1,0 +1,65 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: nextcloudtalk (Nextcloud Talk)
+
+## minimal config
+{
+  "bot_secret": "secret-bot_secret",
+  "conversation_token": "abcd1234",
+  "host": "https://cloud.example.com",
+  "silent_up": false
+}
+
+### down
+POST https://cloud.example.com/ocs/v2.php/apps/spreed/api/v1/bot/abcd1234/message
+OCS-APIRequest: true
+X-Nextcloud-Talk-Bot-Random: <random 32 bytes, hex>
+X-Nextcloud-Talk-Bot-Signature: <hex(hmac_sha256(secret, random + message))>
+(json)
+{
+  "message": "**🔴 Payments API is down**\nHTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "silent": false
+}
+
+### up
+POST https://cloud.example.com/ocs/v2.php/apps/spreed/api/v1/bot/abcd1234/message
+OCS-APIRequest: true
+X-Nextcloud-Talk-Bot-Random: <random 32 bytes, hex>
+X-Nextcloud-Talk-Bot-Signature: <hex(hmac_sha256(secret, random + message))>
+(json)
+{
+  "message": "**🟢 Payments API is back up**\ndown for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "silent": false
+}
+
+## full config
+{
+  "bot_secret": "secret-bot_secret",
+  "conversation_token": "abcd1234",
+  "host": "https://cloud.example.com",
+  "silent_up": true
+}
+
+### down
+POST https://cloud.example.com/ocs/v2.php/apps/spreed/api/v1/bot/abcd1234/message
+OCS-APIRequest: true
+X-Nextcloud-Talk-Bot-Random: <random 32 bytes, hex>
+X-Nextcloud-Talk-Bot-Signature: <hex(hmac_sha256(secret, random + message))>
+(json)
+{
+  "message": "**🔴 Payments API is down**\nHTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "silent": false
+}
+
+### up
+POST https://cloud.example.com/ocs/v2.php/apps/spreed/api/v1/bot/abcd1234/message
+OCS-APIRequest: true
+X-Nextcloud-Talk-Bot-Random: <random 32 bytes, hex>
+X-Nextcloud-Talk-Bot-Signature: <hex(hmac_sha256(secret, random + message))>
+(json)
+{
+  "message": "**🟢 Payments API is back up**\ndown for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "silent": true
+}

@@ -1,0 +1,216 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>رموز API · Golden Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Golden Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body>
+  <a class="skip" href="#main">تخطَّ إلى المحتوى</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>Golden Vole</span>
+      </a>
+
+      <nav class="topnav" aria-label="الرئيسية" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/">لوحة المعلومات</a>
+        <a class="topnav-link" href="/status-pages">صفحات الحالة</a>
+        <a class="topnav-link" href="/maintenance">الصيانة</a>
+        <a class="topnav-link" href="/settings" aria-current="page">الإعدادات</a>
+      </nav>
+
+      <div class="topbar-end">
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="الحساب والمظهر">
+          <span class="avatar" aria-hidden="true">A</span>
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            <span class="avatar avatar-lg" aria-hidden="true">A</span>
+            <span>
+              <span class="user-card-name">admin</span>
+              <span class="user-card-meta">admin · مسؤول</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>الأمان</a>
+          <a class="menu-item" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>رموز API</a>
+          <a class="menu-item" href="/api-docs"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#code"></use></svg>وثائق API</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">المظهر</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#theme-auto"></use></svg><span>تلقائي</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span>فاتح</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><span>داكن</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg>تسجيل الخروج</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container " tabindex="-1">
+    
+<div class="settings">
+  <aside class="settings-side">
+    <p class="settings-heading" aria-hidden="true">الإعدادات</p>
+    <nav class="settings-nav" aria-label="الإعدادات" hx-boost="true" hx-swap="innerHTML transition:true">
+      <a class="settings-link" href="/settings/general"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sliders"></use></svg>عام</a>
+      <a class="settings-link" href="/settings/notifications"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#bell"></use></svg>الإشعارات</a>
+      <a class="settings-link" href="/settings/users"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg>المستخدمون</a>
+      <a class="settings-link" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>الأمان</a>
+      <a class="settings-link" href="/settings/tokens" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>رموز API</a>
+      <a class="settings-link" href="/settings/agents"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#server"></use></svg>الوكلاء البعيدون</a>
+      <a class="settings-link" href="/settings/integrations"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plug"></use></svg>التكاملات</a>
+      <a class="settings-link" href="/settings/browsers"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#browser"></use></svg>المتصفحات البعيدة</a>
+      <a class="settings-link" href="/settings/backup"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#archive"></use></svg>النسخ الاحتياطي</a>
+    </nav>
+  </aside>
+  <div class="settings-content" id="settings-content">
+    
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">رموز API</h1>
+      <p class="page-sub">اسمح للنصوص البرمجية ولوحات المعلومات وPrometheus بقراءة مراقباتك أو تغييرها.</p>
+    </div>
+    <div class="page-actions">
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-token" commandfor="new-token" command="show-modal"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg><span>رمز جديد</span></button>
+</div>
+  </div>
+</header>
+
+<section class="section" aria-labelledby="tokens-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="tokens-title">رموزك</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>الاسم</th><th>الصلاحية</th><th>تاريخ الإنشاء</th><th>آخر استخدام</th><th>ينتهي</th><th><span class="vh">الإجراءات</span></th></tr></thead>
+        <tbody>
+          <tr id="token-2">
+  <td class="td-primary">Golden read-only <span class="mono muted">vv_Golden…</span></td>
+  <td data-label="الصلاحية"><span class="badge">قراءة فقط</span></td>
+  <td data-label="تاريخ الإنشاء"><time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time></td>
+  <td data-label="آخر استخدام">أبدًا</td>
+  <td data-label="ينتهي">أبدًا</td>
+  <td class="td-actions">
+    <button type="button" class="btn btn-danger btn-sm" hx-delete="/settings/tokens/2"
+      hx-target="#token-2" hx-swap="outerHTML" hx-confirm="إلغاء «Golden read-only»؟"
+      data-confirm-label="إلغاء الرمز" data-confirm-message="يتوقف كل ما يستخدمه عن العمل فورًا.">إلغاء الرمز</button>
+  </td>
+</tr>
+          <tr id="token-1">
+  <td class="td-primary">Golden admin <span class="mono muted">vv_Golden…</span></td>
+  <td data-label="الصلاحية"><span class="badge badge-brand">قراءة وكتابة</span></td>
+  <td data-label="تاريخ الإنشاء"><time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time></td>
+  <td data-label="آخر استخدام"><time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time></td>
+  <td data-label="ينتهي">أبدًا</td>
+  <td class="td-actions">
+    <button type="button" class="btn btn-danger btn-sm" hx-delete="/settings/tokens/1"
+      hx-target="#token-1" hx-swap="outerHTML" hx-confirm="إلغاء «Golden admin»؟"
+      data-confirm-label="إلغاء الرمز" data-confirm-message="يتوقف كل ما يستخدمه عن العمل فورًا.">إلغاء الرمز</button>
+  </td>
+</tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="section-foot">تعمل الرموز بصفتك. الرموز للقراءة فقط لا يمكنها تغيير أي شيء أبدًا، حتى لو كنت مسؤولًا. تتوقف الرموز عن العمل إذا عُطّل حسابك.</p>
+</section>
+
+<dialog class="sheet" id="new-token" aria-labelledby="new-token-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-token-title">رمز جديد</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-token" command="close" aria-label="إغلاق"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#x"></use></svg></button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-token-form" class="form" method="post" action="/settings/tokens">
+      <div class="field">
+        <label class="label" for="nt-name">الاسم</label>
+        <input id="nt-name" name="name" type="text" required maxlength="80" autocomplete="off" placeholder="Grafana، نص النشر…" aria-describedby="nt-name-help">
+        <p class="help" id="nt-name-help">لتعرف ما الذي تلغيه لاحقًا.</p>
+      </div>
+      <div class="field">
+        <span class="label" id="nt-scope-label">الصلاحية</span>
+        <div class="choices" role="radiogroup" aria-labelledby="nt-scope-label">
+          <label class="choice">
+            <input type="radio" name="scope" value="read" checked>
+            <span class="choice-body"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye"></use></svg><span class="choice-title">قراءة فقط</span><span class="choice-sub">المراقبات والحالة والمقاييس</span></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="scope" value="write">
+            <span class="choice-body"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pencil"></use></svg><span class="choice-title">قراءة وكتابة</span><span class="choice-sub">كل ما يسمح به دورك</span></span>
+          </label>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="nt-expires">ينتهي</label>
+        <select id="nt-expires" name="expires">
+          <option value="30">بعد 30 يومًا</option>
+          <option value="90" selected>بعد 90 يومًا</option>
+          <option value="365">بعد سنة</option>
+          <option value="never">أبدًا</option>
+        </select>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-token" command="close">إلغاء</button>
+    <button type="submit" class="btn btn-primary" form="new-token-form">إنشاء الرمز</button>
+  </footer>
+</dialog>
+
+  </div>
+</div>
+
+  </main>
+
+  <nav class="tabbar" aria-label="الرئيسية" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>لوحة المعلومات</span></a>
+    <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>الحالة</span></a>
+    <a class="tabbar-item" href="/maintenance"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#wrench"></use></svg><span>الصيانة</span></a>
+    <a class="tabbar-item" href="/settings" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#gear"></use></svg><span>الإعدادات</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"نُسخ مرجع API. الصقه في مساعد الذكاء الاصطناعي.","ai_downloaded":"تعذّر النسخ، لذا نُزّل المرجع كملف Markdown.","ai_failed":"تعذّر تحميل مرجع API. حاول مرة أخرى.","cancel":"إلغاء","confirm":"تأكيد","confirm_title":"هل أنت متأكد؟","connecting":"جارٍ الاتصال…","copied":"تم النسخ","copied_announce":"تم النسخ إلى الحافظة","copy_failed":"تعذّر النسخ. حدّد النص وانسخه يدويًا.","delete":"حذف","dismiss":"تجاهل","hint_common":"تجنّب الكلمات والتسلسلات الشائعة","hint_min_length":"استخدم {n} أحرف على الأقل","hint_repeated":"أحرف مكررة كثيرًا","live":"مباشر","moved":"تم نقل {item} إلى الموضع {pos} من {total}","network_error":"تعذّر الوصول إلى الخادم. تحقق من اتصالك.","offline":"غير متصل","reconnecting":"جارٍ إعادة الاتصال…","server_error":"حدث خطأ في الخادم. حاول مرة أخرى.","strength_0":"قصيرة جدًا","strength_1":"ضعيفة","strength_2":"مقبولة","strength_3":"جيدة","strength_4":"قوية","strength_prefix":"القوة:"}</script>
+  
+</body>
+</html>

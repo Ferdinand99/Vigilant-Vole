@@ -1,0 +1,152 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: discord (Discord)
+
+## minimal config
+{
+  "url": "https://discord.com/api/webhooks/"
+}
+
+### down
+POST https://discord.com/api/webhooks/
+(json)
+{
+  "embeds": [
+    {
+      "color": 16726832,
+      "description": "HTTP 503 (after 3 retries)",
+      "fields": [
+        {
+          "inline": false,
+          "name": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "inline": true,
+          "name": "Type",
+          "value": "HTTP(S)"
+        }
+      ],
+      "footer": {
+        "text": "Vigilant Vole"
+      },
+      "timestamp": "2026-10-19T14:03:12Z",
+      "title": "🔴 Payments API is down",
+      "url": "https://vv.example/monitors/7"
+    }
+  ]
+}
+
+### up
+POST https://discord.com/api/webhooks/
+(json)
+{
+  "embeds": [
+    {
+      "color": 3458905,
+      "description": "down for 12m 4s",
+      "fields": [
+        {
+          "inline": false,
+          "name": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "inline": true,
+          "name": "Type",
+          "value": "HTTP(S)"
+        },
+        {
+          "inline": true,
+          "name": "Downtime",
+          "value": "12m 4s"
+        }
+      ],
+      "footer": {
+        "text": "Vigilant Vole"
+      },
+      "timestamp": "2026-10-19T14:03:12Z",
+      "title": "🟢 Payments API is back up",
+      "url": "https://vv.example/monitors/7"
+    }
+  ]
+}
+
+## full config
+{
+  "avatar_url": "https://example.com/avatar.png",
+  "thread_id": "123456789012345678",
+  "url": "https://discord.com/api/webhooks/",
+  "username": "Vigilant Vole"
+}
+
+### down
+POST https://discord.com/api/webhooks/?thread_id=123456789012345678
+(json)
+{
+  "avatar_url": "https://example.com/avatar.png",
+  "embeds": [
+    {
+      "color": 16726832,
+      "description": "HTTP 503 (after 3 retries)",
+      "fields": [
+        {
+          "inline": false,
+          "name": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "inline": true,
+          "name": "Type",
+          "value": "HTTP(S)"
+        }
+      ],
+      "footer": {
+        "text": "Vigilant Vole"
+      },
+      "timestamp": "2026-10-19T14:03:12Z",
+      "title": "🔴 Payments API is down",
+      "url": "https://vv.example/monitors/7"
+    }
+  ],
+  "username": "Vigilant Vole"
+}
+
+### up
+POST https://discord.com/api/webhooks/?thread_id=123456789012345678
+(json)
+{
+  "avatar_url": "https://example.com/avatar.png",
+  "embeds": [
+    {
+      "color": 3458905,
+      "description": "down for 12m 4s",
+      "fields": [
+        {
+          "inline": false,
+          "name": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "inline": true,
+          "name": "Type",
+          "value": "HTTP(S)"
+        },
+        {
+          "inline": true,
+          "name": "Downtime",
+          "value": "12m 4s"
+        }
+      ],
+      "footer": {
+        "text": "Vigilant Vole"
+      },
+      "timestamp": "2026-10-19T14:03:12Z",
+      "title": "🟢 Payments API is back up",
+      "url": "https://vv.example/monitors/7"
+    }
+  ],
+  "username": "Vigilant Vole"
+}

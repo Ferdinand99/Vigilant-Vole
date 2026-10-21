@@ -1,0 +1,126 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: sendgrid (SendGrid)
+
+## minimal config
+{
+  "api_key": "SG.",
+  "from": "alerts@example.com",
+  "to": "ops@example.com"
+}
+
+### down
+POST https://api.sendgrid.com/v3/mail/send
+Authorization: Bearer SG.
+(json)
+{
+  "content": [
+    {
+      "type": "text/plain",
+      "value": "Payments API is down\nHTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7"
+    }
+  ],
+  "from": {
+    "email": "alerts@example.com"
+  },
+  "personalizations": [
+    {
+      "to": [
+        {
+          "email": "ops@example.com"
+        }
+      ]
+    }
+  ],
+  "subject": "🔴 Payments API is down"
+}
+
+### up
+POST https://api.sendgrid.com/v3/mail/send
+Authorization: Bearer SG.
+(json)
+{
+  "content": [
+    {
+      "type": "text/plain",
+      "value": "Payments API is back up\ndown for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7"
+    }
+  ],
+  "from": {
+    "email": "alerts@example.com"
+  },
+  "personalizations": [
+    {
+      "to": [
+        {
+          "email": "ops@example.com"
+        }
+      ]
+    }
+  ],
+  "subject": "🟢 Payments API is back up"
+}
+
+## full config
+{
+  "api_key": "SG.",
+  "from": "alerts@example.com",
+  "from_name": "Vigilant Vole",
+  "to": "ops@example.com"
+}
+
+### down
+POST https://api.sendgrid.com/v3/mail/send
+Authorization: Bearer SG.
+(json)
+{
+  "content": [
+    {
+      "type": "text/plain",
+      "value": "Payments API is down\nHTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7"
+    }
+  ],
+  "from": {
+    "email": "alerts@example.com",
+    "name": "Vigilant Vole"
+  },
+  "personalizations": [
+    {
+      "to": [
+        {
+          "email": "ops@example.com"
+        }
+      ]
+    }
+  ],
+  "subject": "🔴 Payments API is down"
+}
+
+### up
+POST https://api.sendgrid.com/v3/mail/send
+Authorization: Bearer SG.
+(json)
+{
+  "content": [
+    {
+      "type": "text/plain",
+      "value": "Payments API is back up\ndown for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7"
+    }
+  ],
+  "from": {
+    "email": "alerts@example.com",
+    "name": "Vigilant Vole"
+  },
+  "personalizations": [
+    {
+      "to": [
+        {
+          "email": "ops@example.com"
+        }
+      ]
+    }
+  ],
+  "subject": "🟢 Payments API is back up"
+}

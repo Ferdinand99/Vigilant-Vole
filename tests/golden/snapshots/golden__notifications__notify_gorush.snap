@@ -1,0 +1,88 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: gorush (Gorush)
+
+## minimal config
+{
+  "platform": "android",
+  "server": "http://gorush:8088",
+  "tokens": "tokens-value"
+}
+
+### down
+POST http://gorush:8088/api/push
+(json)
+{
+  "notifications": [
+    {
+      "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+      "platform": 2,
+      "priority": "high",
+      "title": "Payments API is down",
+      "tokens": [
+        "tokens-value"
+      ]
+    }
+  ]
+}
+
+### up
+POST http://gorush:8088/api/push
+(json)
+{
+  "notifications": [
+    {
+      "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+      "platform": 2,
+      "priority": "normal",
+      "title": "Payments API is back up",
+      "tokens": [
+        "tokens-value"
+      ]
+    }
+  ]
+}
+
+## full config
+{
+  "platform": "android",
+  "server": "http://gorush:8088",
+  "tokens": "tokens-value",
+  "topic": "com.example.app"
+}
+
+### down
+POST http://gorush:8088/api/push
+(json)
+{
+  "notifications": [
+    {
+      "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+      "platform": 2,
+      "priority": "high",
+      "title": "Payments API is down",
+      "tokens": [
+        "tokens-value"
+      ]
+    }
+  ]
+}
+
+### up
+POST http://gorush:8088/api/push
+(json)
+{
+  "notifications": [
+    {
+      "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+      "platform": 2,
+      "priority": "normal",
+      "title": "Payments API is back up",
+      "tokens": [
+        "tokens-value"
+      ]
+    }
+  ]
+}

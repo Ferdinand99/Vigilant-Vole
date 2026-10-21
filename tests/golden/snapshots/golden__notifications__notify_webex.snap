@@ -1,0 +1,41 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: webex (Webex)
+
+## minimal config
+{
+  "token": "secret-token"
+}
+
+### down
+error: missing 'person_email' in channel config
+
+### up
+error: missing 'person_email' in channel config
+
+## full config
+{
+  "person_email": "oncall@example.com",
+  "room_id": "Y2lzY29zcGFyazovL",
+  "token": "secret-token"
+}
+
+### down
+POST https://webexapis.com/v1/messages
+Authorization: Bearer secret-token
+(json)
+{
+  "markdown": "**🔴 Payments API is down**\nHTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "roomId": "Y2lzY29zcGFyazovL"
+}
+
+### up
+POST https://webexapis.com/v1/messages
+Authorization: Bearer secret-token
+(json)
+{
+  "markdown": "**🟢 Payments API is back up**\ndown for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "roomId": "Y2lzY29zcGFyazovL"
+}

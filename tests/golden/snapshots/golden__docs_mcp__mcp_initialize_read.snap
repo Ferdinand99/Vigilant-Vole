@@ -1,0 +1,26 @@
+---
+source: tests/golden/docs_mcp.rs
+expression: pretty(&init_read)
+---
+{
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+    "capabilities": {
+      "resources": {
+        "listChanged": false,
+        "subscribe": false
+      },
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "instructions": "Vigilant Vole is a self-hosted uptime monitor. Start with `instance_summary`, use `why_is_it_down` for a failing monitor and `monitor_history` for trends. This token is read-only: you can look but not change anything. Secrets are always shown as ••••••.",
+    "protocolVersion": "2024-11-05",
+    "serverInfo": {
+      "name": "vigilant-vole",
+      "title": "Vigilant Vole",
+      "version": "<VERSION>"
+    }
+  }
+}

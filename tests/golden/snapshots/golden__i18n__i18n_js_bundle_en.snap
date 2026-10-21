@@ -1,0 +1,38 @@
+---
+source: tests/golden/i18n.rs
+expression: out
+---
+keys: 27
+sha256: 2fa302fd626e9fd30e1e42f47d75e4cf4fa6dab8ef3acfe950180cd5b7416fba
+
+{
+  "ai_copied": "Copied the API reference. Paste it into your AI assistant.",
+  "ai_downloaded": "Couldn’t copy, so the reference was downloaded as a Markdown file.",
+  "ai_failed": "Couldn’t load the API reference. Try again.",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "confirm_title": "Are you sure?",
+  "connecting": "Connecting…",
+  "copied": "Copied",
+  "copied_announce": "Copied to clipboard",
+  "copy_failed": "Couldn’t copy. Select the text and copy it manually.",
+  "delete": "Delete",
+  "dismiss": "Dismiss",
+  "hint_common": "avoid common words and sequences",
+  "hint_min_length": "use at least {n} characters",
+  "hint_repeated": "too many repeated characters",
+  "live": "Live",
+  "moved": "Moved {item} to position {pos} of {total}",
+  "network_error": "Can’t reach the server. Check your connection.",
+  "offline": "Offline",
+  "reconnecting": "Reconnecting…",
+  "server_error": "Something went wrong on the server. Try again.",
+  "strength_0": "Too short",
+  "strength_1": "Weak",
+  "strength_2": "Fair",
+  "strength_3": "Good",
+  "strength_4": "Strong",
+  "strength_prefix": "Strength:"
+}
+
+ar: keys 27, sha256 c2f999a6d51bdf4ac80f053d0034d2a922ca8769d61b95bc6344a44979da29fd

@@ -1,0 +1,51 @@
+---
+source: tests/golden/auth.rs
+expression: out
+---
+session cookie: vv_session
+pending 2FA cookie: vv_2fa
+flash cookie: vv_flash
+idle timeout secs: 2592000
+absolute timeout secs: 2592000
+refresh after secs: 3600
+pending 2FA ttl secs: 300
+api token prefix: vv_
+api token body length: 43
+api token generated: vv_<43 base62>
+api token well-formed: true
+api token display prefix: vv_<6 base62>
+api token hash of 'abc': ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+api token well-formed("vv_short"): false
+api token well-formed("vva_0000000000000000000000000000000000000000000"): false
+api token well-formed(""): false
+agent token prefix: vva_
+agent token generated: vva_<40 base62>
+agent token stored prefix: vva_<8 base62>
+agent token hash is sha256 hex: true
+token from Authorization "Bearer vv_abc": Some("vv_abc")
+token from Authorization "bearer   vv_abc  ": Some("vv_abc")
+token from Authorization "Basic cHJvbWV0aGV1czp2dl9hYmM=": Some("vv_abc")
+token from Authorization "Token vv_abc": None
+session value: v2.7.3.1700000000.1700000000
+session value (refreshed 2h later): v2.7.3.1700007200.1700000000
+legacy v1 value accepted: Some(SessionClaims { user_id: 7, version: 3, last_seen: 1700000000, issued_at: 1700000000 })
+pending value: p1.7.3.1700000000.L21vbml0b3JzLzQ_dGFiPWhpc3Rvcnk
+Set-Cookie session (secure=false): vv_session=v2.7.3.1700000000.1700000000; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000
+Set-Cookie session 29 days in (secure=false): vv_session=v2.7.3.1702505600.1700000000; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400
+Set-Cookie pending 2FA (secure=false): vv_2fa=p1.7.3.1700000000.L21vbml0b3JzLzQ_dGFiPWhpc3Rvcnk; HttpOnly; SameSite=Lax; Path=/; Max-Age=300
+Set-Cookie session (secure=true): vv_session=v2.7.3.1700000000.1700000000; HttpOnly; SameSite=Lax; Secure; Path=/; Max-Age=2592000
+Set-Cookie session 29 days in (secure=true): vv_session=v2.7.3.1702505600.1700000000; HttpOnly; SameSite=Lax; Secure; Path=/; Max-Age=86400
+Set-Cookie pending 2FA (secure=true): vv_2fa=p1.7.3.1700000000.L21vbml0b3JzLzQ_dGFiPWhpc3Rvcnk; HttpOnly; SameSite=Lax; Secure; Path=/; Max-Age=300
+removal cookie: vv_session=; Path=/
+secure cookies: x-forwarded-proto=None trust_proxy=true: false
+secure cookies: x-forwarded-proto=Some("https") trust_proxy=false: false
+secure cookies: x-forwarded-proto=Some("https") trust_proxy=true: true
+secure cookies: x-forwarded-proto=Some("https, http") trust_proxy=true: true
+secure cookies: x-forwarded-proto=Some("http") trust_proxy=true: false
+sanitize next None: /
+sanitize next Some("/monitors/4"): /monitors/4
+sanitize next Some("//evil.example"): /
+sanitize next Some("https://evil.example/"): /
+sanitize next Some("/\\evil.example"): /
+sanitize next Some("/login?next=/"): /
+sanitize next Some("/settings?tab=a b"): /

@@ -1,0 +1,79 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <meta name="robots" content="noindex">
+  <title>مرحبًا · Vigilant Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Vigilant Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body class="auth-body">
+  <main class="auth" id="main">
+    <div>
+      <div class="auth-card">
+        <div class="auth-head">
+          <img class="auth-logo" src="/static/favicon.svg" alt="" width="56" height="56">
+          <h1 class="auth-title">مرحبًا</h1>
+          <p class="auth-sub">أنشئ حساب المسؤول وسمِّ هذا التثبيت. يمكنك دعوة آخرين لاحقًا من الإعدادات.</p>
+        </div>
+        
+<form class="form" method="post" action="/setup" novalidate>
+  <div class="field">
+  <label class="label" for="f-username">اسم المستخدم</label>
+  <input id="f-username" name="username" type="text" value="" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+</div>
+
+  <div class="field">
+    <label class="label" for="f-password">كلمة المرور</label>
+    <input id="f-password" name="password" type="password" required minlength="10" maxlength="1024" autocomplete="new-password"
+      data-password-strength aria-describedby="f-password-help">
+    <div class="meter" data-strength-meter aria-hidden="true"></div>
+    <p class="help" id="f-password-help" data-strength-label aria-live="polite">10 أحرف على الأقل، ولا يجوز أن تتضمن اسم المستخدم. عدة كلمات غير مترابطة خيار جيد.</p>
+  </div>
+
+  <div class="field">
+    <label class="label" for="f-confirm">تأكيد كلمة المرور</label>
+    <input id="f-confirm" name="confirm" type="password" required minlength="10" maxlength="1024" autocomplete="new-password">
+  </div>
+
+  <div class="field">
+  <label class="label" for="f-site_name">اسم الموقع</label>
+  <input id="f-site_name" name="site_name" type="text" value="Vigilant Vole" placeholder="حالة Acme…" autocomplete="off" aria-describedby="f-site_name-help">
+  <p class="help" id="f-site_name-help">يظهر في الشريط العلوي وفي الإشعارات.</p>
+</div>
+
+  <input type="hidden" name="timezone" value="UTC" data-detect-timezone>
+  <p class="help">تُعرض الأوقات بتوقيت <strong data-timezone-label>UTC</strong>. يمكنك تغيير ذلك من الإعدادات.</p>
+
+  <button type="submit" class="btn btn-primary btn-lg btn-block">إنشاء الحساب</button>
+</form>
+
+      </div>
+      <p class="auth-foot">Vigilant Vole</p>
+    </div>
+  </main>
+  <div class="toaster" id="toaster" aria-live="polite"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"نُسخ مرجع API. الصقه في مساعد الذكاء الاصطناعي.","ai_downloaded":"تعذّر النسخ، لذا نُزّل المرجع كملف Markdown.","ai_failed":"تعذّر تحميل مرجع API. حاول مرة أخرى.","cancel":"إلغاء","confirm":"تأكيد","confirm_title":"هل أنت متأكد؟","connecting":"جارٍ الاتصال…","copied":"تم النسخ","copied_announce":"تم النسخ إلى الحافظة","copy_failed":"تعذّر النسخ. حدّد النص وانسخه يدويًا.","delete":"حذف","dismiss":"تجاهل","hint_common":"تجنّب الكلمات والتسلسلات الشائعة","hint_min_length":"استخدم {n} أحرف على الأقل","hint_repeated":"أحرف مكررة كثيرًا","live":"مباشر","moved":"تم نقل {item} إلى الموضع {pos} من {total}","network_error":"تعذّر الوصول إلى الخادم. تحقق من اتصالك.","offline":"غير متصل","reconnecting":"جارٍ إعادة الاتصال…","server_error":"حدث خطأ في الخادم. حاول مرة أخرى.","strength_0":"قصيرة جدًا","strength_1":"ضعيفة","strength_2":"مقبولة","strength_3":"جيدة","strength_4":"قوية","strength_prefix":"القوة:"}</script>
+  
+</body>
+</html>

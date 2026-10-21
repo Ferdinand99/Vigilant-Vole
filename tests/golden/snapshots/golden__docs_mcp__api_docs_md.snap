@@ -1,0 +1,1598 @@
+---
+source: tests/golden/docs_mcp.rs
+expression: "format!(\"/api-docs.md content-type: {}\\n/llms.txt content-type: {}\\n\\n{}\",\nmd.header(\"content-type\"), llms.header(\"content-type\"),\nnorm::text(&md.text()))"
+---
+/api-docs.md content-type: text/markdown; charset=utf-8
+/llms.txt content-type: text/plain; charset=utf-8
+
+# Vigilant Vole API
+
+> REST API of a Vigilant Vole uptime monitor (version <VERSION>), generated from the server's own route table. Everything the web app can do (monitors, tags, notification channels, status pages, incidents, maintenance, settings, configuration as code) can be done with these JSON endpoints.
+
+- Instance: http://vv.test
+- API base URL: http://vv.test/api/v1
+- Browsable reference: http://vv.test/api-docs (sign in) · OpenAPI 3.1: http://vv.test/api/v1/openapi.json
+- The web interface is translated; this document, field names, values and error codes are English.
+
+Examples use two shell variables; never paste a real token into a chat or commit it:
+
+```bash
+export VV_URL="http://vv.test"
+export VV_TOKEN="<API token from Settings → API tokens>"
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/me"
+```
+
+## Authentication
+
+- Create a token in the web app under **Settings → API tokens** (`/settings/tokens`). Tokens start with `vv_`, are shown once and can expire (30, 90, 365 days or never).
+- Send it on every request: `Authorization: Bearer $VV_TOKEN`.
+- Scope `read` acts as a **viewer** (every GET); scope `write` acts as the token's owner with their role.
+- Roles: **viewer** reads everything; **editor** also changes monitors, tags, notification channels, status pages, incidents and maintenance and exports configuration; **admin** also changes settings, users, remote browsers, agents and imports configuration. Each endpoint below names the least role it needs.
+- API tokens work only under `/api/` and for `/metrics`; they can't open the web interface.
+- `/metrics` (Prometheus) takes the token as a Bearer token or as the HTTP Basic password (any user name).
+- Machine credentials are separate: push monitors carry their own token in the URL, remote agents send an agent token (`vva_…`).
+
+## Conventions
+
+- JSON in and out; send bodies with `Content-Type: application/json`. `/api/v1/config` also speaks YAML.
+- Lists return `{"data": [...], "next_cursor": "42" | null}`. Pass `?limit=` (1–500, default 50) and `?cursor=<next_cursor>` for the next page; stop when `next_cursor` is `null`.
+- GETs send a weak `ETag` and answer `If-None-Match` with `304 Not Modified`.
+- Times are UTC strings `YYYY-MM-DD HH:MM:SS`.
+- Secrets (passwords, webhook URLs, keys) are returned masked as `"••••••"`. Send `"••••••"` back (or leave the field out of a PATCH) to keep the stored value.
+- `POST` that creates returns `201 Created` with a `Location` header; `DELETE` returns `204 No Content`.
+- `PUT` replaces an object (fields left out go back to defaults); `PATCH` changes only the fields you send.
+- Cookie-authenticated writes must come from the app's own pages; token requests are exempt.
+
+## Errors
+
+Every error uses one envelope (`fields` only on validation errors):
+
+```json
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "Enter a full URL, including https://, like https://example.com.",
+    "fields": {"target": "Enter a full URL, including https://, like https://example.com."}
+  }
+}
+```
+
+| Code | HTTP | When |
+|---|---|---|
+| `bad_request` | 400 | malformed query, cursor or body |
+| `unauthorized` | 401 | missing, invalid, expired or revoked token |
+| `forbidden` | 403 | your role or the token's scope doesn't allow it |
+| `not_found` | 404 | no such object or route |
+| `conflict` | 409 | clashes with existing data or the object's state (duplicate tag name or slug, checking a paused monitor) |
+| `too_large` | 413 | configuration document over 2 MB |
+| `unsupported_media_type` | 415 | body without `Content-Type: application/json` |
+| `validation_failed` | 422 | invalid fields; `fields` maps each field to its message |
+| `invalid_document` | 422 | configuration document that can't be parsed |
+| `delivery_failed` | 502 | a test notification the provider refused |
+| `internal` | 500 | server error; try again |
+
+## Monitor types
+
+`monitor_type` is one of: `http`, `keyword`, `json_query`, `tcp`, `ping`, `tailscale_ping`, `dns`, `push`, `docker`, `websocket`, `domain_expiry`, `ntp`, `steam`, `game_server`, `tls`, `smtp`, `redis`, `postgres`, `mysql`, `mqtt`, `kafka`, `rabbitmq`, `grpc`, `grpc_keyword`, `radius`, `snmp`, `sqlserver`, `mongodb`, `real_browser`, `group`.
+
+## Endpoints: Monitors
+
+### GET /api/v1/monitors
+
+List monitors with their current status.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Query parameters:
+  - `status`: up | down | pending | maintenance | paused | unknown
+  - `type`: monitor type, e.g. http
+  - `tag`: tag name
+  - `q`: search name, target and description
+  - `limit`: page size (1–500, default 50)
+  - `cursor`: next_cursor from the previous page
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors"
+```
+
+Example response:
+
+```json
+{"data": [ …monitor… ], "next_cursor": "42"}
+```
+
+### POST /api/v1/monitors
+
+Create a monitor. Same validation as the monitor form; unknown tag names are created.
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Body: JSON object; fields used in the example: `escalation_minutes` (integer), `interval_seconds` (integer), `monitor_type` (string), `name` (string), `notifications` (array), `retries` (integer), `tags` (array), `target` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/monitors" -d '{
+  "name": "Website",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "interval_seconds": 60,
+  "retries": 1,
+  "tags": ["production", {"name": "env", "value": "prod"}],
+  "notifications": [1, {"channel_id": 3, "escalation": true}],
+  "escalation_minutes": 15
+}'
+```
+
+Example response:
+
+```json
+{
+  "id": 7,
+  "name": "Website",
+  "description": "",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "parent_id": null,
+  "interval_seconds": 60,
+  "retry_interval_seconds": null,
+  "timeout_seconds": 10,
+  "retries": 1,
+  "active": true,
+  "upside_down": false,
+  "http_method": "GET",
+  "accepted_status_codes": "200-399",
+  "max_redirects": 10,
+  "ignore_tls": false,
+  "expiry_notify": true,
+  "expiry_days": 14,
+  "status": "up",
+  "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
+  "notifications": [{"channel_id": 1, "escalation": false}],
+  "created_at": "2026-10-19 08:00:00",
+  "updated_at": "2026-10-19 08:00:00"
+}
+```
+
+### GET /api/v1/monitors/{id}
+
+Get one monitor. Passwords are masked; push tokens are shown to editors only.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7"
+```
+
+Example response:
+
+```json
+{
+  "id": 7,
+  "name": "Website",
+  "description": "",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "parent_id": null,
+  "interval_seconds": 60,
+  "retry_interval_seconds": null,
+  "timeout_seconds": 10,
+  "retries": 1,
+  "active": true,
+  "upside_down": false,
+  "http_method": "GET",
+  "accepted_status_codes": "200-399",
+  "max_redirects": 10,
+  "ignore_tls": false,
+  "expiry_notify": true,
+  "expiry_days": 14,
+  "status": "up",
+  "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
+  "notifications": [{"channel_id": 1, "escalation": false}],
+  "created_at": "2026-10-19 08:00:00",
+  "updated_at": "2026-10-19 08:00:00"
+}
+```
+
+### PUT /api/v1/monitors/{id}
+
+Replace a monitor: fields you leave out go back to their defaults (tags and notifications are kept unless sent).
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `escalation_minutes` (integer), `interval_seconds` (integer), `monitor_type` (string), `name` (string), `notifications` (array), `retries` (integer), `tags` (array), `target` (string)
+
+Example request:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/monitors/7" -d '{
+  "name": "Website",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "interval_seconds": 60,
+  "retries": 1,
+  "tags": ["production", {"name": "env", "value": "prod"}],
+  "notifications": [1, {"channel_id": 3, "escalation": true}],
+  "escalation_minutes": 15
+}'
+```
+
+Example response:
+
+```json
+{
+  "id": 7,
+  "name": "Website",
+  "description": "",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "parent_id": null,
+  "interval_seconds": 60,
+  "retry_interval_seconds": null,
+  "timeout_seconds": 10,
+  "retries": 1,
+  "active": true,
+  "upside_down": false,
+  "http_method": "GET",
+  "accepted_status_codes": "200-399",
+  "max_redirects": 10,
+  "ignore_tls": false,
+  "expiry_notify": true,
+  "expiry_days": 14,
+  "status": "up",
+  "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
+  "notifications": [{"channel_id": 1, "escalation": false}],
+  "created_at": "2026-10-19 08:00:00",
+  "updated_at": "2026-10-19 08:00:00"
+}
+```
+
+### PATCH /api/v1/monitors/{id}
+
+Change some fields; everything else stays. Send "••••••" for a secret to keep it.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `interval_seconds` (integer), `retries` (integer)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/monitors/7" -d '{"interval_seconds": 30, "retries": 2}'
+```
+
+Example response:
+
+```json
+{
+  "id": 7,
+  "name": "Website",
+  "description": "",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "parent_id": null,
+  "interval_seconds": 60,
+  "retry_interval_seconds": null,
+  "timeout_seconds": 10,
+  "retries": 1,
+  "active": true,
+  "upside_down": false,
+  "http_method": "GET",
+  "accepted_status_codes": "200-399",
+  "max_redirects": 10,
+  "ignore_tls": false,
+  "expiry_notify": true,
+  "expiry_days": 14,
+  "status": "up",
+  "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
+  "notifications": [{"channel_id": 1, "escalation": false}],
+  "created_at": "2026-10-19 08:00:00",
+  "updated_at": "2026-10-19 08:00:00"
+}
+```
+
+### DELETE /api/v1/monitors/{id}
+
+Delete a monitor and its history. Returns 204.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7"
+```
+
+### POST /api/v1/monitors/{id}/pause
+
+Pause checks and alerts.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/pause"
+```
+
+Example response:
+
+```json
+{
+  "id": 7,
+  "name": "Website",
+  "description": "",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "parent_id": null,
+  "interval_seconds": 60,
+  "retry_interval_seconds": null,
+  "timeout_seconds": 10,
+  "retries": 1,
+  "active": true,
+  "upside_down": false,
+  "http_method": "GET",
+  "accepted_status_codes": "200-399",
+  "max_redirects": 10,
+  "ignore_tls": false,
+  "expiry_notify": true,
+  "expiry_days": 14,
+  "status": "up",
+  "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
+  "notifications": [{"channel_id": 1, "escalation": false}],
+  "created_at": "2026-10-19 08:00:00",
+  "updated_at": "2026-10-19 08:00:00"
+}
+```
+
+### POST /api/v1/monitors/{id}/resume
+
+Resume a paused monitor.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/resume"
+```
+
+Example response:
+
+```json
+{
+  "id": 7,
+  "name": "Website",
+  "description": "",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "parent_id": null,
+  "interval_seconds": 60,
+  "retry_interval_seconds": null,
+  "timeout_seconds": 10,
+  "retries": 1,
+  "active": true,
+  "upside_down": false,
+  "http_method": "GET",
+  "accepted_status_codes": "200-399",
+  "max_redirects": 10,
+  "ignore_tls": false,
+  "expiry_notify": true,
+  "expiry_days": 14,
+  "status": "up",
+  "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
+  "notifications": [{"channel_id": 1, "escalation": false}],
+  "created_at": "2026-10-19 08:00:00",
+  "updated_at": "2026-10-19 08:00:00"
+}
+```
+
+### POST /api/v1/monitors/{id}/check
+
+Run a check right now and return its result (409 for paused, push and group monitors).
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/check"
+```
+
+Example response:
+
+```json
+{"status": "up", "heartbeat": {"id": 991, "status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}}
+```
+
+### GET /api/v1/monitors/{id}/heartbeats
+
+Check history, newest first (local checks only).
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Query parameters:
+  - `since`: UTC time, e.g. 2026-10-19 00:00:00
+  - `limit`: page size (1–500, default 50)
+  - `cursor`: next_cursor from the previous page
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/heartbeats"
+```
+
+Example response:
+
+```json
+{"data": [{"id": 991, "monitor_id": 7, "agent_id": null, "status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}], "next_cursor": "940"}
+```
+
+### GET /api/v1/monitors/{id}/uptime
+
+Uptime over a window plus one entry per day (survives heartbeat retention).
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Query parameters:
+  - `days`: 1–365 (default 30)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/uptime"
+```
+
+Example response:
+
+```json
+{"monitor_id": 7, "days": 30, "uptime_pct": 99.98, "uptime_24h_pct": 100.0, "daily": [{"day": "2026-10-19", "up": 1440, "down": 0, "pending": 0, "maintenance": 0, "avg_ms": 82.4, "uptime_pct": 100.0}]}
+```
+
+### GET /api/v1/monitors/{id}/events
+
+Outages, maintenance, pauses and other events, newest first.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Query parameters:
+  - `limit`: page size (1–500, default 50)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/events"
+```
+
+Example response:
+
+```json
+{"data": [{"id": 12, "monitor_id": 7, "kind": "down", "message": "timeout", "started_at": "2026-10-18 03:10:00", "ended_at": "2026-10-18 03:14:00", "duration_seconds": 240}], "next_cursor": null}
+```
+
+### PUT /api/v1/monitors/{id}/tags
+
+Replace a monitor's tags (names are created if new).
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON array (see the example)
+
+Example request:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/monitors/7/tags" -d '["production", {"name": "env", "value": "prod"}, {"id": 4}]'
+```
+
+Example response:
+
+```json
+{
+  "id": 7,
+  "name": "Website",
+  "description": "",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "parent_id": null,
+  "interval_seconds": 60,
+  "retry_interval_seconds": null,
+  "timeout_seconds": 10,
+  "retries": 1,
+  "active": true,
+  "upside_down": false,
+  "http_method": "GET",
+  "accepted_status_codes": "200-399",
+  "max_redirects": 10,
+  "ignore_tls": false,
+  "expiry_notify": true,
+  "expiry_days": 14,
+  "status": "up",
+  "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
+  "notifications": [{"channel_id": 1, "escalation": false}],
+  "created_at": "2026-10-19 08:00:00",
+  "updated_at": "2026-10-19 08:00:00"
+}
+```
+
+### POST /api/v1/monitors/bulk
+
+Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Body: JSON object; fields used in the example: `filter` (object), `set` (object)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/monitors/bulk" -d '{"filter": {"type": "http", "tag": "production"}, "set": {"run_on_agents": true, "confirm_with_agents": true, "interval_seconds": 120, "channels": {"add": [{"name": "Ops Discord", "escalation": false}], "remove": [3]}, "tags": {"add": [{"name": "eu", "color": "teal", "value": "west"}], "remove": ["legacy"]}}}'
+```
+
+Example response:
+
+```json
+{"updated": 38, "skipped": [{"id": 12, "reason": "agents_unsupported"}]}
+```
+
+## Endpoints: Tags
+
+### GET /api/v1/tags
+
+List tags with how many monitors use them.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/tags"
+```
+
+Example response:
+
+```json
+{"data": [{"id": 2, "name": "production", "color": "green", "monitors": 12}], "next_cursor": null}
+```
+
+### POST /api/v1/tags
+
+Create a tag. Colours are palette names (red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown, gray); hex values map to the nearest.
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Body: JSON object; fields used in the example: `color` (string), `name` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/tags" -d '{"name": "production", "color": "green"}'
+```
+
+Example response:
+
+```json
+{"id": 2, "name": "production", "color": "green"}
+```
+
+### GET /api/v1/tags/{id}
+
+Get one tag.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/tags/1"
+```
+
+### PATCH /api/v1/tags/{id}
+
+Rename or recolour a tag.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `color` (string)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/tags/1" -d '{"color": "teal"}'
+```
+
+### DELETE /api/v1/tags/{id}
+
+Delete a tag (it is removed from every monitor).
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/tags/1"
+```
+
+## Endpoints: Notifications
+
+### GET /api/v1/notification-providers
+
+Every channel kind with its config fields (which are required, which are secret).
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/notification-providers"
+```
+
+Example response:
+
+```json
+{"data": [{"kind": "discord", "label": "Discord", "fields": [{"key": "url", "type": "url", "required": true, "secret": true}]}]}
+```
+
+### GET /api/v1/notification-channels
+
+List channels. Secrets are always masked as "••••••".
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/notification-channels"
+```
+
+Example response:
+
+```json
+{"data": [{"id": 1, "name": "Ops Discord", "kind": "discord", "active": true, "is_default": true, "monitors": 12, "config": {"url": "••••••", "username": "Vole"}}], "next_cursor": null}
+```
+
+### POST /api/v1/notification-channels
+
+Create a channel. apply_existing links it to every monitor.
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Body: JSON object; fields used in the example: `apply_existing` (boolean), `config` (object), `is_default` (boolean), `kind` (string), `name` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/notification-channels" -d '{"name": "Ops Discord", "kind": "discord", "config": {"url": "https://discord.com/api/webhooks/…"}, "is_default": true, "apply_existing": false}'
+```
+
+### GET /api/v1/notification-channels/{id}
+
+Get one channel (secrets masked).
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/notification-channels/1"
+```
+
+### PATCH /api/v1/notification-channels/{id}
+
+Update a channel. Secrets you leave out or send masked keep their stored value.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `active` (boolean)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/notification-channels/1" -d '{"active": false}'
+```
+
+### DELETE /api/v1/notification-channels/{id}
+
+Delete a channel.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/notification-channels/1"
+```
+
+### POST /api/v1/notification-channels/{id}/test
+
+Send a test notification (502 with the provider's error when delivery fails).
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/notification-channels/1/test"
+```
+
+Example response:
+
+```json
+{"ok": true}
+```
+
+## Endpoints: Remote browsers
+
+### GET /api/v1/remote-browsers
+
+List the remote browsers (CDP endpoints) real-browser monitors use. Tokens and passwords in URLs are masked; the first one is the default.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/remote-browsers"
+```
+
+Example response:
+
+```json
+{"data": [{"id": 1, "name": "Chrome", "url": "ws://chrome:9222/devtools/browser/…", "monitors": 3, "default": true}], "next_cursor": null}
+```
+
+### POST /api/v1/remote-browsers
+
+Add a remote browser: ws(s)://…/devtools/browser/<id>, http(s)://host:port (discovered through /json/version) or wss://host?token=….
+
+- Access: admin (write token of an admin)
+- Success: `201 Created`
+- Body: JSON object; fields used in the example: `name` (string), `url` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/remote-browsers" -d '{"name": "Chrome", "url": "http://chrome:9222"}'
+```
+
+### GET /api/v1/remote-browsers/{id}
+
+Get one remote browser (secrets masked).
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/remote-browsers/1"
+```
+
+### PUT /api/v1/remote-browsers/{id}
+
+Change a remote browser. A masked URL keeps its token while the host stays the same.
+
+- Access: admin (write token of an admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/remote-browsers/1"
+```
+
+### PATCH /api/v1/remote-browsers/{id}
+
+Rename a remote browser or change its URL.
+
+- Access: admin (write token of an admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `name` (string)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/remote-browsers/1" -d '{"name": "Chrome (LAN)"}'
+```
+
+### DELETE /api/v1/remote-browsers/{id}
+
+Remove a remote browser; monitors that used it fall back to the default one.
+
+- Access: admin (write token of an admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/remote-browsers/1"
+```
+
+### POST /api/v1/remote-browsers/{id}/test
+
+Connect and ask the browser for its version.
+
+- Access: admin (write token of an admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/remote-browsers/1/test"
+```
+
+Example response:
+
+```json
+{"ok": true, "product": "HeadlessChrome/156.0.8078.36", "protocol_version": "1.3"}
+```
+
+## Endpoints: Status pages
+
+### GET /api/v1/status-pages
+
+List status pages.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages"
+```
+
+### POST /api/v1/status-pages
+
+Create a status page (slug defaults to the title).
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Body: JSON object; fields used in the example: `sections` (array), `slug` (string), `title` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages" -d '{"title": "Acme status", "slug": "acme", "sections": [{"name": "API", "monitor_ids": [7, 8]}]}'
+```
+
+### GET /api/v1/status-pages/{id}
+
+Get a page with its sections and monitors.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1"
+```
+
+Example response:
+
+```json
+{"id": 1, "slug": "acme", "title": "Acme status", "published": true, "theme": "auto", "sections": [{"id": 3, "name": "API", "monitors": [{"id": 7, "name": "Website"}]}], "public_url": "/status/acme"}
+```
+
+### PATCH /api/v1/status-pages/{id}
+
+Change page settings (and optionally its sections). Also: password (write-only, "" removes), analytics, logo/favicon as data: URLs ("" removes).
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `analytics` (object), `password` (string), `refresh_seconds` (integer), `theme` (string)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages/1" -d '{"theme": "dark", "refresh_seconds": 30, "password": "correct horse", "analytics": {"provider": "plausible", "site_id": "status.example.com", "script_url": "https://plausible.io/js/script.js"}}'
+```
+
+### DELETE /api/v1/status-pages/{id}
+
+Delete a page.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1"
+```
+
+### PUT /api/v1/status-pages/{id}/sections
+
+Replace the page layout: sections in order, monitors in order.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON array (see the example)
+
+Example request:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages/1/sections" -d '[{"name": "API", "monitor_ids": [7, 8]}, {"name": "Website", "monitor_ids": [9]}]'
+```
+
+### GET /api/v1/status-pages/{id}/incidents
+
+List a page's incidents.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/incidents"
+```
+
+### POST /api/v1/status-pages/{id}/incidents
+
+Post an incident (severity: info, warning, danger, success).
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `body` (string), `pinned` (boolean), `severity` (string), `title` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages/1/incidents" -d '{"title": "Elevated error rates", "body": "We'\''re looking into it.", "severity": "warning", "pinned": true}'
+```
+
+### GET /api/v1/status-pages/{id}/incidents/{iid}
+
+Get one incident.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer), `iid` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/incidents/1"
+```
+
+### PATCH /api/v1/status-pages/{id}/incidents/{iid}
+
+Update an incident; resolved: true resolves it, false reopens it.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer), `iid` (integer)
+- Body: JSON object; fields used in the example: `body` (string), `resolved` (boolean), `severity` (string)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages/1/incidents/1" -d '{"body": "Fixed.", "severity": "success", "resolved": true}'
+```
+
+### DELETE /api/v1/status-pages/{id}/incidents/{iid}
+
+Delete an incident.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer), `iid` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/incidents/1"
+```
+
+### GET /api/v1/status-pages/{id}/incidents/{iid}/updates
+
+List an incident's updates, newest first.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer), `iid` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/incidents/1/updates"
+```
+
+### POST /api/v1/status-pages/{id}/incidents/{iid}/updates
+
+Post an update to an incident (status: investigating, identified, monitoring, resolved). A resolved update resolves the incident; any other status reopens it.
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Path parameters: `id` (integer), `iid` (integer)
+- Body: JSON object; fields used in the example: `body` (string), `status` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages/1/incidents/1/updates" -d '{"status": "identified", "body": "A bad deploy. Rolling back."}'
+```
+
+### DELETE /api/v1/status-pages/{id}/incidents/{iid}/updates/{uid}
+
+Delete one update.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer), `iid` (integer), `uid` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/incidents/1/updates/{uid}"
+```
+
+### GET /api/v1/status-pages/{id}/subscription
+
+Whether visitors can subscribe to the page's announcements, which email channel sends the mails and whether webhook subscribers are allowed.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/subscription"
+```
+
+### PUT /api/v1/status-pages/{id}/subscription
+
+Change the subscription settings (enabled, channel_id of an email notification channel or null, webhooks). Omitted fields stay as they are.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `channel_id` (integer), `enabled` (boolean), `webhooks` (boolean)
+
+Example request:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages/1/subscription" -d '{"enabled": true, "channel_id": 3, "webhooks": false}'
+```
+
+### GET /api/v1/status-pages/{id}/subscribers
+
+List the page's subscribers (email addresses or webhook URLs) with their confirmation state. A webhook with confirmed_at null waits for an editor's approval.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/subscribers"
+```
+
+### POST /api/v1/status-pages/{id}/subscribers/{sid}/approve
+
+Approve a webhook sign-up. Webhooks are never confirmed by a link; once approved, the webhook gets a "subscribed" message with its unsubscribe link.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer), `sid` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/subscribers/{sid}/approve"
+```
+
+### DELETE /api/v1/status-pages/{id}/subscribers/{sid}
+
+Remove a subscriber.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer), `sid` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/status-pages/1/subscribers/{sid}"
+```
+
+## Endpoints: Maintenance
+
+### GET /api/v1/maintenance
+
+List maintenance windows with their current state.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/maintenance"
+```
+
+### POST /api/v1/maintenance
+
+Create a window. Times: start_at/end_at in UTC, time_from/time_to local to timezone, weekdays ISO (1 = Monday). Strategies: manual, once, daily, weekly, interval (interval_days, counted from start_at), monthly (month_days like 1,15,-1) and cron (cron + duration_minutes).
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Body: JSON object; fields used in the example: `monitor_ids` (array), `strategy` (string), `time_from` (string), `time_to` (string), `timezone` (string), `title` (string), `weekdays` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/maintenance" -d '{"title": "Database upgrade", "strategy": "weekly", "weekdays": "2,4", "time_from": "22:00", "time_to": "23:30", "timezone": "Europe/Oslo", "monitor_ids": [7]}'
+```
+
+### GET /api/v1/maintenance/{id}
+
+Get one window.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/maintenance/1"
+```
+
+### PATCH /api/v1/maintenance/{id}
+
+Change a window; null clears a time field.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `active` (boolean)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/maintenance/1" -d '{"active": false}'
+```
+
+### DELETE /api/v1/maintenance/{id}
+
+Delete a window.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/maintenance/1"
+```
+
+## Endpoints: System
+
+### GET /api/v1/me
+
+Who you are and how you signed in.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/me"
+```
+
+Example response:
+
+```json
+{"id": 1, "username": "ada", "role": "admin", "auth": "token", "token_scope": "read", "can_edit": false, "is_admin": false}
+```
+
+### GET /api/v1/health
+
+Version, uptime and monitor counts.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/health"
+```
+
+Example response:
+
+```json
+{"status": "ok", "version": "0.1.0", "uptime_seconds": 86400, "monitors": {"total": 14, "by_status": {"up": 13, "down": 1}}, "status_pages": 1, "agents": 2}
+```
+
+### GET /api/v1/agents
+
+Remote probe agents and whether they're online.
+
+- Access: admin (write token of an admin)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/agents"
+```
+
+### GET /api/v1/settings
+
+Instance settings.
+
+- Access: admin (write token of an admin)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/settings"
+```
+
+Example response:
+
+```json
+{"retention_days": 90, "base_url": "https://status.example.com", "timezone": "Europe/Oslo", "language": "en", "site_name": "Vigilant Vole", "badges_public": false, "metrics_enabled": true}
+```
+
+### PATCH /api/v1/settings
+
+Change some settings.
+
+- Access: admin (write token of an admin)
+- Success: `200 OK`
+- Body: JSON object; fields used in the example: `base_url` (string), `retention_days` (integer)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/settings" -d '{"retention_days": 180, "base_url": "https://status.example.com"}'
+```
+
+### GET /api/v1/openapi.json
+
+This reference as an OpenAPI 3.1 document.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/openapi.json"
+```
+
+## Endpoints: Configuration
+
+### GET /api/v1/config
+
+Export the whole configuration as YAML or JSON. Secrets are masked unless an admin asks for them.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Query parameters:
+  - `format`: yaml (default) | json
+  - `secrets`: 1 to include secrets (admins only)
+  - `download`: 1 to download as a file
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/config" -o vigilant.yml
+```
+
+Example response:
+
+```yaml
+version: 1
+tags:
+  - name: production
+    color: green
+notification_channels:
+  - name: Ops Discord
+    kind: discord
+    config:
+      url: "••••••"
+monitors:
+  - name: Website
+    monitor_type: http
+    target: https://example.com
+    interval_seconds: 30
+    tags: [production]
+    notifications: [Ops Discord]
+status_pages:
+  - slug: acme
+    title: Acme status
+    sections:
+      - name: Services
+        monitors: [Website]
+```
+
+### POST /api/v1/config
+
+Import a configuration document (YAML or JSON body). Merge upserts by key; replace also deletes what the document doesn't list in the sections it contains. Masked secrets keep stored values.
+
+- Access: admin (write token of an admin)
+- Success: `200 OK`
+- Query parameters:
+  - `mode`: merge (default) | replace
+  - `dry_run`: 1 to only return the plan
+  - `confirm`: 1, required to apply a replace
+- Body: a configuration document in YAML or JSON (see the example and "Config as code" below)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/yaml" --data-binary @vigilant.yml "$VV_URL/api/v1/config?dry_run=1"
+```
+
+Example response:
+
+```json
+{
+  "applied": false,
+  "mode": "merge",
+  "summary": {"create": 2, "update": 1, "delete": 0, "unchanged": 14, "skip": 0},
+  "items": [
+    {"kind": "monitor", "key": "Website", "action": "update", "changes": ["interval_seconds"]},
+    {"kind": "tag", "key": "staging", "action": "create"}
+  ],
+  "errors": [],
+  "warnings": []
+}
+```
+
+## Endpoints: Push and machine endpoints
+
+### GET /api/push/{token}
+
+Report a push monitor's status (POST works too). Rate limited to 1 per second.
+
+- Access: the push monitor's token in the URL (no API token)
+- Success: `200 OK`
+- Path parameters: `token` (string)
+- Query parameters:
+  - `status`: up (default) | down
+  - `msg`: message to record
+  - `ping`: response time in ms
+
+Example request:
+
+```bash
+curl "$VV_URL/api/push/$VV_PUSH_TOKEN"
+```
+
+Example response:
+
+```json
+{"ok": true}
+```
+
+### GET /api/badge/{id}/{kind}
+
+SVG badge: kind is status, uptime, ping or cert-exp. Public when the monitor is on a published status page or badges are public.
+
+- Access: public (no token)
+- Success: `200 OK`
+- Path parameters: `id` (integer), `kind` (string)
+- Query parameters:
+  - `duration`: 24h | 7d | 30d
+  - `style`: flat | flat-square
+  - `label`: custom label
+
+Example request:
+
+```bash
+curl "$VV_URL/api/badge/7/status"
+```
+
+### GET /api/status-page/{slug}
+
+A published status page as JSON (CORS enabled), for embedding.
+
+- Access: public (no token)
+- Success: `200 OK`
+- Path parameters: `slug` (string)
+
+Example request:
+
+```bash
+curl "$VV_URL/api/status-page/acme"
+```
+
+Example response:
+
+```json
+{"title": "Acme status", "overall": {"indicator": "operational", "title": "All systems operational"}, "sections": [ … ], "incidents": [ … ]}
+```
+
+### GET /api/agent/v1/monitors
+
+For remote agents: the monitors to run (Bearer vva_… token, ETag).
+
+- Access: remote agent token (`Authorization: Bearer vva_…`)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_AGENT_TOKEN" "$VV_URL/api/agent/v1/monitors"
+```
+
+### POST /api/agent/v1/results
+
+For remote agents: a batch of up to 500 results.
+
+- Access: remote agent token (`Authorization: Bearer vva_…`)
+- Success: `200 OK`
+- Body: JSON object; fields used in the example: `results` (array)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_AGENT_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/agent/v1/results" -d '{"results": [{"monitor_id": 7, "status": "up", "response_time_ms": 120, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}]}'
+```
+
+### GET /metrics
+
+Prometheus metrics (when enabled). Bearer token or basic-auth password; Kuma-compatible series included.
+
+- Access: API token as Bearer token or HTTP Basic password
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/metrics"
+```
+
+### POST /mcp
+
+Model Context Protocol server (Streamable HTTP, JSON-RPC 2.0) for AI assistants: tools to read and, with a write token, steer your monitors, incidents and maintenance, plus this reference as a resource. Bearer API token; GET answers 405. See docs/mcp.md.
+
+- Access: public (no token)
+- Success: `200 OK`
+- Body: JSON object; fields used in the example: `id` (integer), `jsonrpc` (string), `method` (string), `params` (object)
+
+Example request:
+
+```bash
+curl -X POST -H "Content-Type: application/json" "$VV_URL/mcp" -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "why_is_it_down", "arguments": {"id": 7}}}'
+```
+
+### GET /healthz
+
+Liveness probe: always "ok".
+
+- Access: public (no token)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl "$VV_URL/healthz"
+```
+
+## Config as code
+
+The whole setup (settings, tags, notification channels, monitors, status pages, maintenance) is one YAML or JSON document. Export needs an editor (secrets only for admins with `secrets=1`); import needs an admin. An import is one transaction: on any error you get `422` with every problem and nothing is written. Objects are matched by name (status pages by slug); masked secrets keep their stored values.
+
+```bash
+# Export (YAML; add format=json for JSON)
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/config" -o vigilant.yml
+
+# Preview what an import would change (nothing is written)
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/yaml" \
+  --data-binary @vigilant.yml "$VV_URL/api/v1/config?dry_run=1"
+
+# Apply (merge: create and update, never delete)
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/yaml" \
+  --data-binary @vigilant.yml "$VV_URL/api/v1/config"
+
+# Replace: also deletes what the document doesn't list (in the sections it contains); needs confirm=1
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/yaml" \
+  --data-binary @vigilant.yml "$VV_URL/api/v1/config?mode=replace&confirm=1"
+```
+
+## Common tasks
+
+### Find monitors that are down
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors?status=down"
+```
+
+### Create an HTTP monitor
+
+Tags are names (created if new) or `{"name", "value"}`; notifications are channel ids or `{"channel_id", "escalation"}` (list them with `GET /api/v1/notification-channels`).
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/monitors" -d '{
+  "name": "Website",
+  "monitor_type": "http",
+  "target": "https://example.com",
+  "interval_seconds": 60,
+  "retries": 1,
+  "tags": ["production", {"name": "env", "value": "prod"}],
+  "notifications": [1, {"channel_id": 3, "escalation": true}],
+  "escalation_minutes": 15
+}'
+```
+
+### Pause and resume a monitor
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/pause"
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/resume"
+```
+
+### Bulk edit: run on remote agents, change the interval
+
+Pick monitors with `ids` or `filter` (the list's filters: `status`, `type`, `tag`, `q`; `{}` is every monitor). Every key of `set` is optional (left out or `null` keeps each monitor's value): `run_on_agents`, `confirm_with_agents` (booleans); `interval_seconds`, `retry_interval_seconds`, `timeout_seconds`, `retries` (integers); `channels` (`{"add": [...], "remove": [...]}` or `{"replace": [...]}`, entries are ids, names or `{"id"|"name", "escalation"}`); `tags` (`{"add": [...], "remove": [...], "clear": true}`). Monitors a setting doesn't apply to come back in `skipped` with a reason.
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/monitors/bulk" -d '{"filter": {"type": "http", "tag": "production"}, "set": {"run_on_agents": true, "confirm_with_agents": true, "interval_seconds": 120, "channels": {"add": [{"name": "Ops Discord", "escalation": false}], "remove": [3]}, "tags": {"add": [{"name": "eu", "color": "teal", "value": "west"}], "remove": ["legacy"]}}}'
+```
+
+### Create a status page
+
+Then publish it and change its look with `PATCH /api/v1/status-pages/{id}`; it is served at `/status/<slug>`.
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/status-pages" -d '{"title": "Acme status", "slug": "acme", "sections": [{"name": "API", "monitor_ids": [7, 8]}]}'
+```

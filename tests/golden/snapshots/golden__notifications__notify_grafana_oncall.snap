@@ -1,0 +1,59 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: grafana_oncall (Grafana OnCall)
+
+## minimal config
+{
+  "url": "https://oncall-prod-eu-west-0.grafana.net/oncall/integrations/v1/webhook/"
+}
+
+### down
+POST https://oncall-prod-eu-west-0.grafana.net/oncall/integrations/v1/webhook/
+(json)
+{
+  "alert_uid": "vv-monitor-7",
+  "link_to_upstream_details": "https://vv.example/monitors/7",
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "state": "alerting",
+  "title": "Payments API is down"
+}
+
+### up
+POST https://oncall-prod-eu-west-0.grafana.net/oncall/integrations/v1/webhook/
+(json)
+{
+  "alert_uid": "vv-monitor-7",
+  "link_to_upstream_details": "https://vv.example/monitors/7",
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "state": "ok",
+  "title": "Payments API is back up"
+}
+
+## full config
+{
+  "url": "https://oncall-prod-eu-west-0.grafana.net/oncall/integrations/v1/webhook/"
+}
+
+### down
+POST https://oncall-prod-eu-west-0.grafana.net/oncall/integrations/v1/webhook/
+(json)
+{
+  "alert_uid": "vv-monitor-7",
+  "link_to_upstream_details": "https://vv.example/monitors/7",
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "state": "alerting",
+  "title": "Payments API is down"
+}
+
+### up
+POST https://oncall-prod-eu-west-0.grafana.net/oncall/integrations/v1/webhook/
+(json)
+{
+  "alert_uid": "vv-monitor-7",
+  "link_to_upstream_details": "https://vv.example/monitors/7",
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "state": "ok",
+  "title": "Payments API is back up"
+}

@@ -1,0 +1,67 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: signl4 (SIGNL4)
+
+## minimal config
+{
+  "url": "https://connect.signl4.com/webhook/"
+}
+
+### down
+POST https://connect.signl4.com/webhook/
+(json)
+{
+  "Link": "https://vv.example/monitors/7",
+  "Message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "Title": "Payments API is down",
+  "X-S4-ExternalID": "vv-monitor-7",
+  "X-S4-Service": "Payments API",
+  "X-S4-SourceSystem": "Vigilant Vole",
+  "X-S4-Status": "new"
+}
+
+### up
+POST https://connect.signl4.com/webhook/
+(json)
+{
+  "Link": "https://vv.example/monitors/7",
+  "Message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "Title": "Payments API is back up",
+  "X-S4-ExternalID": "vv-monitor-7",
+  "X-S4-Service": "Payments API",
+  "X-S4-SourceSystem": "Vigilant Vole",
+  "X-S4-Status": "resolved"
+}
+
+## full config
+{
+  "url": "https://connect.signl4.com/webhook/"
+}
+
+### down
+POST https://connect.signl4.com/webhook/
+(json)
+{
+  "Link": "https://vv.example/monitors/7",
+  "Message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "Title": "Payments API is down",
+  "X-S4-ExternalID": "vv-monitor-7",
+  "X-S4-Service": "Payments API",
+  "X-S4-SourceSystem": "Vigilant Vole",
+  "X-S4-Status": "new"
+}
+
+### up
+POST https://connect.signl4.com/webhook/
+(json)
+{
+  "Link": "https://vv.example/monitors/7",
+  "Message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "Title": "Payments API is back up",
+  "X-S4-ExternalID": "vv-monitor-7",
+  "X-S4-Service": "Payments API",
+  "X-S4-SourceSystem": "Vigilant Vole",
+  "X-S4-Status": "resolved"
+}

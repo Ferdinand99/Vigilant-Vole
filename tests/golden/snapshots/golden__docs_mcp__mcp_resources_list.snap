@@ -1,0 +1,40 @@
+---
+source: tests/golden/docs_mcp.rs
+expression: pretty(&resources)
+---
+{
+  "id": 3,
+  "jsonrpc": "2.0",
+  "result": {
+    "resources": [
+      {
+        "description": "The REST API reference as Markdown: every endpoint, field and example.",
+        "mimeType": "text/markdown",
+        "name": "api-reference",
+        "title": "Vigilant Vole API reference",
+        "uri": "vigilant-vole://api-reference"
+      },
+      {
+        "description": "Monitor 1: settings and current status.",
+        "mimeType": "application/json",
+        "name": "monitor-1",
+        "title": "Website",
+        "uri": "vigilant-vole://monitor/1"
+      },
+      {
+        "description": "Monitor 2: settings and current status.",
+        "mimeType": "application/json",
+        "name": "monitor-2",
+        "title": "API",
+        "uri": "vigilant-vole://monitor/2"
+      },
+      {
+        "description": "Monitor 3: settings and current status.",
+        "mimeType": "application/json",
+        "name": "monitor-3",
+        "title": "Legacy box",
+        "uri": "vigilant-vole://monitor/3"
+      }
+    ]
+  }
+}

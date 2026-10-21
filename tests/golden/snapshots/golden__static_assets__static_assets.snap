@@ -1,0 +1,22 @@
+---
+source: tests/golden/static_assets.rs
+expression: out
+---
+/static/app.js | text/javascript; charset=utf-8 | 67751 bytes | sha256 04cbc5633d05f26b
+/static/apple-touch-icon.png | image/png | 6492 bytes | sha256 46aee4c137d42647
+/static/favicon.svg | image/svg+xml | 764 bytes | sha256 279faa6501e726c5
+/static/fonts/Inter-LICENSE.txt | text/plain; charset=utf-8 | 4380 bytes | sha256 262481e844521b32
+/static/fonts/InterVariable.woff2 | font/woff2 | 352240 bytes | sha256 693b77d4f32ee9b8
+/static/htmx.min.js | text/javascript; charset=utf-8 | 51238 bytes | sha256 71ea67185bfa8c98
+/static/icon-192.png | image/png | 6850 bytes | sha256 315913d77c5f8b0d
+/static/icon-512.png | image/png | 20630 bytes | sha256 fb67176f04b3ad91
+/static/icon-maskable-512.png | image/png | 18111 bytes | sha256 0df9a6ad257b1104
+/static/icons.svg | image/svg+xml | 21819 bytes | sha256 6febc56f01896782
+/static/site.webmanifest | application/manifest+json | 623 bytes | sha256 5116097c7a0cd638
+/static/sse.js | text/javascript; charset=utf-8 | 8921 bytes | sha256 3b5992a541619bab
+/static/style.css | text/css; charset=utf-8 | 104682 bytes | sha256 69acce9519192d55
+/static/theme.js | text/javascript; charset=utf-8 | 486 bytes | sha256 7acee2bb1490b403
+/static/nope.css -> 404 
+/static/../Cargo.toml -> 404 
+/static/fonts/ -> 404 
+/static/ -> 404 text/html; charset=utf-8

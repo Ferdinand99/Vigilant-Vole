@@ -1,0 +1,232 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>General · Golden Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Golden Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>Golden Vole</span>
+      </a>
+
+      <nav class="topnav" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/">Dashboard</a>
+        <a class="topnav-link" href="/status-pages">Status pages</a>
+        <a class="topnav-link" href="/maintenance">Maintenance</a>
+        <a class="topnav-link" href="/settings" aria-current="page">Settings</a>
+      </nav>
+
+      <div class="topbar-end">
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="Account and appearance">
+          <span class="avatar" aria-hidden="true">A</span>
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            <span class="avatar avatar-lg" aria-hidden="true">A</span>
+            <span>
+              <span class="user-card-name">admin</span>
+              <span class="user-card-meta">admin · Admin</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>Security</a>
+          <a class="menu-item" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>API tokens</a>
+          <a class="menu-item" href="/api-docs"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#code"></use></svg>API docs</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">Appearance</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#theme-auto"></use></svg><span>Auto</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span>Light</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><span>Dark</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg>Log out</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container " tabindex="-1">
+    
+<div class="settings">
+  <aside class="settings-side">
+    <p class="settings-heading" aria-hidden="true">Settings</p>
+    <nav class="settings-nav" aria-label="Settings" hx-boost="true" hx-swap="innerHTML transition:true">
+      <a class="settings-link" href="/settings/general" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sliders"></use></svg>General</a>
+      <a class="settings-link" href="/settings/notifications"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#bell"></use></svg>Notifications</a>
+      <a class="settings-link" href="/settings/users"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg>Users</a>
+      <a class="settings-link" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>Security</a>
+      <a class="settings-link" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>API tokens</a>
+      <a class="settings-link" href="/settings/agents"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#server"></use></svg>Remote agents</a>
+      <a class="settings-link" href="/settings/integrations"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plug"></use></svg>Integrations</a>
+      <a class="settings-link" href="/settings/browsers"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#browser"></use></svg>Remote browsers</a>
+      <a class="settings-link" href="/settings/backup"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#archive"></use></svg>Backup</a>
+    </nav>
+  </aside>
+  <div class="settings-content" id="settings-content">
+    
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">General</h1>
+      <p class="page-sub">How this instance names itself, tells time and keeps data.</p>
+    </div>
+    <div class="page-actions"></div>
+  </div>
+</header>
+
+<form class="form" method="post" action="/settings/general" data-warn-unsaved novalidate>
+  <section class="form-section" aria-labelledby="sec-site">
+    <h2 class="form-section-title" id="sec-site">Site</h2>
+    <div class="card">
+      <div class="field">
+  <label class="label" for="f-site_name">Site name</label>
+  <input id="f-site_name" name="site_name" type="text" value="Golden Vole" placeholder="Vigilant Vole…" autocomplete="off" aria-describedby="f-site_name-help">
+  <p class="help" id="f-site_name-help">Shown in the top bar, page titles and notifications.</p>
+</div>
+      <div class="field">
+  <label class="label" for="f-base_url">Public URL</label>
+  <input id="f-base_url" name="base_url" type="url" value="" placeholder="https://status.example.com…" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="f-base_url-help">
+  <p class="help" id="f-base_url-help">Where people reach this instance. Used for links in notifications and push URLs.</p>
+</div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-region">
+    <h2 class="form-section-title" id="sec-region">Region</h2>
+    <div class="card">
+      <div class="field-row">
+        <div class="field">
+          <label class="label" for="f-timezone">Time zone</label>
+          <select id="f-timezone" name="timezone">
+            <option value="UTC" selected>UTC</option>
+            <!-- other time zones: the system tz database -->
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="f-language">Language</label>
+          <select id="f-language" name="language">
+            <option value="en" selected>English</option>
+            <option value="nb">Norsk bokmål</option>
+            <option value="ar">العربية (beta)</option>
+            <option value="cs">Čeština (beta)</option>
+            <option value="da">Dansk (beta)</option>
+            <option value="de">Deutsch (beta)</option>
+            <option value="es">Español (beta)</option>
+            <option value="fa">فارسی (beta)</option>
+            <option value="fi">Suomi (beta)</option>
+            <option value="fr">Français (beta)</option>
+            <option value="he">עברית (beta)</option>
+            <option value="hu">Magyar (beta)</option>
+            <option value="it">Italiano (beta)</option>
+            <option value="ja">日本語 (beta)</option>
+            <option value="ko">한국어 (beta)</option>
+            <option value="nl">Nederlands (beta)</option>
+            <option value="pl">Polski (beta)</option>
+            <option value="pt-BR">Português (Brasil) (beta)</option>
+            <option value="pt-PT">Português (Portugal) (beta)</option>
+            <option value="ro">Română (beta)</option>
+            <option value="ru">Русский (beta)</option>
+            <option value="sv">Svenska (beta)</option>
+            <option value="tr">Türkçe (beta)</option>
+            <option value="uk">Українська (beta)</option>
+            <option value="zh-CN">简体中文 (beta)</option>
+            <option value="zh-TW">繁體中文 (beta)</option>
+          </select>
+          <p class="help">The default for everyone. People can pick their own under Security.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-data">
+    <h2 class="form-section-title" id="sec-data">Data</h2>
+    <div class="card">
+      <div class="field">
+        <label class="label" for="f-retention_days">Keep check history for</label>
+        <div class="input-group">
+          <input id="f-retention_days" name="retention_days" type="number" inputmode="numeric" min="1" max="3650" step="1" autocomplete="off" value="90"
+            aria-describedby="f-retention-help">
+          <span class="input-addon" aria-hidden="true">days</span>
+        </div>
+        <p class="help" id="f-retention-help">Individual checks older than this are deleted every hour. Daily uptime summaries are kept, so long-range uptime and status-page bars stay accurate. The database is <span class="num">283 KB</span> and holds <span class="num">0</span> checks.</p>
+      </div>
+      <label class="switch-row" for="f-badges_public">
+  <span class="switch-row-text">
+    <span class="switch-row-label">Public badges</span>
+    <span class="help">Anyone with a monitor’s badge URL can see its status, uptime and response time. Turn off to require an API token.</span>
+  </span>
+  <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-badges_public" name="badges_public" value="true"><span class="switch-ui" aria-hidden="true"></span></span>
+</label>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-monitoring">
+    <h2 class="form-section-title" id="sec-monitoring">New monitors</h2>
+    <div class="card">
+      <label class="switch-row" for="f-agent_confirmation_default">
+  <span class="switch-row-text">
+    <span class="switch-row-label">Confirm outages with agents by default</span>
+    <span class="help">New monitors start with “Confirm outages with agents” switched on, so they only alert when your remote agents agree a target is down.</span>
+  </span>
+  <span class="switch"><input class="switch-input" type="checkbox" role="switch" id="f-agent_confirmation_default" name="agent_confirmation_default" value="true"><span class="switch-ui" aria-hidden="true"></span></span>
+</label>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary"><span>Save settings</span></button>
+  </div>
+</form>
+
+  </div>
+</div>
+
+  </main>
+
+  <nav class="tabbar" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>Dashboard</span></a>
+    <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>Status</span></a>
+    <a class="tabbar-item" href="/maintenance"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#wrench"></use></svg><span>Maintenance</span></a>
+    <a class="tabbar-item" href="/settings" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#gear"></use></svg><span>Settings</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"Copied the API reference. Paste it into your AI assistant.","ai_downloaded":"Couldn’t copy, so the reference was downloaded as a Markdown file.","ai_failed":"Couldn’t load the API reference. Try again.","cancel":"Cancel","confirm":"Confirm","confirm_title":"Are you sure?","connecting":"Connecting…","copied":"Copied","copied_announce":"Copied to clipboard","copy_failed":"Couldn’t copy. Select the text and copy it manually.","delete":"Delete","dismiss":"Dismiss","hint_common":"avoid common words and sequences","hint_min_length":"use at least {n} characters","hint_repeated":"too many repeated characters","live":"Live","moved":"Moved {item} to position {pos} of {total}","network_error":"Can’t reach the server. Check your connection.","offline":"Offline","reconnecting":"Reconnecting…","server_error":"Something went wrong on the server. Try again.","strength_0":"Too short","strength_1":"Weak","strength_2":"Fair","strength_3":"Good","strength_4":"Strong","strength_prefix":"Strength:"}</script>
+  
+</body>
+</html>

@@ -1,0 +1,53 @@
+---
+source: tests/golden/static_assets.rs
+expression: out
+---
+/static/style.css -> 200 text/css; charset=utf-8
+/static/app.js -> 200 text/javascript; charset=utf-8
+/static/theme.js -> 200 text/javascript; charset=utf-8
+/static/htmx.min.js -> 200 text/javascript; charset=utf-8
+/static/sse.js -> 200 text/javascript; charset=utf-8
+/static/icons.svg -> 200 image/svg+xml
+/static/favicon.svg -> 200 image/svg+xml
+/static/apple-touch-icon.png -> 200 image/png
+/static/site.webmanifest -> 200 application/manifest+json
+/static/fonts/InterVariable.woff2 -> 200 font/woff2
+/static/favicon.svg -> 200 image/svg+xml
+/static/icon-192.png -> 200 image/png
+/static/icon-512.png -> 200 image/png
+/static/icon-maskable-512.png -> 200 image/png
+
+site.webmanifest:
+{
+  "background_color": "#0b0b0d",
+  "description": "Self-hosted uptime monitoring and status pages.",
+  "display": "standalone",
+  "icons": [
+    {
+      "sizes": "any",
+      "src": "/static/favicon.svg",
+      "type": "image/svg+xml"
+    },
+    {
+      "sizes": "192x192",
+      "src": "/static/icon-192.png",
+      "type": "image/png"
+    },
+    {
+      "sizes": "512x512",
+      "src": "/static/icon-512.png",
+      "type": "image/png"
+    },
+    {
+      "purpose": "maskable",
+      "sizes": "512x512",
+      "src": "/static/icon-maskable-512.png",
+      "type": "image/png"
+    }
+  ],
+  "name": "Vigilant Vole",
+  "scope": "/",
+  "short_name": "Vigilant Vole",
+  "start_url": "/",
+  "theme_color": "#0b0b0d"
+}

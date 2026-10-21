@@ -1,0 +1,75 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: telegram (Telegram)
+
+## minimal config
+{
+  "bot_token": "123456:ABC-DEF",
+  "chat_id": "-1001234567890",
+  "silent": false
+}
+
+### down
+POST https://api.telegram.org/bot123456:ABC-DEF/sendMessage
+(json)
+{
+  "chat_id": "-1001234567890",
+  "disable_notification": false,
+  "link_preview_options": {
+    "is_disabled": true
+  },
+  "parse_mode": "HTML",
+  "text": "<b>🔴 Payments API is down</b>\nHTTP 503 (after 3 retries)\n<i>Target:</i> https://pay.example/health\n<i>Type:</i> HTTP(S)\n<i>Time:</i> 2026-10-19 14:03:12 UTC\n\n<a href=\"https://vv.example/monitors/7\">View monitor</a>"
+}
+
+### up
+POST https://api.telegram.org/bot123456:ABC-DEF/sendMessage
+(json)
+{
+  "chat_id": "-1001234567890",
+  "disable_notification": false,
+  "link_preview_options": {
+    "is_disabled": true
+  },
+  "parse_mode": "HTML",
+  "text": "<b>🟢 Payments API is back up</b>\ndown for 12m 4s\n<i>Target:</i> https://pay.example/health\n<i>Type:</i> HTTP(S)\n<i>Downtime:</i> 12m 4s\n<i>Time:</i> 2026-10-19 14:03:12 UTC\n\n<a href=\"https://vv.example/monitors/7\">View monitor</a>"
+}
+
+## full config
+{
+  "bot_token": "123456:ABC-DEF",
+  "chat_id": "-1001234567890",
+  "message_thread_id": 42,
+  "server_url": "https://api.telegram.org",
+  "silent": true
+}
+
+### down
+POST https://api.telegram.org/bot123456:ABC-DEF/sendMessage
+(json)
+{
+  "chat_id": "-1001234567890",
+  "disable_notification": true,
+  "link_preview_options": {
+    "is_disabled": true
+  },
+  "message_thread_id": 42,
+  "parse_mode": "HTML",
+  "text": "<b>🔴 Payments API is down</b>\nHTTP 503 (after 3 retries)\n<i>Target:</i> https://pay.example/health\n<i>Type:</i> HTTP(S)\n<i>Time:</i> 2026-10-19 14:03:12 UTC\n\n<a href=\"https://vv.example/monitors/7\">View monitor</a>"
+}
+
+### up
+POST https://api.telegram.org/bot123456:ABC-DEF/sendMessage
+(json)
+{
+  "chat_id": "-1001234567890",
+  "disable_notification": true,
+  "link_preview_options": {
+    "is_disabled": true
+  },
+  "message_thread_id": 42,
+  "parse_mode": "HTML",
+  "text": "<b>🟢 Payments API is back up</b>\ndown for 12m 4s\n<i>Target:</i> https://pay.example/health\n<i>Type:</i> HTTP(S)\n<i>Downtime:</i> 12m 4s\n<i>Time:</i> 2026-10-19 14:03:12 UTC\n\n<a href=\"https://vv.example/monitors/7\">View monitor</a>"
+}

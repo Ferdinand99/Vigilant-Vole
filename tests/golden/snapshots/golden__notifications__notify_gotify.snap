@@ -1,0 +1,98 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: gotify (Gotify)
+
+## minimal config
+{
+  "app_token": "secret-app_token",
+  "server": "https://gotify.example.com"
+}
+
+### down
+POST https://gotify.example.com/message
+X-Gotify-Key: secret-app_token
+(json)
+{
+  "extras": {
+    "client::display": {
+      "contentType": "text/markdown"
+    },
+    "client::notification": {
+      "click": {
+        "url": "https://vv.example/monitors/7"
+      }
+    }
+  },
+  "message": "HTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "priority": 8,
+  "title": "🔴 Payments API is down"
+}
+
+### up
+POST https://gotify.example.com/message
+X-Gotify-Key: secret-app_token
+(json)
+{
+  "extras": {
+    "client::display": {
+      "contentType": "text/markdown"
+    },
+    "client::notification": {
+      "click": {
+        "url": "https://vv.example/monitors/7"
+      }
+    }
+  },
+  "message": "down for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "priority": 5,
+  "title": "🟢 Payments API is back up"
+}
+
+## full config
+{
+  "app_token": "secret-app_token",
+  "priority": 1,
+  "server": "https://gotify.example.com"
+}
+
+### down
+POST https://gotify.example.com/message
+X-Gotify-Key: secret-app_token
+(json)
+{
+  "extras": {
+    "client::display": {
+      "contentType": "text/markdown"
+    },
+    "client::notification": {
+      "click": {
+        "url": "https://vv.example/monitors/7"
+      }
+    }
+  },
+  "message": "HTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "priority": 1,
+  "title": "🔴 Payments API is down"
+}
+
+### up
+POST https://gotify.example.com/message
+X-Gotify-Key: secret-app_token
+(json)
+{
+  "extras": {
+    "client::display": {
+      "contentType": "text/markdown"
+    },
+    "client::notification": {
+      "click": {
+        "url": "https://vv.example/monitors/7"
+      }
+    }
+  },
+  "message": "down for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+  "priority": 1,
+  "title": "🟢 Payments API is back up"
+}

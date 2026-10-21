@@ -61,6 +61,9 @@ webpki-root-certs = "1"
 x509-parser = "0.18.1"
 
 [dev-dependencies]
+# Golden tests (tests/golden): snapshot files under tests/golden/snapshots.
+# Review changes with `cargo insta review`, see docs/golden-tests.md.
+insta = "1.43"
 # mTLS tests: generate a throwaway CA, server and client certificates, and run
 # a TLS server that demands a client certificate. Test builds only.
 rcgen = { version = "0.14.7", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }

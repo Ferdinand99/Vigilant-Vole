@@ -1,0 +1,63 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: pushbullet (Pushbullet)
+
+## minimal config
+{
+  "access_token": "secret-access_token"
+}
+
+### down
+POST https://api.pushbullet.com/v2/pushes
+Access-Token: secret-access_token
+(json)
+{
+  "body": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "title": "🔴 Payments API is down",
+  "type": "link",
+  "url": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://api.pushbullet.com/v2/pushes
+Access-Token: secret-access_token
+(json)
+{
+  "body": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "title": "🟢 Payments API is back up",
+  "type": "link",
+  "url": "https://vv.example/monitors/7"
+}
+
+## full config
+{
+  "access_token": "secret-access_token",
+  "channel_tag": "channel_tag-value",
+  "device_iden": "device_iden-value"
+}
+
+### down
+POST https://api.pushbullet.com/v2/pushes
+Access-Token: secret-access_token
+(json)
+{
+  "body": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "device_iden": "device_iden-value",
+  "title": "🔴 Payments API is down",
+  "type": "link",
+  "url": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://api.pushbullet.com/v2/pushes
+Access-Token: secret-access_token
+(json)
+{
+  "body": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "device_iden": "device_iden-value",
+  "title": "🟢 Payments API is back up",
+  "type": "link",
+  "url": "https://vv.example/monitors/7"
+}

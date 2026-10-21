@@ -1,0 +1,638 @@
+---
+source: tests/golden/docs_mcp.rs
+expression: pretty(&tools)
+---
+{
+  "id": 2,
+  "jsonrpc": "2.0",
+  "result": {
+    "tools": [
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "Instance summary"
+        },
+        "description": "Start here. Version, how many monitors are up, down, pending, paused or in maintenance, which monitors are down right now, how many status pages and remote agents exist.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "name": "instance_summary",
+        "title": "Instance summary"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "List monitors"
+        },
+        "description": "List monitors with their current status. Filter by status, type, tag or a search text (matches name, target and description). Paginated: pass `cursor` from `next_cursor`.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "cursor": {
+              "description": "`next_cursor` of the previous page.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Page size (default 50).",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "q": {
+              "description": "Search text.",
+              "type": "string"
+            },
+            "status": {
+              "description": "Only monitors in this state.",
+              "enum": [
+                "up",
+                "down",
+                "pending",
+                "maintenance",
+                "paused",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "tag": {
+              "description": "Tag name.",
+              "type": "string"
+            },
+            "type": {
+              "description": "Monitor type, e.g. http, tcp, ping, dns, tls, push.",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "name": "list_monitors",
+        "title": "List monitors"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "Get a monitor"
+        },
+        "description": "One monitor with all its settings, tags and notification links. Passwords and tokens are masked.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The monitor's id (from list_monitors).",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "get_monitor",
+        "title": "Get a monitor"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "Monitor history"
+        },
+        "description": "Uptime over the last N days (with one entry per day) and the most recent checks (status, response time, message) within that period.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "checks": {
+              "description": "How many recent checks to include (default 20, 0 for none).",
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "days": {
+              "description": "Period in days (default 7).",
+              "maximum": 365,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "id": {
+              "description": "The monitor's id.",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "monitor_history",
+        "title": "Monitor history"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "Monitor events"
+        },
+        "description": "A monitor's outages, maintenance periods, pauses and other events, newest first, with durations.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The monitor's id.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "limit": {
+              "description": "How many events (default 20).",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "list_events",
+        "title": "Monitor events"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "Why is it down?"
+        },
+        "description": "Everything useful for diagnosing one monitor in a single call: its current status and settings, the ongoing outage (if any) with how long it has lasted, the last events, the last checks with their error messages, and certificate / domain expiry.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The monitor's id (from list_monitors).",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "why_is_it_down",
+        "title": "Why is it down?"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "List status pages"
+        },
+        "description": "The public status pages (id, slug, title, whether published and protected).",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "name": "list_status_pages",
+        "title": "List status pages"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "List incidents"
+        },
+        "description": "Status page incidents (the announcements people post), newest first. Give `status_page_id` for one page, or leave it out for all pages. `open_only` hides resolved ones.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "open_only": {
+              "description": "Only incidents that aren't resolved.",
+              "type": "boolean"
+            },
+            "status_page_id": {
+              "description": "Only this status page.",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "name": "list_incidents",
+        "title": "List incidents"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true,
+          "title": "List maintenance windows"
+        },
+        "description": "Maintenance windows with their schedule, current state (active, scheduled, paused, ended) and the monitors they cover.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "name": "list_maintenance",
+        "title": "List maintenance windows"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Create a monitor"
+        },
+        "description": "Create a monitor. Needs at least `name`, `monitor_type` (http, keyword, tcp, ping, dns, tls, push, …) and usually `target`. Same fields and validation as the REST API: interval_seconds, timeout_seconds, retries, tags, notifications, … Unknown tag names are created.",
+        "inputSchema": {
+          "additionalProperties": true,
+          "properties": {
+            "interval_seconds": {
+              "minimum": 5,
+              "type": "integer"
+            },
+            "monitor_type": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "retries": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "target": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "monitor_type"
+          ],
+          "type": "object"
+        },
+        "name": "create_monitor",
+        "title": "Create a monitor"
+      },
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Change a monitor"
+        },
+        "description": "Change some fields of a monitor (everything not mentioned stays). Send \"••••••\" for a secret to keep its stored value.",
+        "inputSchema": {
+          "additionalProperties": true,
+          "properties": {
+            "id": {
+              "description": "The monitor's id.",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "update_monitor",
+        "title": "Change a monitor"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Pause a monitor"
+        },
+        "description": "Stop checks and alerts for a monitor.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The monitor's id (from list_monitors).",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "pause_monitor",
+        "title": "Pause a monitor"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Resume a monitor"
+        },
+        "description": "Start a paused monitor again.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The monitor's id (from list_monitors).",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "resume_monitor",
+        "title": "Resume a monitor"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Check now"
+        },
+        "description": "Run a check right now and return its result. Not possible for paused, push and group monitors.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The monitor's id (from list_monitors).",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "check_now",
+        "title": "Check now"
+      },
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Change many monitors"
+        },
+        "description": "Change settings on many monitors at once, chosen by `ids` or by a `filter` (same fields as list_monitors: status, type, tag, q). `set` holds the settings (interval_seconds, retries, run_on_agents, channels {add, remove}, tags {add, remove}, …) with the semantics of POST /api/v1/monitors/bulk. One transaction; settings that don't fit a monitor's type are skipped and listed.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "ids": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "set": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "required": [
+            "set"
+          ],
+          "type": "object"
+        },
+        "name": "bulk_edit",
+        "title": "Change many monitors"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Post an incident"
+        },
+        "description": "Announce an incident on a status page. Severity: info, warning, danger or success.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "description": "Markdown: **bold**, *italic*, [links](https://…).",
+              "type": "string"
+            },
+            "pinned": {
+              "description": "Show at the top while open (default true).",
+              "type": "boolean"
+            },
+            "severity": {
+              "enum": [
+                "info",
+                "warning",
+                "danger",
+                "success"
+              ],
+              "type": "string"
+            },
+            "status_page_id": {
+              "description": "The status page's id (from list_status_pages).",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status_page_id",
+            "title"
+          ],
+          "type": "object"
+        },
+        "name": "create_incident",
+        "title": "Post an incident"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Update an incident"
+        },
+        "description": "Change an incident and/or post a timeline update. `update` = {status: investigating | identified | monitoring | resolved, body}; a resolved update resolves the incident, any other status reopens it. `resolved` resolves or reopens without a timeline entry.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "type": "string"
+            },
+            "incident_id": {
+              "description": "The incident's id (from list_incidents).",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "resolved": {
+              "type": "boolean"
+            },
+            "severity": {
+              "enum": [
+                "info",
+                "warning",
+                "danger",
+                "success"
+              ],
+              "type": "string"
+            },
+            "status_page_id": {
+              "description": "The status page's id.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "update": {
+              "additionalProperties": false,
+              "properties": {
+                "body": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "investigating",
+                    "identified",
+                    "monitoring",
+                    "resolved"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "body"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "status_page_id",
+            "incident_id"
+          ],
+          "type": "object"
+        },
+        "name": "update_incident",
+        "title": "Update an incident"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "Start maintenance"
+        },
+        "description": "Put monitors into maintenance right now: creates a manual maintenance window that stays on until end_maintenance. Monitors in it record maintenance and send no alerts. Optionally announce it on status pages.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "description": "Shown on status pages (Markdown).",
+              "type": "string"
+            },
+            "monitor_ids": {
+              "description": "A group covers everything in it.",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "status_page_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "monitor_ids"
+          ],
+          "type": "object"
+        },
+        "name": "start_maintenance",
+        "title": "Start maintenance"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false,
+          "title": "End maintenance"
+        },
+        "description": "Turn a maintenance window off (a manual window ends; a scheduled one is paused until you enable it again).",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "The maintenance window's id (from list_maintenance).",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "end_maintenance",
+        "title": "End maintenance"
+      }
+    ]
+  }
+}

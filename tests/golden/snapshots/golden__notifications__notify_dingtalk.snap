@@ -1,0 +1,60 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: dingtalk (DingTalk)
+
+## minimal config
+{
+  "url": "https://oapi.dingtalk.com/robot/send?access_token="
+}
+
+### down
+POST https://oapi.dingtalk.com/robot/send?access_token=
+(json)
+{
+  "markdown": {
+    "text": "**🔴 Payments API is down**\nHTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+    "title": "🔴 Payments API is down"
+  },
+  "msgtype": "markdown"
+}
+
+### up
+POST https://oapi.dingtalk.com/robot/send?access_token=
+(json)
+{
+  "markdown": {
+    "text": "**🟢 Payments API is back up**\ndown for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+    "title": "🟢 Payments API is back up"
+  },
+  "msgtype": "markdown"
+}
+
+## full config
+{
+  "secret": "SEC",
+  "url": "https://oapi.dingtalk.com/robot/send?access_token="
+}
+
+### down
+POST https://oapi.dingtalk.com/robot/send?access_token=&timestamp=<unix-ms>&sign=<sign(timestamp, secret)>
+(json)
+{
+  "markdown": {
+    "text": "**🔴 Payments API is down**\nHTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+    "title": "🔴 Payments API is down"
+  },
+  "msgtype": "markdown"
+}
+
+### up
+POST https://oapi.dingtalk.com/robot/send?access_token=&timestamp=<unix-ms>&sign=<sign(timestamp, secret)>
+(json)
+{
+  "markdown": {
+    "text": "**🟢 Payments API is back up**\ndown for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+    "title": "🟢 Payments API is back up"
+  },
+  "msgtype": "markdown"
+}

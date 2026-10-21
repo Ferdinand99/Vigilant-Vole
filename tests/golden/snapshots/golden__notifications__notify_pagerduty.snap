@@ -1,0 +1,99 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: pagerduty (PagerDuty)
+
+## minimal config
+{
+  "region": "us",
+  "routing_key": "secret-routing_key",
+  "severity": "critical"
+}
+
+### down
+POST https://events.pagerduty.com/v2/enqueue
+(json)
+{
+  "client": "Vigilant Vole",
+  "client_url": "https://vv.example/monitors/7",
+  "dedup_key": "vv-monitor-7",
+  "event_action": "trigger",
+  "links": [
+    {
+      "href": "https://vv.example/monitors/7",
+      "text": "View monitor"
+    }
+  ],
+  "payload": {
+    "class": "http",
+    "component": "Payments API",
+    "custom_details": {
+      "event": "down",
+      "expires_in_days": null,
+      "message": "HTTP 503 (after 3 retries)"
+    },
+    "severity": "critical",
+    "source": "https://pay.example/health",
+    "summary": "🔴 Payments API is down — HTTP 503 (after 3 retries)",
+    "timestamp": "2026-10-19T14:03:12Z"
+  },
+  "routing_key": "secret-routing_key"
+}
+
+### up
+POST https://events.pagerduty.com/v2/enqueue
+(json)
+{
+  "client": "Vigilant Vole",
+  "dedup_key": "vv-monitor-7",
+  "event_action": "resolve",
+  "routing_key": "secret-routing_key"
+}
+
+## full config
+{
+  "region": "us",
+  "routing_key": "secret-routing_key",
+  "severity": "critical"
+}
+
+### down
+POST https://events.pagerduty.com/v2/enqueue
+(json)
+{
+  "client": "Vigilant Vole",
+  "client_url": "https://vv.example/monitors/7",
+  "dedup_key": "vv-monitor-7",
+  "event_action": "trigger",
+  "links": [
+    {
+      "href": "https://vv.example/monitors/7",
+      "text": "View monitor"
+    }
+  ],
+  "payload": {
+    "class": "http",
+    "component": "Payments API",
+    "custom_details": {
+      "event": "down",
+      "expires_in_days": null,
+      "message": "HTTP 503 (after 3 retries)"
+    },
+    "severity": "critical",
+    "source": "https://pay.example/health",
+    "summary": "🔴 Payments API is down — HTTP 503 (after 3 retries)",
+    "timestamp": "2026-10-19T14:03:12Z"
+  },
+  "routing_key": "secret-routing_key"
+}
+
+### up
+POST https://events.pagerduty.com/v2/enqueue
+(json)
+{
+  "client": "Vigilant Vole",
+  "dedup_key": "vv-monitor-7",
+  "event_action": "resolve",
+  "routing_key": "secret-routing_key"
+}

@@ -1,0 +1,89 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: zulip (Zulip)
+
+## minimal config
+{
+  "api_key": "secret-api_key",
+  "bot_email": "vigilant-bot@yourorg.zulipchat.com",
+  "site": "https://yourorg.zulipchat.com",
+  "stream": "monitoring",
+  "topic": "Vigilant Vole"
+}
+
+### down
+POST https://yourorg.zulipchat.com/api/v1/messages
+Authorization: Basic dmlnaWxhbnQtYm90QHlvdXJvcmcuenVsaXBjaGF0LmNvbTpzZWNyZXQtYXBpX2tleQ==
+(form)
+type=stream
+to=monitoring
+topic=Vigilant Vole
+content=**🔴 Payments API is down**
+HTTP 503 (after 3 retries)
+
+Target: https://pay.example/health
+Type: HTTP(S)
+Time: 2026-10-19 14:03:12 UTC
+
+[View monitor](https://vv.example/monitors/7)
+
+### up
+POST https://yourorg.zulipchat.com/api/v1/messages
+Authorization: Basic dmlnaWxhbnQtYm90QHlvdXJvcmcuenVsaXBjaGF0LmNvbTpzZWNyZXQtYXBpX2tleQ==
+(form)
+type=stream
+to=monitoring
+topic=Vigilant Vole
+content=**🟢 Payments API is back up**
+down for 12m 4s
+
+Target: https://pay.example/health
+Type: HTTP(S)
+Downtime: 12m 4s
+Time: 2026-10-19 14:03:12 UTC
+
+[View monitor](https://vv.example/monitors/7)
+
+## full config
+{
+  "api_key": "secret-api_key",
+  "bot_email": "vigilant-bot@yourorg.zulipchat.com",
+  "site": "https://yourorg.zulipchat.com",
+  "stream": "monitoring",
+  "topic": "Vigilant Vole"
+}
+
+### down
+POST https://yourorg.zulipchat.com/api/v1/messages
+Authorization: Basic dmlnaWxhbnQtYm90QHlvdXJvcmcuenVsaXBjaGF0LmNvbTpzZWNyZXQtYXBpX2tleQ==
+(form)
+type=stream
+to=monitoring
+topic=Vigilant Vole
+content=**🔴 Payments API is down**
+HTTP 503 (after 3 retries)
+
+Target: https://pay.example/health
+Type: HTTP(S)
+Time: 2026-10-19 14:03:12 UTC
+
+[View monitor](https://vv.example/monitors/7)
+
+### up
+POST https://yourorg.zulipchat.com/api/v1/messages
+Authorization: Basic dmlnaWxhbnQtYm90QHlvdXJvcmcuenVsaXBjaGF0LmNvbTpzZWNyZXQtYXBpX2tleQ==
+(form)
+type=stream
+to=monitoring
+topic=Vigilant Vole
+content=**🟢 Payments API is back up**
+down for 12m 4s
+
+Target: https://pay.example/health
+Type: HTTP(S)
+Downtime: 12m 4s
+Time: 2026-10-19 14:03:12 UTC
+
+[View monitor](https://vv.example/monitors/7)

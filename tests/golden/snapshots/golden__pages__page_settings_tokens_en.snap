@@ -1,0 +1,216 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>API tokens · Golden Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Golden Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>Golden Vole</span>
+      </a>
+
+      <nav class="topnav" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/">Dashboard</a>
+        <a class="topnav-link" href="/status-pages">Status pages</a>
+        <a class="topnav-link" href="/maintenance">Maintenance</a>
+        <a class="topnav-link" href="/settings" aria-current="page">Settings</a>
+      </nav>
+
+      <div class="topbar-end">
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="Account and appearance">
+          <span class="avatar" aria-hidden="true">A</span>
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            <span class="avatar avatar-lg" aria-hidden="true">A</span>
+            <span>
+              <span class="user-card-name">admin</span>
+              <span class="user-card-meta">admin · Admin</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>Security</a>
+          <a class="menu-item" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>API tokens</a>
+          <a class="menu-item" href="/api-docs"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#code"></use></svg>API docs</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">Appearance</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#theme-auto"></use></svg><span>Auto</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span>Light</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><span>Dark</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg>Log out</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container " tabindex="-1">
+    
+<div class="settings">
+  <aside class="settings-side">
+    <p class="settings-heading" aria-hidden="true">Settings</p>
+    <nav class="settings-nav" aria-label="Settings" hx-boost="true" hx-swap="innerHTML transition:true">
+      <a class="settings-link" href="/settings/general"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sliders"></use></svg>General</a>
+      <a class="settings-link" href="/settings/notifications"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#bell"></use></svg>Notifications</a>
+      <a class="settings-link" href="/settings/users"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg>Users</a>
+      <a class="settings-link" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>Security</a>
+      <a class="settings-link" href="/settings/tokens" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>API tokens</a>
+      <a class="settings-link" href="/settings/agents"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#server"></use></svg>Remote agents</a>
+      <a class="settings-link" href="/settings/integrations"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plug"></use></svg>Integrations</a>
+      <a class="settings-link" href="/settings/browsers"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#browser"></use></svg>Remote browsers</a>
+      <a class="settings-link" href="/settings/backup"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#archive"></use></svg>Backup</a>
+    </nav>
+  </aside>
+  <div class="settings-content" id="settings-content">
+    
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">API tokens</h1>
+      <p class="page-sub">Let scripts, dashboards and Prometheus read or change your monitors.</p>
+    </div>
+    <div class="page-actions">
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-token" commandfor="new-token" command="show-modal"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg><span>New token</span></button>
+</div>
+  </div>
+</header>
+
+<section class="section" aria-labelledby="tokens-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="tokens-title">Your tokens</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>Name</th><th>Access</th><th>Created</th><th>Last used</th><th>Expires</th><th><span class="vh">Actions</span></th></tr></thead>
+        <tbody>
+          <tr id="token-2">
+  <td class="td-primary">Golden read-only <span class="mono muted">vv_Golden…</span></td>
+  <td data-label="Access"><span class="badge">Read only</span></td>
+  <td data-label="Created"><time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time></td>
+  <td data-label="Last used">Never</td>
+  <td data-label="Expires">Never</td>
+  <td class="td-actions">
+    <button type="button" class="btn btn-danger btn-sm" hx-delete="/settings/tokens/2"
+      hx-target="#token-2" hx-swap="outerHTML" hx-confirm="Revoke “Golden read-only”?"
+      data-confirm-label="Revoke" data-confirm-message="Anything using it stops working immediately.">Revoke</button>
+  </td>
+</tr>
+          <tr id="token-1">
+  <td class="td-primary">Golden admin <span class="mono muted">vv_Golden…</span></td>
+  <td data-label="Access"><span class="badge badge-brand">Read and write</span></td>
+  <td data-label="Created"><time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time></td>
+  <td data-label="Last used"><time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time></td>
+  <td data-label="Expires">Never</td>
+  <td class="td-actions">
+    <button type="button" class="btn btn-danger btn-sm" hx-delete="/settings/tokens/1"
+      hx-target="#token-1" hx-swap="outerHTML" hx-confirm="Revoke “Golden admin”?"
+      data-confirm-label="Revoke" data-confirm-message="Anything using it stops working immediately.">Revoke</button>
+  </td>
+</tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="section-foot">Tokens act as you. Read-only tokens can never change anything, even if you’re an admin. Tokens stop working if your account is disabled.</p>
+</section>
+
+<dialog class="sheet" id="new-token" aria-labelledby="new-token-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-token-title">New token</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-token" command="close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#x"></use></svg></button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-token-form" class="form" method="post" action="/settings/tokens">
+      <div class="field">
+        <label class="label" for="nt-name">Name</label>
+        <input id="nt-name" name="name" type="text" required maxlength="80" autocomplete="off" placeholder="Grafana, deploy script…" aria-describedby="nt-name-help">
+        <p class="help" id="nt-name-help">So you know what to revoke later.</p>
+      </div>
+      <div class="field">
+        <span class="label" id="nt-scope-label">Access</span>
+        <div class="choices" role="radiogroup" aria-labelledby="nt-scope-label">
+          <label class="choice">
+            <input type="radio" name="scope" value="read" checked>
+            <span class="choice-body"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye"></use></svg><span class="choice-title">Read only</span><span class="choice-sub">Monitors, status, metrics</span></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="scope" value="write">
+            <span class="choice-body"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pencil"></use></svg><span class="choice-title">Read and write</span><span class="choice-sub">Everything your role allows</span></span>
+          </label>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="nt-expires">Expires</label>
+        <select id="nt-expires" name="expires">
+          <option value="30">In 30 days</option>
+          <option value="90" selected>In 90 days</option>
+          <option value="365">In a year</option>
+          <option value="never">Never</option>
+        </select>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-token" command="close">Cancel</button>
+    <button type="submit" class="btn btn-primary" form="new-token-form">Create token</button>
+  </footer>
+</dialog>
+
+  </div>
+</div>
+
+  </main>
+
+  <nav class="tabbar" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>Dashboard</span></a>
+    <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>Status</span></a>
+    <a class="tabbar-item" href="/maintenance"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#wrench"></use></svg><span>Maintenance</span></a>
+    <a class="tabbar-item" href="/settings" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#gear"></use></svg><span>Settings</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"Copied the API reference. Paste it into your AI assistant.","ai_downloaded":"Couldn’t copy, so the reference was downloaded as a Markdown file.","ai_failed":"Couldn’t load the API reference. Try again.","cancel":"Cancel","confirm":"Confirm","confirm_title":"Are you sure?","connecting":"Connecting…","copied":"Copied","copied_announce":"Copied to clipboard","copy_failed":"Couldn’t copy. Select the text and copy it manually.","delete":"Delete","dismiss":"Dismiss","hint_common":"avoid common words and sequences","hint_min_length":"use at least {n} characters","hint_repeated":"too many repeated characters","live":"Live","moved":"Moved {item} to position {pos} of {total}","network_error":"Can’t reach the server. Check your connection.","offline":"Offline","reconnecting":"Reconnecting…","server_error":"Something went wrong on the server. Try again.","strength_0":"Too short","strength_1":"Weak","strength_2":"Fair","strength_3":"Good","strength_4":"Strong","strength_prefix":"Strength:"}</script>
+  
+</body>
+</html>
