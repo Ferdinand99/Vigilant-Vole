@@ -3,3 +3,6 @@
 
 # Shell scripts run inside Linux containers
 *.sh text eol=lf
+
+# SQLite databases (the upgrade-test fixtures) are binary
+*.db binary

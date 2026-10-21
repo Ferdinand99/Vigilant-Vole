@@ -21,34 +21,48 @@ pub fn build_http_client() -> reqwest::Client {
         .expect("failed to build HTTP client")
 }
 
-/// Run the web server until it is stopped (Ctrl-C / SIGTERM).
-pub async fn run(config: Config) {
+/// Everything the server needs before it serves: the data directory, a
+/// pending restore swapped in, the database migrated, the session key. The
+/// scheduler is created but not started. Fails when the database can't be
+/// brought to this version's schema (the error says how to recover).
+pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
     crate::tls_roots::init();
     std::fs::create_dir_all(&config.data_dir).expect("failed to create data dir");
     // Swap in a backup uploaded via Settings → Backup before the DB is opened.
     crate::config_io::apply_pending_restore(&config.data_dir);
 
     let pool = db::build_pool(&config.db_path());
-    db::run_migrations(&pool, &config.data_dir.join("backups")).await;
+    db::migrate(&pool, &config.data_dir.join("backups")).await?;
     // Real-browser checks read their remote browser and store screenshots.
     crate::monitor::checkers::real_browser::install(pool.clone());
 
     let (update_tx, _) = tokio::sync::broadcast::channel(16);
     let http = build_http_client();
-    let scheduler = Scheduler::new(pool.clone(), update_tx.clone(), http.clone());
-    scheduler.start_all().await;
-
+    // The engine gets its own connections so web load can't delay checks.
+    let engine_pool = db::build_engine_pool(&config.db_path());
+    let scheduler = Scheduler::new(engine_pool, update_tx.clone(), http.clone());
     let session_key = auth::load_or_create_key(&config.data_dir);
-    let bind_addr = config.bind_addr.clone();
-
-    let state = AppState {
+    Ok(AppState {
         db: pool,
         scheduler,
         session_key,
         update_tx,
         http,
         config: Arc::new(config),
+    })
+}
+
+/// Run the web server until it is stopped (Ctrl-C / SIGTERM).
+pub async fn run(config: Config) {
+    let bind_addr = config.bind_addr.clone();
+    let state = match prepare(config).await {
+        Ok(state) => state,
+        Err(err) => {
+            tracing::error!("{err}");
+            std::process::exit(1);
+        }
     };
+    state.scheduler.start_all().await;
 
     // Notifications sent by background jobs use the site language.
     crate::i18n::site_language(&state).await;

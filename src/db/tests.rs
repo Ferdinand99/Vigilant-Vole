@@ -465,3 +465,64 @@ fn subscriber_tokens_upgrade_hashes_old_links_and_drops_base_url() {
         .unwrap();
     assert_eq!(crate::db::subscribers::count(&conn, 1).unwrap(), 0);
 }
+
+#[test]
+fn database_from_a_newer_release_is_refused() {
+    let mut conn = test_conn();
+    conn.execute(
+        "INSERT INTO schema_migrations (name) VALUES ('9999_from_the_future.sql')",
+        [],
+    )
+    .unwrap();
+    let err = apply_migrations(&mut conn).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        matches!(&err, super::MigrationError::NewerSchema { schema, .. } if schema == "9999_from_the_future"),
+        "{err:?}"
+    );
+    assert!(
+        msg.contains("created by a newer Vigilant Vole (schema 9999_from_the_future)")
+            && msg.contains("backups"),
+        "{msg}"
+    );
+}
+
+#[tokio::test]
+async fn migrate_refuses_a_newer_database_without_touching_it() {
+    let dir = std::env::temp_dir().join(format!("vv-newer-db-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("vv.db");
+    {
+        let mut conn = Connection::open(&path).unwrap();
+        apply_migrations(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (name) VALUES ('9999_from_the_future.sql')",
+            [],
+        )
+        .unwrap();
+    }
+    let pool = super::build_pool(&path);
+    let backups = dir.join("backups");
+    let err = super::migrate(&pool, &backups).await.unwrap_err();
+    drop(pool);
+    let msg = err.to_string();
+    let backups_written = backups.exists();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(msg.contains("newer Vigilant Vole"), "{msg}");
+    assert!(msg.contains(&backups.display().to_string()), "{msg}");
+    assert!(err.backup.is_none());
+    assert!(!backups_written, "no backup for a refused database");
+}
+
+#[test]
+fn backups_taken_in_the_same_second_get_distinct_names() {
+    let (conn, _) = upgrade(legacy_db());
+    let dir = std::env::temp_dir().join(format!("vv-backup-twice-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let first = super::backup_before_migration(&conn, &dir, "0102_x").unwrap();
+    let second = super::backup_before_migration(&conn, &dir, "0102_x").unwrap();
+    let files = std::fs::read_dir(&dir).unwrap().count();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_ne!(first, second);
+    assert_eq!(files, 2);
+}

@@ -92,6 +92,7 @@ Counters reset when the process restarts (use `rate()`/`increase()`).
 | `vigilant_monitor_checks_total` | counter | `monitor_id` | Heartbeats per monitor. |
 | `vigilant_monitor_checks_failed_total` | counter | `monitor_id` | Down or pending heartbeats per monitor. |
 | `vigilant_check_duration_seconds` | histogram | `monitor_type` | Wall-clock duration of local probes. Buckets: 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60 s. |
+| `vigilant_check_delay_seconds` | histogram | – | How long after its due time a scheduled check started its probe: timer lag plus the wait for a probe slot (`VV_MAX_CONCURRENT_CHECKS`). Near zero on a healthy server; growing values mean the scheduler can't keep up. Buckets: 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30 s. |
 | `vigilant_notifications_sent_total` | counter | `kind` | Notifications delivered, by provider. |
 | `vigilant_notifications_failed_total` | counter | `kind` | Failed deliveries, by provider. |
 
@@ -127,6 +128,9 @@ vigilant_monitor_status == 0
 # p95 probe duration by monitor type
 histogram_quantile(0.95, sum by (le, monitor_type) (rate(vigilant_check_duration_seconds_bucket[15m])))
 
+# Is the scheduler keeping up? p95 of how late checks start
+histogram_quantile(0.95, sum by (le) (rate(vigilant_check_delay_seconds_bucket[15m])))
+
 # Notification delivery failure ratio per provider
 sum by (kind) (rate(vigilant_notifications_failed_total[1h]))
   / clamp_min(sum by (kind) (rate(vigilant_notifications_sent_total[1h]) + rate(vigilant_notifications_failed_total[1h])), 1e-9)
@@ -144,6 +148,9 @@ groups:
         for: 10m
       - alert: VigilantNotificationsFailing
         expr: increase(vigilant_notifications_failed_total[1h]) > 3
+      - alert: VigilantChecksRunningLate     # overloaded host: fewer monitors, longer intervals or more CPU
+        expr: histogram_quantile(0.95, sum by (le) (rate(vigilant_check_delay_seconds_bucket[15m]))) > 5
+        for: 15m
       - alert: CertificateExpiresSoon
         expr: vigilant_monitor_cert_days_remaining < 7
 ```

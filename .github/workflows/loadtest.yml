@@ -1,0 +1,100 @@
+# Load test of the release image on amd64 and arm64 (native runners).
+#
+# Builds the Docker image from the checked-out ref (reusing the Docker image
+# workflow's build cache when it matches), starts it with VPS-like limits
+# (--cpus 1 --memory 512m), runs local fake targets and the load harness in
+# tools/loadtest/, and fails when a threshold in tools/loadtest/report.py is
+# exceeded. Results (CSV, Markdown and JSON summary, server log) are uploaded
+# as artifacts and the summary is shown on the run page.
+#
+#   weekly schedule -> smoke (200 monitors, 5 minutes)
+#   manual run      -> smoke or load (1000 monitors, 30 minutes)
+#
+# See docs/performance.md.
+name: Load test
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Harness mode
+        type: choice
+        options: [smoke, load]
+        default: smoke
+
+concurrency:
+  group: loadtest-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  loadtest:
+    name: ${{ inputs.mode || 'smoke' }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      MODE: ${{ inputs.mode || 'smoke' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/loadtest/requirements.txt
+
+      - name: Install harness dependencies
+        run: pip install -r tools/loadtest/requirements.txt
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the release image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: vv-load:ci
+          build-args: |
+            VERSION=loadtest
+            REVISION=${{ github.sha }}
+          # Read-only use of the Docker image workflow's cache (same scope names).
+          cache-from: type=gha,scope=linux-${{ matrix.arch }}
+
+      - name: Pull the database probe sidecar
+        run: docker pull python:3.12-alpine
+
+      - name: Run the harness
+        run: |
+          python tools/loadtest/loadtest.py \
+            --mode "$MODE" \
+            --image vv-load:ci \
+            --label "${GITHUB_SHA::7} ${{ matrix.arch }}" \
+            --out loadtest-results
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f loadtest-results/summary.md ]; then
+            cat loadtest-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loadtest-${{ env.MODE }}-${{ matrix.arch }}
+          path: loadtest-results/
+          retention-days: 30
+          if-no-files-found: warn

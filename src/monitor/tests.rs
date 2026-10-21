@@ -538,6 +538,36 @@ fn push_deadline_uses_grace_then_retry_interval() {
 }
 
 #[test]
+fn checks_keep_their_phase_one_interval_apart() {
+    let interval = Duration::from_secs(60);
+    let t0 = tokio::time::Instant::now() + Duration::from_secs(5);
+    let first = next_due(t0, interval, 7);
+    let gap = first - t0;
+    assert!(gap >= interval / 2 && gap < interval * 3 / 2, "{gap:?}");
+    // On schedule, or started a little late: the next one stays on the slot.
+    assert_eq!(next_due(first, interval, 7) - first, interval);
+    let late = first + Duration::from_secs(3);
+    assert_eq!(next_due(late, interval, 7), first + interval);
+}
+
+#[test]
+fn monitors_created_together_spread_over_the_interval() {
+    let interval = Duration::from_secs(60);
+    let t0 = tokio::time::Instant::now() + Duration::from_secs(5);
+    // 200 monitors created within the same second check in lockstep at first.
+    let mut slots: Vec<u64> = (1..=200)
+        .map(|id| (next_due(t0, interval, id) - t0).as_secs())
+        .collect();
+    slots.sort_unstable();
+    slots.dedup();
+    assert!(
+        slots.len() > 40,
+        "second checks should spread over the minute: {} distinct seconds",
+        slots.len()
+    );
+}
+
+#[test]
 fn start_jitter_stays_within_window_and_spreads_monitors() {
     let delays: Vec<Duration> = (1..=200).map(|id| start_jitter(id, 60)).collect();
     assert!(delays.iter().all(|d| *d < Duration::from_secs(30)));

@@ -274,9 +274,20 @@ pub fn list_active_monitors(conn: &Connection) -> rusqlite::Result<Vec<Monitor>>
 const SPARKLINE_LEN: usize = 20;
 
 /// Every monitor with its latest local heartbeat, recent-status strip and
-/// 24 h uptime (from [`super::rollups::uptime_pct`]). Remote-agent heartbeats
-/// are ignored.
+/// 24 h uptime (from [`super::rollups::uptime_24h_cached`]). Remote-agent
+/// heartbeats are ignored.
 pub fn list_monitors_with_status(conn: &Connection) -> rusqlite::Result<Vec<MonitorWithStatus>> {
+    let mut list = list_monitors_with_latest(conn)?;
+    for row in &mut list {
+        row.uptime_24h = super::rollups::uptime_24h_cached(conn, row.monitor.id)?;
+    }
+    Ok(list)
+}
+
+/// [`list_monitors_with_status`] without the 24 h uptime (`uptime_24h` is
+/// `None`), for callers that don't show it: the uptime is by far the most
+/// expensive part (it reads every heartbeat of the last day).
+pub fn list_monitors_with_latest(conn: &Connection) -> rusqlite::Result<Vec<MonitorWithStatus>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {cols},
                 h.status AS last_status, h.response_time_ms AS last_response_time_ms,
@@ -304,11 +315,7 @@ pub fn list_monitors_with_status(conn: &Connection) -> rusqlite::Result<Vec<Moni
             uptime_24h: None,
         })
     })?;
-    let mut list = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-    for row in &mut list {
-        row.uptime_24h = super::rollups::uptime_pct(conn, row.monitor.id, 1)?;
-    }
-    Ok(list)
+    rows.collect()
 }
 
 /// `raw` is a comma-separated list of statuses, most-recent-first (as produced by
@@ -590,6 +597,9 @@ mod tests {
         let row = &list_monitors_with_status(&conn).unwrap()[0];
         assert_eq!(row.status, Some(HeartbeatStatus::Up));
         assert_eq!(row.uptime_24h, Some(100.0));
+        let lean = &list_monitors_with_latest(&conn).unwrap()[0];
+        assert_eq!(lean.status, Some(HeartbeatStatus::Up));
+        assert_eq!(lean.uptime_24h, None);
         assert_eq!(row.recent.iter().flatten().count(), 1);
         assert_eq!(list_recent_heartbeats(&conn, id, 10).unwrap().len(), 1);
     }

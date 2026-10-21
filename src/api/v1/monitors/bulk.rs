@@ -326,7 +326,7 @@ pub(super) async fn bulk(
                 Selection::Ids(ids) => ids,
                 Selection::Filter(filter) => {
                     let tags = db_tags::tags_by_monitor(c)?;
-                    db_monitors::list_monitors_with_status(c)?
+                    db_monitors::list_monitors_with_latest(c)?
                         .into_iter()
                         .filter(|row| {
                             filter.matches(

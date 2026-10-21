@@ -223,7 +223,7 @@ async fn list(
     let can_edit = user.can_edit();
     let rows = state
         .with_conn(move |c| {
-            let monitors = db_monitors::list_monitors_with_status(c)?;
+            let monitors = db_monitors::list_monitors_with_latest(c)?;
             let tags = db_tags::tags_by_monitor(c)?;
             let mut links: HashMap<i64, Vec<(i64, bool)>> = HashMap::new();
             let mut stmt = c.prepare("SELECT monitor_id, channel_id, escalation FROM monitor_notifications ORDER BY channel_id")?;

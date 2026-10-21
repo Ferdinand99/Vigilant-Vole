@@ -41,7 +41,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - [Translations](#-translations)
 - [Migrating from Uptime Kuma](#-migrating-from-uptime-kuma)
 - [Prometheus and Grafana](#-prometheus-and-grafana)
-- [Backup and restore](#-backup-and-restore)
+- [Backup and restore](#-backup-and-restore) · [Upgrading](docs/upgrading.md)
 - [Security](#-security)
 - [Building from source](#-building-from-source)
 - [Architecture](#-architecture)
@@ -460,6 +460,8 @@ You get `vigilant_*` metrics (status, response time, 24h/30d uptime ratio, certi
 - **Config export/import** (above) for the readable, history-free version.
 - Before applying database migrations on upgrade, a snapshot is written to `data/backups/` automatically.
 - Manual: stop the container and copy the `data/` folder (Linux/Proxmox installs: stop `vigilant-vole` and copy `/var/lib/vigilant-vole`).
+
+Upgrading (Docker, Linux installer, Proxmox, Unraid), where the automatic backups are, how to roll back to an older version, and a five-minute restore drill: **[docs/upgrading.md](docs/upgrading.md)**. Every release's database is kept as a test fixture, and CI upgrades each one with the current code.
 
 ## 🔒 Security
 

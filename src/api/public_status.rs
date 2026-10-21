@@ -32,7 +32,7 @@ use axum::Router;
 use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::get;
 use axum_extra::extract::cookie::SignedCookieJar;
 use jiff::Timestamp;
@@ -40,7 +40,7 @@ use jiff::tz::TimeZone;
 use rusqlite::{Connection, params};
 use serde::Serialize;
 
-use super::{ApiError, ApiResult, AppState, HtmlTemplate};
+use super::{ApiError, ApiResult, AppState};
 use crate::db::incidents::{self as db_incidents, Incident};
 use crate::db::models::HeartbeatStatus;
 use crate::db::rollups::{self, DayStat};
@@ -393,6 +393,50 @@ pub struct PublicView {
     /// Path of the htmx refresh endpoint.
     #[serde(skip)]
     pub fragment_url: String,
+    /// The page and fragment HTML for anonymous visitors, rendered once per
+    /// cached view: it lives with the view, so it expires and is invalidated
+    /// with it.
+    #[serde(skip)]
+    pub rendered: Arc<RenderedHtml>,
+}
+
+/// Lazily rendered HTML of one cached [`PublicView`]. Rendering a large page
+/// (hundreds of monitors with 90-day bars is megabytes of HTML) on every
+/// request cost more than building the view itself.
+#[derive(Default)]
+pub struct RenderedHtml {
+    page: std::sync::OnceLock<bytes::Bytes>,
+    fragment: std::sync::OnceLock<bytes::Bytes>,
+}
+
+impl std::fmt::Debug for RenderedHtml {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RenderedHtml")
+    }
+}
+
+/// A cache, not data: never makes two views differ.
+impl PartialEq for RenderedHtml {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+/// Renders `tpl`, or reuses the HTML in `slot` when the view is the shared
+/// anonymous one (`shared`); editors and previews always render fresh.
+fn render_once(
+    slot: &std::sync::OnceLock<bytes::Bytes>,
+    shared: bool,
+    tpl: impl FnOnce() -> Result<String, askama::Error>,
+) -> Result<bytes::Bytes, ApiError> {
+    if shared && let Some(html) = slot.get() {
+        return Ok(html.clone());
+    }
+    let html = bytes::Bytes::from(tpl()?);
+    if shared {
+        let _ = slot.set(html.clone());
+    }
+    Ok(html)
 }
 
 impl PublicView {
@@ -891,6 +935,7 @@ fn load_view_data(
         can_edit: false,
         fragment_url: format!("/status/{}/fragment", page.slug),
         page,
+        rendered: Arc::default(),
     })
 }
 
@@ -953,6 +998,22 @@ type ViewKey = (std::path::PathBuf, String, crate::i18n::Lang);
 static VIEWS: LazyLock<Mutex<HashMap<ViewKey, (Instant, PublicView)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// One build at a time per key: visitors that miss the cache together wait
+/// for that build instead of each running the same queries.
+static BUILDS: LazyLock<Mutex<HashMap<ViewKey, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Views built from the database, per key (tests count them).
+#[cfg(test)]
+static VIEW_BUILDS: LazyLock<Mutex<HashMap<ViewKey, usize>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn fresh_view(key: &ViewKey) -> Option<PublicView> {
+    let cache = VIEWS.lock().ok()?;
+    let (at, view) = cache.get(key)?;
+    (at.elapsed() < VIEW_TTL).then(|| view.clone())
+}
+
 /// Forget cached public views (after a page, incident or maintenance change),
 /// and rendered badges, whose visibility depends on the pages.
 pub fn invalidate_views() {
@@ -966,11 +1027,26 @@ pub fn invalidate_views() {
 /// from the cache when fresh. Markdown renders outside the connection.
 async fn cached_view(state: &AppState, slug: String) -> ApiResult<Option<PublicView>> {
     let key: ViewKey = (state.config.data_dir.clone(), slug, crate::i18n::current());
-    if let Ok(cache) = VIEWS.lock()
-        && let Some((at, view)) = cache.get(&key)
-        && at.elapsed() < VIEW_TTL
-    {
-        return Ok(Some(view.clone()));
+    if let Some(view) = fresh_view(&key) {
+        return Ok(Some(view));
+    }
+    let gate = match BUILDS.lock() {
+        Ok(mut builds) => {
+            if builds.len() >= VIEW_CACHE_MAX {
+                builds.retain(|_, gate| Arc::strong_count(gate) > 1);
+            }
+            builds.entry(key.clone()).or_default().clone()
+        }
+        Err(_) => Arc::default(),
+    };
+    let _building = gate.lock().await;
+    // Built by the request we waited for?
+    if let Some(view) = fresh_view(&key) {
+        return Ok(Some(view));
+    }
+    #[cfg(test)]
+    if let Ok(mut builds) = VIEW_BUILDS.lock() {
+        *builds.entry(key.clone()).or_default() += 1;
     }
     let slug = key.1.clone();
     let loaded = state
@@ -1036,17 +1112,22 @@ fn page_response(view: PublicView) -> Response {
     let csp = snippet
         .as_ref()
         .and_then(|_| analytics::csp(&page.analytics));
+    let noindex = view.preview || protected;
+    let shared = !view.can_edit && !view.preview;
+    let rendered = view.rendered.clone();
     let tpl = PublicPageTemplate {
         page_title: page.title.clone(),
         theme: page.theme.clone(),
         custom_css: page.custom_css.clone().filter(|c| !c.trim().is_empty()),
         meta_description,
-        noindex: view.preview || protected,
+        noindex,
         analytics: snippet,
         v: view,
     };
-    let noindex = tpl.noindex;
-    let mut resp = HtmlTemplate(tpl).into_response();
+    let mut resp = match render_once(&rendered.page, shared, || tpl.render()) {
+        Ok(html) => Html(html).into_response(),
+        Err(err) => return err.into_response(),
+    };
     resp.extensions_mut().insert(PublicPage);
     let h = resp.headers_mut();
     h.insert(
@@ -1099,7 +1180,12 @@ async fn fragment(
             .into_response());
     }
     let protected = v.page.is_protected();
-    let mut resp = HtmlTemplate(LiveFragment { v }).into_response();
+    let shared = !v.can_edit && !v.preview;
+    let rendered = v.rendered.clone();
+    let mut resp = match render_once(&rendered.fragment, shared, || LiveFragment { v }.render()) {
+        Ok(html) => Html(html).into_response(),
+        Err(err) => return Ok(err.into_response()),
+    };
     resp.headers_mut().insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static(if protected {
@@ -1820,6 +1906,51 @@ mod router_tests {
             state,
             dir,
         }
+    }
+
+    #[tokio::test]
+    async fn anonymous_page_html_is_rendered_once_per_cached_view() {
+        let t = app().await;
+        seed(&t, true, None).await;
+        let (status, _, first) = get(&t, "/status/acme", None, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, _, fragment) = get(&t, "/status/acme/fragment", None, None).await;
+        let view = cached_view(&t.state, "acme".into()).await.unwrap().unwrap();
+        assert_eq!(
+            view.rendered.page.get().map(|b| b.to_vec()),
+            Some(first.clone().into_bytes())
+        );
+        assert_eq!(
+            view.rendered.fragment.get().map(|b| b.to_vec()),
+            Some(fragment.into_bytes())
+        );
+        let (_, _, second) = get(&t, "/status/acme", None, None).await;
+        assert_eq!(first, second);
+
+        // Editors get their own render (with the edit link), never the shared one.
+        let editor = PublicView {
+            can_edit: true,
+            ..view.clone()
+        };
+        let edited = page_response(editor);
+        let html = to_bytes(edited.into_body(), usize::MAX).await.unwrap();
+        assert_ne!(html.to_vec(), first.into_bytes());
+    }
+
+    #[tokio::test]
+    async fn concurrent_cache_misses_build_the_view_once() {
+        let t = app().await;
+        seed(&t, true, None).await;
+        let key: ViewKey = (
+            t.state.config.data_dir.clone(),
+            "acme".into(),
+            crate::i18n::current(),
+        );
+        let views =
+            futures_util::future::join_all((0..8).map(|_| cached_view(&t.state, "acme".into())))
+                .await;
+        assert!(views.iter().all(|v| matches!(v, Ok(Some(_)))));
+        assert_eq!(VIEW_BUILDS.lock().unwrap().get(&key).copied(), Some(1));
     }
 
     /// Page "acme" (published as given) with one up monitor whose target is secret.

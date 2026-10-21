@@ -58,7 +58,9 @@ use crate::db::{
 };
 use crate::{maintenance, notification};
 
-pub use self::metrics::{DurationHistogram, EngineMetrics, MonitorMetrics, NotificationMetrics};
+pub use self::metrics::{
+    DelayHistogram, DurationHistogram, EngineMetrics, MonitorMetrics, NotificationMetrics,
+};
 pub use self::state::StatusSnapshot;
 
 /// Default bound on concurrently running probes (`VV_MAX_CONCURRENT_CHECKS` overrides).
@@ -242,7 +244,8 @@ impl Scheduler {
 
     /// Stop everything (graceful shutdown). Running probes are abandoned;
     /// heartbeat writes are atomic, so nothing is half-recorded. Later
-    /// `reload`/`start_all` calls are no-ops.
+    /// `reload`/`start_all` calls are no-ops. Closes the engine's connection
+    /// pool (the server gives the engine its own, see `db::build_engine_pool`).
     pub async fn shutdown(&self) {
         self.inner.shut_down.store(true, Ordering::Release);
         let _guard = self.inner.reload_lock.lock().await;
@@ -253,6 +256,7 @@ impl Scheduler {
             }
         }
         self.inner.permits.close();
+        self.inner.pool.close();
         metrics::set_running_tasks(0);
         tracing::info!(tasks = tasks.len(), "scheduler stopped");
     }
@@ -322,7 +326,7 @@ impl Scheduler {
                 return None;
             }
         };
-        self.run_local_check(&Arc::new(monitor)).await
+        self.run_local_check(&Arc::new(monitor), None).await
     }
 
     /// The monitor's current in-memory state, or `None` if it hasn't been
@@ -410,28 +414,30 @@ impl Scheduler {
     // -- loops ------------------------------------------------------------------
 
     async fn check_loop(self, monitor: Arc<Monitor>, wake: Arc<Notify>, initial_delay: Duration) {
+        // When the next check should start; a wake-up makes it due right away.
+        let mut due = tokio::time::Instant::now() + initial_delay;
         if !initial_delay.is_zero() {
             tokio::select! {
-                () = tokio::time::sleep(initial_delay) => {}
-                () = wake.notified() => {}
+                () = tokio::time::sleep_until(due) => {}
+                () = wake.notified() => due = tokio::time::Instant::now(),
             }
         }
         loop {
             let started = tokio::time::Instant::now();
-            let status = self.run_local_check(&monitor).await;
+            let status = self.run_local_check(&monitor, Some(due)).await;
             if self.inner.shut_down.load(Ordering::Acquire) {
                 return;
             }
-            let secs = match status {
+            let secs = |s: i64| Duration::from_secs(s.max(1).unsigned_abs());
+            due = match status {
                 Some(HeartbeatStatus::Down | HeartbeatStatus::Pending) => {
-                    monitor.effective_retry_interval()
+                    started + secs(monitor.effective_retry_interval())
                 }
-                _ => monitor.interval_seconds,
+                _ => next_due(started, secs(monitor.interval_seconds), monitor.id),
             };
-            let next = started + Duration::from_secs(secs.max(1).unsigned_abs());
             tokio::select! {
-                () = tokio::time::sleep_until(next) => {}
-                () = wake.notified() => {}
+                () = tokio::time::sleep_until(due) => {}
+                () = wake.notified() => due = tokio::time::Instant::now(),
             }
         }
     }
@@ -507,8 +513,17 @@ impl Scheduler {
     // -- recording ----------------------------------------------------------------
 
     /// One local probe under the concurrency limit, then the state machine.
-    async fn run_local_check(&self, monitor: &Arc<Monitor>) -> Option<HeartbeatStatus> {
+    /// `due` is when a scheduled check should have started (`None` for
+    /// "check now"); how late it got its probe slot goes to the metrics.
+    async fn run_local_check(
+        &self,
+        monitor: &Arc<Monitor>,
+        due: Option<tokio::time::Instant>,
+    ) -> Option<HeartbeatStatus> {
         let permit = self.inner.permits.clone().acquire_owned().await.ok()?;
+        if let Some(due) = due {
+            metrics::record_delay(tokio::time::Instant::now().saturating_duration_since(due));
+        }
         let span = tracing::info_span!(
             "check",
             monitor_id = monitor.id,
@@ -896,6 +911,30 @@ fn push_deadline(
 /// Deterministic per-monitor spread value (Fibonacci hashing of the id).
 fn spread(id: i64) -> u64 {
     (id as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 24
+}
+
+/// Reference point for check phases (any fixed instant works).
+static PHASE_EPOCH: std::sync::LazyLock<tokio::time::Instant> =
+    std::sync::LazyLock::new(tokio::time::Instant::now);
+
+/// When a check that started at `started` and wasn't failing runs next: one
+/// interval later on the monitor's own phase slot, a fixed offset within the
+/// interval taken from its id. The first check after a (re)start or an edit
+/// moves onto that slot (0.5 to 1.5 intervals later); after that checks are
+/// exactly one interval apart and a late start doesn't shift later ones.
+/// Without it, monitors created or edited together (imports, config files,
+/// bulk edits, the API) check in lockstep forever, and every minute starts
+/// with a burst of hundreds of checks that stalls the web UI.
+fn next_due(started: tokio::time::Instant, interval: Duration, id: i64) -> tokio::time::Instant {
+    let period = u64::try_from(interval.as_millis())
+        .unwrap_or(u64::MAX)
+        .max(1);
+    let phase = spread(id) % period;
+    let earliest = started + interval / 2;
+    let since = u64::try_from(earliest.saturating_duration_since(*PHASE_EPOCH).as_millis())
+        .unwrap_or(u64::MAX);
+    let wait = (phase + period - since % period) % period;
+    earliest + Duration::from_millis(wait)
 }
 
 /// Boot-time delay before a monitor's first check, within min(interval, 30s).

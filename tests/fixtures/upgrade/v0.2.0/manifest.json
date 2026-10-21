@@ -1,0 +1,311 @@
+{
+  "version": "0.2.0",
+  "image": "ghcr.io/ferdinand99/vigilant-vole@sha256:e24358122765a9b639061ea02733a746d88b0e44305d35d99c3783bbf9598580",
+  "generated_at": "2026-10-21T12:46:22Z",
+  "generator": "tools/upgrade-fixtures/generate.sh",
+  "migrations": [
+    "0001_init.sql",
+    "0002_full_schema.sql",
+    "0050_statuspages_extras.sql",
+    "0060_auth_sessions.sql",
+    "0070_integrations_discovery.sql",
+    "0090_i18n_user_language.sql",
+    "0095_more_monitor_types.sql",
+    "0096_http_auth.sql"
+  ],
+  "credentials": {
+    "admin": {
+      "username": "admin",
+      "password": "Vole-Upgrade-Pass-2026!"
+    },
+    "user_password": "Vole-Member-Pass-2026!",
+    "totp": {
+      "username": "eddie",
+      "secret": "E53VCXSBJTLP3CZXYDLKOC4W3FX2L22P",
+      "recovery_code": "gp5rb-wpg5w"
+    },
+    "admin_token": "vv_6UrLquLdONEbD0kkt77FGoaTdjfwcM2U9abQvDw9Ezd",
+    "viewer_token": "vv_yGZ7drfKWnLbNp1ucbXRZioCwRQBRoDTcETxue7WrUr",
+    "agent_token": "vva_LOBwH6q6TgLyoVmeNAL1yuYBf73PX1urWwLIa6DB",
+    "page_password": "Page-Secret-2026!",
+    "push_token": "WYccRSh7OpiVejyMyFvr93gT1AP5NAuq"
+  },
+  "ids": {
+    "admin": 1,
+    "webhook": 25,
+    "escalation": 26,
+    "page": 1,
+    "page_internal": 2,
+    "push_monitor": 14,
+    "monitors": {
+      "Core services": 1,
+      "Website": 2,
+      "Broken page": 3,
+      "Basic auth API": 4,
+      "OAuth API": 5,
+      "mTLS API": 6,
+      "Keyword": 7,
+      "Keyword absent": 8,
+      "JSON query": 9,
+      "TCP app port": 10,
+      "TCP closed port": 11,
+      "Ping loopback": 12,
+      "DNS": 13,
+      "Nightly backup": 14,
+      "Docker container": 15,
+      "WebSocket": 16,
+      "Domain expiry": 17,
+      "NTP": 18,
+      "Steam server": 19,
+      "TLS certificate": 20,
+      "SMTP": 21,
+      "Redis": 22,
+      "Postgres": 23,
+      "MySQL": 24,
+      "MQTT": 25,
+      "Kafka": 26,
+      "RabbitMQ": 27,
+      "gRPC": 28,
+      "RADIUS": 29,
+      "SNMP": 30,
+      "Agent-checked site": 31,
+      "Paused legacy": 32
+    }
+  },
+  "values": {
+    "channel_secret": "http://127.0.0.1:9/hook",
+    "page_slug": "fixture",
+    "custom_domain": "status.fixture.test",
+    "custom_css": ".hero { color: #123456; }",
+    "incident_title": "Elevated error rates",
+    "users": [
+      {
+        "username": "admin",
+        "role": "admin",
+        "active": 1,
+        "totp": 0
+      },
+      {
+        "username": "vera",
+        "role": "viewer",
+        "active": 1,
+        "totp": 0
+      },
+      {
+        "username": "eddie",
+        "role": "editor",
+        "active": 1,
+        "totp": 1
+      },
+      {
+        "username": "ada",
+        "role": "admin",
+        "active": 1,
+        "totp": 0
+      },
+      {
+        "username": "dave",
+        "role": "viewer",
+        "active": 0,
+        "totp": 0
+      }
+    ],
+    "monitors": [
+      {
+        "name": "Core services",
+        "type": "group",
+        "active": 1
+      },
+      {
+        "name": "Website",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "Broken page",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "Basic auth API",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "OAuth API",
+        "type": "http",
+        "active": 0
+      },
+      {
+        "name": "mTLS API",
+        "type": "http",
+        "active": 0
+      },
+      {
+        "name": "Keyword",
+        "type": "keyword",
+        "active": 1
+      },
+      {
+        "name": "Keyword absent",
+        "type": "keyword",
+        "active": 1
+      },
+      {
+        "name": "JSON query",
+        "type": "json_query",
+        "active": 1
+      },
+      {
+        "name": "TCP app port",
+        "type": "tcp",
+        "active": 1
+      },
+      {
+        "name": "TCP closed port",
+        "type": "tcp",
+        "active": 1
+      },
+      {
+        "name": "Ping loopback",
+        "type": "ping",
+        "active": 1
+      },
+      {
+        "name": "DNS",
+        "type": "dns",
+        "active": 1
+      },
+      {
+        "name": "Nightly backup",
+        "type": "push",
+        "active": 1
+      },
+      {
+        "name": "Docker container",
+        "type": "docker",
+        "active": 1
+      },
+      {
+        "name": "WebSocket",
+        "type": "websocket",
+        "active": 1
+      },
+      {
+        "name": "Domain expiry",
+        "type": "domain_expiry",
+        "active": 0
+      },
+      {
+        "name": "NTP",
+        "type": "ntp",
+        "active": 1
+      },
+      {
+        "name": "Steam server",
+        "type": "steam",
+        "active": 0
+      },
+      {
+        "name": "TLS certificate",
+        "type": "tls",
+        "active": 1
+      },
+      {
+        "name": "SMTP",
+        "type": "smtp",
+        "active": 1
+      },
+      {
+        "name": "Redis",
+        "type": "redis",
+        "active": 1
+      },
+      {
+        "name": "Postgres",
+        "type": "postgres",
+        "active": 1
+      },
+      {
+        "name": "MySQL",
+        "type": "mysql",
+        "active": 1
+      },
+      {
+        "name": "MQTT",
+        "type": "mqtt",
+        "active": 1
+      },
+      {
+        "name": "Kafka",
+        "type": "kafka",
+        "active": 1
+      },
+      {
+        "name": "RabbitMQ",
+        "type": "rabbitmq",
+        "active": 1
+      },
+      {
+        "name": "gRPC",
+        "type": "grpc",
+        "active": 1
+      },
+      {
+        "name": "RADIUS",
+        "type": "radius",
+        "active": 1
+      },
+      {
+        "name": "SNMP",
+        "type": "snmp",
+        "active": 1
+      },
+      {
+        "name": "Agent-checked site",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "Paused legacy",
+        "type": "tcp",
+        "active": 0
+      }
+    ],
+    "site_name": "Vole Fixture"
+  },
+  "counts": {
+    "agents": 2,
+    "api_tokens": 2,
+    "discovery_paused": 0,
+    "heartbeat_daily": 27,
+    "heartbeats": 91,
+    "incidents": 2,
+    "maintenance_monitors": 4,
+    "maintenance_status_pages": 1,
+    "maintenance_windows": 4,
+    "monitor_events": 20,
+    "monitor_expiry": 0,
+    "monitor_notifications": 3,
+    "monitor_tags": 9,
+    "monitors": 32,
+    "notification_channels": 26,
+    "schema_migrations": 8,
+    "settings": 7,
+    "status_page_monitors": 11,
+    "status_page_sections": 4,
+    "status_pages": 2,
+    "tags": 4,
+    "users": 5
+  },
+  "not_in_this_version": [
+    "/api/v1/remote-browsers",
+    "tailscale_ping",
+    "game_server",
+    "grpc_keyword",
+    "sqlserver",
+    "mongodb",
+    "real_browser"
+  ],
+  "rejected": []
+}

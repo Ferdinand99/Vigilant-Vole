@@ -5,10 +5,17 @@
 //! is looking at. Bursts of updates are coalesced: after the first signal we
 //! wait [`COALESCE`] and swallow everything that arrived meanwhile, so a busy
 //! fleet re-renders at most a couple of times per second per client.
+//!
+//! Streams showing the same view share one render ([`shared_render`]): every
+//! open dashboard wakes on the same signal, so without sharing, N dashboards
+//! cost N identical renders per update.
 
 use crate::i18n::Tr as _;
+use std::collections::HashMap;
 use std::convert::Infallible;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
 use askama::Template;
@@ -20,6 +27,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
 use tokio::sync::broadcast::{self, error::RecvError};
+use tokio::time::Instant;
 
 use super::dashboard::{DashQuery, DashboardData, load_dashboard_data};
 use super::{ApiError, AppState};
@@ -51,35 +59,108 @@ pub struct MonitorListTemplate {
 }
 
 /// Waits for the next update signal, then drains whatever else arrives
-/// within the coalescing window. `false` once the channel is closed.
-async fn next_update(rx: &mut broadcast::Receiver<()>, quiet: Duration) -> bool {
+/// within the coalescing window. Returns when the first signal arrived (a
+/// render started after that shows the change), or `None` once the channel
+/// is closed.
+async fn next_update(rx: &mut broadcast::Receiver<()>, quiet: Duration) -> Option<Instant> {
     match rx.recv().await {
         Ok(()) | Err(RecvError::Lagged(_)) => {}
-        Err(RecvError::Closed) => return false,
+        Err(RecvError::Closed) => return None,
     }
+    let signalled = Instant::now();
     tokio::time::sleep(quiet).await;
     loop {
         match rx.try_recv() {
             Ok(()) | Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
-            Err(broadcast::error::TryRecvError::Empty) => return true,
-            Err(broadcast::error::TryRecvError::Closed) => return false,
+            Err(broadcast::error::TryRecvError::Empty) => return Some(signalled),
+            Err(broadcast::error::TryRecvError::Closed) => return None,
         }
     }
 }
 
-/// Renders the list as an SSE event; also returns its size in bytes.
-async fn render(state: &AppState, query: &DashQuery, can_edit: bool) -> (Event, usize) {
-    let rendered = match load_dashboard_data(state, query, can_edit).await {
-        Ok(data) => MonitorListTemplate { data }
-            .render()
-            .map_err(|e| e.to_string()),
-        Err(err) => Err(err.to_string()),
-    };
-    match rendered {
-        Ok(html) => {
-            let len = html.len();
-            (Event::default().event("monitors-updated").data(html), len)
+/// Renders the list's HTML.
+async fn render_html(
+    state: &AppState,
+    query: &DashQuery,
+    can_edit: bool,
+) -> Result<String, String> {
+    let data = load_dashboard_data(state, query, can_edit)
+        .await
+        .map_err(|e| e.to_string())?;
+    MonitorListTemplate { data }
+        .render()
+        .map_err(|e| e.to_string())
+}
+
+/// The latest render of one view: when it started (it shows every change
+/// signalled before that) and its HTML.
+struct SharedRender {
+    started: Instant,
+    html: Arc<str>,
+}
+
+/// (data dir, raw query, can edit, language): what a render depends on. The
+/// data dir keeps app instances apart (tests run several at once).
+type RenderKey = (PathBuf, String, bool, crate::i18n::Lang);
+type RenderSlot = Arc<tokio::sync::Mutex<Option<SharedRender>>>;
+
+/// More distinct views than this and slots no stream is using are dropped.
+const RENDER_SLOTS_MAX: usize = 64;
+
+static RENDERS: LazyLock<Mutex<HashMap<RenderKey, RenderSlot>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The list's HTML for this view, rendered after `since`. Streams that wake
+/// for the same update wait for one render and reuse it (single flight per
+/// view); a render that started before `since` is never reused.
+async fn shared_render(
+    state: &AppState,
+    query: &DashQuery,
+    raw_query: &str,
+    can_edit: bool,
+    since: Instant,
+) -> Result<Arc<str>, String> {
+    let key: RenderKey = (
+        state.config.data_dir.clone(),
+        raw_query.to_owned(),
+        can_edit,
+        crate::i18n::current(),
+    );
+    let slot = {
+        let mut slots = RENDERS.lock().unwrap_or_else(PoisonError::into_inner);
+        if slots.len() >= RENDER_SLOTS_MAX && !slots.contains_key(&key) {
+            slots.retain(|_, slot| Arc::strong_count(slot) > 1);
         }
+        slots.entry(key).or_default().clone()
+    };
+    let mut latest = slot.lock().await;
+    if let Some(shared) = latest.as_ref()
+        && shared.started >= since
+    {
+        return Ok(shared.html.clone());
+    }
+    let started = Instant::now();
+    let html: Arc<str> = render_html(state, query, can_edit).await?.into();
+    *latest = Some(SharedRender {
+        started,
+        html: html.clone(),
+    });
+    Ok(html)
+}
+
+/// Renders the list as an SSE event; also returns its size in bytes.
+async fn render(
+    state: &AppState,
+    query: &DashQuery,
+    raw_query: &str,
+    can_edit: bool,
+    since: Instant,
+) -> (Event, usize) {
+    match shared_render(state, query, raw_query, can_edit, since).await {
+        Ok(html) => (
+            Event::default().event("monitors-updated").data(&*html),
+            html.len(),
+        ),
         Err(err) => {
             tracing::warn!(%err, "failed to render monitor list for SSE update");
             (Event::default().comment("render-error"), 0)
@@ -143,6 +224,8 @@ struct StreamState {
     rx: broadcast::Receiver<()>,
     state: AppState,
     query: DashQuery,
+    /// The query string as sent: streams with the same one share renders.
+    raw_query: String,
     quiet: Duration,
     viewer: Viewer,
     deadline: tokio::time::Instant,
@@ -174,6 +257,7 @@ async fn stream_handler(
     let mut query = DashQuery::parse(raw.as_deref());
     // Select mode is static (checkboxes would be wiped by live swaps).
     query.select = false;
+    let raw_query = raw.unwrap_or_default();
     // The stream is polled after this handler returns, outside the request's
     // language scope, so carry the language along.
     let lang = crate::i18n::current();
@@ -181,6 +265,7 @@ async fn stream_handler(
         rx: state.update_tx.subscribe(),
         state,
         query,
+        raw_query,
         quiet: COALESCE,
         viewer: Viewer {
             user_id: user.id,
@@ -190,12 +275,14 @@ async fn stream_handler(
         _slot: slot,
     };
     let events = stream::unfold(init, move |mut st| async move {
-        match tokio::time::timeout_at(st.deadline, next_update(&mut st.rx, st.quiet)).await {
-            Ok(true) => {}
-            Ok(false) | Err(_) => return None,
-        }
+        let since =
+            match tokio::time::timeout_at(st.deadline, next_update(&mut st.rx, st.quiet)).await {
+                Ok(Some(since)) => since,
+                Ok(None) | Err(_) => return None,
+            };
         let can_edit = revalidate(&st.state, st.viewer).await?;
-        let (event, bytes) = crate::i18n::scope(lang, render(&st.state, &st.query, can_edit)).await;
+        let render = render(&st.state, &st.query, &st.raw_query, can_edit, since);
+        let (event, bytes) = crate::i18n::scope(lang, render).await;
         st.quiet = quiet_period(bytes);
         Some((Ok::<_, Infallible>(event), st))
     });
@@ -214,14 +301,45 @@ mod tests {
         for _ in 0..10 {
             let _ = tx.send(());
         }
-        assert!(next_update(&mut rx, COALESCE).await);
+        assert!(next_update(&mut rx, COALESCE).await.is_some());
         // Everything from the burst (including lagged messages) was drained.
         assert!(matches!(
             rx.try_recv(),
             Err(broadcast::error::TryRecvError::Empty)
         ));
         drop(tx);
-        assert!(!next_update(&mut rx, COALESCE).await);
+        assert!(next_update(&mut rx, COALESCE).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn streams_woken_by_one_update_share_a_render() {
+        let state = crate::api::agents::test_support::test_state().await;
+        let query = DashQuery::parse(None);
+        let since = Instant::now();
+        let (a, b) = tokio::join!(
+            shared_render(&state, &query, "", true, since),
+            shared_render(&state, &query, "", true, since),
+        );
+        let (a, b) = (a.unwrap(), b.unwrap());
+        assert!(Arc::ptr_eq(&a, &b), "one render for both streams");
+
+        // Another view (here: without edit rights) renders on its own.
+        let viewer = shared_render(&state, &query, "", false, since)
+            .await
+            .unwrap();
+        assert!(!Arc::ptr_eq(&a, &viewer));
+
+        // A later update needs a render that started after it...
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let later = shared_render(&state, &query, "", true, Instant::now())
+            .await
+            .unwrap();
+        assert!(!Arc::ptr_eq(&a, &later));
+        // ...and a newer render also serves streams woken by older updates.
+        let again = shared_render(&state, &query, "", true, since)
+            .await
+            .unwrap();
+        assert!(Arc::ptr_eq(&later, &again));
     }
 
     #[test]

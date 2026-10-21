@@ -1,0 +1,13 @@
+# Load test harness (tools/loadtest/loadtest.py). Python 3.10+.
+# Pinned with every transitive dependency so CI runs are reproducible.
+aiohappyeyeballs==2.7.1
+aiohttp==3.13.5
+aiosignal==1.4.0
+async-timeout==5.0.1 ; python_version < "3.11"
+attrs==26.1.0
+frozenlist==1.8.0
+idna==3.20
+multidict==6.9.1
+propcache==0.5.4
+typing_extensions==4.16.0
+yarl==1.25.1

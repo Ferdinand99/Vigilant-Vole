@@ -7,6 +7,8 @@
 *.db
 *.db-journal
 *.sqlite
+# ...except the upgrade-test fixtures (tools/upgrade-fixtures/generate.sh)
+!tests/fixtures/upgrade/*/vigilant-vole.db
 
 # Env / secrets
 .env
@@ -31,3 +33,6 @@ playwright-report/
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Load test output (reference runs live in docs/performance/)
+tools/loadtest/results/
