@@ -5,6 +5,8 @@ use crate::kit::config::KitConfig;
 
 /// The product's name.
 pub const NAME: &str = "Vigilant Vole";
+/// `User-Agent` of outgoing requests.
+pub const USER_AGENT: &str = concat!("VigilantVole/", env!("CARGO_PKG_VERSION"));
 /// Name of the signed session cookie.
 pub const SESSION_COOKIE: &str = "vv_session";
 /// Cookie between password and second factor.
@@ -33,7 +35,7 @@ pub static KIT: KitConfig = KitConfig {
     pending_2fa_cookie: PENDING_2FA_COOKIE,
     token_prefix: TOKEN_PREFIX,
     other_token_prefixes: &["vva_"],
-    user_agent: concat!("VigilantVole/", env!("CARGO_PKG_VERSION")),
+    user_agent: USER_AGENT,
     backup_prefix: "vigilant-vole-before-",
     flash_cookie: FLASH_COOKIE,
     env_prefix: "VV",

@@ -9,7 +9,7 @@ use crate::monitor::{self, Scheduler};
 use crate::{auth, db, discovery, maintenance};
 
 /// User agent for outbound requests (notifications, RDAP, ...).
-pub const USER_AGENT: &str = concat!("VigilantVole/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = crate::product::USER_AGENT;
 
 /// Build the shared outbound HTTP client.
 pub fn build_http_client() -> reqwest::Client {

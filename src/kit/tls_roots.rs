@@ -22,8 +22,9 @@ pub fn system_store_available() -> bool {
         if added == 0 {
             tracing::warn!(
                 "no CA certificates found on this system (is the `ca-certificates` package installed?); \
-                 using the {} root certificates bundled with Vigilant Vole instead",
-                webpki_root_certs::TLS_SERVER_ROOT_CERTS.len()
+                 using the {} root certificates bundled with {} instead",
+                webpki_root_certs::TLS_SERVER_ROOT_CERTS.len(),
+                crate::kit::config::get().product
             );
         }
         added > 0
