@@ -1,11 +1,11 @@
 //! API tokens (`api_tokens`). Owned by the auth agent.
 //!
 //! Only the SHA-256 of a token is stored; the plaintext is shown once at
-//! creation. Generation/parsing lives in `crate::auth::tokens`.
+//! creation. Generation/parsing lives in `tokens`.
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
-use super::models::Role;
+use super::role::Role;
 
 /// What a token may do. `Read` caps the bearer at viewer powers; `Write`
 /// grants the owning user's role.
@@ -33,8 +33,8 @@ impl TokenScope {
 
     pub fn label(self) -> &'static str {
         match self {
-            TokenScope::Read => crate::i18n::t("tokens.scope_read"),
-            TokenScope::Write => crate::i18n::t("tokens.scope_write"),
+            TokenScope::Read => crate::kit::i18n::t("tokens.scope_read"),
+            TokenScope::Write => crate::kit::i18n::t("tokens.scope_write"),
         }
     }
 
@@ -195,8 +195,8 @@ pub fn touch(conn: &Connection, id: i64) -> rusqlite::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::test_conn;
-    use crate::db::users;
+    use crate::kit::db::test_conn;
+    use crate::kit::db::users;
 
     fn setup() -> (Connection, i64) {
         let conn = test_conn();

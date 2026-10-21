@@ -7,7 +7,7 @@
 
 use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params};
 
-use super::models::Role;
+use super::role::Role;
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -393,7 +393,7 @@ pub fn consume_recovery_code(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::test_conn;
+    use crate::kit::db::test_conn;
 
     fn add(conn: &Connection, name: &str, role: Role) -> i64 {
         insert_user(conn, name, "hash", role).unwrap()

@@ -8,7 +8,6 @@
 //! anyone having to remember to initialise it first.
 
 /// Everything product specific that the kit uses.
-#[derive(Debug)]
 pub struct KitConfig {
     /// Display name used in texts and API documents ("Vigilant Vole").
     pub product: &'static str,
@@ -31,6 +30,8 @@ pub struct KitConfig {
     /// The product's translations: `(language code, locale file text)`.
     /// The kit knows the languages ([`super::i18n::LANGS`]); the texts are
     /// the product's.
+    /// The product's database migrations and how to run them.
+    pub migrations: &'static super::db::migrate::MigrationSet,
     pub locales: &'static [(&'static str, &'static str)],
 }
 
