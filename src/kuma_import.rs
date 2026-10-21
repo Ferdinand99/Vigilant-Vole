@@ -1363,6 +1363,37 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             put(&mut out, "to", s(c, &["twilioToNumber"]));
             "twilio"
         }
+        "threema" => {
+            put(&mut out, "gateway_id", s(c, &["threemaSenderIdentity"]));
+            put(&mut out, "secret", raw(c, &["threemaSecret"]));
+            let kind = s(c, &["threemaRecipientType"]).filter(|k| ["identity", "phone", "email"].contains(&k.as_str()));
+            out.insert("recipient_type".into(), json!(kind.unwrap_or_else(|| "identity".into())));
+            put(&mut out, "recipient", s(c, &["threemaRecipient"]));
+            "threema"
+        }
+        "nextcloudtalk" => {
+            put(&mut out, "host", s(c, &["host"]));
+            put(&mut out, "conversation_token", s(c, &["conversationToken"]));
+            put(&mut out, "bot_secret", raw(c, &["botSecret"]));
+            if b(c, &["sendSilentUp"]).unwrap_or(false) {
+                out.insert("silent_up".into(), json!(true));
+            }
+            "nextcloudtalk"
+        }
+        "waha" => {
+            put(&mut out, "server", s(c, &["wahaApiUrl"]));
+            put(&mut out, "session", s(c, &["wahaSession"]));
+            put(&mut out, "chat_id", s(c, &["wahaChatId"]));
+            put(&mut out, "api_key", raw(c, &["wahaApiKey"]));
+            "waha"
+        }
+        "evolution" => {
+            put(&mut out, "server", s(c, &["evolutionApiUrl"]));
+            put(&mut out, "instance", s(c, &["evolutionInstanceName"]));
+            put(&mut out, "api_key", raw(c, &["evolutionAuthToken"]));
+            put(&mut out, "number", s(c, &["evolutionRecipient"]));
+            "evolution"
+        }
         "" => return Err("It has no provider type.".into()),
         other => return Err(format!("The “{other}” provider isn’t supported; Apprise or a webhook can usually reach it.")),
     };
@@ -1645,6 +1676,8 @@ mod grpc;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod notification_tests;
 #[cfg(test)]
 mod browser_tests;
 #[cfg(test)]

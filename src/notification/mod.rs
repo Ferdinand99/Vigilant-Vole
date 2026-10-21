@@ -24,6 +24,7 @@ pub mod http;
 pub mod matrix;
 pub mod mattermost;
 pub mod message;
+pub mod nextcloudtalk;
 pub mod ntfy;
 pub mod opsgenie;
 pub mod pagerduty;
@@ -37,7 +38,10 @@ pub mod teams;
 pub mod telegram;
 pub mod twilio;
 pub mod webex;
+pub mod threema;
 pub mod webhook;
+pub mod whatsapp;
+pub mod zulip;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -51,7 +55,7 @@ pub use schema::{Category, Field, FieldKind, ProviderSchema, SECRET_MASK, Transp
 use crate::db::models::{NotificationChannel, NotificationEvent};
 
 /// Every provider, in picker order within each category.
-pub const PROVIDERS: [&ProviderSchema; 24] = [
+pub const PROVIDERS: &[&ProviderSchema] = &[
     &discord::SCHEMA,
     &slack::SCHEMA,
     &teams::SCHEMA,
@@ -76,6 +80,11 @@ pub const PROVIDERS: [&ProviderSchema; 24] = [
     &webhook::SCHEMA,
     &apprise::SCHEMA,
     &homeassistant::SCHEMA,
+    &zulip::SCHEMA,
+    &nextcloudtalk::SCHEMA,
+    &threema::SCHEMA,
+    &whatsapp::WAHA,
+    &whatsapp::EVOLUTION,
 ];
 
 /// Channel kinds this build can deliver to (derived from [`PROVIDERS`]).
