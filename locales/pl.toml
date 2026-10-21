@@ -1390,6 +1390,8 @@ err_email_address = "Wpisz pełny adres e-mail"
 err_threema_gateway = "Gateway ID zaczyna się od * i ma 8 znaków"
 err_threema_recipient = "To nie wygląda na prawidłowego odbiorcę dla wybranego typu"
 err_phone_number = "Wpisz numer telefonu z numerem kierunkowym kraju, np. 4712345678"
+err_signl4 = "Użyj adresu webhooka https:// z SIGNL4"
+err_https_webhook = "Użyj pełnego adresu webhooka https://, razem z kluczem"
 err_webex_room = "Wpisz identyfikator przestrzeni lub e-mail osoby"
 err_webhook_header = "„{name}” nie jest poprawnym nagłówkiem"
 err_webhook_placeholder = "Nieznany symbol zastępczy {placeholder}"
@@ -2326,3 +2328,50 @@ server.required = "Wpisz URL Evolution API"
 instance.required = "Wpisz instancję"
 api_key.required = "Wpisz klucz API"
 number.required = "Wpisz odbiorcę"
+
+[notif.signl4]
+desc = "Mobilne alerty przez push, SMS i połączenie głosowe"
+url.label = "Adres URL webhooka"
+url.help = "Adres webhooka Twojego zespołu z portalu SIGNL4, w sekcji Integrations."
+url.required = "Wpisz adres URL webhooka"
+
+[notif.squadcast]
+desc = "Incydenty z grafikami dyżurów i eskalacjami"
+url.label = "Adres URL webhooka"
+url.help = "Service → Alert Sources → Incident Webhook (API) → adres URL."
+url.required = "Wpisz adres URL webhooka"
+
+[notif.grafana_oncall]
+desc = "Alerty w łańcuchach eskalacji Grafana OnCall"
+url.label = "Adres URL webhooka"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Wpisz adres URL webhooka"
+
+[notif.goalert]
+desc = "Otwartoźródłowe grafiki dyżurów i alerty"
+server.label = "Adres URL GoAlert"
+token.label = "Klucz integracji"
+token.help = "Service → Integration Keys → dodaj klucz Generic API."
+server.required = "Wpisz adres URL GoAlert"
+token.required = "Wpisz klucz integracji"
+
+[notif.splunk_oncall]
+desc = "Incydenty w Splunk On-Call (VictorOps)"
+api_key.label = "Klucz API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: klucz w adresie URL punktu końcowego."
+routing_key.label = "Klucz routingu"
+routing_key.help = "Decyduje, który zespół zostanie wezwany."
+severity.label = "Ważność przy niedostępności"
+severity.opt_CRITICAL = "Krytyczna"
+severity.opt_WARNING = "Ostrzeżenie"
+api_key.required = "Wpisz klucz API"
+routing_key.required = "Wpisz klucz routingu"
+
+[notif.keep]
+desc = "Alerty w platformie AIOps Keep"
+server.label = "Adres URL API Keep"
+server.help = "Własny backend Keep lub API w chmurze."
+api_key.label = "Klucz API"
+api_key.help = "Settings → API Keys."
+server.required = "Wpisz adres URL API Keep"
+api_key.required = "Wpisz klucz API"

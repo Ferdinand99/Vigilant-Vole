@@ -1336,6 +1336,8 @@ err_email_address = "Gib eine vollständige E-Mail-Adresse ein"
 err_threema_gateway = "Eine Gateway ID beginnt mit * und hat 8 Zeichen"
 err_threema_recipient = "Das sieht nicht nach einem gültigen Empfänger für den gewählten Typ aus"
 err_phone_number = "Gib die Telefonnummer mit Ländervorwahl ein, z. B. 4712345678"
+err_signl4 = "Verwende die https://-Webhook-Adresse von SIGNL4"
+err_https_webhook = "Verwende die vollständige https://-Webhook-Adresse samt Schlüssel"
 err_webex_room = "Gib eine Space-ID oder die E-Mail-Adresse einer Person ein"
 err_webhook_header = "„{name}“ ist kein gültiger Header"
 err_webhook_placeholder = "Unbekannter Platzhalter {placeholder}"
@@ -2264,3 +2266,50 @@ server.required = "Gib die Evolution-API-URL ein"
 instance.required = "Gib die Instanz ein"
 api_key.required = "Gib den API-Schlüssel ein"
 number.required = "Gib einen Empfänger ein"
+
+[notif.signl4]
+desc = "Mobile Alarme per Push, SMS und Sprachanruf"
+url.label = "Webhook-URL"
+url.help = "Die Webhook-Adresse deines Teams aus dem SIGNL4-Portal, unter Integrations."
+url.required = "Gib die Webhook-URL ein"
+
+[notif.squadcast]
+desc = "Vorfälle mit Bereitschaftsplänen und Eskalationen"
+url.label = "Webhook-URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → die URL."
+url.required = "Gib die Webhook-URL ein"
+
+[notif.grafana_oncall]
+desc = "Alarme in die Eskalationsketten von Grafana OnCall"
+url.label = "Webhook-URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Gib die Webhook-URL ein"
+
+[notif.goalert]
+desc = "Open-Source-Bereitschaftsplanung und -Alarmierung"
+server.label = "GoAlert-URL"
+token.label = "Integrationsschlüssel"
+token.help = "Service → Integration Keys → einen Generic-API-Schlüssel hinzufügen."
+server.required = "Gib die GoAlert-URL ein"
+token.required = "Gib den Integrationsschlüssel ein"
+
+[notif.splunk_oncall]
+desc = "Vorfälle in Splunk On-Call (VictorOps)"
+api_key.label = "API-Schlüssel"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: der Schlüssel in der Endpunkt-URL."
+routing_key.label = "Routing-Schlüssel"
+routing_key.help = "Legt fest, welches Team alarmiert wird."
+severity.label = "Schweregrad bei Offline"
+severity.opt_CRITICAL = "Kritisch"
+severity.opt_WARNING = "Warnung"
+api_key.required = "Gib den API-Schlüssel ein"
+routing_key.required = "Gib den Routing-Schlüssel ein"
+
+[notif.keep]
+desc = "Alarme in die AIOps-Plattform Keep"
+server.label = "Keep-API-URL"
+server.help = "Dein eigenes Keep-Backend oder die Cloud-API."
+api_key.label = "API-Schlüssel"
+api_key.help = "Settings → API Keys."
+server.required = "Gib die Keep-API-URL ein"
+api_key.required = "Gib den API-Schlüssel ein"

@@ -11,6 +11,7 @@
 //! Errors returned by [`send`] are safe to log and show: they never contain
 //! the request URL or any secret from the channel config.
 
+
 pub mod apprise;
 pub mod bark;
 pub mod dingtalk;
@@ -26,6 +27,7 @@ pub mod mattermost;
 pub mod message;
 pub mod nextcloudtalk;
 pub mod ntfy;
+pub mod oncall;
 pub mod opsgenie;
 pub mod pagerduty;
 pub mod pushbullet;
@@ -85,6 +87,12 @@ pub const PROVIDERS: &[&ProviderSchema] = &[
     &threema::SCHEMA,
     &whatsapp::WAHA,
     &whatsapp::EVOLUTION,
+    &oncall::SIGNL4,
+    &oncall::SQUADCAST,
+    &oncall::GRAFANA_ONCALL,
+    &oncall::GOALERT,
+    &oncall::SPLUNK,
+    &oncall::KEEP,
 ];
 
 /// Channel kinds this build can deliver to (derived from [`PROVIDERS`]).

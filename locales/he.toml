@@ -1364,6 +1364,8 @@ err_email_address = "יש להזין כתובת אימייל מלאה"
 err_threema_gateway = "Gateway ID מתחיל ב-* ומכיל 8 תווים"
 err_threema_recipient = "זה לא נראה כנמען תקין לסוג שנבחר"
 err_phone_number = "יש להזין את מספר הטלפון עם קידומת המדינה, למשל 4712345678"
+err_signl4 = "יש להשתמש בכתובת ה-Webhook מסוג https:// של SIGNL4"
+err_https_webhook = "יש להשתמש בכתובת ה-Webhook המלאה מסוג https://, כולל המפתח שלה"
 err_webex_room = "יש להזין מזהה space או אימייל של אדם"
 err_webhook_header = "“{name}” אינה כותרת תקינה"
 err_webhook_placeholder = "placeholder לא מוכר: {placeholder}"
@@ -2296,3 +2298,50 @@ server.required = "יש להזין את כתובת Evolution API"
 instance.required = "יש להזין את המופע"
 api_key.required = "יש להזין את מפתח ה-API"
 number.required = "יש להזין נמען"
+
+[notif.signl4]
+desc = "התראות לנייד באמצעות Push, SMS וקול"
+url.label = "URL של Webhook"
+url.help = "כתובת ה-Webhook של הצוות שלך בפורטל SIGNL4, תחת Integrations."
+url.required = "יש להזין את ה-URL של ה-Webhook"
+
+[notif.squadcast]
+desc = "תקריות עם לוחות כוננות והסלמות"
+url.label = "URL של Webhook"
+url.help = "Service → Alert Sources → Incident Webhook (API) → ה-URL."
+url.required = "יש להזין את ה-URL של ה-Webhook"
+
+[notif.grafana_oncall]
+desc = "התראות אל שרשראות ההסלמה של Grafana OnCall"
+url.label = "URL של Webhook"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "יש להזין את ה-URL של ה-Webhook"
+
+[notif.goalert]
+desc = "תזמון כוננות והתראות בקוד פתוח"
+server.label = "URL של GoAlert"
+token.label = "Integration key"
+token.help = "Service → Integration Keys → הוספת מפתח Generic API."
+server.required = "יש להזין את ה-URL של GoAlert"
+token.required = "יש להזין את ה-Integration key"
+
+[notif.splunk_oncall]
+desc = "תקריות ב-Splunk On-Call (VictorOps)"
+api_key.label = "מפתח API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: המפתח שב-URL של נקודת הקצה."
+routing_key.label = "Routing key"
+routing_key.help = "קובע איזה צוות יקבל את ההתראה."
+severity.label = "חומרה כשלא זמין"
+severity.opt_CRITICAL = "קריטית"
+severity.opt_WARNING = "אזהרה"
+api_key.required = "יש להזין את מפתח ה-API"
+routing_key.required = "יש להזין את ה-Routing key"
+
+[notif.keep]
+desc = "התראות אל פלטפורמת ה-AIOps בשם Keep"
+server.label = "URL של Keep API"
+server.help = "שרת ה-Keep שלך, או ה-API בענן."
+api_key.label = "מפתח API"
+api_key.help = "Settings → API Keys."
+server.required = "יש להזין את ה-URL של Keep API"
+api_key.required = "יש להזין את מפתח ה-API"

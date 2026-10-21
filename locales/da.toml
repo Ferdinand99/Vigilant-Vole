@@ -1338,6 +1338,8 @@ err_email_address = "Angiv en fuld e-mailadresse"
 err_threema_gateway = "Et Gateway ID starter med * og har 8 tegn"
 err_threema_recipient = "Det ligner ikke en gyldig modtager for den valgte type"
 err_phone_number = "Angiv telefonnummeret med landekode, f.eks. 4712345678"
+err_signl4 = "Brug webhook-adressen med https:// fra SIGNL4"
+err_https_webhook = "Brug den fulde webhook-adresse med https://, inklusive nøglen"
 err_webex_room = "Angiv et space-ID eller en persons e-mail"
 err_webhook_header = "»{name}« er ikke en gyldig header"
 err_webhook_placeholder = "Ukendt pladsholder {placeholder}"
@@ -2266,3 +2268,50 @@ server.required = "Angiv Evolution API-URL’en"
 instance.required = "Angiv instansen"
 api_key.required = "Angiv API-nøglen"
 number.required = "Angiv en modtager"
+
+[notif.signl4]
+desc = "Mobilalarmer med push, sms og tale"
+url.label = "Webhook-URL"
+url.help = "Dit teams webhook-adresse fra SIGNL4-portalen, under Integrations."
+url.required = "Angiv webhook-URL’en"
+
+[notif.squadcast]
+desc = "Hændelser med vagtplaner og eskalering"
+url.label = "Webhook-URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL’en."
+url.required = "Angiv webhook-URL’en"
+
+[notif.grafana_oncall]
+desc = "Alarmer til eskaleringskæder i Grafana OnCall"
+url.label = "Webhook-URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Angiv webhook-URL’en"
+
+[notif.goalert]
+desc = "Open source-vagtplanlægning og alarmer"
+server.label = "GoAlert-URL"
+token.label = "Integrationsnøgle"
+token.help = "Service → Integration Keys → tilføj en Generic API-nøgle."
+server.required = "Angiv GoAlert-URL’en"
+token.required = "Angiv integrationsnøglen"
+
+[notif.splunk_oncall]
+desc = "Hændelser i Splunk On-Call (VictorOps)"
+api_key.label = "API-nøgle"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: nøglen i endpoint-URL’en."
+routing_key.label = "Routingnøgle"
+routing_key.help = "Afgør, hvilket team der alarmeres."
+severity.label = "Alvorlighed ved nede"
+severity.opt_CRITICAL = "Kritisk"
+severity.opt_WARNING = "Advarsel"
+api_key.required = "Angiv API-nøglen"
+routing_key.required = "Angiv routingnøglen"
+
+[notif.keep]
+desc = "Alarmer til AIOps-platformen Keep"
+server.label = "Keep API-URL"
+server.help = "Din egen Keep-backend eller cloud-API’et."
+api_key.label = "API-nøgle"
+api_key.help = "Settings → API Keys."
+server.required = "Angiv Keep API-URL’en"
+api_key.required = "Angiv API-nøglen"

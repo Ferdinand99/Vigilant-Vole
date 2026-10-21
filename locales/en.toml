@@ -1421,6 +1421,8 @@ err_email_address = "Enter a full email address"
 err_threema_gateway = "A Gateway ID starts with * and has 8 characters"
 err_threema_recipient = "That doesn’t look like a valid recipient for the chosen type"
 err_phone_number = "Enter the phone number with its country code, like 4712345678"
+err_signl4 = "Use the https:// webhook address from SIGNL4"
+err_https_webhook = "Use the full https:// webhook address, including its key"
 err_webex_room = "Enter a space ID or a person’s email"
 err_webhook_header = "“{name}” isn’t a valid header"
 err_webhook_placeholder = "Unknown placeholder {placeholder}"
@@ -2268,3 +2270,50 @@ server.required = "Enter the Evolution API URL"
 instance.required = "Enter the instance"
 api_key.required = "Enter the API key"
 number.required = "Enter a recipient"
+
+[notif.signl4]
+desc = "Mobile alerting with push, SMS and voice"
+url.label = "Webhook URL"
+url.help = "Your team’s webhook address from the SIGNL4 portal, under Integrations."
+url.required = "Enter the webhook URL"
+
+[notif.squadcast]
+desc = "Incidents with on-call schedules and escalations"
+url.label = "Webhook URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → the URL."
+url.required = "Enter the webhook URL"
+
+[notif.grafana_oncall]
+desc = "Alerts into Grafana OnCall escalation chains"
+url.label = "Webhook URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Enter the webhook URL"
+
+[notif.goalert]
+desc = "Open-source on-call scheduling and alerting"
+server.label = "GoAlert URL"
+token.label = "Integration key"
+token.help = "Service → Integration Keys → add a Generic API key."
+server.required = "Enter the GoAlert URL"
+token.required = "Enter the integration key"
+
+[notif.splunk_oncall]
+desc = "Incidents in Splunk On-Call (VictorOps)"
+api_key.label = "API key"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: the key in the endpoint URL."
+routing_key.label = "Routing key"
+routing_key.help = "Decides which team gets paged."
+severity.label = "Severity when down"
+severity.opt_CRITICAL = "Critical"
+severity.opt_WARNING = "Warning"
+api_key.required = "Enter the API key"
+routing_key.required = "Enter the routing key"
+
+[notif.keep]
+desc = "Alerts into the Keep AIOps platform"
+server.label = "Keep API URL"
+server.help = "Your own Keep backend, or the cloud API."
+api_key.label = "API key"
+api_key.help = "Settings → API Keys."
+server.required = "Enter the Keep API URL"
+api_key.required = "Enter the API key"

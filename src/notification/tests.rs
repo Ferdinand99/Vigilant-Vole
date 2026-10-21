@@ -549,3 +549,31 @@ async fn a_failing_zulip_server_cannot_leak_the_bot_key() {
     let err = send(&client(), &ch, &event(EventKind::Down)).await.unwrap_err();
     assert!(err.contains("401") && !err.contains("ZKEY-SECRET"), "{err}");
 }
+
+#[tokio::test]
+async fn incident_webhooks_end_to_end() {
+    let (base, captured) = capture_server(StatusCode::OK, "{}").await;
+    let down = event(EventKind::Down);
+    let up = event(EventKind::Up);
+    send(&client(), &channel("squadcast", json!({"url": format!("{base}/v3/incidents/api/abc")})), &down).await.unwrap();
+    send(&client(), &channel("squadcast", json!({"url": format!("{base}/v3/incidents/api/abc")})), &up).await.unwrap();
+    send(&client(), &channel("goalert", json!({"server": base, "token": "GKEY"})), &down).await.unwrap();
+    send(&client(), &channel("keep", json!({"server": base, "api_key": "KKEY"})), &down).await.unwrap();
+    // Maintenance never reaches an on-call tool.
+    send(&client(), &channel("keep", json!({"server": base, "api_key": "KKEY"})), &event(EventKind::MaintenanceStart)).await.unwrap();
+    let reqs = captured.lock().unwrap().clone();
+    assert_eq!(reqs.len(), 4, "{reqs:?}");
+    assert_eq!((reqs[0].json()["status"].as_str(), reqs[1].json()["status"].as_str()), (Some("trigger"), Some("resolve")));
+    assert_eq!(reqs[0].json()["event_id"], reqs[1].json()["event_id"], "the same alert is opened and closed");
+    assert_eq!(reqs[2].uri.path(), "/api/v2/generic/incoming");
+    assert!(reqs[2].uri.query().is_none(), "the key is not in the URL");
+    assert!(String::from_utf8_lossy(&reqs[2].body).contains("token=GKEY"));
+    assert_eq!((reqs[3].uri.path(), reqs[3].headers["x-api-key"].to_str().unwrap()), ("/alerts/event", "KKEY"));
+}
+
+#[tokio::test]
+async fn a_failing_on_call_tool_cannot_leak_its_key() {
+    let (base, _) = capture_server(StatusCode::FORBIDDEN, "{\"error\":\"bad key GKEY-1234\"}").await;
+    let err = send(&client(), &channel("goalert", json!({"server": base, "token": "GKEY-1234"})), &event(EventKind::Down)).await.unwrap_err();
+    assert!(err.contains("403") && !err.contains("GKEY-1234"), "{err}");
+}

@@ -1362,6 +1362,8 @@ err_email_address = "Inserisci un indirizzo email completo"
 err_threema_gateway = "Un Gateway ID inizia con * e ha 8 caratteri"
 err_threema_recipient = "Non sembra un destinatario valido per il tipo scelto"
 err_phone_number = "Inserisci il numero di telefono con il prefisso internazionale, ad esempio 4712345678"
+err_signl4 = "Usa l’indirizzo webhook https:// di SIGNL4"
+err_https_webhook = "Usa l’indirizzo webhook https:// completo, chiave inclusa"
 err_webex_room = "Inserisci l’ID di uno spazio o l’email di una persona"
 err_webhook_header = "«{name}» non è un’intestazione valida"
 err_webhook_placeholder = "Segnaposto sconosciuto {placeholder}"
@@ -2294,3 +2296,50 @@ server.required = "Inserisci l’URL di Evolution API"
 instance.required = "Inserisci l’istanza"
 api_key.required = "Inserisci la chiave API"
 number.required = "Inserisci un destinatario"
+
+[notif.signl4]
+desc = "Avvisi mobili con notifiche push, SMS e voce"
+url.label = "URL del webhook"
+url.help = "L’indirizzo webhook del tuo team nel portale SIGNL4, in Integrations."
+url.required = "Inserisci l’URL del webhook"
+
+[notif.squadcast]
+desc = "Incidenti con turni di reperibilità ed escalation"
+url.label = "URL del webhook"
+url.help = "Service → Alert Sources → Incident Webhook (API) → l’URL."
+url.required = "Inserisci l’URL del webhook"
+
+[notif.grafana_oncall]
+desc = "Avvisi nelle catene di escalation di Grafana OnCall"
+url.label = "URL del webhook"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Inserisci l’URL del webhook"
+
+[notif.goalert]
+desc = "Turni di reperibilità e avvisi open source"
+server.label = "URL di GoAlert"
+token.label = "Chiave di integrazione"
+token.help = "Service → Integration Keys → aggiungi una chiave Generic API."
+server.required = "Inserisci l’URL di GoAlert"
+token.required = "Inserisci la chiave di integrazione"
+
+[notif.splunk_oncall]
+desc = "Incidenti in Splunk On-Call (VictorOps)"
+api_key.label = "Chiave API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: la chiave nell’URL dell’endpoint."
+routing_key.label = "Chiave di instradamento"
+routing_key.help = "Decide quale team viene avvisato."
+severity.label = "Gravità quando è offline"
+severity.opt_CRITICAL = "Critica"
+severity.opt_WARNING = "Avviso"
+api_key.required = "Inserisci la chiave API"
+routing_key.required = "Inserisci la chiave di instradamento"
+
+[notif.keep]
+desc = "Avvisi nella piattaforma AIOps Keep"
+server.label = "URL dell’API di Keep"
+server.help = "Il tuo backend Keep, oppure l’API cloud."
+api_key.label = "Chiave API"
+api_key.help = "Settings → API Keys."
+server.required = "Inserisci l’URL dell’API di Keep"
+api_key.required = "Inserisci la chiave API"

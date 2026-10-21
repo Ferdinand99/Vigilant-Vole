@@ -1337,6 +1337,8 @@ err_email_address = "Tam bir e-posta adresi girin"
 err_threema_gateway = "Gateway ID, * ile başlar ve 8 karakterden oluşur"
 err_threema_recipient = "Bu, seçilen tür için geçerli bir alıcıya benzemiyor"
 err_phone_number = "Telefon numarasını ülke koduyla girin, örneğin 4712345678"
+err_signl4 = "SIGNL4’teki https:// webhook adresini kullanın"
+err_https_webhook = "Anahtarı da içeren tam https:// webhook adresini kullanın"
 err_webex_room = "Bir alan kimliği veya bir kişinin e-postasını girin"
 err_webhook_header = "“{name}” geçerli bir başlık değil"
 err_webhook_placeholder = "Bilinmeyen yer tutucu {placeholder}"
@@ -2265,3 +2267,50 @@ server.required = "Evolution API URL’sini girin"
 instance.required = "Instance adını girin"
 api_key.required = "API anahtarını girin"
 number.required = "Bir alıcı girin"
+
+[notif.signl4]
+desc = "Anlık bildirim, SMS ve sesle mobil uyarılar"
+url.label = "Webhook URL’si"
+url.help = "Ekibinizin webhook adresi, SIGNL4 portalında Integrations altında."
+url.required = "Webhook URL’sini girin"
+
+[notif.squadcast]
+desc = "Nöbet çizelgeleri ve yükseltmelerle olaylar"
+url.label = "Webhook URL’si"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL."
+url.required = "Webhook URL’sini girin"
+
+[notif.grafana_oncall]
+desc = "Grafana OnCall yükseltme zincirlerine uyarılar"
+url.label = "Webhook URL’si"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Webhook URL’sini girin"
+
+[notif.goalert]
+desc = "Açık kaynaklı nöbet çizelgeleri ve uyarılar"
+server.label = "GoAlert URL’si"
+token.label = "Entegrasyon anahtarı"
+token.help = "Service → Integration Keys → bir Generic API anahtarı ekleyin."
+server.required = "GoAlert URL’sini girin"
+token.required = "Entegrasyon anahtarını girin"
+
+[notif.splunk_oncall]
+desc = "Splunk On-Call (VictorOps) içinde olaylar"
+api_key.label = "API anahtarı"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: uç nokta URL’sindeki anahtar."
+routing_key.label = "Yönlendirme anahtarı"
+routing_key.help = "Hangi ekibin çağrılacağını belirler."
+severity.label = "Çalışmıyorken önem derecesi"
+severity.opt_CRITICAL = "Kritik"
+severity.opt_WARNING = "Uyarı"
+api_key.required = "API anahtarını girin"
+routing_key.required = "Yönlendirme anahtarını girin"
+
+[notif.keep]
+desc = "Keep AIOps platformuna uyarılar"
+server.label = "Keep API URL’si"
+server.help = "Kendi Keep arka ucunuz veya bulut API’si."
+api_key.label = "API anahtarı"
+api_key.help = "Settings → API Keys."
+server.required = "Keep API URL’sini girin"
+api_key.required = "API anahtarını girin"

@@ -41,3 +41,29 @@ fn zulip_has_no_kuma_counterpart() {
     let Value::Object(row) = json!({"type": "zulip"}) else { unreachable!() };
     assert!(map_notification(&row).is_err());
 }
+
+#[test]
+fn incident_tools_map_across() {
+    let (kind, c) = mapped(json!({"type": "SIGNL4", "webhookURL": "https://connect.signl4.com/webhook/team"}));
+    assert_eq!((kind, c["url"].as_str()), ("signl4", Some("https://connect.signl4.com/webhook/team")));
+    let (kind, c) = mapped(json!({"type": "squadcast", "squadcastWebhookURL": "https://api.squadcast.com/v3/incidents/api/abc"}));
+    assert_eq!((kind, c["url"].as_str()), ("squadcast", Some("https://api.squadcast.com/v3/incidents/api/abc")));
+    let (kind, c) = mapped(json!({"type": "GrafanaOncall", "GrafanaOncallURL": "https://oncall.example/integrations/v1/webhook/abc/"}));
+    assert_eq!((kind, c["url"].as_str()), ("grafana_oncall", Some("https://oncall.example/integrations/v1/webhook/abc/")));
+    let (kind, c) = mapped(json!({"type": "GoAlert", "goAlertBaseURL": "https://goalert.example", "goAlertToken": "T"}));
+    assert_eq!((kind, c["server"].as_str(), c["token"].as_str()), ("goalert", Some("https://goalert.example"), Some("T")));
+    let (kind, c) = mapped(json!({"type": "Keep", "webhookURL": "https://keep.example", "webhookAPIKey": "K"}));
+    assert_eq!((kind, c["server"].as_str(), c["api_key"].as_str()), ("keep", Some("https://keep.example"), Some("K")));
+}
+
+#[test]
+fn splunk_on_call_splits_the_rest_endpoint_into_key_and_routing_key() {
+    let (kind, c) = mapped(json!({"type": "Splunk", "splunkRestURL": "https://alert.victorops.com/integrations/generic/20131114/alert/API-KEY/everyone", "splunkSeverity": "CRITICAL"}));
+    assert_eq!((kind, c["api_key"].as_str(), c["routing_key"].as_str(), c["severity"].as_str()), ("splunk_oncall", Some("API-KEY"), Some("everyone"), Some("CRITICAL")));
+    let (_, c) = mapped(json!({"type": "Splunk", "splunkRestURL": "https://alert.victorops.com/integrations/generic/20131114/alert/K/r/", "splunkSeverity": "INFO"}));
+    assert_eq!(c["severity"], "WARNING");
+    for bad in ["https://example.com/hook", "https://alert.victorops.com/integrations/generic/20131114/alert/onlykey", ""] {
+        let Value::Object(row) = json!({"type": "Splunk", "splunkRestURL": bad}) else { unreachable!() };
+        assert!(map_notification(&row).is_err(), "{bad}");
+    }
+}

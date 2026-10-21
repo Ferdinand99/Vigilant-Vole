@@ -1311,6 +1311,8 @@ err_email_address = "请输入完整的电子邮件地址"
 err_threema_gateway = "Gateway ID 以 * 开头，共 8 个字符"
 err_threema_recipient = "这看起来不是所选类型的有效收件人"
 err_phone_number = "请输入带国家/地区区号的电话号码，例如 4712345678"
+err_signl4 = "请使用 SIGNL4 提供的 https:// Webhook 地址"
+err_https_webhook = "请使用完整的 https:// Webhook 地址，包括其中的密钥"
 err_webex_room = "请输入空间 ID 或某人的邮箱"
 err_webhook_header = "“{name}”不是有效的请求头"
 err_webhook_placeholder = "未知占位符 {placeholder}"
@@ -2235,3 +2237,50 @@ server.required = "请输入 Evolution API URL"
 instance.required = "请输入实例"
 api_key.required = "请输入 API 密钥"
 number.required = "请输入收件人"
+
+[notif.signl4]
+desc = "通过推送、短信和语音发送移动告警"
+url.label = "Webhook URL"
+url.help = "你团队在 SIGNL4 门户 Integrations 下的 Webhook 地址。"
+url.required = "请输入 Webhook URL"
+
+[notif.squadcast]
+desc = "包含值班排班和升级的事件管理"
+url.label = "Webhook URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → 该 URL。"
+url.required = "请输入 Webhook URL"
+
+[notif.grafana_oncall]
+desc = "将告警发送到 Grafana OnCall 升级链"
+url.label = "Webhook URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint。"
+url.required = "请输入 Webhook URL"
+
+[notif.goalert]
+desc = "开源的值班排班与告警"
+server.label = "GoAlert URL"
+token.label = "集成密钥"
+token.help = "Service → Integration Keys → 添加一个 Generic API 密钥。"
+server.required = "请输入 GoAlert URL"
+token.required = "请输入集成密钥"
+
+[notif.splunk_oncall]
+desc = "Splunk On-Call (VictorOps) 中的事件"
+api_key.label = "API 密钥"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic：端点 URL 中的密钥。"
+routing_key.label = "路由密钥"
+routing_key.help = "决定通知哪个团队。"
+severity.label = "故障时的严重程度"
+severity.opt_CRITICAL = "严重"
+severity.opt_WARNING = "警告"
+api_key.required = "请输入 API 密钥"
+routing_key.required = "请输入路由密钥"
+
+[notif.keep]
+desc = "将告警发送到 Keep AIOps 平台"
+server.label = "Keep API URL"
+server.help = "你自己的 Keep 后端，或云端 API。"
+api_key.label = "API 密钥"
+api_key.help = "Settings → API Keys。"
+server.required = "请输入 Keep API URL"
+api_key.required = "请输入 API 密钥"

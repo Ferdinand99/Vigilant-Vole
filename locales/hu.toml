@@ -1336,6 +1336,8 @@ err_email_address = "Adjon meg teljes e-mail-címet"
 err_threema_gateway = "A Gateway ID *-gal kezdődik, és 8 karakter hosszú"
 err_threema_recipient = "Ez nem tűnik érvényes címzettnek a kiválasztott típushoz"
 err_phone_number = "Adja meg a telefonszámot az országhívó számmal, például 4712345678"
+err_signl4 = "Használja a SIGNL4 https:// webhook-címét"
+err_https_webhook = "Használja a teljes https:// webhook-címet, a kulcsával együtt"
 err_webex_room = "Adjon meg tér-azonosítót vagy egy személy e-mail-címét"
 err_webhook_header = "„{name}” nem érvényes fejléc"
 err_webhook_placeholder = "Ismeretlen helyőrző: {placeholder}"
@@ -2264,3 +2266,50 @@ server.required = "Adja meg az Evolution API URL-jét"
 instance.required = "Adja meg a példányt"
 api_key.required = "Adja meg az API-kulcsot"
 number.required = "Adjon meg egy címzettet"
+
+[notif.signl4]
+desc = "Mobilriasztás push-értesítéssel, SMS-sel és hanghívással"
+url.label = "Webhook URL"
+url.help = "A csapat webhook-címe a SIGNL4 portálon, az Integrations alatt."
+url.required = "Adja meg a webhook URL-t"
+
+[notif.squadcast]
+desc = "Incidensek ügyeleti beosztással és eszkalációval"
+url.label = "Webhook URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → az URL."
+url.required = "Adja meg a webhook URL-t"
+
+[notif.grafana_oncall]
+desc = "Riasztások a Grafana OnCall eszkalációs láncaiba"
+url.label = "Webhook URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Adja meg a webhook URL-t"
+
+[notif.goalert]
+desc = "Nyílt forráskódú ügyeletbeosztás és riasztás"
+server.label = "GoAlert URL"
+token.label = "Integrációs kulcs"
+token.help = "Service → Integration Keys → adjon hozzá egy Generic API kulcsot."
+server.required = "Adja meg a GoAlert URL-t"
+token.required = "Adja meg az integrációs kulcsot"
+
+[notif.splunk_oncall]
+desc = "Incidensek a Splunk On-Callban (VictorOps)"
+api_key.label = "API-kulcs"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: a végpont URL-jében lévő kulcs."
+routing_key.label = "Útválasztási kulcs"
+routing_key.help = "Meghatározza, melyik csapat kap riasztást."
+severity.label = "Súlyosság leállásnál"
+severity.opt_CRITICAL = "Kritikus"
+severity.opt_WARNING = "Figyelmeztetés"
+api_key.required = "Adja meg az API-kulcsot"
+routing_key.required = "Adja meg az útválasztási kulcsot"
+
+[notif.keep]
+desc = "Riasztások a Keep AIOps platformra"
+server.label = "Keep API URL"
+server.help = "Saját Keep háttérrendszer vagy a felhős API."
+api_key.label = "API-kulcs"
+api_key.help = "Settings → API Keys."
+server.required = "Adja meg a Keep API URL-t"
+api_key.required = "Adja meg az API-kulcsot"

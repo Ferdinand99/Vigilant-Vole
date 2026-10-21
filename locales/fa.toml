@@ -1338,6 +1338,8 @@ err_email_address = "نشانی ایمیل کامل را وارد کنید"
 err_threema_gateway = "Gateway ID با * شروع می‌شود و ۸ نویسه دارد"
 err_threema_recipient = "این برای نوع انتخاب‌شده گیرندهٔ معتبری به نظر نمی‌رسد"
 err_phone_number = "شمارهٔ تلفن را با کد کشور وارد کنید، مانند 4712345678"
+err_signl4 = "از نشانی وب‌هوک https:// سرویس SIGNL4 استفاده کنید"
+err_https_webhook = "نشانی کامل وب‌هوک https:// را همراه با کلید آن وارد کنید"
 err_webex_room = "شناسهٔ یک space یا ایمیل یک شخص را وارد کنید"
 err_webhook_header = "«{name}» هدر معتبری نیست"
 err_webhook_placeholder = "جایگزین ناشناخته {placeholder}"
@@ -2266,3 +2268,50 @@ server.required = "نشانی Evolution API را وارد کنید"
 instance.required = "نمونه را وارد کنید"
 api_key.required = "کلید API را وارد کنید"
 number.required = "یک گیرنده وارد کنید"
+
+[notif.signl4]
+desc = "هشدار موبایلی با اعلان، پیامک و تماس صوتی"
+url.label = "URL وب‌هوک"
+url.help = "نشانی وب‌هوک تیم شما در پورتال SIGNL4، بخش Integrations."
+url.required = "URL وب‌هوک را وارد کنید"
+
+[notif.squadcast]
+desc = "رویدادها با برنامه‌های آنکال و ارجاع به سطح بالاتر"
+url.label = "URL وب‌هوک"
+url.help = "Service ← Alert Sources ← Incident Webhook (API) ← همان URL."
+url.required = "URL وب‌هوک را وارد کنید"
+
+[notif.grafana_oncall]
+desc = "هشدار به زنجیره‌های ارجاع Grafana OnCall"
+url.label = "URL وب‌هوک"
+url.help = "Integrations ← New integration ← Webhook ← HTTP endpoint."
+url.required = "URL وب‌هوک را وارد کنید"
+
+[notif.goalert]
+desc = "برنامه‌ریزی آنکال و هشدار متن‌باز"
+server.label = "URL سرویس GoAlert"
+token.label = "کلید یکپارچه‌سازی"
+token.help = "Service ← Integration Keys ← یک کلید Generic API اضافه کنید."
+server.required = "URL سرویس GoAlert را وارد کنید"
+token.required = "کلید یکپارچه‌سازی را وارد کنید"
+
+[notif.splunk_oncall]
+desc = "رویدادها در Splunk On-Call (VictorOps)"
+api_key.label = "کلید API"
+api_key.help = "Integrations ← 3rd Party Integrations ← REST – Generic: کلیدی که در URL نقطه پایانی آمده است."
+routing_key.label = "کلید مسیریابی"
+routing_key.help = "تعیین می‌کند کدام تیم فراخوانده شود."
+severity.label = "شدت هنگام قطع"
+severity.opt_CRITICAL = "بحرانی"
+severity.opt_WARNING = "هشدار"
+api_key.required = "کلید API را وارد کنید"
+routing_key.required = "کلید مسیریابی را وارد کنید"
+
+[notif.keep]
+desc = "هشدار به پلتفرم AIOps به نام Keep"
+server.label = "URL رابط API سرویس Keep"
+server.help = "بک‌اند Keep خودتان، یا API ابری."
+api_key.label = "کلید API"
+api_key.help = "Settings ← API Keys."
+server.required = "URL رابط API سرویس Keep را وارد کنید"
+api_key.required = "کلید API را وارد کنید"

@@ -1389,6 +1389,8 @@ err_email_address = "Введіть повну адресу електронно
 err_threema_gateway = "Gateway ID починається з * і має 8 символів"
 err_threema_recipient = "Це не схоже на дійсного одержувача для вибраного типу"
 err_phone_number = "Введіть номер телефону з кодом країни, наприклад 4712345678"
+err_signl4 = "Використайте https:// адресу вебхука з SIGNL4"
+err_https_webhook = "Використайте повну https:// адресу вебхука разом із ключем"
 err_webex_room = "Введіть ID простору або пошту особи"
 err_webhook_header = "«{name}» не є коректним заголовком"
 err_webhook_placeholder = "Невідомий заповнювач {placeholder}"
@@ -2325,3 +2327,50 @@ server.required = "Введіть URL Evolution API"
 instance.required = "Введіть інстанс"
 api_key.required = "Введіть ключ API"
 number.required = "Введіть одержувача"
+
+[notif.signl4]
+desc = "Мобільні сповіщення через push, SMS і голос"
+url.label = "URL вебхука"
+url.help = "Адреса вебхука вашої команди з порталу SIGNL4, у розділі Integrations."
+url.required = "Введіть URL вебхука"
+
+[notif.squadcast]
+desc = "Інциденти з графіками чергувань та ескалаціями"
+url.label = "URL вебхука"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL."
+url.required = "Введіть URL вебхука"
+
+[notif.grafana_oncall]
+desc = "Сповіщення в ланцюжки ескалації Grafana OnCall"
+url.label = "URL вебхука"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Введіть URL вебхука"
+
+[notif.goalert]
+desc = "Графіки чергувань і сповіщення з відкритим кодом"
+server.label = "URL GoAlert"
+token.label = "Ключ інтеграції"
+token.help = "Service → Integration Keys → додайте ключ Generic API."
+server.required = "Введіть URL GoAlert"
+token.required = "Введіть ключ інтеграції"
+
+[notif.splunk_oncall]
+desc = "Інциденти в Splunk On-Call (VictorOps)"
+api_key.label = "Ключ API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: ключ в URL кінцевої точки."
+routing_key.label = "Ключ маршрутизації"
+routing_key.help = "Визначає, яку команду викликати."
+severity.label = "Серйозність при недоступності"
+severity.opt_CRITICAL = "Критична"
+severity.opt_WARNING = "Попередження"
+api_key.required = "Введіть ключ API"
+routing_key.required = "Введіть ключ маршрутизації"
+
+[notif.keep]
+desc = "Сповіщення на платформу AIOps Keep"
+server.label = "URL API Keep"
+server.help = "Ваш власний бекенд Keep або хмарний API."
+api_key.label = "Ключ API"
+api_key.help = "Settings → API Keys."
+server.required = "Введіть URL API Keep"
+api_key.required = "Введіть ключ API"

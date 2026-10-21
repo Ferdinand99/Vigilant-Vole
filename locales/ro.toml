@@ -1363,6 +1363,8 @@ err_email_address = "Introdu o adresă de e-mail completă"
 err_threema_gateway = "Un Gateway ID începe cu * și are 8 caractere"
 err_threema_recipient = "Nu pare un destinatar valid pentru tipul ales"
 err_phone_number = "Introdu numărul de telefon cu prefixul țării, de exemplu 4712345678"
+err_signl4 = "Folosește adresa de webhook https:// din SIGNL4"
+err_https_webhook = "Folosește adresa de webhook https:// completă, inclusiv cheia"
 err_webex_room = "Introdu un ID de spațiu sau e-mailul unei persoane"
 err_webhook_header = "„{name}” nu este un antet valid"
 err_webhook_placeholder = "Substituent necunoscut {placeholder}"
@@ -2295,3 +2297,50 @@ server.required = "Introdu URL-ul Evolution API"
 instance.required = "Introdu instanța"
 api_key.required = "Introdu cheia API"
 number.required = "Introdu un destinatar"
+
+[notif.signl4]
+desc = "Alerte pe mobil prin push, SMS și voce"
+url.label = "URL webhook"
+url.help = "Adresa de webhook a echipei tale din portalul SIGNL4, la Integrations."
+url.required = "Introdu URL-ul webhookului"
+
+[notif.squadcast]
+desc = "Incidente cu planuri de gardă și escaladări"
+url.label = "URL webhook"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL-ul."
+url.required = "Introdu URL-ul webhookului"
+
+[notif.grafana_oncall]
+desc = "Alerte în lanțurile de escaladare Grafana OnCall"
+url.label = "URL webhook"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Introdu URL-ul webhookului"
+
+[notif.goalert]
+desc = "Planuri de gardă și alerte open-source"
+server.label = "URL GoAlert"
+token.label = "Cheie de integrare"
+token.help = "Service → Integration Keys → adaugă o cheie Generic API."
+server.required = "Introdu URL-ul GoAlert"
+token.required = "Introdu cheia de integrare"
+
+[notif.splunk_oncall]
+desc = "Incidente în Splunk On-Call (VictorOps)"
+api_key.label = "Cheie API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: cheia din URL-ul endpointului."
+routing_key.label = "Cheie de rutare"
+routing_key.help = "Stabilește ce echipă este alertată."
+severity.label = "Gravitate la indisponibilitate"
+severity.opt_CRITICAL = "Critică"
+severity.opt_WARNING = "Avertisment"
+api_key.required = "Introdu cheia API"
+routing_key.required = "Introdu cheia de rutare"
+
+[notif.keep]
+desc = "Alerte în platforma AIOps Keep"
+server.label = "URL API Keep"
+server.help = "Propriul tău backend Keep sau API-ul din cloud."
+api_key.label = "Cheie API"
+api_key.help = "Settings → API Keys."
+server.required = "Introdu URL-ul API Keep"
+api_key.required = "Introdu cheia API"

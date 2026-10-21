@@ -1421,6 +1421,8 @@ err_email_address = "Skriv inn en fullstendig e-postadresse"
 err_threema_gateway = "En Gateway ID starter med * og har 8 tegn"
 err_threema_recipient = "Dette ser ikke ut som en gyldig mottaker for den valgte typen"
 err_phone_number = "Skriv inn telefonnummeret med landkode, for eksempel 4712345678"
+err_signl4 = "Bruk webhook-adressen med https:// fra SIGNL4"
+err_https_webhook = "Bruk hele webhook-adressen med https://, inkludert nøkkelen"
 err_webex_room = "Skriv inn en område-ID eller e-postadressen til en person"
 err_webhook_header = "«{name}» er ikke en gyldig header"
 err_webhook_placeholder = "Ukjent plassholder {placeholder}"
@@ -2268,3 +2270,50 @@ server.required = "Skriv inn Evolution API-URL-en"
 instance.required = "Skriv inn instansen"
 api_key.required = "Skriv inn API-nøkkelen"
 number.required = "Skriv inn en mottaker"
+
+[notif.signl4]
+desc = "Mobilvarsler med push, SMS og tale"
+url.label = "Webhook-URL"
+url.help = "Teamets webhook-adresse fra SIGNL4-portalen, under Integrations."
+url.required = "Skriv inn webhook-URL-en"
+
+[notif.squadcast]
+desc = "Hendelser med vaktplaner og eskaleringer"
+url.label = "Webhook-URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL-en."
+url.required = "Skriv inn webhook-URL-en"
+
+[notif.grafana_oncall]
+desc = "Varsler til eskaleringskjedene i Grafana OnCall"
+url.label = "Webhook-URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Skriv inn webhook-URL-en"
+
+[notif.goalert]
+desc = "Vaktplaner og varsler med åpen kildekode"
+server.label = "GoAlert-URL"
+token.label = "Integrasjonsnøkkel"
+token.help = "Service → Integration Keys → legg til en Generic API-nøkkel."
+server.required = "Skriv inn GoAlert-URL-en"
+token.required = "Skriv inn integrasjonsnøkkelen"
+
+[notif.splunk_oncall]
+desc = "Hendelser i Splunk On-Call (VictorOps)"
+api_key.label = "API-nøkkel"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: nøkkelen i endepunkt-URL-en."
+routing_key.label = "Rutingnøkkel"
+routing_key.help = "Bestemmer hvilket team som varsles."
+severity.label = "Alvorlighetsgrad når den er nede"
+severity.opt_CRITICAL = "Kritisk"
+severity.opt_WARNING = "Advarsel"
+api_key.required = "Skriv inn API-nøkkelen"
+routing_key.required = "Skriv inn rutingnøkkelen"
+
+[notif.keep]
+desc = "Varsler til AIOps-plattformen Keep"
+server.label = "Keep API-URL"
+server.help = "Din egen Keep-backend, eller sky-API-et."
+api_key.label = "API-nøkkel"
+api_key.help = "Settings → API Keys."
+server.required = "Skriv inn Keep API-URL-en"
+api_key.required = "Skriv inn API-nøkkelen"

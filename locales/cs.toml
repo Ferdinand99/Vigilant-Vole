@@ -1388,6 +1388,8 @@ err_email_address = "Zadejte úplnou e-mailovou adresu"
 err_threema_gateway = "Gateway ID začíná znakem * a má 8 znaků"
 err_threema_recipient = "To nevypadá jako platný příjemce pro zvolený typ"
 err_phone_number = "Zadejte telefonní číslo s předvolbou země, například 4712345678"
+err_signl4 = "Použijte adresu webhooku z SIGNL4 začínající https://"
+err_https_webhook = "Použijte celou adresu webhooku začínající https:// včetně klíče"
 err_webex_room = "Zadejte ID prostoru nebo e-mail osoby"
 err_webhook_header = "„{name}“ není platná hlavička"
 err_webhook_placeholder = "Neznámý zástupný znak {placeholder}"
@@ -2324,3 +2326,50 @@ server.required = "Zadejte URL Evolution API"
 instance.required = "Zadejte instanci"
 api_key.required = "Zadejte API klíč"
 number.required = "Zadejte příjemce"
+
+[notif.signl4]
+desc = "Mobilní upozornění přes push, SMS a hlas"
+url.label = "URL webhooku"
+url.help = "Adresa webhooku vašeho týmu z portálu SIGNL4, v části Integrations."
+url.required = "Zadejte URL webhooku"
+
+[notif.squadcast]
+desc = "Incidenty s plány pohotovosti a eskalacemi"
+url.label = "URL webhooku"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL."
+url.required = "Zadejte URL webhooku"
+
+[notif.grafana_oncall]
+desc = "Upozornění do eskalačních řetězců Grafana OnCall"
+url.label = "URL webhooku"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Zadejte URL webhooku"
+
+[notif.goalert]
+desc = "Open-source plánování pohotovosti a upozornění"
+server.label = "URL GoAlert"
+token.label = "Klíč integrace"
+token.help = "Service → Integration Keys → přidejte klíč Generic API."
+server.required = "Zadejte URL GoAlert"
+token.required = "Zadejte klíč integrace"
+
+[notif.splunk_oncall]
+desc = "Incidenty ve Splunk On-Call (VictorOps)"
+api_key.label = "Klíč API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: klíč v URL koncového bodu."
+routing_key.label = "Směrovací klíč"
+routing_key.help = "Určuje, který tým bude vyrozuměn."
+severity.label = "Závažnost při výpadku"
+severity.opt_CRITICAL = "Kritická"
+severity.opt_WARNING = "Varování"
+api_key.required = "Zadejte klíč API"
+routing_key.required = "Zadejte směrovací klíč"
+
+[notif.keep]
+desc = "Upozornění do platformy Keep AIOps"
+server.label = "URL API Keep"
+server.help = "Váš vlastní backend Keep, nebo cloudové API."
+api_key.label = "Klíč API"
+api_key.help = "Settings → API Keys."
+server.required = "Zadejte URL API Keep"
+api_key.required = "Zadejte klíč API"

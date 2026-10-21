@@ -1337,6 +1337,8 @@ err_email_address = "Voer een volledig e-mailadres in"
 err_threema_gateway = "Een Gateway-ID begint met * en bestaat uit 8 tekens"
 err_threema_recipient = "Dit lijkt geen geldige ontvanger voor het gekozen type"
 err_phone_number = "Voer het telefoonnummer in met landcode, zoals 4712345678"
+err_signl4 = "Gebruik het https://-webhookadres van SIGNL4"
+err_https_webhook = "Gebruik het volledige https://-webhookadres, inclusief de sleutel"
 err_webex_room = "Voer een space-ID of het e-mailadres van een persoon in"
 err_webhook_header = "“{name}” is geen geldige header"
 err_webhook_placeholder = "Onbekende placeholder {placeholder}"
@@ -2265,3 +2267,50 @@ server.required = "Voer de Evolution API-URL in"
 instance.required = "Voer de instantie in"
 api_key.required = "Voer de API-sleutel in"
 number.required = "Voer een ontvanger in"
+
+[notif.signl4]
+desc = "Mobiele meldingen via push, sms en spraak"
+url.label = "Webhook-URL"
+url.help = "Het webhookadres van je team uit het SIGNL4-portaal, onder Integrations."
+url.required = "Voer de webhook-URL in"
+
+[notif.squadcast]
+desc = "Incidenten met bereikbaarheidsroosters en escalaties"
+url.label = "Webhook-URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → de URL."
+url.required = "Voer de webhook-URL in"
+
+[notif.grafana_oncall]
+desc = "Meldingen naar de escalatieketens van Grafana OnCall"
+url.label = "Webhook-URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Voer de webhook-URL in"
+
+[notif.goalert]
+desc = "Open-source bereikbaarheidsroosters en meldingen"
+server.label = "GoAlert-URL"
+token.label = "Integratiesleutel"
+token.help = "Service → Integration Keys → voeg een Generic API-sleutel toe."
+server.required = "Voer de GoAlert-URL in"
+token.required = "Voer de integratiesleutel in"
+
+[notif.splunk_oncall]
+desc = "Incidenten in Splunk On-Call (VictorOps)"
+api_key.label = "API-sleutel"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: de sleutel in de endpoint-URL."
+routing_key.label = "Routeringssleutel"
+routing_key.help = "Bepaalt welk team wordt opgeroepen."
+severity.label = "Ernst bij offline"
+severity.opt_CRITICAL = "Kritiek"
+severity.opt_WARNING = "Waarschuwing"
+api_key.required = "Voer de API-sleutel in"
+routing_key.required = "Voer de routeringssleutel in"
+
+[notif.keep]
+desc = "Meldingen naar het Keep AIOps-platform"
+server.label = "Keep API-URL"
+server.help = "Je eigen Keep-backend of de cloud-API."
+api_key.label = "API-sleutel"
+api_key.help = "Settings → API Keys."
+server.required = "Voer de Keep API-URL in"
+api_key.required = "Voer de API-sleutel in"

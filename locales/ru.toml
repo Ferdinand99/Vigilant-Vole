@@ -1388,6 +1388,8 @@ err_email_address = "Введите полный адрес электронно
 err_threema_gateway = "Gateway ID начинается с * и состоит из 8 символов"
 err_threema_recipient = "Это не похоже на допустимого получателя для выбранного типа"
 err_phone_number = "Введите номер телефона с кодом страны, например 4712345678"
+err_signl4 = "Используйте https:// адрес вебхука из SIGNL4"
+err_https_webhook = "Используйте полный https:// адрес вебхука, включая ключ"
 err_webex_room = "Введите ID пространства или адрес почты человека"
 err_webhook_header = "«{name}» — недопустимый заголовок"
 err_webhook_placeholder = "Неизвестный плейсхолдер {placeholder}"
@@ -2324,3 +2326,50 @@ server.required = "Введите URL Evolution API"
 instance.required = "Введите экземпляр"
 api_key.required = "Введите ключ API"
 number.required = "Введите получателя"
+
+[notif.signl4]
+desc = "Мобильные оповещения: push, SMS и голос"
+url.label = "URL вебхука"
+url.help = "Адрес вебхука вашей команды из портала SIGNL4, в разделе Integrations."
+url.required = "Введите URL вебхука"
+
+[notif.squadcast]
+desc = "Инциденты с графиками дежурств и эскалациями"
+url.label = "URL вебхука"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL."
+url.required = "Введите URL вебхука"
+
+[notif.grafana_oncall]
+desc = "Оповещения в цепочки эскалации Grafana OnCall"
+url.label = "URL вебхука"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Введите URL вебхука"
+
+[notif.goalert]
+desc = "Графики дежурств и оповещения с открытым кодом"
+server.label = "URL GoAlert"
+token.label = "Ключ интеграции"
+token.help = "Service → Integration Keys → добавьте ключ Generic API."
+server.required = "Введите URL GoAlert"
+token.required = "Введите ключ интеграции"
+
+[notif.splunk_oncall]
+desc = "Инциденты в Splunk On-Call (VictorOps)"
+api_key.label = "Ключ API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: ключ в URL конечной точки."
+routing_key.label = "Ключ маршрутизации"
+routing_key.help = "Определяет, какую команду вызвать."
+severity.label = "Важность при недоступности"
+severity.opt_CRITICAL = "Критическая"
+severity.opt_WARNING = "Предупреждение"
+api_key.required = "Введите ключ API"
+routing_key.required = "Введите ключ маршрутизации"
+
+[notif.keep]
+desc = "Оповещения в платформу AIOps Keep"
+server.label = "URL API Keep"
+server.help = "Ваш собственный бэкенд Keep или облачный API."
+api_key.label = "Ключ API"
+api_key.help = "Settings → API Keys."
+server.required = "Введите URL API Keep"
+api_key.required = "Введите ключ API"

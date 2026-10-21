@@ -1439,6 +1439,8 @@ err_email_address = "أدخل عنوان بريد إلكتروني كاملًا"
 err_threema_gateway = "يبدأ Gateway ID بالرمز * ويتكوّن من 8 أحرف"
 err_threema_recipient = "لا يبدو هذا مستلمًا صالحًا للنوع المختار"
 err_phone_number = "أدخل رقم الهاتف مع رمز الدولة، مثل 4712345678"
+err_signl4 = "استخدم عنوان webhook الذي يبدأ بـ https:// من SIGNL4"
+err_https_webhook = "استخدم عنوان webhook الكامل الذي يبدأ بـ https://، متضمنًا مفتاحه"
 err_webex_room = "أدخل معرّف مساحة أو بريد شخص إلكترونيًا"
 err_webhook_header = "«{name}» ليست ترويسة صالحة"
 err_webhook_placeholder = "عنصر نائب غير معروف {placeholder}"
@@ -2383,3 +2385,50 @@ server.required = "أدخل عنوان Evolution API"
 instance.required = "أدخل النسخة"
 api_key.required = "أدخل مفتاح API"
 number.required = "أدخل مستلمًا"
+
+[notif.signl4]
+desc = "تنبيهات الجوال عبر الإشعارات والرسائل النصية والمكالمات الصوتية"
+url.label = "عنوان Webhook"
+url.help = "عنوان webhook الخاص بفريقك من بوابة SIGNL4، ضمن Integrations."
+url.required = "أدخل عنوان webhook"
+
+[notif.squadcast]
+desc = "حوادث مع جداول المناوبة والتصعيد"
+url.label = "عنوان Webhook"
+url.help = "Service ← Alert Sources ← Incident Webhook (API) ← عنوان URL."
+url.required = "أدخل عنوان webhook"
+
+[notif.grafana_oncall]
+desc = "تنبيهات إلى سلاسل التصعيد في Grafana OnCall"
+url.label = "عنوان Webhook"
+url.help = "Integrations ← New integration ← Webhook ← HTTP endpoint."
+url.required = "أدخل عنوان webhook"
+
+[notif.goalert]
+desc = "جدولة مناوبات وتنبيهات مفتوحة المصدر"
+server.label = "عنوان GoAlert"
+token.label = "مفتاح التكامل"
+token.help = "Service ← Integration Keys ← أضف مفتاح Generic API."
+server.required = "أدخل عنوان GoAlert"
+token.required = "أدخل مفتاح التكامل"
+
+[notif.splunk_oncall]
+desc = "حوادث في Splunk On-Call (VictorOps)"
+api_key.label = "مفتاح API"
+api_key.help = "Integrations ← 3rd Party Integrations ← REST – Generic: المفتاح الموجود في عنوان نقطة النهاية."
+routing_key.label = "مفتاح التوجيه"
+routing_key.help = "يحدد الفريق الذي يُستدعى."
+severity.label = "الخطورة عند التعطل"
+severity.opt_CRITICAL = "حرجة"
+severity.opt_WARNING = "تحذير"
+api_key.required = "أدخل مفتاح API"
+routing_key.required = "أدخل مفتاح التوجيه"
+
+[notif.keep]
+desc = "تنبيهات إلى منصة Keep AIOps"
+server.label = "عنوان Keep API"
+server.help = "خادم Keep الخاص بك، أو واجهة API السحابية."
+api_key.label = "مفتاح API"
+api_key.help = "Settings ← API Keys."
+server.required = "أدخل عنوان Keep API"
+api_key.required = "أدخل مفتاح API"

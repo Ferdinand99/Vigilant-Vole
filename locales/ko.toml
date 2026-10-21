@@ -1311,6 +1311,8 @@ err_email_address = "전체 이메일 주소를 입력하세요"
 err_threema_gateway = "Gateway ID는 *로 시작하며 8자예요"
 err_threema_recipient = "선택한 유형에 맞는 받는 사람이 아니에요"
 err_phone_number = "국가 번호를 포함해 전화번호를 입력하세요. 예: 4712345678"
+err_signl4 = "SIGNL4의 https:// 웹훅 주소를 사용하세요"
+err_https_webhook = "키를 포함한 전체 https:// 웹훅 주소를 사용하세요"
 err_webex_room = "스페이스 ID 또는 사용자 이메일을 입력하세요"
 err_webhook_header = "올바르지 않은 헤더: “{name}”"
 err_webhook_placeholder = "알 수 없는 플레이스홀더: {placeholder}"
@@ -2235,3 +2237,50 @@ server.required = "Evolution API URL을 입력하세요"
 instance.required = "인스턴스를 입력하세요"
 api_key.required = "API 키를 입력하세요"
 number.required = "받는 사람을 입력하세요"
+
+[notif.signl4]
+desc = "푸시, SMS, 음성으로 보내는 모바일 알림"
+url.label = "웹훅 URL"
+url.help = "SIGNL4 포털의 Integrations에 있는 팀 웹훅 주소예요."
+url.required = "웹훅 URL을 입력하세요"
+
+[notif.squadcast]
+desc = "온콜 일정과 에스컬레이션이 있는 인시던트"
+url.label = "웹훅 URL"
+url.help = "Service → Alert Sources → Incident Webhook (API) → URL."
+url.required = "웹훅 URL을 입력하세요"
+
+[notif.grafana_oncall]
+desc = "Grafana OnCall 에스컬레이션 체인으로 보내는 알림"
+url.label = "웹훅 URL"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "웹훅 URL을 입력하세요"
+
+[notif.goalert]
+desc = "오픈 소스 온콜 일정 관리 및 알림"
+server.label = "GoAlert URL"
+token.label = "통합 키"
+token.help = "Service → Integration Keys → Generic API 키를 추가하세요."
+server.required = "GoAlert URL을 입력하세요"
+token.required = "통합 키를 입력하세요"
+
+[notif.splunk_oncall]
+desc = "Splunk On-Call(VictorOps)로 보내는 인시던트"
+api_key.label = "API 키"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic: 엔드포인트 URL에 있는 키."
+routing_key.label = "라우팅 키"
+routing_key.help = "호출할 팀을 정해요."
+severity.label = "다운일 때 심각도"
+severity.opt_CRITICAL = "치명적"
+severity.opt_WARNING = "경고"
+api_key.required = "API 키를 입력하세요"
+routing_key.required = "라우팅 키를 입력하세요"
+
+[notif.keep]
+desc = "Keep AIOps 플랫폼으로 보내는 알림"
+server.label = "Keep API URL"
+server.help = "직접 운영하는 Keep 백엔드 또는 클라우드 API예요."
+api_key.label = "API 키"
+api_key.help = "Settings → API Keys."
+server.required = "Keep API URL을 입력하세요"
+api_key.required = "API 키를 입력하세요"

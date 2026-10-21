@@ -1361,6 +1361,8 @@ err_email_address = "Saisir une adresse e-mail complète"
 err_threema_gateway = "Un Gateway ID commence par * et compte 8 caractères"
 err_threema_recipient = "Ce destinataire ne semble pas valide pour le type choisi"
 err_phone_number = "Saisir le numéro de téléphone avec l’indicatif du pays, par exemple 4712345678"
+err_signl4 = "Utiliser l’adresse de webhook https:// fournie par SIGNL4"
+err_https_webhook = "Utiliser l’adresse de webhook https:// complète, clé comprise"
 err_webex_room = "Saisir un ID d’espace ou l’e-mail d’une personne"
 err_webhook_header = "« {name} » n’est pas un en-tête valide"
 err_webhook_placeholder = "Variable inconnue {placeholder}"
@@ -2293,3 +2295,50 @@ server.required = "Saisir l’URL d’Evolution API"
 instance.required = "Saisir l’instance"
 api_key.required = "Saisir la clé d’API"
 number.required = "Saisir un destinataire"
+
+[notif.signl4]
+desc = "Alertes mobiles par notification push, SMS et appel vocal"
+url.label = "URL du webhook"
+url.help = "L’adresse de webhook de l’équipe, dans le portail SIGNL4, sous Integrations."
+url.required = "Saisir l’URL du webhook"
+
+[notif.squadcast]
+desc = "Incidents avec plannings d’astreinte et escalades"
+url.label = "URL du webhook"
+url.help = "Service → Alert Sources → Incident Webhook (API) → l’URL."
+url.required = "Saisir l’URL du webhook"
+
+[notif.grafana_oncall]
+desc = "Alertes vers les chaînes d’escalade de Grafana OnCall"
+url.label = "URL du webhook"
+url.help = "Integrations → New integration → Webhook → HTTP endpoint."
+url.required = "Saisir l’URL du webhook"
+
+[notif.goalert]
+desc = "Astreintes et alertes open source"
+server.label = "URL de GoAlert"
+token.label = "Clé d’intégration"
+token.help = "Service → Integration Keys → ajouter une clé Generic API."
+server.required = "Saisir l’URL de GoAlert"
+token.required = "Saisir la clé d’intégration"
+
+[notif.splunk_oncall]
+desc = "Incidents dans Splunk On-Call (VictorOps)"
+api_key.label = "Clé d’API"
+api_key.help = "Integrations → 3rd Party Integrations → REST – Generic : la clé dans l’URL du point de terminaison."
+routing_key.label = "Clé de routage"
+routing_key.help = "Détermine quelle équipe est alertée."
+severity.label = "Gravité si hors ligne"
+severity.opt_CRITICAL = "Critique"
+severity.opt_WARNING = "Avertissement"
+api_key.required = "Saisir la clé d’API"
+routing_key.required = "Saisir la clé de routage"
+
+[notif.keep]
+desc = "Alertes vers la plateforme AIOps Keep"
+server.label = "URL de l’API Keep"
+server.help = "Son propre back-end Keep, ou l’API cloud."
+api_key.label = "Clé d’API"
+api_key.help = "Settings → API Keys."
+server.required = "Saisir l’URL de l’API Keep"
+api_key.required = "Saisir la clé d’API"

@@ -1394,6 +1394,43 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             put(&mut out, "number", s(c, &["evolutionRecipient"]));
             "evolution"
         }
+        "signl4" => {
+            put(&mut out, "url", s(c, &["webhookURL"]));
+            "signl4"
+        }
+        "squadcast" => {
+            put(&mut out, "url", s(c, &["squadcastWebhookURL"]));
+            "squadcast"
+        }
+        "grafanaoncall" => {
+            put(&mut out, "url", s(c, &["GrafanaOncallURL"]));
+            "grafana_oncall"
+        }
+        "goalert" => {
+            put(&mut out, "server", s(c, &["goAlertBaseURL"]));
+            put(&mut out, "token", raw(c, &["goAlertToken"]));
+            "goalert"
+        }
+        "splunk" => {
+            // Kuma keeps the whole REST endpoint: …/alert/<api key>/<routing key>.
+            let endpoint = s(c, &["splunkRestURL"]).unwrap_or_default();
+            let tail = endpoint.split_once("/alert/").map(|(_, t)| t.trim_matches('/')).unwrap_or_default();
+            match tail.split_once('/') {
+                Some((api_key, routing)) if !api_key.is_empty() && !routing.is_empty() && !routing.contains('/') => {
+                    put(&mut out, "api_key", Some(api_key.to_string()));
+                    put(&mut out, "routing_key", Some(routing.to_string()));
+                }
+                _ => return Err("Its REST endpoint isn’t the usual …/alert/<api key>/<routing key> address.".into()),
+            }
+            let severity = if s(c, &["splunkSeverity"]).as_deref() == Some("CRITICAL") { "CRITICAL" } else { "WARNING" };
+            out.insert("severity".into(), json!(severity));
+            "splunk_oncall"
+        }
+        "keep" => {
+            put(&mut out, "server", s(c, &["webhookURL"]));
+            put(&mut out, "api_key", raw(c, &["webhookAPIKey"]));
+            "keep"
+        }
         "" => return Err("It has no provider type.".into()),
         other => return Err(format!("The “{other}” provider isn’t supported; Apprise or a webhook can usually reach it.")),
     };
