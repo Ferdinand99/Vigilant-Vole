@@ -556,17 +556,16 @@ Done:
 - [x] Uptime Kuma importer, Prometheus metrics
 - [x] Docker label discovery
 - [x] Static Linux binaries (x86_64, aarch64), systemd installer and a Proxmox LXC script
+- [x] Multi-arch images (amd64, arm64) on GHCR, automated releases
+- [x] MCP server for AI assistants, "Copy for AI" API reference
 - [x] 26 UI languages (24 beta), including right-to-left (ar, he, fa) and CJK (ja, ko, zh-CN, zh-TW)
 
 Ideas, not promises:
 
 - [ ] More monitor types: more game servers (TeamSpeak 3, Quake 3, Terraria/TShock, DayZ)
-- [ ] Status page subscribers (email/webhook)
-- [ ] Incident update timelines
 - [ ] MariaDB/PostgreSQL as an alternative storage backend
 - [ ] More interface languages (contributions welcome — see `locales/`)
 - [ ] NTLM HTTP authentication
-- [ ] Published multi-arch images
 
 ## 📄 License
 
