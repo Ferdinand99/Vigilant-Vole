@@ -71,6 +71,17 @@ impl FromRef<AppState> for Key {
     }
 }
 
+impl FromRef<AppState> for crate::kit::state::Core {
+    fn from_ref(state: &AppState) -> Self {
+        Self {
+            db: state.db.clone(),
+            session_key: state.session_key.clone(),
+            http: state.http.clone(),
+            cfg: &crate::product::KIT,
+        }
+    }
+}
+
 impl AppState {
     /// Run a closure on a pooled connection, mapping every failure to `ApiError`.
     ///

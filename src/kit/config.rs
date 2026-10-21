@@ -1,0 +1,60 @@
+//! What the kit needs to know about the product it runs inside.
+//!
+//! The product describes itself once, with a [`KitConfig`] value, and hands
+//! it over with [`register_config!`]. The kit reads it through [`get`] (or
+//! `Core::cfg`). Registration is a link-time symbol rather than a runtime
+//! `install()` call, so the configuration is present in every binary that
+//! contains the kit (the server, unit tests, integration tests) without
+//! anyone having to remember to initialise it first.
+
+/// Everything product specific that the kit uses.
+#[derive(Debug)]
+pub struct KitConfig {
+    /// Display name used in texts and API documents ("Vigilant Vole").
+    pub product: &'static str,
+    /// Lower-case name for file names and the like ("vigilant-vole").
+    pub slug: &'static str,
+    /// Name of the signed session cookie.
+    pub session_cookie: &'static str,
+    /// Name of the short-lived cookie between password and second factor.
+    pub pending_2fa_cookie: &'static str,
+    /// Prefix of API tokens ("vv_"); the kit generates and recognises these.
+    pub token_prefix: &'static str,
+    /// Further token prefixes the API documents mention besides
+    /// [`Self::token_prefix`] (agent tokens).
+    pub other_token_prefixes: &'static [&'static str],
+    /// `User-Agent` of outgoing requests.
+    pub user_agent: &'static str,
+    /// Prefix of the database copy taken before a migration
+    /// ("vigilant-vole-before-").
+    pub backup_prefix: &'static str,
+}
+
+unsafe extern "Rust" {
+    /// Defined by the product through [`register_config!`].
+    fn vole_kit_product_config() -> &'static KitConfig;
+}
+
+/// The product's configuration.
+pub fn get() -> &'static KitConfig {
+    // SAFETY: the symbol is defined by `register_config!` as a safe
+    // function with exactly this signature; the build fails to link if the
+    // product doesn't provide it.
+    unsafe { vole_kit_product_config() }
+}
+
+/// Registers the product's [`KitConfig`]. Use once, in the product:
+///
+/// ```ignore
+/// static KIT: KitConfig = KitConfig { /* … */ };
+/// vole_kit::register_config!(KIT);
+/// ```
+#[macro_export]
+macro_rules! register_config {
+    ($config:expr) => {
+        #[unsafe(no_mangle)]
+        pub fn vole_kit_product_config() -> &'static $crate::kit::config::KitConfig {
+            &$config
+        }
+    };
+}
