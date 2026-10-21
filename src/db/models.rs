@@ -2,10 +2,8 @@
 //! builds on these, so changes here are contract changes.
 
 use std::fmt;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
 
 // ---------------------------------------------------------------------------
 // Monitor types
@@ -708,171 +706,11 @@ impl CheckOutcome {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Users & roles
-// ---------------------------------------------------------------------------
+// Users & roles live in the kit.
+pub use crate::kit::db::role::Role;
 
-/// User role. Ordered: `Viewer < Editor < Admin`, so `role >= Role::Editor`
-/// means "may edit".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Role {
-    Viewer,
-    Editor,
-    Admin,
-}
-
-impl Role {
-    pub fn all() -> &'static [Role] {
-        &[Role::Viewer, Role::Editor, Role::Admin]
-    }
-
-    /// The value stored in `users.role`.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Role::Viewer => "viewer",
-            Role::Editor => "editor",
-            Role::Admin => "admin",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "viewer" => Some(Role::Viewer),
-            "editor" => Some(Role::Editor),
-            "admin" => Some(Role::Admin),
-            _ => None,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Role::Viewer => crate::i18n::t("role.viewer"),
-            Role::Editor => crate::i18n::t("role.editor"),
-            Role::Admin => crate::i18n::t("role.admin"),
-        }
-    }
-
-    pub fn is_admin(&self) -> bool {
-        *self == Role::Admin
-    }
-
-    /// Editors and admins may change monitors, status pages, maintenance,
-    /// notifications and tags.
-    pub fn can_edit(&self) -> bool {
-        *self >= Role::Editor
-    }
-}
-
-impl fmt::Display for Role {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Notifications
-// ---------------------------------------------------------------------------
-
-/// A row of `notification_channels`. `kind` is free text in the schema; the
-/// notification module validates it against its provider list.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NotificationChannel {
-    pub id: i64,
-    pub name: String,
-    pub kind: String,
-    /// JSON object text with provider-specific settings.
-    pub config: String,
-    pub active: bool,
-    /// Auto-attach to newly created monitors.
-    pub is_default: bool,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EventKind {
-    Down,
-    Up,
-    Reminder,
-    Escalation,
-    CertExpiring,
-    DomainExpiring,
-    MaintenanceStart,
-    MaintenanceEnd,
-    Flapping,
-    Test,
-}
-
-impl EventKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            EventKind::Down => "down",
-            EventKind::Up => "up",
-            EventKind::Reminder => "reminder",
-            EventKind::Escalation => "escalation",
-            EventKind::CertExpiring => "cert_expiring",
-            EventKind::DomainExpiring => "domain_expiring",
-            EventKind::MaintenanceStart => "maintenance_start",
-            EventKind::MaintenanceEnd => "maintenance_end",
-            EventKind::Flapping => "flapping",
-            EventKind::Test => "test",
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            EventKind::Down => crate::i18n::t("event_kind.down"),
-            EventKind::Up => crate::i18n::t("event_kind.up"),
-            EventKind::Reminder => crate::i18n::t("event_kind.reminder"),
-            EventKind::Escalation => crate::i18n::t("event_kind.escalation"),
-            EventKind::CertExpiring => crate::i18n::t("event_kind.cert_expiring"),
-            EventKind::DomainExpiring => crate::i18n::t("event_kind.domain_expiring"),
-            EventKind::MaintenanceStart => crate::i18n::t("event_kind.maintenance_start"),
-            EventKind::MaintenanceEnd => crate::i18n::t("event_kind.maintenance_end"),
-            EventKind::Flapping => crate::i18n::t("event_kind.flapping"),
-            EventKind::Test => crate::i18n::t("event_kind.test"),
-        }
-    }
-
-    /// Whether this event signals a problem (used for colour/severity).
-    pub fn is_problem(self) -> bool {
-        matches!(
-            self,
-            EventKind::Down
-                | EventKind::Reminder
-                | EventKind::Escalation
-                | EventKind::CertExpiring
-                | EventKind::DomainExpiring
-                | EventKind::Flapping
-        )
-    }
-}
-
-impl fmt::Display for EventKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Everything a notification provider needs to render one alert.
-#[derive(Debug, Clone, PartialEq)]
-pub struct NotificationEvent {
-    pub kind: EventKind,
-    pub monitor_id: Option<i64>,
-    pub monitor_name: String,
-    /// `MonitorType::as_str()` of the monitor (empty for non-monitor events).
-    pub monitor_type: String,
-    pub target: String,
-    pub message: Option<String>,
-    /// On `Up`: how long the monitor was down.
-    pub downtime: Option<Duration>,
-    /// On `CertExpiring` / `DomainExpiring`.
-    pub expires_in_days: Option<i64>,
-    /// Deep link (`base_url + /monitors/{id}`), when a base URL is configured.
-    pub url: Option<String>,
-    pub occurred_at: OffsetDateTime,
-}
+// Notification channels and events live in the kit.
+pub use crate::kit::notify::alert::{EventKind, NotificationChannel, NotificationEvent};
 
 #[cfg(test)]
 mod tests {

@@ -4,6 +4,8 @@
 
 mod markdown;
 
+use crate::kit::docs::{DocsSpec, RouteDoc, groups, instance_url, openapi_document, r};
+
 use crate::i18n::Tr as _;
 use askama::Template;
 use axum::Router;
@@ -12,7 +14,6 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum_extra::extract::cookie::SignedCookieJar;
-use serde_json::{Map, Value, json};
 
 use super::{cached_ok, json_ok};
 use crate::api::{ApiResult, AppState, HtmlTemplate, PageCtx};
@@ -24,106 +25,6 @@ pub fn router() -> Router<AppState> {
         .route("/api-docs.md", get(markdown_doc))
         .route("/llms.txt", get(llms_txt))
         .route("/api/v1/openapi.json", get(openapi))
-}
-
-/// One documented endpoint.
-#[derive(Debug, Clone, Copy)]
-pub struct RouteDoc {
-    pub method: &'static str,
-    pub path: &'static str,
-    /// Minimum access: `viewer`, `editor`, `admin`, or a machine credential
-    /// (`public`, `push token`, `agent token`, `metrics token`).
-    pub access: &'static str,
-    pub group: &'static str,
-    pub summary: &'static str,
-    /// Query parameters, `name: description` per entry.
-    pub query: &'static [&'static str],
-    pub request: &'static str,
-    pub response: &'static str,
-}
-
-const fn r(
-    method: &'static str,
-    path: &'static str,
-    access: &'static str,
-    group: &'static str,
-    summary: &'static str,
-) -> RouteDoc {
-    RouteDoc {
-        method,
-        path,
-        access,
-        group,
-        summary,
-        query: &[],
-        request: "",
-        response: "",
-    }
-}
-
-impl RouteDoc {
-    const fn q(mut self, query: &'static [&'static str]) -> Self {
-        self.query = query;
-        self
-    }
-    const fn req(mut self, request: &'static str) -> Self {
-        self.request = request;
-        self
-    }
-    const fn res(mut self, response: &'static str) -> Self {
-        self.response = response;
-        self
-    }
-
-    /// Lowercase method, for CSS-free badges and OpenAPI keys.
-    pub fn method_lower(&self) -> String {
-        self.method.to_ascii_lowercase()
-    }
-
-    /// Anchor id on the docs page.
-    pub fn anchor(&self) -> String {
-        let mut s = format!("{}-{}", self.method_lower(), self.path);
-        s.retain(|c| c.is_ascii_alphanumeric() || c == '-' || c == '/');
-        s.replace('/', "-").trim_matches('-').to_string()
-    }
-
-    pub fn is_public(&self) -> bool {
-        !matches!(self.access, "viewer" | "editor" | "admin")
-    }
-
-    /// `/api/v1/config` takes and returns YAML (JSON works too).
-    pub fn is_yaml(&self) -> bool {
-        self.path == "/api/v1/config"
-    }
-
-    /// The status code of a successful call.
-    /// POST creates (201) only on a collection, i.e. a path that also lists;
-    /// actions like `/pause`, `/test` or `/bulk` answer 200.
-    pub fn success_status(&self) -> u16 {
-        match self.method {
-            "DELETE" => 204,
-            "POST"
-                if self.path.starts_with("/api/v1/")
-                    && !self.is_yaml()
-                    && ROUTES
-                        .iter()
-                        .any(|r| r.method == "GET" && r.path == self.path) =>
-            {
-                201
-            }
-            _ => 200,
-        }
-    }
-
-    /// Status class for the access badge.
-    pub fn access_class(&self) -> &'static str {
-        match self.access {
-            "admin" => "status-down",
-            "editor" => "status-pending",
-            "viewer" => "status-up",
-            _ => "status-info",
-        }
-    }
 }
 
 const LIMIT_Q: &str = "limit: page size (1–500, default 50)";
@@ -347,17 +248,6 @@ pub static ROUTES: &[RouteDoc] = &[
     r("GET", "/healthz", "public", "Push and machine endpoints", "Liveness probe: always \"ok\"."),
 ];
 
-/// Groups in display order.
-fn groups() -> Vec<&'static str> {
-    let mut out: Vec<&'static str> = Vec::new();
-    for r in ROUTES {
-        if !out.contains(&r.group) {
-            out.push(r.group);
-        }
-    }
-    out
-}
-
 /// A group of routes, for the template.
 pub struct GroupView {
     pub name: &'static str,
@@ -373,17 +263,6 @@ struct DocsTemplate {
     groups: Vec<GroupView>,
     base_url: String,
     error_example: &'static str,
-}
-
-/// This instance's address: the configured base URL, else the request's host.
-fn instance_url(base_url: Option<String>, headers: &HeaderMap) -> String {
-    base_url.unwrap_or_else(|| {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("localhost:3001");
-        format!("http://{host}")
-    })
 }
 
 async fn page(
@@ -424,132 +303,6 @@ async fn page(
         .into_response())
 }
 
-/// `{id}` style path parameters.
-fn path_params(path: &str) -> Vec<&str> {
-    path.split('/')
-        .filter_map(|seg| seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')))
-        .collect()
-}
-
-/// JSON Schema type of a path parameter.
-fn path_param_type(name: &str) -> &'static str {
-    if matches!(name, "kind" | "token" | "slug") {
-        "string"
-    } else {
-        "integer"
-    }
-}
-
-fn example(text: &str) -> Value {
-    serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
-}
-
-/// The OpenAPI 3.1 document, assembled from [`ROUTES`].
-pub fn openapi_document(server_url: &str) -> Value {
-    let mut paths = Map::new();
-    for r in ROUTES {
-        let mut op = Map::new();
-        op.insert("summary".into(), json!(r.summary));
-        op.insert("tags".into(), json!([r.group]));
-        op.insert("operationId".into(), json!(r.anchor()));
-        let mut params: Vec<Value> = path_params(r.path)
-            .into_iter()
-            .map(|p| json!({"name": p, "in": "path", "required": true, "schema": {"type": path_param_type(p)}}))
-            .collect();
-        for q in r.query {
-            let (name, desc) = q.split_once(':').unwrap_or((q, ""));
-            params.push(json!({"name": name.trim(), "in": "query", "required": false, "description": desc.trim(), "schema": {"type": "string"}}));
-        }
-        if !params.is_empty() {
-            op.insert("parameters".into(), Value::Array(params));
-        }
-        if !r.request.is_empty() {
-            let content = if r.is_yaml() {
-                json!({
-                    "application/yaml": {"schema": {"type": "string"}, "example": r.request},
-                    "application/json": {"schema": {"type": "object"}},
-                })
-            } else {
-                json!({"application/json": {"schema": {}, "example": example(r.request)}})
-            };
-            op.insert(
-                "requestBody".into(),
-                json!({"required": true, "content": content}),
-            );
-        }
-        let ok_code = r.success_status().to_string();
-        let mut ok = json!({"description": "Success"});
-        if !r.response.is_empty() {
-            let ct = if r.is_yaml() && r.method == "GET" {
-                "application/yaml"
-            } else {
-                "application/json"
-            };
-            ok["content"] = json!({ ct: {"example": example(r.response)} });
-        }
-        let mut responses = Map::new();
-        responses.insert(ok_code, ok);
-        if !r.is_public() {
-            responses.insert(
-                "401".into(),
-                json!({"$ref": "#/components/responses/Error"}),
-            );
-            responses.insert(
-                "403".into(),
-                json!({"$ref": "#/components/responses/Error"}),
-            );
-        }
-        if r.path.contains('{') {
-            responses.insert(
-                "404".into(),
-                json!({"$ref": "#/components/responses/Error"}),
-            );
-        }
-        if matches!(r.method, "POST" | "PUT" | "PATCH") {
-            responses.insert(
-                "422".into(),
-                json!({"$ref": "#/components/responses/Error"}),
-            );
-        }
-        op.insert("responses".into(), Value::Object(responses));
-        let security = match r.access {
-            "public" | "push token" => json!([]),
-            "agent token" => json!([{"agentToken": []}]),
-            _ => json!([{"bearerAuth": []}, {"sessionCookie": []}]),
-        };
-        op.insert("security".into(), security);
-        op.insert("x-access".into(), json!(r.access));
-        let entry = paths.entry(r.path.to_string()).or_insert_with(|| json!({}));
-        if let Some(obj) = entry.as_object_mut() {
-            obj.insert(r.method_lower(), Value::Object(op));
-        }
-    }
-    json!({
-        "openapi": "3.1.0",
-        "info": {
-            "title": "Vigilant Vole API",
-            "version": env!("CARGO_PKG_VERSION"),
-            "description": "REST API for Vigilant Vole. Authenticate with `Authorization: Bearer vv_…` (create tokens under Settings → API tokens). Read-only tokens act as viewers. Errors use `{\"error\": {\"code\", \"message\", \"fields\"}}`; lists use `?limit=&cursor=` and return `next_cursor`.",
-        },
-        "servers": [{"url": server_url}],
-        "tags": groups().iter().map(|g| json!({"name": g})).collect::<Vec<_>>(),
-        "paths": paths,
-        "components": {
-            "securitySchemes": {
-                "bearerAuth": {"type": "http", "scheme": "bearer", "description": "API token (vv_…)"},
-                "agentToken": {"type": "http", "scheme": "bearer", "description": "Remote agent token (vva_…)"},
-                "sessionCookie": {"type": "apiKey", "in": "cookie", "name": crate::auth::SESSION_COOKIE},
-            },
-            "responses": {
-                "Error": {
-                    "description": "Error",
-                    "content": {"application/json": {"example": example(ERROR_EXAMPLE)}},
-                },
-            },
-        },
-    })
-}
-
 async fn openapi(
     State(state): State<AppState>,
     _user: CurrentUser,
@@ -565,7 +318,7 @@ async fn openapi(
 
 /// The reference as Markdown (also served as an MCP resource).
 pub fn reference_markdown(base_url: &str) -> String {
-    markdown::document(base_url)
+    crate::kit::docs::markdown::document(base_url)
 }
 
 /// The reference as Markdown, for AI assistants.
@@ -577,7 +330,7 @@ async fn markdown_doc(
     let base_url = instance_url(state.settings().await?.base_url, &headers);
     Ok(cached_ok(
         &headers,
-        markdown::document(&base_url).into_bytes(),
+        crate::kit::docs::markdown::document(&base_url).into_bytes(),
         "text/markdown; charset=utf-8",
     ))
 }
@@ -591,7 +344,42 @@ async fn llms_txt(
     let base_url = instance_url(state.settings().await?.base_url, &headers);
     Ok(cached_ok(
         &headers,
-        markdown::document(&base_url).into_bytes(),
+        crate::kit::docs::markdown::document(&base_url).into_bytes(),
         "text/plain; charset=utf-8",
     ))
 }
+
+fn curl_path_param(route: &RouteDoc, segment: &str) -> Option<String> {
+    Some(
+        match segment {
+            "{id}"
+                if route.path.starts_with("/api/v1/monitors")
+                    || route.path.starts_with("/api/badge") =>
+            {
+                "7"
+            }
+            "{id}" | "{iid}" => "1",
+            "{token}" => "$VV_PUSH_TOKEN",
+            "{slug}" => "acme",
+            "{kind}" => "status",
+            _ => return None,
+        }
+        .to_string(),
+    )
+}
+
+/// What Vigilant Vole contributes to the kit's API reference.
+pub static DOCS: DocsSpec = DocsSpec {
+    routes: ROUTES,
+    openapi_title: "Vigilant Vole API",
+    openapi_description: "REST API for Vigilant Vole. Authenticate with `Authorization: Bearer vv_…` (create tokens under Settings → API tokens). Read-only tokens act as viewers. Errors use `{\"error\": {\"code\", \"message\", \"fields\"}}`; lists use `?limit=&cursor=` and return `next_cursor`.",
+    bearer_description: "API token (vv_…)",
+    agent_token_description: "Remote agent token (vva_…)",
+    error_example: ERROR_EXAMPLE,
+    config_file: "vigilant.yml",
+    agent_token_access: "remote agent token (`Authorization: Bearer vva_…`)",
+    curl_path_param,
+    markdown_intro: markdown::intro,
+    markdown_middle: markdown::middle,
+    markdown_outro: markdown::outro,
+};

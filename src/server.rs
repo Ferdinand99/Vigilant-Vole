@@ -9,7 +9,7 @@ use crate::monitor::{self, Scheduler};
 use crate::{auth, db, discovery, maintenance};
 
 /// User agent for outbound requests (notifications, RDAP, ...).
-pub const USER_AGENT: &str = concat!("VigilantVole/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = crate::product::USER_AGENT;
 
 /// Build the shared outbound HTTP client.
 pub fn build_http_client() -> reqwest::Client {
@@ -65,7 +65,7 @@ pub async fn run(config: Config) {
     state.scheduler.start_all().await;
 
     // Notifications sent by background jobs use the site language.
-    crate::i18n::site_language(&state).await;
+    crate::i18n::site_language(&state.core()).await;
 
     // Background jobs; each owner implements its own `spawn`.
     monitor::retention::spawn(state.clone());

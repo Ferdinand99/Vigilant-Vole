@@ -10,12 +10,17 @@ pub mod config_io;
 pub mod db;
 pub mod discovery;
 pub mod i18n;
+pub mod kit;
 pub mod kuma_import;
 pub mod maintenance;
 pub mod mcp;
 pub mod mcp_bridge;
 pub mod monitor;
 pub mod notification;
+pub mod product;
 pub mod server;
 pub mod subscribers;
-pub mod tls_roots;
+pub mod tls_roots {
+    //! Moved to [`crate::kit::tls_roots`].
+    pub use crate::kit::tls_roots::*;
+}
