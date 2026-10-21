@@ -111,3 +111,10 @@ fn the_server_starts_and_warns_without_ca_certificates() {
         "no warning: {seen}"
     );
 }
+
+/// Test binaries have no `main`: install the kit's configuration before any
+/// test runs, so no test can forget it.
+#[ctor::ctor(unsafe)]
+fn install_kit_config() {
+    vigilant_vole::product::install();
+}

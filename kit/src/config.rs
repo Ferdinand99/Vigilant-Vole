@@ -1,11 +1,12 @@
 //! What the kit needs to know about the product it runs inside.
 //!
-//! The product describes itself once, with a [`KitConfig`] value, and hands
-//! it over with [`register_config!`]. The kit reads it through [`get`] (or
-//! `Core::cfg`). Registration is a link-time symbol rather than a runtime
-//! `install()` call, so the configuration is present in every binary that
-//! contains the kit (the server, unit tests, integration tests) without
-//! anyone having to remember to initialise it first.
+//! The product describes itself once, with a static [`KitConfig`], and
+//! hands it over with [`install`] when it starts, before any kit code runs.
+//! The kit reads it through [`get`] (or `Core::cfg`). Using the kit before a
+//! configuration is installed is a bug and panics with a message that says
+//! so; the kit's own tests fall back to their test configuration.
+
+use std::sync::OnceLock;
 
 /// Everything product specific that the kit uses.
 pub struct KitConfig {
@@ -64,31 +65,64 @@ pub struct KitConfig {
     pub locales: &'static [(&'static str, &'static str)],
 }
 
-unsafe extern "Rust" {
-    /// Defined by the product through [`register_config!`].
-    fn vole_kit_product_config() -> &'static KitConfig;
+static CONFIG: OnceLock<&'static KitConfig> = OnceLock::new();
+
+/// Installs the product's configuration. Call it once at start-up (and in
+/// test set-up). Installing the same configuration again does nothing;
+/// installing a different one panics, because the kit would otherwise behave
+/// as two products at once.
+pub fn install(config: &'static KitConfig) {
+    let current = *CONFIG.get_or_init(|| config);
+    assert!(
+        std::ptr::eq(current, config),
+        "a different KitConfig is already installed"
+    );
 }
 
 /// The product's configuration.
 pub fn get() -> &'static KitConfig {
-    // SAFETY: the symbol is defined by `register_config!` as a safe
-    // function with exactly this signature; the build fails to link if the
-    // product doesn't provide it.
-    unsafe { vole_kit_product_config() }
+    match CONFIG.get() {
+        Some(config) => config,
+        None => missing(),
+    }
 }
 
-/// Registers the product's [`KitConfig`]. Use once, in the product:
-///
-/// ```ignore
-/// static KIT: KitConfig = KitConfig { /* … */ };
-/// vole_kit::register_config!(KIT);
-/// ```
-#[macro_export]
-macro_rules! register_config {
-    ($config:expr) => {
-        #[unsafe(no_mangle)]
-        pub fn vole_kit_product_config() -> &'static $crate::config::KitConfig {
-            &$config
-        }
-    };
+#[cfg(not(test))]
+#[cold]
+fn missing() -> &'static KitConfig {
+    panic!(
+        "no KitConfig installed: call vole_kit::config::install(&YOUR_CONFIG) at start-up, \
+         before any kit code runs (tests: in their shared set-up)"
+    )
+}
+
+/// The kit's own tests run with the test configuration unless a test
+/// installed another one.
+#[cfg(test)]
+fn missing() -> &'static KitConfig {
+    install(&crate::testing::CONFIG);
+    get()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installing_the_same_config_again_is_harmless() {
+        install(&crate::testing::CONFIG);
+        install(&crate::testing::CONFIG);
+        assert!(std::ptr::eq(get(), &crate::testing::CONFIG));
+    }
+
+    #[test]
+    fn installing_a_different_config_panics_and_keeps_the_first() {
+        static OTHER: KitConfig = KitConfig {
+            product: "Other",
+            ..crate::testing::CONFIG
+        };
+        install(&crate::testing::CONFIG);
+        assert!(std::panic::catch_unwind(|| install(&OTHER)).is_err());
+        assert_eq!(get().product, crate::testing::CONFIG.product);
+    }
 }

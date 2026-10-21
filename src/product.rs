@@ -90,4 +90,8 @@ pub static KIT: KitConfig = KitConfig {
     ],
 };
 
-vole_kit::register_config!(KIT);
+/// Installs [`KIT`] as the kit's configuration. Runs at start-up (`main`,
+/// [`crate::server::prepare`]) and before every test binary's tests.
+pub fn install() {
+    crate::kit::config::install(&KIT);
+}

@@ -101,6 +101,8 @@ webpki-root-certs = { workspace = true }
 x509-parser = "0.18.1"
 
 [dev-dependencies]
+# Installs the kit's configuration before tests run (tests have no `main`).
+ctor = "1.0.13"
 # Golden tests (tests/golden): snapshot files under tests/golden/snapshots.
 # Review changes with `cargo insta review`, see docs/golden-tests.md.
 insta = "1.43"

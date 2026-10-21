@@ -62,3 +62,10 @@ async fn subscriber_webhooks_ignore_proxy_variables() {
     assert!(!proxy_got.is_finished(), "the proxy was used");
     proxy_got.abort();
 }
+
+/// Test binaries have no `main`: install the kit's configuration before any
+/// test runs, so no test can forget it.
+#[ctor::ctor(unsafe)]
+fn install_kit_config() {
+    vigilant_vole::product::install();
+}

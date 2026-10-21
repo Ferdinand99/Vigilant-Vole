@@ -109,5 +109,3 @@ pub static CONFIG: KitConfig = KitConfig {
         "nl", "pl", "pt-BR", "pt-PT", "ro", "ru", "sv", "tr", "uk", "zh-CN", "zh-TW"
     ),
 };
-
-crate::register_config!(CONFIG);

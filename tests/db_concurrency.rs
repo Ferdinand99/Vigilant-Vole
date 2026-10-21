@@ -153,3 +153,10 @@ async fn heartbeats_are_recorded_while_the_web_pool_is_exhausted() {
     drop(state);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Test binaries have no `main`: install the kit's configuration before any
+/// test runs, so no test can forget it.
+#[ctor::ctor(unsafe)]
+fn install_kit_config() {
+    vigilant_vole::product::install();
+}

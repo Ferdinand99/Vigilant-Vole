@@ -8,6 +8,8 @@
 //! names, token prefixes, translations, …) comes in through
 //! [`config::KitConfig`]; see `docs/vole-kit.md`.
 
+#![forbid(unsafe_code)]
+
 pub mod auth;
 pub mod config;
 pub mod db;
