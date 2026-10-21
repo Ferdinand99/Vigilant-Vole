@@ -65,7 +65,12 @@ impl RateLimiter {
         self.record_locked(&mut entries, key, now)
     }
 
-    fn record_locked(&self, entries: &mut HashMap<String, Entry>, key: &str, now: Instant) -> Duration {
+    fn record_locked(
+        &self,
+        entries: &mut HashMap<String, Entry>,
+        key: &str,
+        now: Instant,
+    ) -> Duration {
         if entries.len() >= MAX_KEYS && !entries.contains_key(key) {
             self.prune(entries, now);
         }
@@ -127,8 +132,10 @@ impl RateLimiter {
         let forget = self.policy.forget_after;
         entries.retain(|_, e| now.saturating_duration_since(e.last_failure) <= forget);
         if entries.len() >= MAX_KEYS {
-            let mut by_age: Vec<(String, Instant)> =
-                entries.iter().map(|(k, e)| (k.clone(), e.last_failure)).collect();
+            let mut by_age: Vec<(String, Instant)> = entries
+                .iter()
+                .map(|(k, e)| (k.clone(), e.last_failure))
+                .collect();
             by_age.sort_by_key(|(_, t)| *t);
             for (k, _) in by_age.into_iter().take(MAX_KEYS / 10) {
                 entries.remove(&k);
@@ -214,7 +221,10 @@ mod tests {
         for _ in 0..4 {
             l.record_failure("k", t);
         }
-        assert_eq!(l.retry_after("k", t + Duration::from_secs(1)), Some(Duration::from_secs(1)));
+        assert_eq!(
+            l.retry_after("k", t + Duration::from_secs(1)),
+            Some(Duration::from_secs(1))
+        );
         assert_eq!(l.retry_after("k", t + Duration::from_secs(2)), None);
     }
 
@@ -247,7 +257,10 @@ mod tests {
         for _ in 0..5 {
             l.record_failure("k", t);
         }
-        assert_eq!(l.record_failure("k", t + Duration::from_secs(601)), Duration::ZERO);
+        assert_eq!(
+            l.record_failure("k", t + Duration::from_secs(601)),
+            Duration::ZERO
+        );
     }
 
     #[test]
@@ -274,7 +287,10 @@ mod tests {
         l.release("k");
         l.release("k");
         l.release("k");
-        assert!(l.lock().get("k").is_none(), "fully released keys are dropped");
+        assert!(
+            l.lock().get("k").is_none(),
+            "fully released keys are dropped"
+        );
         l.release("missing");
     }
 

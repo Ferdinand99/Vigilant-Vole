@@ -40,7 +40,9 @@ use crate::db::maintenance as db_maint;
 use crate::db::models::{Monitor, MonitorType, NewMonitor};
 use crate::db::status_pages::{self as db_pages, NewStatusPage};
 use crate::db::tags::{self as db_tags, MonitorTag};
-use crate::db::{monitors as db_monitors, notifications as db_notifications, settings as db_settings};
+use crate::db::{
+    monitors as db_monitors, notifications as db_notifications, settings as db_settings,
+};
 use crate::notification::{self, SECRET_MASK, schema};
 
 mod browsers;
@@ -195,7 +197,13 @@ impl ChannelRef {
         }
     }
     pub fn escalation(&self) -> bool {
-        matches!(self, ChannelRef::Full { escalation: true, .. })
+        matches!(
+            self,
+            ChannelRef::Full {
+                escalation: true,
+                ..
+            }
+        )
     }
 }
 
@@ -230,7 +238,11 @@ pub struct MonitorDoc {
 
 impl MonitorDoc {
     pub fn key(&self) -> &str {
-        self.key.as_deref().map(str::trim).filter(|k| !k.is_empty()).unwrap_or(self.name.trim())
+        self.key
+            .as_deref()
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+            .unwrap_or(self.name.trim())
     }
 }
 
@@ -435,7 +447,11 @@ fn unique_keys(items: impl Iterator<Item = (i64, String)>) -> HashMap<i64, Strin
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = HashMap::new();
     for (id, key) in items {
-        let k = if seen.insert(key.to_lowercase()) { key } else { format!("{key} #{id}") };
+        let k = if seen.insert(key.to_lowercase()) {
+            key
+        } else {
+            format!("{key} #{id}")
+        };
         out.insert(id, k);
     }
     out
@@ -466,10 +482,20 @@ fn norm(key: &str) -> String {
 /// Header names whose values are treated as secrets.
 pub fn is_sensitive_header(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
-    matches!(n.as_str(), "authorization" | "proxy-authorization" | "cookie")
-        || ["token", "secret", "key", "password", "auth", "session", "signature"]
-            .iter()
-            .any(|w| n.contains(w))
+    matches!(
+        n.as_str(),
+        "authorization" | "proxy-authorization" | "cookie"
+    ) || [
+        "token",
+        "secret",
+        "key",
+        "password",
+        "auth",
+        "session",
+        "signature",
+    ]
+    .iter()
+    .any(|w| n.contains(w))
 }
 
 /// `http_headers` JSON text with sensitive values masked.
@@ -478,7 +504,11 @@ pub fn redact_headers(headers: &str) -> Value {
         Ok(Value::Object(map)) => Value::Object(
             map.into_iter()
                 .map(|(k, v)| {
-                    let v = if is_sensitive_header(&k) { Value::String(SECRET_MASK.into()) } else { v };
+                    let v = if is_sensitive_header(&k) {
+                        Value::String(SECRET_MASK.into())
+                    } else {
+                        v
+                    };
                     (k, v)
                 })
                 .collect(),
@@ -514,9 +544,23 @@ fn restore_headers(new: &mut Map<String, Value>, old: Option<&str>) -> Vec<Strin
 
 /// Monitor columns that are document fields of their own or never exported.
 /// Monitor fields exported as [`SECRET_MASK`] unless secrets are included.
-const MONITOR_SECRETS: &[&str] = &["basic_auth_pass", "secret", "oauth_client_secret", "tls_client_key"];
+const MONITOR_SECRETS: &[&str] = &[
+    "basic_auth_pass",
+    "secret",
+    "oauth_client_secret",
+    "tls_client_key",
+];
 
-const MONITOR_SPECIAL: &[&str] = &["name", "monitor_type", "target", "parent_id", "push_token", "source", "external_id", "remote_browser_id"];
+const MONITOR_SPECIAL: &[&str] = &[
+    "name",
+    "monitor_type",
+    "target",
+    "parent_id",
+    "push_token",
+    "source",
+    "external_id",
+    "remote_browser_id",
+];
 
 /// Monitor option naming its remote browser (instead of `remote_browser_id`).
 const REMOTE_BROWSER_OPTION: &str = "remote_browser";
@@ -538,9 +582,15 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
     let channel_keys = unique_keys(channels.iter().map(|c| (c.id, c.name.clone())));
     let tags_by_monitor = db_tags::tags_by_monitor(conn)?;
     let defaults = new_monitor_value(&NewMonitor::default());
-    let browser_names: HashMap<i64, String> = crate::db::remote_browsers::list(conn)?.into_iter().map(|b| (b.id, b.name)).collect();
+    let browser_names: HashMap<i64, String> = crate::db::remote_browsers::list(conn)?
+        .into_iter()
+        .map(|b| (b.id, b.name))
+        .collect();
 
-    let mut monitors: Vec<&Monitor> = all_monitors.iter().filter(|m| m.source != "docker").collect();
+    let mut monitors: Vec<&Monitor> = all_monitors
+        .iter()
+        .filter(|m| m.source != "docker")
+        .collect();
     monitors.sort_by(|a, b| a.sort_order.cmp(&b.sort_order).then(a.id.cmp(&b.id)));
     // Parents before children reads better and imports in one pass.
     let monitors = parents_first(&monitors);
@@ -573,7 +623,14 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             .iter()
             .filter_map(|(cid, esc)| {
                 let name = channel_keys.get(cid)?.clone();
-                Some(if *esc { ChannelRef::Full { name, escalation: true } } else { ChannelRef::Name(name) })
+                Some(if *esc {
+                    ChannelRef::Full {
+                        name,
+                        escalation: true,
+                    }
+                } else {
+                    ChannelRef::Name(name)
+                })
             })
             .collect();
         let tags = tags_by_monitor
@@ -584,7 +641,10 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
                         if t.value.is_empty() {
                             TagRef::Name(t.name.clone())
                         } else {
-                            TagRef::Full { name: t.name.clone(), value: t.value.clone() }
+                            TagRef::Full {
+                                name: t.name.clone(),
+                                value: t.value.clone(),
+                            }
                         }
                     })
                     .collect()
@@ -616,7 +676,10 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
                 notification::redacted_config(c)
             };
             ChannelDoc {
-                name: channel_keys.get(&c.id).cloned().unwrap_or_else(|| c.name.clone()),
+                name: channel_keys
+                    .get(&c.id)
+                    .cloned()
+                    .unwrap_or_else(|| c.name.clone()),
                 kind: c.kind.clone(),
                 active: c.active,
                 is_default: c.is_default,
@@ -632,10 +695,15 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             .into_iter()
             .map(|s| SectionDoc {
                 name: s.name,
-                monitors: s.monitors.iter().filter_map(|sm| keys.get(&sm.monitor_id).cloned()).collect(),
+                monitors: s
+                    .monitors
+                    .iter()
+                    .filter_map(|sm| keys.get(&sm.monitor_id).cloned())
+                    .collect(),
             })
             .collect();
-        let (password, password_hash, analytics, logo, favicon) = db_pages::extras::export_doc_extras(conn, &p, include_secrets)?;
+        let (password, password_hash, analytics, logo, favicon) =
+            db_pages::extras::export_doc_extras(conn, &p, include_secrets)?;
         page_docs.push(StatusPageDoc {
             slug: p.slug,
             title: p.title,
@@ -658,16 +726,24 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             favicon,
         });
     }
-    let page_slugs: HashMap<i64, String> = db_pages::list(conn)?.into_iter().map(|s| (s.page.id, s.page.slug)).collect();
+    let page_slugs: HashMap<i64, String> = db_pages::list(conn)?
+        .into_iter()
+        .map(|s| (s.page.id, s.page.slug))
+        .collect();
 
     let mut windows = db_maint::list(conn)?;
     windows.sort_by_key(|w| w.id);
     let window_keys = unique_keys(windows.iter().map(|w| (w.id, w.title.clone())));
     let mut maintenance_docs = Vec::new();
     for w in windows {
-        let monitors = db_maint::monitor_ids(conn, w.id)?.iter().filter_map(|id| keys.get(id).cloned()).collect();
-        let status_pages =
-            db_maint::status_page_ids(conn, w.id)?.iter().filter_map(|id| page_slugs.get(id).cloned()).collect();
+        let monitors = db_maint::monitor_ids(conn, w.id)?
+            .iter()
+            .filter_map(|id| keys.get(id).cloned())
+            .collect();
+        let status_pages = db_maint::status_page_ids(conn, w.id)?
+            .iter()
+            .filter_map(|id| page_slugs.get(id).cloned())
+            .collect();
         maintenance_docs.push(MaintenanceDoc {
             title: window_keys.get(&w.id).cloned().unwrap_or(w.title),
             description: w.description,
@@ -702,7 +778,14 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
             discovery_docker_host: Some(settings.discovery_docker_host.unwrap_or_default()),
             agent_confirmation_default: Some(settings.agent_confirmation_default),
         }),
-        tags: Some(tags.into_iter().map(|t| TagDoc { name: t.name, color: t.color }).collect()),
+        tags: Some(
+            tags.into_iter()
+                .map(|t| TagDoc {
+                    name: t.name,
+                    color: t.color,
+                })
+                .collect(),
+        ),
         notification_channels: Some(channel_docs),
         remote_browsers: Some(browsers::export(conn, include_secrets)?),
         monitors: Some(monitor_docs),
@@ -720,7 +803,9 @@ fn parents_first<'a>(monitors: &[&'a Monitor]) -> Vec<&'a Monitor> {
     while !remaining.is_empty() {
         let before = remaining.len();
         remaining.retain(|m| {
-            let ready = m.parent_id.is_none_or(|p| placed.contains(&p) || !ids.contains(&p));
+            let ready = m
+                .parent_id
+                .is_none_or(|p| placed.contains(&p) || !ids.contains(&p));
             if ready {
                 placed.insert(m.id);
                 out.push(m);
@@ -866,16 +951,27 @@ impl Plan {
     }
 
     pub fn has_changes(&self) -> bool {
-        self.items.iter().any(|i| matches!(i.action, Action::Create | Action::Update | Action::Delete))
+        self.items
+            .iter()
+            .any(|i| matches!(i.action, Action::Create | Action::Update | Action::Delete))
     }
 
     /// The action planned for `(kind, key)`, if any.
     pub fn action_for(&self, kind: &str, key: &str) -> Option<Action> {
-        self.items.iter().find(|i| i.kind == kind && i.key == key).map(|i| i.action)
+        self.items
+            .iter()
+            .find(|i| i.kind == kind && i.key == key)
+            .map(|i| i.action)
     }
 
     fn item(&mut self, kind: &str, key: &str, action: Action, changes: Vec<String>) {
-        self.items.push(PlanItem { kind: kind.into(), key: key.into(), action, changes, note: None });
+        self.items.push(PlanItem {
+            kind: kind.into(),
+            key: key.into(),
+            action,
+            changes,
+            note: None,
+        });
     }
 
     fn skip(&mut self, kind: &str, key: &str, note: impl Into<String>) {
@@ -913,8 +1009,16 @@ pub const KIND_BROWSER: &str = "remote_browser";
 
 #[derive(Debug, Clone)]
 enum TagOp {
-    Create { ph: i64, name: String, color: String },
-    Update { id: i64, name: String, color: String },
+    Create {
+        ph: i64,
+        name: String,
+        color: String,
+    },
+    Update {
+        id: i64,
+        name: String,
+        color: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -948,8 +1052,18 @@ enum MonitorOp {
 
 #[derive(Debug, Clone)]
 enum PageOp {
-    Create { ph: i64, page: NewStatusPage, sections: Option<Vec<(String, Vec<i64>)>>, extras: Box<db_pages::extras::ExtrasChange> },
-    Update { id: i64, page: NewStatusPage, sections: Option<Vec<(String, Vec<i64>)>>, extras: Box<db_pages::extras::ExtrasChange> },
+    Create {
+        ph: i64,
+        page: NewStatusPage,
+        sections: Option<Vec<(String, Vec<i64>)>>,
+        extras: Box<db_pages::extras::ExtrasChange>,
+    },
+    Update {
+        id: i64,
+        page: NewStatusPage,
+        sections: Option<Vec<(String, Vec<i64>)>>,
+        extras: Box<db_pages::extras::ExtrasChange>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -994,7 +1108,11 @@ pub fn plan(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<P
 
 /// Applies `doc` in one transaction. `Err(plan)` (nothing written) when the
 /// plan has errors.
-pub fn apply(conn: &mut Connection, doc: &Document, mode: Mode) -> rusqlite::Result<Result<Applied, Plan>> {
+pub fn apply(
+    conn: &mut Connection,
+    doc: &Document,
+    mode: Mode,
+) -> rusqlite::Result<Result<Applied, Plan>> {
     let tx = conn.transaction()?;
     let (plan, ops) = prepare(&tx, doc, mode)?;
     if !plan.is_ok() {
@@ -1049,7 +1167,10 @@ impl Placeholders {
 
 fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(Plan, Ops)> {
     let cur = Current::load(conn)?;
-    let mut plan = Plan { mode, ..Plan::default() };
+    let mut plan = Plan {
+        mode,
+        ..Plan::default()
+    };
     let mut ops = Ops::default();
     let mut ph = Placeholders::default();
 
@@ -1059,13 +1180,19 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
 
     // -- tags ---------------------------------------------------------------
     // Final tag set by normalised name → id (placeholder for new ones).
-    let mut tag_ids: HashMap<String, i64> = cur.tags.iter().map(|t| (norm(&t.name), t.id)).collect();
+    let mut tag_ids: HashMap<String, i64> =
+        cur.tags.iter().map(|t| (norm(&t.name), t.id)).collect();
     if let Some(tags) = &doc.tags {
         let mut seen = HashSet::new();
         for t in tags {
             let name = t.name.trim();
             if name.is_empty() || name.chars().count() > db_tags::MAX_NAME_LEN {
-                plan.error(KIND_TAG, name, Some("name"), format!("Tag names need 1 to {} characters.", db_tags::MAX_NAME_LEN));
+                plan.error(
+                    KIND_TAG,
+                    name,
+                    Some("name"),
+                    format!("Tag names need 1 to {} characters.", db_tags::MAX_NAME_LEN),
+                );
                 continue;
             }
             if !seen.insert(norm(name)) {
@@ -1086,14 +1213,22 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
                         plan.item(KIND_TAG, name, Action::Unchanged, changes);
                     } else {
                         plan.item(KIND_TAG, name, Action::Update, changes);
-                        ops.tags.push(TagOp::Update { id: existing.id, name: name.into(), color });
+                        ops.tags.push(TagOp::Update {
+                            id: existing.id,
+                            name: name.into(),
+                            color,
+                        });
                     }
                 }
                 None => {
                     let id = ph.next();
                     tag_ids.insert(norm(name), id);
                     plan.item(KIND_TAG, name, Action::Create, Vec::new());
-                    ops.tags.push(TagOp::Create { ph: id, name: name.into(), color });
+                    ops.tags.push(TagOp::Create {
+                        ph: id,
+                        name: name.into(),
+                        color,
+                    });
                 }
             }
         }
@@ -1111,7 +1246,8 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
 
     // -- channels ------------------------------------------------------------
     let channel_keys = unique_keys(cur.channels.iter().map(|c| (c.id, c.name.clone())));
-    let mut channel_ids: HashMap<String, i64> = channel_keys.iter().map(|(id, k)| (norm(k), *id)).collect();
+    let mut channel_ids: HashMap<String, i64> =
+        channel_keys.iter().map(|(id, k)| (norm(k), *id)).collect();
     if let Some(channels) = &doc.notification_channels {
         let mut seen = HashSet::new();
         for c in channels {
@@ -1124,7 +1260,15 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
                 .get(&norm(&key))
                 .filter(|id| **id > 0)
                 .and_then(|id| cur.channels.iter().find(|x| x.id == *id));
-            plan_channel(c, &key, existing, &mut plan, &mut ops, &mut ph, &mut channel_ids);
+            plan_channel(
+                c,
+                &key,
+                existing,
+                &mut plan,
+                &mut ops,
+                &mut ph,
+                &mut channel_ids,
+            );
         }
         if mode == Mode::Replace {
             for ch in &cur.channels {
@@ -1160,12 +1304,28 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
         &mut ph,
     );
     if let Some(monitors) = &doc.monitors {
-        let refs = Refs { tag_ids: &mut tag_ids, channel_ids: &channel_ids, browsers: &browser_ids };
-        plan_monitors(conn, &cur, monitors, mode, refs, &docker_keys, &mut monitor_ids, &mut plan, &mut ops, &mut ph)?;
+        let refs = Refs {
+            tag_ids: &mut tag_ids,
+            channel_ids: &channel_ids,
+            browsers: &browser_ids,
+        };
+        plan_monitors(
+            conn,
+            &cur,
+            monitors,
+            mode,
+            refs,
+            &docker_keys,
+            &mut monitor_ids,
+            &mut plan,
+            &mut ops,
+            &mut ph,
+        )?;
     }
 
     // -- status pages --------------------------------------------------------
-    let mut page_ids: HashMap<String, i64> = cur.pages.iter().map(|p| (p.slug.clone(), p.id)).collect();
+    let mut page_ids: HashMap<String, i64> =
+        cur.pages.iter().map(|p| (p.slug.clone(), p.id)).collect();
     if let Some(pages) = &doc.status_pages {
         let mut seen = HashSet::new();
         let mut domains: HashMap<String, String> = HashMap::new();
@@ -1175,7 +1335,18 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
                 plan.error(KIND_PAGE, &slug, None, "This status page is listed twice.");
                 continue;
             }
-            plan_page(conn, &cur, p, &slug, &monitor_ids, &mut domains, &mut plan, &mut ops, &mut ph, &mut page_ids)?;
+            plan_page(
+                conn,
+                &cur,
+                p,
+                &slug,
+                &monitor_ids,
+                &mut domains,
+                &mut plan,
+                &mut ops,
+                &mut ph,
+                &mut page_ids,
+            )?;
         }
         // Domains of pages the document doesn't mention must not clash either.
         for existing in &cur.pages {
@@ -1185,7 +1356,12 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
             if let Some(d) = &existing.custom_domain
                 && let Some(other) = domains.get(d)
             {
-                plan.error(KIND_PAGE, other, Some("custom_domain"), format!("“{}” already uses this domain.", existing.slug));
+                plan.error(
+                    KIND_PAGE,
+                    other,
+                    Some("custom_domain"),
+                    format!("“{}” already uses this domain.", existing.slug),
+                );
             }
         }
         if mode == Mode::Replace {
@@ -1202,16 +1378,33 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
     // -- maintenance ---------------------------------------------------------
     if let Some(windows) = &doc.maintenance {
         let window_keys = unique_keys(cur.windows.iter().map(|w| (w.id, w.title.clone())));
-        let by_key: HashMap<String, i64> = window_keys.iter().map(|(id, k)| (norm(k), *id)).collect();
+        let by_key: HashMap<String, i64> =
+            window_keys.iter().map(|(id, k)| (norm(k), *id)).collect();
         let mut seen = HashSet::new();
         for w in windows {
             let key = w.title.trim().to_string();
             if !seen.insert(norm(&key)) {
-                plan.error(KIND_MAINTENANCE, &key, None, "This maintenance window is listed twice.");
+                plan.error(
+                    KIND_MAINTENANCE,
+                    &key,
+                    None,
+                    "This maintenance window is listed twice.",
+                );
                 continue;
             }
-            let existing = by_key.get(&norm(&key)).and_then(|id| cur.windows.iter().find(|x| x.id == *id));
-            plan_window(conn, w, &key, existing, &monitor_ids, &page_ids, &mut plan, &mut ops)?;
+            let existing = by_key
+                .get(&norm(&key))
+                .and_then(|id| cur.windows.iter().find(|x| x.id == *id));
+            plan_window(
+                conn,
+                w,
+                &key,
+                existing,
+                &monitor_ids,
+                &page_ids,
+                &mut plan,
+                &mut ops,
+            )?;
         }
         if mode == Mode::Replace {
             for w in &cur.windows {
@@ -1228,7 +1421,11 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
 }
 
 fn plan_settings(cur: &db_settings::Settings, s: &SettingsDoc, plan: &mut Plan, ops: &mut Ops) {
-    let mut push = |plan: &mut Plan, key: &'static str, current: String, desired: Option<String>, store: Option<String>| {
+    let mut push = |plan: &mut Plan,
+                    key: &'static str,
+                    current: String,
+                    desired: Option<String>,
+                    store: Option<String>| {
         let Some(desired) = desired else { return };
         if current == desired {
             plan.item(KIND_SETTING, key, Action::Unchanged, Vec::new());
@@ -1240,48 +1437,124 @@ fn plan_settings(cur: &db_settings::Settings, s: &SettingsDoc, plan: &mut Plan, 
     if let Some(name) = &s.site_name {
         let name = name.trim();
         if name.chars().count() > 80 {
-            plan.error(KIND_SETTING, db_settings::SITE_NAME, None, "Use at most 80 characters.");
+            plan.error(
+                KIND_SETTING,
+                db_settings::SITE_NAME,
+                None,
+                "Use at most 80 characters.",
+            );
         } else {
-            let name = if name.is_empty() { db_settings::Settings::default().site_name } else { name.to_string() };
-            push(plan, db_settings::SITE_NAME, cur.site_name.clone(), Some(name.clone()), Some(name));
+            let name = if name.is_empty() {
+                db_settings::Settings::default().site_name
+            } else {
+                name.to_string()
+            };
+            push(
+                plan,
+                db_settings::SITE_NAME,
+                cur.site_name.clone(),
+                Some(name.clone()),
+                Some(name),
+            );
         }
     }
     if let Some(url) = &s.base_url {
         match crate::api::settings::normalize_base_url(url) {
-            Ok(u) => push(plan, db_settings::BASE_URL, cur.base_url.clone().unwrap_or_default(), Some(u.clone().unwrap_or_default()), u),
+            Ok(u) => push(
+                plan,
+                db_settings::BASE_URL,
+                cur.base_url.clone().unwrap_or_default(),
+                Some(u.clone().unwrap_or_default()),
+                u,
+            ),
             Err(msg) => plan.error(KIND_SETTING, db_settings::BASE_URL, None, msg),
         }
     }
     if let Some(tz) = &s.timezone {
         let tz = tz.trim();
         if crate::api::settings::valid_timezone(tz) {
-            push(plan, db_settings::TIMEZONE, cur.timezone.clone(), Some(tz.into()), Some(tz.into()));
+            push(
+                plan,
+                db_settings::TIMEZONE,
+                cur.timezone.clone(),
+                Some(tz.into()),
+                Some(tz.into()),
+            );
         } else {
-            plan.error(KIND_SETTING, db_settings::TIMEZONE, None, format!("“{tz}” isn’t a time zone this server knows."));
+            plan.error(
+                KIND_SETTING,
+                db_settings::TIMEZONE,
+                None,
+                format!("“{tz}” isn’t a time zone this server knows."),
+            );
         }
     }
     if let Some(lang) = &s.language {
         if crate::i18n::Lang::from_exact_code(lang).is_some() {
-            push(plan, db_settings::LANGUAGE, cur.language.clone(), Some(lang.clone()), Some(lang.clone()));
+            push(
+                plan,
+                db_settings::LANGUAGE,
+                cur.language.clone(),
+                Some(lang.clone()),
+                Some(lang.clone()),
+            );
         } else {
-            plan.error(KIND_SETTING, db_settings::LANGUAGE, None, "Unsupported language.");
+            plan.error(
+                KIND_SETTING,
+                db_settings::LANGUAGE,
+                None,
+                "Unsupported language.",
+            );
         }
     }
     if let Some(days) = s.retention_days {
         if (1..=3650).contains(&days) {
-            push(plan, db_settings::RETENTION_DAYS, cur.retention_days.to_string(), Some(days.to_string()), Some(days.to_string()));
+            push(
+                plan,
+                db_settings::RETENTION_DAYS,
+                cur.retention_days.to_string(),
+                Some(days.to_string()),
+                Some(days.to_string()),
+            );
         } else {
-            plan.error(KIND_SETTING, db_settings::RETENTION_DAYS, None, "Enter a number of days between 1 and 3650.");
+            plan.error(
+                KIND_SETTING,
+                db_settings::RETENTION_DAYS,
+                None,
+                "Enter a number of days between 1 and 3650.",
+            );
         }
     }
     let flag = |b: bool| if b { "1".to_string() } else { "0".to_string() };
     for (key, current, desired) in [
-        (db_settings::BADGES_PUBLIC, cur.badges_public, s.badges_public),
-        (db_settings::METRICS_ENABLED, cur.metrics_enabled, s.metrics_enabled),
-        (db_settings::DISCOVERY_ENABLED, cur.discovery_enabled, s.discovery_enabled),
-        (db_settings::AGENT_CONFIRMATION_DEFAULT, cur.agent_confirmation_default, s.agent_confirmation_default),
+        (
+            db_settings::BADGES_PUBLIC,
+            cur.badges_public,
+            s.badges_public,
+        ),
+        (
+            db_settings::METRICS_ENABLED,
+            cur.metrics_enabled,
+            s.metrics_enabled,
+        ),
+        (
+            db_settings::DISCOVERY_ENABLED,
+            cur.discovery_enabled,
+            s.discovery_enabled,
+        ),
+        (
+            db_settings::AGENT_CONFIRMATION_DEFAULT,
+            cur.agent_confirmation_default,
+            s.agent_confirmation_default,
+        ),
     ] {
-        push(plan, key, flag(current), desired.map(flag), desired.map(flag));
+        push(
+            plan,
+            key,
+            flag(current),
+            desired.map(flag),
+            desired.map(flag),
+        );
     }
     if let Some(host) = &s.discovery_docker_host {
         let host = host.trim();
@@ -1300,15 +1573,26 @@ fn plan_settings(cur: &db_settings::Settings, s: &SettingsDoc, plan: &mut Plan, 
 
 /// Validates a channel's name, kind and config; returns the config to store.
 /// `stored` is the current config (secrets merge from it).
-pub fn validate_channel(name: &str, kind: &str, config: &Value, stored: Option<&Value>) -> Result<Value, Vec<(String, String)>> {
+pub fn validate_channel(
+    name: &str,
+    kind: &str,
+    config: &Value,
+    stored: Option<&Value>,
+) -> Result<Value, Vec<(String, String)>> {
     let mut errors = Vec::new();
     if name.trim().is_empty() {
-        errors.push(("name".into(), "Give the channel a name, like “Ops Discord”.".into()));
+        errors.push((
+            "name".into(),
+            "Give the channel a name, like “Ops Discord”.".into(),
+        ));
     } else if name.trim().chars().count() > 100 {
         errors.push(("name".into(), "Keep the name under 100 characters.".into()));
     }
     let Some(provider) = notification::provider(kind) else {
-        errors.push(("kind".into(), format!("“{kind}” isn’t a supported channel kind.")));
+        errors.push((
+            "kind".into(),
+            format!("“{kind}” isn’t a supported channel kind."),
+        ));
         return Err(errors);
     };
     if !config.is_object() {
@@ -1323,22 +1607,37 @@ pub fn validate_channel(name: &str, kind: &str, config: &Value, stored: Option<&
     }
     // A changed destination (server URL, SMTP host…) never reuses stored
     // secrets: they would be sent to the new place.
-    if let Err(field_errors) = schema::merge_secrets_checked(provider, &mut merged, stored.unwrap_or(&Value::Null), &[]) {
-        errors.extend(field_errors.into_iter().map(|(field, msg)| (format!("config.{field}"), msg)));
+    if let Err(field_errors) =
+        schema::merge_secrets_checked(provider, &mut merged, stored.unwrap_or(&Value::Null), &[])
+    {
+        errors.extend(
+            field_errors
+                .into_iter()
+                .map(|(field, msg)| (format!("config.{field}"), msg)),
+        );
         return Err(errors);
     }
     if let Err(field_errors) = schema::validate(provider, &merged) {
         for (field, msg) in field_errors {
             let secret = provider.field(&field).is_some_and(|f| f.secret);
-            let msg = if secret && stored.is_none() && config.get(&field).and_then(Value::as_str) == Some(SECRET_MASK) {
-                format!("{msg} (the export didn’t include secrets; export with secrets or fill it in)")
+            let msg = if secret
+                && stored.is_none()
+                && config.get(&field).and_then(Value::as_str) == Some(SECRET_MASK)
+            {
+                format!(
+                    "{msg} (the export didn’t include secrets; export with secrets or fill it in)"
+                )
             } else {
                 msg
             };
             errors.push((format!("config.{field}"), msg));
         }
     }
-    if errors.is_empty() { Ok(merged) } else { Err(errors) }
+    if errors.is_empty() {
+        Ok(merged)
+    } else {
+        Err(errors)
+    }
 }
 
 fn plan_channel(
@@ -1350,7 +1649,8 @@ fn plan_channel(
     ph: &mut Placeholders,
     channel_ids: &mut HashMap<String, i64>,
 ) {
-    let stored: Option<Value> = existing.map(|e| serde_json::from_str(&e.config).unwrap_or_else(|_| empty_object()));
+    let stored: Option<Value> =
+        existing.map(|e| serde_json::from_str(&e.config).unwrap_or_else(|_| empty_object()));
     if let Some(e) = existing
         && e.kind != c.kind
     {
@@ -1424,18 +1724,35 @@ pub fn monitor_from_doc(m: &MonitorDoc) -> Result<NewMonitor, (String, String)> 
     }
     let Some(kind) = MonitorType::parse(m.monitor_type.trim()) else {
         let kinds: Vec<&str> = MonitorType::all().iter().map(|t| t.as_str()).collect();
-        return Err(("monitor_type".into(), format!("Unknown monitor type “{}”. Use one of: {}.", m.monitor_type, kinds.join(", "))));
+        return Err((
+            "monitor_type".into(),
+            format!(
+                "Unknown monitor type “{}”. Use one of: {}.",
+                m.monitor_type,
+                kinds.join(", ")
+            ),
+        ));
     };
     // Documents written before `auth_method` existed (or with an empty one):
     // a user name means basic auth. An explicit method is respected.
-    if m.options.get("auth_method").is_none_or(|a| a.is_null() || a.as_str().is_some_and(|a| a.trim().is_empty())) {
+    if m.options
+        .get("auth_method")
+        .is_none_or(|a| a.is_null() || a.as_str().is_some_and(|a| a.trim().is_empty()))
+    {
         let user = m.options.get("basic_auth_user").and_then(Value::as_str);
-        obj.insert("auth_method".into(), Value::String(crate::monitor::checkers::http_auth::implied_method(user).into()));
+        obj.insert(
+            "auth_method".into(),
+            Value::String(crate::monitor::checkers::http_auth::implied_method(user).into()),
+        );
     }
     obj.insert("name".into(), Value::String(m.name.clone()));
-    obj.insert("monitor_type".into(), serde_json::to_value(kind).unwrap_or(Value::Null));
+    obj.insert(
+        "monitor_type".into(),
+        serde_json::to_value(kind).unwrap_or(Value::Null),
+    );
     obj.insert("target".into(), Value::String(m.target.clone()));
-    serde_json::from_value::<NewMonitor>(Value::Object(obj)).map_err(|e| ("options".into(), format!("Invalid monitor field: {e}")))
+    serde_json::from_value::<NewMonitor>(Value::Object(obj))
+        .map_err(|e| ("options".into(), format!("Invalid monitor field: {e}")))
 }
 
 /// Names other sections resolve to ids (or placeholders) for monitors.
@@ -1459,7 +1776,11 @@ fn plan_monitors(
     ops: &mut Ops,
     ph: &mut Placeholders,
 ) -> rusqlite::Result<()> {
-    let Refs { tag_ids, channel_ids, browsers } = refs;
+    let Refs {
+        tag_ids,
+        channel_ids,
+        browsers,
+    } = refs;
     let by_id: HashMap<i64, &Monitor> = cur.monitors.iter().map(|m| (m.id, m)).collect();
 
     // Pass 1: decide identity (existing id or placeholder) for every entry.
@@ -1468,11 +1789,21 @@ fn plan_monitors(
     for m in monitors {
         let key = m.key().to_string();
         if key.is_empty() {
-            plan.error(KIND_MONITOR, &m.name, Some("name"), "Give the monitor a name.");
+            plan.error(
+                KIND_MONITOR,
+                &m.name,
+                Some("name"),
+                "Give the monitor a name.",
+            );
             continue;
         }
         if !seen.insert(norm(&key)) {
-            plan.error(KIND_MONITOR, &key, None, "This monitor key is listed twice. Give one of them a different `key`.");
+            plan.error(
+                KIND_MONITOR,
+                &key,
+                None,
+                "This monitor key is listed twice. Give one of them a different `key`.",
+            );
             continue;
         }
         if docker_keys.contains(&norm(&key)) {
@@ -1531,14 +1862,23 @@ fn plan_monitors(
             Some(p) => match monitor_ids.get(&norm(p)) {
                 Some(pid) => Some(*pid),
                 None => {
-                    plan.error(KIND_MONITOR, key, Some("parent"), format!("No monitor with key “{p}”."));
+                    plan.error(
+                        KIND_MONITOR,
+                        key,
+                        Some("parent"),
+                        format!("No monitor with key “{p}”."),
+                    );
                     None
                 }
             },
         };
         final_parent.insert(*id, parent);
     }
-    let groups: Vec<i64> = final_type.iter().filter(|(_, t)| **t == MonitorType::Group).map(|(id, _)| *id).collect();
+    let groups: Vec<i64> = final_type
+        .iter()
+        .filter(|(_, t)| **t == MonitorType::Group)
+        .map(|(id, _)| *id)
+        .collect();
 
     // Cycles.
     for (_, key, id) in &entries {
@@ -1546,7 +1886,12 @@ fn plan_monitors(
         let mut steps = 0;
         while let Some(p) = cursor {
             if p == *id || steps > final_parent.len() {
-                plan.error(KIND_MONITOR, key, Some("parent"), "A group can’t contain itself.");
+                plan.error(
+                    KIND_MONITOR,
+                    key,
+                    Some("parent"),
+                    "A group can’t contain itself.",
+                );
                 break;
             }
             steps += 1;
@@ -1567,12 +1912,22 @@ fn plan_monitors(
             Some(Value::String(name)) => match browsers.iter().find(|(k, _)| *k == norm(name)) {
                 Some((_, bid)) => nm.remote_browser_id = Some(*bid),
                 None => {
-                    plan.error(KIND_MONITOR, key, Some(REMOTE_BROWSER_OPTION), format!("No remote browser named “{}”.", name.trim()));
+                    plan.error(
+                        KIND_MONITOR,
+                        key,
+                        Some(REMOTE_BROWSER_OPTION),
+                        format!("No remote browser named “{}”.", name.trim()),
+                    );
                     continue;
                 }
             },
             Some(_) => {
-                plan.error(KIND_MONITOR, key, Some(REMOTE_BROWSER_OPTION), "Give the remote browser’s name.");
+                plan.error(
+                    KIND_MONITOR,
+                    key,
+                    Some(REMOTE_BROWSER_OPTION),
+                    "Give the remote browser’s name.",
+                );
                 continue;
             }
         }
@@ -1580,29 +1935,65 @@ fn plan_monitors(
         // Secrets the export masked. A masked password stays masked:
         // `form::validate` keeps the stored one only while the target and
         // proxy are unchanged.
-        if nm.basic_auth_pass.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.basic_auth_pass.is_none()) {
-            plan.error(KIND_MONITOR, key, Some("basic_auth_pass"), "The password was exported without secrets; fill it in.");
+        if nm.basic_auth_pass.as_deref() == Some(SECRET_MASK)
+            && existing.is_none_or(|e| e.basic_auth_pass.is_none())
+        {
+            plan.error(
+                KIND_MONITOR,
+                key,
+                Some("basic_auth_pass"),
+                "The password was exported without secrets; fill it in.",
+            );
             continue;
         }
-        if nm.secret.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.secret.is_none()) {
-            plan.error(KIND_MONITOR, key, Some("secret"), "The secret was exported without secrets; fill it in.");
+        if nm.secret.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.secret.is_none())
+        {
+            plan.error(
+                KIND_MONITOR,
+                key,
+                Some("secret"),
+                "The secret was exported without secrets; fill it in.",
+            );
             continue;
         }
-        if nm.oauth_client_secret.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.oauth_client_secret.is_none()) {
-            plan.error(KIND_MONITOR, key, Some("oauth_client_secret"), "The client secret was exported without secrets; fill it in.");
+        if nm.oauth_client_secret.as_deref() == Some(SECRET_MASK)
+            && existing.is_none_or(|e| e.oauth_client_secret.is_none())
+        {
+            plan.error(
+                KIND_MONITOR,
+                key,
+                Some("oauth_client_secret"),
+                "The client secret was exported without secrets; fill it in.",
+            );
             continue;
         }
-        if nm.tls_client_key.as_deref() == Some(SECRET_MASK) && existing.is_none_or(|e| e.tls_client_key.is_none()) {
-            plan.error(KIND_MONITOR, key, Some("tls_client_key"), "The private key was exported without secrets; fill it in.");
+        if nm.tls_client_key.as_deref() == Some(SECRET_MASK)
+            && existing.is_none_or(|e| e.tls_client_key.is_none())
+        {
+            plan.error(
+                KIND_MONITOR,
+                key,
+                Some("tls_client_key"),
+                "The private key was exported without secrets; fill it in.",
+            );
             continue;
         }
         if let Some(h) = nm.http_headers.clone()
             && h.contains(SECRET_MASK)
             && let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(&h)
         {
-            let missing = restore_headers(&mut map, existing.and_then(|e| e.http_headers.as_deref()));
+            let missing =
+                restore_headers(&mut map, existing.and_then(|e| e.http_headers.as_deref()));
             if !missing.is_empty() {
-                plan.error(KIND_MONITOR, key, Some("http_headers"), format!("Header values were exported without secrets: {}.", missing.join(", ")));
+                plan.error(
+                    KIND_MONITOR,
+                    key,
+                    Some("http_headers"),
+                    format!(
+                        "Header values were exported without secrets: {}.",
+                        missing.join(", ")
+                    ),
+                );
                 continue;
             }
             nm.http_headers = Some(Value::Object(map).to_string());
@@ -1620,12 +2011,24 @@ fn plan_monitors(
                             // Referenced but not declared: create it with the default colour.
                             let name = t.name().trim();
                             if name.is_empty() || name.chars().count() > db_tags::MAX_NAME_LEN {
-                                plan.error(KIND_MONITOR, key, Some("tags"), format!("Tag names need 1 to {} characters.", db_tags::MAX_NAME_LEN));
+                                plan.error(
+                                    KIND_MONITOR,
+                                    key,
+                                    Some("tags"),
+                                    format!(
+                                        "Tag names need 1 to {} characters.",
+                                        db_tags::MAX_NAME_LEN
+                                    ),
+                                );
                                 continue;
                             }
                             let tid = ph.next();
                             tag_ids.insert(norm(name), tid);
-                            ops.tags.push(TagOp::Create { ph: tid, name: name.to_string(), color: db_tags::DEFAULT_COLOR.to_string() });
+                            ops.tags.push(TagOp::Create {
+                                ph: tid,
+                                name: name.to_string(),
+                                color: db_tags::DEFAULT_COLOR.to_string(),
+                            });
                             plan.items.push(PlanItem {
                                 kind: KIND_TAG.into(),
                                 key: name.to_string(),
@@ -1647,7 +2050,12 @@ fn plan_monitors(
                 for c in list {
                     match channel_ids.get(&norm(c.name())) {
                         Some(cid) => out.push((*cid, c.escalation())),
-                        None => plan.error(KIND_MONITOR, key, Some("notifications"), format!("No notification channel named “{}”.", c.name())),
+                        None => plan.error(
+                            KIND_MONITOR,
+                            key,
+                            Some("notifications"),
+                            format!("No notification channel named “{}”.", c.name()),
+                        ),
                     }
                 }
                 Some(out)
@@ -1663,13 +2071,27 @@ fn plan_monitors(
         let base = existing.map(Monitor::to_new).unwrap_or_default();
         let modes: Vec<(i64, ChannelMode)> = effective_channels
             .iter()
-            .map(|(cid, esc)| (*cid, if *esc { ChannelMode::Escalation } else { ChannelMode::Alert }))
+            .map(|(cid, esc)| {
+                (
+                    *cid,
+                    if *esc {
+                        ChannelMode::Escalation
+                    } else {
+                        ChannelMode::Alert
+                    },
+                )
+            })
             .collect();
         let tag_views: Vec<MonitorTag> = tags
             .clone()
             .unwrap_or_default()
             .into_iter()
-            .map(|(tag_id, value)| MonitorTag { tag_id, name: String::new(), color: String::new(), value })
+            .map(|(tag_id, value)| MonitorTag {
+                tag_id,
+                name: String::new(),
+                color: String::new(),
+                value,
+            })
             .collect();
         let values = FormValues::from_new(&nm, modes, &tag_views);
         let child_count = final_parent.values().filter(|p| **p == Some(*id)).count();
@@ -1686,7 +2108,11 @@ fn plan_monitors(
             Ok(v) => v,
             Err(errors) => {
                 for (field, msg) in errors {
-                    let field = if field == "parent_id" { "parent" } else { field };
+                    let field = if field == "parent_id" {
+                        "parent"
+                    } else {
+                        field
+                    };
                     plan.error(KIND_MONITOR, key, Some(field), msg);
                 }
                 continue;
@@ -1707,14 +2133,30 @@ fn plan_monitors(
             match m.push_token.as_deref().map(str::trim) {
                 Some(t) if !t.is_empty() && t != SECRET_MASK => {
                     if !valid_push_token(t) {
-                        plan.error(KIND_MONITOR, key, Some("push_token"), "Push tokens are 8 to 64 letters, digits, - or _.");
+                        plan.error(
+                            KIND_MONITOR,
+                            key,
+                            Some("push_token"),
+                            "Push tokens are 8 to 64 letters, digits, - or _.",
+                        );
                         continue;
                     }
                     let taken: Option<i64> = conn
-                        .query_row("SELECT id FROM monitors WHERE push_token = ?1", params![t], |r| r.get(0))
+                        .query_row(
+                            "SELECT id FROM monitors WHERE push_token = ?1",
+                            params![t],
+                            |r| r.get(0),
+                        )
                         .optional()?;
-                    if taken.is_some_and(|other| Some(other) != existing.map(|e| e.id) && !deleted.contains(&other)) {
-                        plan.error(KIND_MONITOR, key, Some("push_token"), "Another monitor already uses this push token.");
+                    if taken.is_some_and(|other| {
+                        Some(other) != existing.map(|e| e.id) && !deleted.contains(&other)
+                    }) {
+                        plan.error(
+                            KIND_MONITOR,
+                            key,
+                            Some("push_token"),
+                            "Another monitor already uses this push token.",
+                        );
                         continue;
                     }
                     out.push_token = Some(t.to_string());
@@ -1733,8 +2175,11 @@ fn plan_monitors(
             Some(e) => {
                 let mut changes = diff_fields(&e.to_new(), &out);
                 if let Some(t) = &tags {
-                    let mut now: Vec<(i64, String)> =
-                        cur.monitor_tags.get(&e.id).map(|v| v.iter().map(|x| (x.tag_id, x.value.clone())).collect()).unwrap_or_default();
+                    let mut now: Vec<(i64, String)> = cur
+                        .monitor_tags
+                        .get(&e.id)
+                        .map(|v| v.iter().map(|x| (x.tag_id, x.value.clone())).collect())
+                        .unwrap_or_default();
                     let mut want = t.clone();
                     now.sort();
                     want.sort();
@@ -1755,14 +2200,36 @@ fn plan_monitors(
                     plan.item(KIND_MONITOR, key, Action::Unchanged, changes);
                 } else {
                     plan.item(KIND_MONITOR, key, Action::Update, changes);
-                    planned.push((*id, parent, MonitorOp::Update { id: e.id, w: MonitorWrite { monitor: out, tags, channels } }));
+                    planned.push((
+                        *id,
+                        parent,
+                        MonitorOp::Update {
+                            id: e.id,
+                            w: MonitorWrite {
+                                monitor: out,
+                                tags,
+                                channels,
+                            },
+                        },
+                    ));
                 }
             }
             None => {
                 out.source = "config".into();
                 out.external_id = Some(key.clone());
                 plan.item(KIND_MONITOR, key, Action::Create, Vec::new());
-                planned.push((*id, parent, MonitorOp::Create { ph: *id, w: MonitorWrite { monitor: out, tags, channels } }));
+                planned.push((
+                    *id,
+                    parent,
+                    MonitorOp::Create {
+                        ph: *id,
+                        w: MonitorWrite {
+                            monitor: out,
+                            tags,
+                            channels,
+                        },
+                    },
+                ));
             }
         }
     }
@@ -1794,7 +2261,9 @@ fn plan_monitors(
 }
 
 fn valid_push_token(t: &str) -> bool {
-    (8..=64).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    (8..=64).contains(&t.len())
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// Names of the monitor fields that differ.
@@ -1803,7 +2272,13 @@ fn diff_fields(a: &NewMonitor, b: &NewMonitor) -> Vec<String> {
     let mut out: Vec<String> = a
         .iter()
         .filter(|(k, v)| b.get(*k) != Some(*v))
-        .map(|(k, _)| if k == "parent_id" { "parent".to_string() } else { k.clone() })
+        .map(|(k, _)| {
+            if k == "parent_id" {
+                "parent".to_string()
+            } else {
+                k.clone()
+            }
+        })
         .collect();
     out.sort();
     out
@@ -1841,7 +2316,11 @@ fn plan_page(
             err(plan, "custom_domain", crate::i18n::t("sp.err_domain_self"));
         }
         if let Some(other) = domains.insert(d, slug.to_string()) {
-            err(plan, "custom_domain", &format!("“{other}” already uses this domain."));
+            err(
+                plan,
+                "custom_domain",
+                &format!("“{other}” already uses this domain."),
+            );
         }
     }
     let sections: Option<Vec<(String, Vec<i64>)>> = match &p.sections {
@@ -1851,7 +2330,11 @@ fn plan_page(
             for s in list {
                 let name = s.name.trim().to_string();
                 if name.chars().count() > 80 {
-                    err(plan, "sections", "Keep section names to 80 characters or fewer.");
+                    err(
+                        plan,
+                        "sections",
+                        "Keep section names to 80 characters or fewer.",
+                    );
                 }
                 let mut ids = Vec::new();
                 for k in &s.monitors {
@@ -1893,10 +2376,16 @@ fn plan_page(
                 ("show_tags", old.show_tags != page.show_tags),
                 ("show_uptime", old.show_uptime != page.show_uptime),
                 ("show_response", old.show_response != page.show_response),
-                ("show_powered_by", old.show_powered_by != page.show_powered_by),
+                (
+                    "show_powered_by",
+                    old.show_powered_by != page.show_powered_by,
+                ),
                 ("footer_text", old.footer_text != page.footer_text),
                 ("custom_css", old.custom_css != page.custom_css),
-                ("refresh_seconds", old.refresh_seconds != page.refresh_seconds),
+                (
+                    "refresh_seconds",
+                    old.refresh_seconds != page.refresh_seconds,
+                ),
             ] {
                 if differs {
                     changes.push(name.to_string());
@@ -1921,14 +2410,24 @@ fn plan_page(
                 plan.item(KIND_PAGE, slug, Action::Unchanged, changes);
             } else {
                 plan.item(KIND_PAGE, slug, Action::Update, changes);
-                ops.pages.push(PageOp::Update { id: existing.id, page, sections, extras });
+                ops.pages.push(PageOp::Update {
+                    id: existing.id,
+                    page,
+                    sections,
+                    extras,
+                });
             }
         }
         None => {
             let id = ph.next();
             page_ids.insert(slug.to_string(), id);
             plan.item(KIND_PAGE, slug, Action::Create, Vec::new());
-            ops.pages.push(PageOp::Create { ph: id, page, sections, extras });
+            ops.pages.push(PageOp::Create {
+                ph: id,
+                page,
+                sections,
+                extras,
+            });
         }
     }
     Ok(())
@@ -1944,7 +2443,10 @@ pub fn validate_page(p: &StatusPageDoc) -> Result<NewStatusPage, Vec<(String, St
     }
     let title = p.title.trim();
     if title.is_empty() || title.chars().count() > 120 {
-        errors.push(("title".into(), "Give the page a title of up to 120 characters.".into()));
+        errors.push((
+            "title".into(),
+            "Give the page a title of up to 120 characters.".into(),
+        ));
     }
     let domain = match db_pages::normalize_domain(p.custom_domain.as_deref().unwrap_or_default()) {
         Ok(d) => d,
@@ -1953,7 +2455,11 @@ pub fn validate_page(p: &StatusPageDoc) -> Result<NewStatusPage, Vec<(String, St
             None
         }
     };
-    let css = p.custom_css.clone().map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    let css = p
+        .custom_css
+        .clone()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty());
     if let Some(c) = &css
         && let Err(e) = db_pages::validate_css(c)
     {
@@ -1962,14 +2468,27 @@ pub fn validate_page(p: &StatusPageDoc) -> Result<NewStatusPage, Vec<(String, St
     if !db_pages::THEMES.contains(&p.theme.as_str()) {
         errors.push(("theme".into(), "Use auto, light or dark.".into()));
     }
-    if p.footer_text.as_deref().is_some_and(|f| f.trim().chars().count() > db_pages::FOOTER_MAX) {
+    if p.footer_text
+        .as_deref()
+        .is_some_and(|f| f.trim().chars().count() > db_pages::FOOTER_MAX)
+    {
         errors.push((
             "footer_text".into(),
-            crate::i18n::tf("sp.err_footer_long", &[("max", &crate::i18n::fmt_int(db_pages::FOOTER_MAX as i64))]),
+            crate::i18n::tf(
+                "sp.err_footer_long",
+                &[("max", &crate::i18n::fmt_int(db_pages::FOOTER_MAX as i64))],
+            ),
         ));
     }
     if !(db_pages::REFRESH_MIN..=db_pages::REFRESH_MAX).contains(&p.refresh_seconds) {
-        errors.push(("refresh_seconds".into(), format!("Use {} to {} seconds.", db_pages::REFRESH_MIN, db_pages::REFRESH_MAX)));
+        errors.push((
+            "refresh_seconds".into(),
+            format!(
+                "Use {} to {} seconds.",
+                db_pages::REFRESH_MIN,
+                db_pages::REFRESH_MAX
+            ),
+        ));
     }
     if !errors.is_empty() {
         return Err(errors);
@@ -1985,7 +2504,11 @@ pub fn validate_page(p: &StatusPageDoc) -> Result<NewStatusPage, Vec<(String, St
         show_uptime: p.show_uptime,
         show_response: p.show_response,
         show_powered_by: p.show_powered_by,
-        footer_text: p.footer_text.clone().map(|f| f.trim().to_string()).filter(|f| !f.is_empty()),
+        footer_text: p
+            .footer_text
+            .clone()
+            .map(|f| f.trim().to_string())
+            .filter(|f| !f.is_empty()),
         custom_css: css,
         refresh_seconds: p.refresh_seconds,
     })
@@ -2020,13 +2543,19 @@ fn plan_window(
                 ("active", e.active != row.active),
                 ("start_at", e.start_at != row.start_at),
                 ("end_at", e.end_at != row.end_at),
-                ("weekdays", e.weekdays.clone().filter(|d| !d.is_empty()) != row.weekdays),
+                (
+                    "weekdays",
+                    e.weekdays.clone().filter(|d| !d.is_empty()) != row.weekdays,
+                ),
                 ("time_from", e.time_from != row.time_from),
                 ("time_to", e.time_to != row.time_to),
                 ("interval_days", e.interval_days != row.interval_days),
                 ("month_days", e.month_days != row.month_days),
                 ("cron", e.cron != row.cron),
-                ("duration_minutes", e.duration_minutes != row.duration_minutes),
+                (
+                    "duration_minutes",
+                    e.duration_minutes != row.duration_minutes,
+                ),
                 ("timezone", e.timezone != row.timezone),
             ] {
                 if differs {
@@ -2069,78 +2598,130 @@ pub fn validate_window(
     let mut errors: Vec<(String, String)> = Vec::new();
     let title = w.title.trim();
     if title.is_empty() || title.chars().count() > 200 {
-        errors.push(("title".into(), "Give the window a title of up to 200 characters.".into()));
+        errors.push((
+            "title".into(),
+            "Give the window a title of up to 200 characters.".into(),
+        ));
     }
     if w.description.trim().chars().count() > db_maint::DESCRIPTION_MAX {
         errors.push((
             "description".into(),
-            crate::i18n::tf("mw.err_description_long", &[("max", &crate::i18n::fmt_int(db_maint::DESCRIPTION_MAX as i64))]),
+            crate::i18n::tf(
+                "mw.err_description_long",
+                &[(
+                    "max",
+                    &crate::i18n::fmt_int(db_maint::DESCRIPTION_MAX as i64),
+                )],
+            ),
         ));
     }
     let strategy = match Strategy::parse(w.strategy.trim()) {
         Some(s) => s,
         None => {
-            errors.push(("strategy".into(), "Use manual, once, daily, weekly, interval, monthly or cron.".into()));
+            errors.push((
+                "strategy".into(),
+                "Use manual, once, daily, weekly, interval, monthly or cron.".into(),
+            ));
             Strategy::Manual
         }
     };
-    let timezone = if w.timezone.trim().is_empty() { "UTC".to_string() } else { w.timezone.trim().to_string() };
-    if jiff::tz::TimeZone::get(&timezone).is_err() && timezone != "UTC" {
-        errors.push(("timezone".into(), format!("“{timezone}” isn’t a time zone this server knows.")));
-    }
-    let ts = |errors: &mut Vec<(String, String)>, field: &str, v: &Option<String>| -> Option<String> {
-        let v = v.as_deref().map(str::trim).filter(|v| !v.is_empty())?;
-        match parse_db_ts(v) {
-            Some(t) => Some(fmt_db_ts(t)),
-            None => {
-                errors.push((field.into(), "Use UTC time like 2026-10-19 22:00:00.".into()));
-                None
-            }
-        }
+    let timezone = if w.timezone.trim().is_empty() {
+        "UTC".to_string()
+    } else {
+        w.timezone.trim().to_string()
     };
+    if jiff::tz::TimeZone::get(&timezone).is_err() && timezone != "UTC" {
+        errors.push((
+            "timezone".into(),
+            format!("“{timezone}” isn’t a time zone this server knows."),
+        ));
+    }
+    let ts =
+        |errors: &mut Vec<(String, String)>, field: &str, v: &Option<String>| -> Option<String> {
+            let v = v.as_deref().map(str::trim).filter(|v| !v.is_empty())?;
+            match parse_db_ts(v) {
+                Some(t) => Some(fmt_db_ts(t)),
+                None => {
+                    errors.push((
+                        field.into(),
+                        "Use UTC time like 2026-10-19 22:00:00.".into(),
+                    ));
+                    None
+                }
+            }
+        };
     let start_at = ts(&mut errors, "start_at", &w.start_at);
     let end_at = ts(&mut errors, "end_at", &w.end_at);
-    let hhmm = |errors: &mut Vec<(String, String)>, field: &str, v: &Option<String>| -> Option<String> {
-        let v = v.as_deref().map(str::trim).filter(|v| !v.is_empty())?;
-        match parse_hhmm(v) {
-            Some(t) => Some(t.strftime("%H:%M").to_string()),
-            None => {
-                errors.push((field.into(), "Use 24-hour time like 22:00.".into()));
-                None
+    let hhmm =
+        |errors: &mut Vec<(String, String)>, field: &str, v: &Option<String>| -> Option<String> {
+            let v = v.as_deref().map(str::trim).filter(|v| !v.is_empty())?;
+            match parse_hhmm(v) {
+                Some(t) => Some(t.strftime("%H:%M").to_string()),
+                None => {
+                    errors.push((field.into(), "Use 24-hour time like 22:00.".into()));
+                    None
+                }
             }
-        }
-    };
+        };
     let time_from = hhmm(&mut errors, "time_from", &w.time_from);
     let time_to = hhmm(&mut errors, "time_to", &w.time_to);
-    let weekdays = w.weekdays.as_deref().map(parse_weekdays).unwrap_or_default();
+    let weekdays = w
+        .weekdays
+        .as_deref()
+        .map(parse_weekdays)
+        .unwrap_or_default();
     match strategy {
         Strategy::Manual => {}
         Strategy::Once => match (&start_at, &end_at) {
             (Some(s), Some(e)) if e > s => {}
-            (Some(_), Some(_)) => errors.push(("end_at".into(), "The end has to be after the start.".into())),
-            _ => errors.push(("start_at".into(), "Once windows need start_at and end_at.".into())),
+            (Some(_), Some(_)) => {
+                errors.push(("end_at".into(), "The end has to be after the start.".into()))
+            }
+            _ => errors.push((
+                "start_at".into(),
+                "Once windows need start_at and end_at.".into(),
+            )),
         },
-        Strategy::Daily | Strategy::Weekly | Strategy::Interval | Strategy::Monthly | Strategy::Cron => {
+        Strategy::Daily
+        | Strategy::Weekly
+        | Strategy::Interval
+        | Strategy::Monthly
+        | Strategy::Cron => {
             if strategy.uses_times() && (time_from.is_none() || time_to.is_none()) {
-                errors.push(("time_from".into(), "Recurring windows need time_from and time_to.".into()));
+                errors.push((
+                    "time_from".into(),
+                    "Recurring windows need time_from and time_to.".into(),
+                ));
             }
             if strategy == Strategy::Weekly && weekdays.is_empty() {
-                errors.push(("weekdays".into(), "Pick at least one day, like \"1,3,5\".".into()));
+                errors.push((
+                    "weekdays".into(),
+                    "Pick at least one day, like \"1,3,5\".".into(),
+                ));
             }
             if strategy == Strategy::Interval {
                 match w.interval_days {
                     Some(n) if (1..=366).contains(&n) => {}
-                    _ => errors.push(("interval_days".into(), "Use a number of days from 1 to 366.".into())),
+                    _ => errors.push((
+                        "interval_days".into(),
+                        "Use a number of days from 1 to 366.".into(),
+                    )),
                 }
                 if start_at.is_none() {
-                    errors.push(("start_at".into(), "Every-N-days windows need start_at, the first day.".into()));
+                    errors.push((
+                        "start_at".into(),
+                        "Every-N-days windows need start_at, the first day.".into(),
+                    ));
                 }
             }
             if strategy == Strategy::Monthly {
                 let raw = w.month_days.as_deref().unwrap_or("");
                 match crate::maintenance::parse_month_days_strict(raw) {
                     Ok(d) if !d.is_empty() => {}
-                    Ok(_) => errors.push(("month_days".into(), "Pick at least one day, like \"1,15\" or \"-1\" for the last day.".into())),
+                    Ok(_) => errors.push((
+                        "month_days".into(),
+                        "Pick at least one day, like \"1,15\" or \"-1\" for the last day.".into(),
+                    )),
                     Err(e) => errors.push(("month_days".into(), e)),
                 }
             }
@@ -2151,13 +2732,22 @@ pub fn validate_window(
                 }
                 match w.duration_minutes {
                     Some(n) if (1..=crate::maintenance::MAX_DURATION_MINUTES).contains(&n) => {}
-                    _ => errors.push(("duration_minutes".into(), format!("Use a length from 1 to {} minutes.", crate::maintenance::MAX_DURATION_MINUTES))),
+                    _ => errors.push((
+                        "duration_minutes".into(),
+                        format!(
+                            "Use a length from 1 to {} minutes.",
+                            crate::maintenance::MAX_DURATION_MINUTES
+                        ),
+                    )),
                 }
             }
             if let (Some(a), Some(b)) = (&start_at, &end_at)
                 && b <= a
             {
-                errors.push(("end_at".into(), "The last date can’t be before the first date.".into()));
+                errors.push((
+                    "end_at".into(),
+                    "The last date can’t be before the first date.".into(),
+                ));
             }
         }
     }
@@ -2172,7 +2762,10 @@ pub fn validate_window(
     for s in &w.status_pages {
         match page_ids.get(s.trim()) {
             Some(id) => page_list.push(*id),
-            None => errors.push(("status_pages".into(), format!("No status page with slug “{s}”."))),
+            None => errors.push((
+                "status_pages".into(),
+                format!("No status page with slug “{s}”."),
+            )),
         }
     }
     monitor_list.sort_unstable();
@@ -2187,17 +2780,42 @@ pub fn validate_window(
         description: w.description.trim().to_string(),
         strategy: strategy.as_str().into(),
         active: w.active,
-        start_at: if strategy == Strategy::Manual { None } else { start_at },
-        end_at: if strategy == Strategy::Manual { None } else { end_at },
-        weekdays: (strategy == Strategy::Weekly)
-            .then(|| weekdays.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(",")),
-        time_from: if strategy.uses_times() { time_from } else { None },
+        start_at: if strategy == Strategy::Manual {
+            None
+        } else {
+            start_at
+        },
+        end_at: if strategy == Strategy::Manual {
+            None
+        } else {
+            end_at
+        },
+        weekdays: (strategy == Strategy::Weekly).then(|| {
+            weekdays
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        }),
+        time_from: if strategy.uses_times() {
+            time_from
+        } else {
+            None
+        },
         time_to: if strategy.uses_times() { time_to } else { None },
-        interval_days: (strategy == Strategy::Interval).then_some(w.interval_days).flatten(),
-        month_days: (strategy == Strategy::Monthly)
-            .then(|| crate::maintenance::fmt_month_days(&crate::maintenance::parse_month_days(w.month_days.as_deref().unwrap_or("")))),
-        cron: (strategy == Strategy::Cron).then(|| w.cron.as_deref().unwrap_or("").trim().to_string()),
-        duration_minutes: (strategy == Strategy::Cron).then_some(w.duration_minutes).flatten(),
+        interval_days: (strategy == Strategy::Interval)
+            .then_some(w.interval_days)
+            .flatten(),
+        month_days: (strategy == Strategy::Monthly).then(|| {
+            crate::maintenance::fmt_month_days(&crate::maintenance::parse_month_days(
+                w.month_days.as_deref().unwrap_or(""),
+            ))
+        }),
+        cron: (strategy == Strategy::Cron)
+            .then(|| w.cron.as_deref().unwrap_or("").trim().to_string()),
+        duration_minutes: (strategy == Strategy::Cron)
+            .then_some(w.duration_minutes)
+            .flatten(),
         timezone,
         monitor_ids: monitor_list,
         status_page_ids: page_list,
@@ -2212,9 +2830,9 @@ fn resolve(map: &HashMap<i64, i64>, id: i64) -> rusqlite::Result<i64> {
     if id > 0 {
         return Ok(id);
     }
-    map.get(&id)
-        .copied()
-        .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("unresolved placeholder {id}")))
+    map.get(&id).copied().ok_or_else(|| {
+        rusqlite::Error::InvalidParameterName(format!("unresolved placeholder {id}"))
+    })
 }
 
 fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
@@ -2244,7 +2862,8 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
     for op in &ops.channels {
         match op {
             ChannelOp::Create { ph, w } => {
-                let id = db_notifications::insert_channel(conn, &w.name, &w.kind, &w.config, false)?;
+                let id =
+                    db_notifications::insert_channel(conn, &w.name, &w.kind, &w.config, false)?;
                 if w.is_default {
                     db_notifications::set_default(conn, id, true)?;
                 }
@@ -2287,11 +2906,17 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
             }
         };
         if let Some(tags) = &w.tags {
-            let resolved = tags.iter().map(|(t, v)| Ok((resolve(&ids, *t)?, v.clone()))).collect::<rusqlite::Result<Vec<_>>>()?;
+            let resolved = tags
+                .iter()
+                .map(|(t, v)| Ok((resolve(&ids, *t)?, v.clone())))
+                .collect::<rusqlite::Result<Vec<_>>>()?;
             db_tags::set_monitor_tags(conn, id, &resolved)?;
         }
         if let Some(channels) = &w.channels {
-            let resolved = channels.iter().map(|(c, e)| Ok((resolve(&ids, *c)?, *e))).collect::<rusqlite::Result<Vec<_>>>()?;
+            let resolved = channels
+                .iter()
+                .map(|(c, e)| Ok((resolve(&ids, *c)?, *e)))
+                .collect::<rusqlite::Result<Vec<_>>>()?;
             db_notifications::set_monitor_channels(conn, id, &resolved)?;
         }
         applied.monitor_ids.push(id);
@@ -2303,14 +2928,26 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
     for op in &ops.pages {
         applied.pages_changed = true;
         match op {
-            PageOp::Create { ph, page, sections, extras } => {
+            PageOp::Create {
+                ph,
+                page,
+                sections,
+                extras,
+            } => {
                 let id = insert_page(conn, page)?;
                 ids.insert(*ph, id);
-                let sections = sections.clone().unwrap_or_else(|| vec![("Services".to_string(), Vec::new())]);
+                let sections = sections
+                    .clone()
+                    .unwrap_or_else(|| vec![("Services".to_string(), Vec::new())]);
                 write_sections(conn, id, &sections, &ids)?;
                 db_pages::extras::apply_extras(conn, id, extras)?;
             }
-            PageOp::Update { id, page, sections, extras } => {
+            PageOp::Update {
+                id,
+                page,
+                sections,
+                extras,
+            } => {
                 db_pages::update(conn, *id, page)?;
                 if let Some(sections) = sections {
                     write_sections(conn, *id, sections, &ids)?;
@@ -2348,8 +2985,14 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
                     params![id, w.title, w.description, w.strategy, w.active, w.start_at, w.end_at, w.weekdays, w.time_from, w.time_to, w.timezone,
                             w.interval_days, w.month_days, w.cron, w.duration_minutes],
                 )?;
-                conn.execute("DELETE FROM maintenance_monitors WHERE maintenance_id = ?1", params![id])?;
-                conn.execute("DELETE FROM maintenance_status_pages WHERE maintenance_id = ?1", params![id])?;
+                conn.execute(
+                    "DELETE FROM maintenance_monitors WHERE maintenance_id = ?1",
+                    params![id],
+                )?;
+                conn.execute(
+                    "DELETE FROM maintenance_status_pages WHERE maintenance_id = ?1",
+                    params![id],
+                )?;
                 write_window_links(conn, *id, &w)?;
             }
         }
@@ -2361,10 +3004,21 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
     Ok(applied)
 }
 
-fn resolve_window(w: &db_maint::NewWindow, ids: &HashMap<i64, i64>) -> rusqlite::Result<db_maint::NewWindow> {
+fn resolve_window(
+    w: &db_maint::NewWindow,
+    ids: &HashMap<i64, i64>,
+) -> rusqlite::Result<db_maint::NewWindow> {
     let mut w = w.clone();
-    w.monitor_ids = w.monitor_ids.iter().map(|id| resolve(ids, *id)).collect::<rusqlite::Result<_>>()?;
-    w.status_page_ids = w.status_page_ids.iter().map(|id| resolve(ids, *id)).collect::<rusqlite::Result<_>>()?;
+    w.monitor_ids = w
+        .monitor_ids
+        .iter()
+        .map(|id| resolve(ids, *id))
+        .collect::<rusqlite::Result<_>>()?;
+    w.status_page_ids = w
+        .status_page_ids
+        .iter()
+        .map(|id| resolve(ids, *id))
+        .collect::<rusqlite::Result<_>>()?;
     Ok(w)
 }
 
@@ -2396,8 +3050,16 @@ fn insert_page(conn: &Connection, p: &NewStatusPage) -> rusqlite::Result<i64> {
 }
 
 /// Replaces a page's sections and their monitors.
-pub fn write_sections(conn: &Connection, page_id: i64, sections: &[(String, Vec<i64>)], ids: &HashMap<i64, i64>) -> rusqlite::Result<()> {
-    conn.execute("DELETE FROM status_page_sections WHERE status_page_id = ?1", params![page_id])?;
+pub fn write_sections(
+    conn: &Connection,
+    page_id: i64,
+    sections: &[(String, Vec<i64>)],
+    ids: &HashMap<i64, i64>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM status_page_sections WHERE status_page_id = ?1",
+        params![page_id],
+    )?;
     for (i, (name, monitors)) in sections.iter().enumerate() {
         conn.execute(
             "INSERT INTO status_page_sections (status_page_id, name, sort_order) VALUES (?1, ?2, ?3)",
@@ -2411,7 +3073,10 @@ pub fn write_sections(conn: &Connection, page_id: i64, sections: &[(String, Vec<
             )?;
         }
     }
-    conn.execute("UPDATE status_pages SET updated_at = datetime('now') WHERE id = ?1", params![page_id])?;
+    conn.execute(
+        "UPDATE status_pages SET updated_at = datetime('now') WHERE id = ?1",
+        params![page_id],
+    )?;
     Ok(())
 }
 
@@ -2447,7 +3112,12 @@ pub enum ImportError {
 
 /// Plans (and unless `dry_run`, applies) `doc`, then tells the scheduler,
 /// maintenance cache and dashboards about the changes.
-pub async fn import(state: &AppState, doc: Document, mode: Mode, dry_run: bool) -> Result<Plan, ImportError> {
+pub async fn import(
+    state: &AppState,
+    doc: Document,
+    mode: Mode,
+    dry_run: bool,
+) -> Result<Plan, ImportError> {
     if dry_run {
         let plan = state.with_conn(move |c| plan(c, &doc, mode)).await?;
         return Ok(plan);
@@ -2464,12 +3134,19 @@ fn discovery_changed(plan: &Plan) -> bool {
     plan.items.iter().any(|i| {
         i.kind == KIND_SETTING
             && !matches!(i.action, Action::Unchanged)
-            && matches!(i.key.as_str(), db_settings::DISCOVERY_ENABLED | db_settings::DISCOVERY_DOCKER_HOST)
+            && matches!(
+                i.key.as_str(),
+                db_settings::DISCOVERY_ENABLED | db_settings::DISCOVERY_DOCKER_HOST
+            )
     })
 }
 
 pub async fn after_apply(state: &AppState, applied: &Applied) {
-    for id in applied.deleted_monitor_ids.iter().chain(&applied.monitor_ids) {
+    for id in applied
+        .deleted_monitor_ids
+        .iter()
+        .chain(&applied.monitor_ids)
+    {
         state.scheduler.reload(*id).await;
     }
     if applied.maintenance_changed {
@@ -2542,11 +3219,18 @@ pub fn spawn_startup_import(state: AppState) {
 /// an SQLite file with `schema_migrations`, our core tables, no migrations
 /// from a newer version and a passing quick check. Returns the number of monitors.
 pub fn validate_backup_db(path: &Path) -> Result<i64, String> {
-    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX)
-        .map_err(|e| format!("This isn’t an SQLite database ({e})."))?;
+    let conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("This isn’t an SQLite database ({e})."))?;
     let has = |table: &str| -> Result<bool, String> {
-        conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)", params![table], |r| r.get(0))
-            .map_err(|e| format!("This isn’t an SQLite database ({e})."))
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            params![table],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("This isn’t an SQLite database ({e})."))
     };
     if !has("schema_migrations")? || !has("monitors")? || !has("settings")? || !has("heartbeats")? {
         return Err("This isn’t a Vigilant Vole backup (its tables are missing).".into());
@@ -2558,9 +3242,14 @@ pub fn validate_backup_db(path: &Path) -> Result<i64, String> {
     if !applied.iter().any(|n| n == "0002_full_schema.sql") {
         return Err("This backup is from a very old version. Start that version once to upgrade it, then back up again.".into());
     }
-    let known: Vec<String> = MigrationFiles::iter().filter(|n| n.ends_with(".sql")).map(|n| n.into_owned()).collect();
+    let known: Vec<String> = MigrationFiles::iter()
+        .filter(|n| n.ends_with(".sql"))
+        .map(|n| n.into_owned())
+        .collect();
     if let Some(newer) = applied.iter().find(|n| !known.contains(n)) {
-        return Err(format!("This backup was made by a newer version of Vigilant Vole (migration {newer}). Upgrade first."));
+        return Err(format!(
+            "This backup was made by a newer version of Vigilant Vole (migration {newer}). Upgrade first."
+        ));
     }
     let check: String = conn
         .query_row("PRAGMA quick_check", [], |r| r.get(0))
@@ -2568,7 +3257,8 @@ pub fn validate_backup_db(path: &Path) -> Result<i64, String> {
     if check != "ok" {
         return Err(format!("The database is damaged ({check})."));
     }
-    conn.query_row("SELECT COUNT(*) FROM monitors", [], |r| r.get(0)).map_err(|e| e.to_string())
+    conn.query_row("SELECT COUNT(*) FROM monitors", [], |r| r.get(0))
+        .map_err(|e| e.to_string())
 }
 
 /// Swaps in `DATA_DIR/restore-pending.db` (uploaded on the backup page)
@@ -2591,7 +3281,11 @@ pub fn apply_pending_restore(data_dir: &Path) {
         }
         return;
     }
-    let db_path = crate::config::Config { data_dir: data_dir.to_path_buf(), bind_addr: String::new() }.db_path();
+    let db_path = crate::config::Config {
+        data_dir: data_dir.to_path_buf(),
+        bind_addr: String::new(),
+    }
+    .db_path();
     let backups = data_dir.join("backups");
     if let Err(err) = std::fs::create_dir_all(&backups) {
         tracing::error!(%err, "can't create the backups folder; restore postponed");
@@ -2612,7 +3306,9 @@ pub fn apply_pending_restore(data_dir: &Path) {
         tracing::info!(backup = %backups.join(&base).display(), "moved the current database aside");
     }
     match std::fs::rename(&pending, &db_path) {
-        Ok(()) => tracing::warn!(path = %db_path.display(), "restored the database from the uploaded backup"),
+        Ok(()) => {
+            tracing::warn!(path = %db_path.display(), "restored the database from the uploaded backup")
+        }
         Err(err) => tracing::error!(%err, "couldn't move the uploaded backup into place"),
     }
 }

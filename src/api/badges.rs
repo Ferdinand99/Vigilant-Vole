@@ -114,9 +114,19 @@ pub fn parse_color(input: &str) -> Option<String> {
 }
 
 /// Renders a two-part badge. `label` may be empty (message-only badge).
-pub fn render_svg(label: &str, message: &str, label_color: &str, color: &str, style: BadgeStyle) -> String {
+pub fn render_svg(
+    label: &str,
+    message: &str,
+    label_color: &str,
+    color: &str,
+    style: BadgeStyle,
+) -> String {
     let pad = 10;
-    let label_w = if label.is_empty() { 0 } else { text_width(label) + pad };
+    let label_w = if label.is_empty() {
+        0
+    } else {
+        text_width(label) + pad
+    };
     let msg_w = text_width(message) + pad;
     let total = label_w + msg_w;
     let title = if label.is_empty() {
@@ -137,11 +147,20 @@ pub fn render_svg(label: &str, message: &str, label_color: &str, color: &str, st
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{total}\" height=\"20\" role=\"img\" aria-label=\"{title}\"><title>{title}</title>{gradient}<clipPath id=\"r\"><rect width=\"{total}\" height=\"20\" rx=\"{rx}\" fill=\"#fff\"/></clipPath><g clip-path=\"url(#r)\">"
     );
     if label_w > 0 {
-        let _ = write!(svg, "<rect width=\"{label_w}\" height=\"20\" fill=\"{label_color}\"/>");
+        let _ = write!(
+            svg,
+            "<rect width=\"{label_w}\" height=\"20\" fill=\"{label_color}\"/>"
+        );
     }
-    let _ = write!(svg, "<rect x=\"{label_w}\" width=\"{msg_w}\" height=\"20\" fill=\"{color}\"/>");
+    let _ = write!(
+        svg,
+        "<rect x=\"{label_w}\" width=\"{msg_w}\" height=\"20\" fill=\"{color}\"/>"
+    );
     if style == BadgeStyle::Flat {
-        let _ = write!(svg, "<rect width=\"{total}\" height=\"20\" fill=\"url(#s)\"/>");
+        let _ = write!(
+            svg,
+            "<rect width=\"{total}\" height=\"20\" fill=\"url(#s)\"/>"
+        );
     }
     svg.push_str("</g><g fill=\"#fff\" text-anchor=\"middle\" font-family=\"Verdana,Geneva,DejaVu Sans,sans-serif\" text-rendering=\"geometricPrecision\" font-size=\"110\">");
     let mut text = |x_center: u32, width: u32, s: &str| {
@@ -154,7 +173,10 @@ pub fn render_svg(label: &str, message: &str, label_color: &str, color: &str, st
                 "<text aria-hidden=\"true\" x=\"{x}\" y=\"150\" fill=\"#010101\" fill-opacity=\".3\" transform=\"scale(.1)\" textLength=\"{len}\">{s}</text>"
             );
         }
-        let _ = write!(svg, "<text x=\"{x}\" y=\"140\" transform=\"scale(.1)\" fill=\"#fff\" textLength=\"{len}\">{s}</text>");
+        let _ = write!(
+            svg,
+            "<text x=\"{x}\" y=\"140\" transform=\"scale(.1)\" fill=\"#fff\" textLength=\"{len}\">{s}</text>"
+        );
     };
     if label_w > 0 {
         text(label_w / 2, label_w, label);
@@ -228,11 +250,18 @@ fn avg_response_ms(conn: &Connection, id: i64, days: i64) -> rusqlite::Result<Op
     Ok((n > 0).then(|| sum / n as f64))
 }
 
-fn load(conn: &Connection, id: i64, kind: &str, q: &BadgeQuery) -> rusqlite::Result<Option<BadgeData>> {
+fn load(
+    conn: &Connection,
+    id: i64,
+    kind: &str,
+    q: &BadgeQuery,
+) -> rusqlite::Result<Option<BadgeData>> {
     let row: Option<(String, bool)> = conn
-        .query_row("SELECT name, active FROM monitors WHERE id = ?1", params![id], |r| {
-            Ok((r.get(0)?, r.get(1)?))
-        })
+        .query_row(
+            "SELECT name, active FROM monitors WHERE id = ?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
         .optional()?;
     let Some((_name, active)) = row else {
         return Ok(None);
@@ -240,7 +269,11 @@ fn load(conn: &Connection, id: i64, kind: &str, q: &BadgeQuery) -> rusqlite::Res
     if !db_settings::load(conn)?.badges_public && !db_pages::monitor_is_public(conn, id)? {
         return Ok(None);
     }
-    let (days, dur_label) = q.duration.as_deref().and_then(parse_duration_days).unwrap_or((1, "24h"));
+    let (days, dur_label) = q
+        .duration
+        .as_deref()
+        .and_then(parse_duration_days)
+        .unwrap_or((1, "24h"));
     let color_override = q.color.as_deref().and_then(parse_color);
 
     let data = match kind {
@@ -256,22 +289,32 @@ fn load(conn: &Connection, id: i64, kind: &str, q: &BadgeQuery) -> rusqlite::Res
             let status = last.as_deref().and_then(HeartbeatStatus::parse);
             let in_maint = maintenance::is_under_maintenance(conn, id)?;
             let (message, color) = if in_maint || status == Some(HeartbeatStatus::Maintenance) {
-                (custom(&q.maintenance_label).unwrap_or_else(|| "maintenance".into()), "#007ec6".to_string())
+                (
+                    custom(&q.maintenance_label).unwrap_or_else(|| "maintenance".into()),
+                    "#007ec6".to_string(),
+                )
             } else if !active {
                 ("paused".to_string(), "#9f9f9f".to_string())
             } else {
                 match status {
                     Some(HeartbeatStatus::Up) => (
                         custom(&q.up_label).unwrap_or_else(|| "up".into()),
-                        q.up_color.as_deref().and_then(parse_color).unwrap_or_else(|| "#4c1".into()),
+                        q.up_color
+                            .as_deref()
+                            .and_then(parse_color)
+                            .unwrap_or_else(|| "#4c1".into()),
                     ),
                     Some(HeartbeatStatus::Down) => (
                         custom(&q.down_label).unwrap_or_else(|| "down".into()),
-                        q.down_color.as_deref().and_then(parse_color).unwrap_or_else(|| "#e05d44".into()),
+                        q.down_color
+                            .as_deref()
+                            .and_then(parse_color)
+                            .unwrap_or_else(|| "#e05d44".into()),
                     ),
-                    Some(HeartbeatStatus::Pending) => {
-                        (custom(&q.pending_label).unwrap_or_else(|| "pending".into()), "#dfb317".to_string())
-                    }
+                    Some(HeartbeatStatus::Pending) => (
+                        custom(&q.pending_label).unwrap_or_else(|| "pending".into()),
+                        "#dfb317".to_string(),
+                    ),
                     _ => ("unknown".to_string(), "#9f9f9f".to_string()),
                 }
             };
@@ -284,7 +327,10 @@ fn load(conn: &Connection, id: i64, kind: &str, q: &BadgeQuery) -> rusqlite::Res
         "uptime" => {
             let pct = rollups::uptime_pct(conn, id, days)?;
             let (message, color) = match pct {
-                Some(p) => (super::public_status::fmt_pct(p), uptime_color(p).to_string()),
+                Some(p) => (
+                    super::public_status::fmt_pct(p),
+                    uptime_color(p).to_string(),
+                ),
                 None => ("no data".to_string(), "#9f9f9f".to_string()),
             };
             BadgeData {
@@ -316,12 +362,21 @@ fn load(conn: &Connection, id: i64, kind: &str, q: &BadgeQuery) -> rusqlite::Res
             let days_left = expires
                 .as_deref()
                 .and_then(maintenance::parse_db_ts)
-                .map(|t| jiff::Timestamp::now().duration_until(t).as_secs().div_euclid(86_400));
+                .map(|t| {
+                    jiff::Timestamp::now()
+                        .duration_until(t)
+                        .as_secs()
+                        .div_euclid(86_400)
+                });
             let (message, color) = match days_left {
                 None => ("no data".to_string(), "#9f9f9f".to_string()),
                 Some(d) if d < 0 => ("expired".to_string(), "#e05d44".to_string()),
                 Some(d) => (
-                    if d == 1 { "1 day".to_string() } else { format!("{d} days") },
+                    if d == 1 {
+                        "1 day".to_string()
+                    } else {
+                        format!("{d} days")
+                    },
                     match d {
                         0..=6 => "#e05d44",
                         7..=13 => "#fe7d37",
@@ -358,9 +413,20 @@ const CACHEABLE_QUERY_MAX: usize = 512;
 fn normalized(q: &BadgeQuery) -> BadgeQuery {
     let color = |c: &Option<String>| c.as_deref().and_then(parse_color);
     BadgeQuery {
-        style: Some(if q.style.as_deref() == Some("flat-square") { "flat-square" } else { "flat" }.into()),
+        style: Some(
+            if q.style.as_deref() == Some("flat-square") {
+                "flat-square"
+            } else {
+                "flat"
+            }
+            .into(),
+        ),
         label: custom(&q.label),
-        duration: q.duration.as_deref().and_then(parse_duration_days).map(|(_, l)| l.to_string()),
+        duration: q
+            .duration
+            .as_deref()
+            .and_then(parse_duration_days)
+            .map(|(_, l)| l.to_string()),
         up_label: custom(&q.up_label),
         down_label: custom(&q.down_label),
         pending_label: custom(&q.pending_label),
@@ -387,10 +453,20 @@ pub fn invalidate_cache() {
 }
 
 fn svg_response(svg: String) -> Response {
-    let mut resp = ([(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")], svg).into_response();
+    let mut resp = (
+        [(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")],
+        svg,
+    )
+        .into_response();
     let h = resp.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=60"));
-    h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    h.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=60"),
+    );
+    h.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
     resp
 }
 
@@ -405,7 +481,8 @@ async fn badge(
     }
     let q = normalized(&q);
     let cacheable = uri.query().is_none_or(|s| s.len() <= CACHEABLE_QUERY_MAX);
-    let key: Option<CacheKey> = cacheable.then(|| (state.config.data_dir.clone(), id, kind.clone(), q.clone()));
+    let key: Option<CacheKey> =
+        cacheable.then(|| (state.config.data_dir.clone(), id, kind.clone(), q.clone()));
     if let Some(key) = &key
         && let Ok(cache) = CACHE.lock()
         && let Some((at, svg)) = cache.get(key)
@@ -461,7 +538,10 @@ mod tests {
         let svg = render_svg("status", "up", "#555", "#4c1", BadgeStyle::Flat);
         let label_w = text_width("status") + 10;
         let msg_w = text_width("up") + 10;
-        assert!(svg.starts_with(&format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\"", label_w + msg_w)));
+        assert!(svg.starts_with(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\"",
+            label_w + msg_w
+        )));
         assert!(svg.contains(&format!("<rect x=\"{label_w}\" width=\"{msg_w}\"")));
         assert!(svg.contains("rx=\"3\""));
         assert!(svg.contains("linearGradient"));
@@ -502,7 +582,11 @@ mod tests {
 
     #[test]
     fn cache_key_ignores_junk_and_long_labels() {
-        let a = BadgeQuery { label: Some("x".repeat(64)), color: Some("FF0000".into()), ..Default::default() };
+        let a = BadgeQuery {
+            label: Some("x".repeat(64)),
+            color: Some("FF0000".into()),
+            ..Default::default()
+        };
         let b = BadgeQuery {
             label: Some("x".repeat(10_000)),
             color: Some("ff0000".into()),
@@ -513,7 +597,10 @@ mod tests {
         };
         assert_eq!(normalized(&a), normalized(&b));
         assert_eq!(normalized(&b).label.unwrap().chars().count(), 64);
-        let c = BadgeQuery { duration: Some("7d".into()), ..Default::default() };
+        let c = BadgeQuery {
+            duration: Some("7d".into()),
+            ..Default::default()
+        };
         assert_ne!(normalized(&a), normalized(&c));
     }
 

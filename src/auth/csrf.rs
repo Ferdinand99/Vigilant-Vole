@@ -14,7 +14,14 @@ use axum::http::{HeaderMap, Method};
 use url::Url;
 
 /// Prefixes of paths that never rely on the session cookie.
-const EXEMPT_PREFIXES: &[&str] = &["/api/push", "/api/agent", "/api/v1", "/api/badge", "/metrics", "/mcp"];
+const EXEMPT_PREFIXES: &[&str] = &[
+    "/api/push",
+    "/api/agent",
+    "/api/v1",
+    "/api/badge",
+    "/metrics",
+    "/mcp",
+];
 
 /// Is `path` one of the token/public machine endpoints?
 pub fn is_exempt_path(path: &str) -> bool {
@@ -25,7 +32,10 @@ pub fn is_exempt_path(path: &str) -> bool {
 }
 
 fn is_safe_method(method: &Method) -> bool {
-    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE)
+    matches!(
+        *method,
+        Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+    )
 }
 
 /// `(host, port)` with the port dropped when it is the scheme default.
@@ -87,13 +97,22 @@ pub fn is_allowed(
 /// server? `None` when the request carries neither (non-browser clients),
 /// `Some(false)` for a foreign or opaque origin. Used for DNS-rebinding
 /// protection on endpoints that are authenticated by token only.
-pub fn source_is_ours(headers: &HeaderMap, trust_proxy: bool, base_url: Option<&str>) -> Option<bool> {
+pub fn source_is_ours(
+    headers: &HeaderMap,
+    trust_proxy: bool,
+    base_url: Option<&str>,
+) -> Option<bool> {
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let source = header("origin").or_else(|| header("referer"))?;
     Some(source_matches(source, headers, trust_proxy, base_url))
 }
 
-fn source_matches(source: &str, headers: &HeaderMap, trust_proxy: bool, base_url: Option<&str>) -> bool {
+fn source_matches(
+    source: &str,
+    headers: &HeaderMap,
+    trust_proxy: bool,
+    base_url: Option<&str>,
+) -> bool {
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let Some((scheme, source)) = origin_authority(source) else {
         return false;
@@ -139,14 +158,26 @@ mod tests {
     #[test]
     fn safe_methods_pass_without_proof() {
         for m in [Method::GET, Method::HEAD, Method::OPTIONS] {
-            assert!(is_allowed(&m, "/settings/users", &HeaderMap::new(), false, None));
+            assert!(is_allowed(
+                &m,
+                "/settings/users",
+                &HeaderMap::new(),
+                false,
+                None
+            ));
         }
     }
 
     #[test]
     fn unsafe_methods_without_proof_are_blocked() {
         for m in [Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
-            assert!(!is_allowed(&m, "/monitors/1", &h(&[("host", "vole.local")]), false, None));
+            assert!(!is_allowed(
+                &m,
+                "/monitors/1",
+                &h(&[("host", "vole.local")]),
+                false,
+                None
+            ));
         }
     }
 
@@ -157,38 +188,71 @@ mod tests {
 
     #[test]
     fn same_origin_passes() {
-        assert!(post("/login", &h(&[("host", "vole.local:3001"), ("origin", "http://vole.local:3001")])));
+        assert!(post(
+            "/login",
+            &h(&[
+                ("host", "vole.local:3001"),
+                ("origin", "http://vole.local:3001")
+            ])
+        ));
     }
 
     #[test]
     fn default_ports_are_normalised() {
-        assert!(post("/login", &h(&[("host", "vole.local:443"), ("origin", "https://vole.local")])));
-        assert!(post("/login", &h(&[("host", "vole.local"), ("origin", "http://vole.local:80")])));
+        assert!(post(
+            "/login",
+            &h(&[("host", "vole.local:443"), ("origin", "https://vole.local")])
+        ));
+        assert!(post(
+            "/login",
+            &h(&[("host", "vole.local"), ("origin", "http://vole.local:80")])
+        ));
     }
 
     #[test]
     fn host_comparison_ignores_case() {
-        assert!(post("/login", &h(&[("host", "Vole.Local"), ("origin", "http://vole.local")])));
+        assert!(post(
+            "/login",
+            &h(&[("host", "Vole.Local"), ("origin", "http://vole.local")])
+        ));
     }
 
     #[test]
     fn cross_origin_is_blocked() {
-        assert!(!post("/login", &h(&[("host", "vole.local"), ("origin", "http://evil.example")])));
+        assert!(!post(
+            "/login",
+            &h(&[("host", "vole.local"), ("origin", "http://evil.example")])
+        ));
     }
 
     #[test]
     fn different_port_is_cross_origin() {
-        assert!(!post("/login", &h(&[("host", "vole.local:3001"), ("origin", "http://vole.local:8080")])));
+        assert!(!post(
+            "/login",
+            &h(&[
+                ("host", "vole.local:3001"),
+                ("origin", "http://vole.local:8080")
+            ])
+        ));
     }
 
     #[test]
     fn lookalike_suffix_is_blocked() {
-        assert!(!post("/login", &h(&[("host", "vole.local"), ("origin", "http://vole.local.evil.example")])));
+        assert!(!post(
+            "/login",
+            &h(&[
+                ("host", "vole.local"),
+                ("origin", "http://vole.local.evil.example")
+            ])
+        ));
     }
 
     #[test]
     fn null_origin_is_blocked() {
-        assert!(!post("/login", &h(&[("host", "vole.local"), ("origin", "null")])));
+        assert!(!post(
+            "/login",
+            &h(&[("host", "vole.local"), ("origin", "null")])
+        ));
     }
 
     #[test]
@@ -203,8 +267,17 @@ mod tests {
 
     #[test]
     fn referer_is_the_fallback() {
-        assert!(post("/logout", &h(&[("host", "vole.local"), ("referer", "http://vole.local/settings")])));
-        assert!(!post("/logout", &h(&[("host", "vole.local"), ("referer", "http://evil.example/x")])));
+        assert!(post(
+            "/logout",
+            &h(&[
+                ("host", "vole.local"),
+                ("referer", "http://vole.local/settings")
+            ])
+        ));
+        assert!(!post(
+            "/logout",
+            &h(&[("host", "vole.local"), ("referer", "http://evil.example/x")])
+        ));
     }
 
     #[test]
@@ -220,14 +293,35 @@ mod tests {
 
     #[test]
     fn configured_base_url_is_trusted() {
-        let headers = h(&[("host", "127.0.0.1:3001"), ("origin", "https://up.example.com")]);
-        assert!(is_allowed(&Method::POST, "/login", &headers, false, Some("https://up.example.com/")));
-        assert!(!is_allowed(&Method::POST, "/login", &headers, false, Some("http://up.example.com")));
+        let headers = h(&[
+            ("host", "127.0.0.1:3001"),
+            ("origin", "https://up.example.com"),
+        ]);
+        assert!(is_allowed(
+            &Method::POST,
+            "/login",
+            &headers,
+            false,
+            Some("https://up.example.com/")
+        ));
+        assert!(!is_allowed(
+            &Method::POST,
+            "/login",
+            &headers,
+            false,
+            Some("http://up.example.com")
+        ));
     }
 
     #[test]
     fn machine_endpoints_are_exempt() {
-        for path in ["/api/push/abc", "/api/agent/v1/results", "/api/v1/monitors", "/metrics", "/api/badge/1/status"] {
+        for path in [
+            "/api/push/abc",
+            "/api/agent/v1/results",
+            "/api/v1/monitors",
+            "/metrics",
+            "/api/badge/1/status",
+        ] {
             assert!(post(path, &HeaderMap::new()), "{path}");
         }
     }

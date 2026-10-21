@@ -23,8 +23,13 @@ use crate::db::maintenance::{self as db_maint, MaintenanceWindow, NewWindow};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/maintenance", get(list).post(create))
-        .route("/maintenance/{id}", get(show).put(update).patch(update).delete(remove))
-        .layer(axum::middleware::from_fn(crate::api::public_status::invalidate_after_writes))
+        .route(
+            "/maintenance/{id}",
+            get(show).put(update).patch(update).delete(remove),
+        )
+        .layer(axum::middleware::from_fn(
+            crate::api::public_status::invalidate_after_writes,
+        ))
 }
 
 fn window_json(conn: &Connection, w: &MaintenanceWindow) -> rusqlite::Result<Value> {
@@ -47,14 +52,31 @@ async fn load(state: &AppState, id: i64) -> V1Result<Value> {
         .ok_or_else(V1Error::not_found)
 }
 
-async fn list(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> V1Result<Response> {
+async fn list(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+) -> V1Result<Response> {
     let data = state
-        .with_conn(|c| db_maint::list(c)?.iter().map(|w| window_json(c, w)).collect::<rusqlite::Result<Vec<_>>>())
+        .with_conn(|c| {
+            db_maint::list(c)?
+                .iter()
+                .map(|w| window_json(c, w))
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
         .await?;
-    Ok(json_ok(&headers, &json!({ "data": data, "next_cursor": null })))
+    Ok(json_ok(
+        &headers,
+        &json!({ "data": data, "next_cursor": null }),
+    ))
 }
 
-async fn show(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id(id): Id<i64>) -> V1Result<Response> {
+async fn show(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
     Ok(json_ok(&headers, &load(&state, id).await?))
 }
 
@@ -97,7 +119,11 @@ fn double_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<i6
 }
 
 /// Validates with the config importer's rules (ids are passed as keys).
-fn validate(conn: &Connection, input: &WindowIn, base: Option<(&MaintenanceWindow, Vec<i64>, Vec<i64>)>) -> rusqlite::Result<Result<NewWindow, V1Error>> {
+fn validate(
+    conn: &Connection,
+    input: &WindowIn,
+    base: Option<(&MaintenanceWindow, Vec<i64>, Vec<i64>)>,
+) -> rusqlite::Result<Result<NewWindow, V1Error>> {
     let (bw, bm, bp) = match base {
         Some((w, m, p)) => (Some(w), m, p),
         None => (None, Vec::new(), Vec::new()),
@@ -107,9 +133,21 @@ fn validate(conn: &Connection, input: &WindowIn, base: Option<(&MaintenanceWindo
         None => old.cloned().flatten(),
     };
     let doc = MaintenanceDoc {
-        title: input.title.clone().or_else(|| bw.map(|w| w.title.clone())).unwrap_or_default(),
-        description: input.description.clone().or_else(|| bw.map(|w| w.description.clone())).unwrap_or_default(),
-        strategy: input.strategy.clone().or_else(|| bw.map(|w| w.strategy.clone())).unwrap_or_else(|| "manual".into()),
+        title: input
+            .title
+            .clone()
+            .or_else(|| bw.map(|w| w.title.clone()))
+            .unwrap_or_default(),
+        description: input
+            .description
+            .clone()
+            .or_else(|| bw.map(|w| w.description.clone()))
+            .unwrap_or_default(),
+        strategy: input
+            .strategy
+            .clone()
+            .or_else(|| bw.map(|w| w.strategy.clone()))
+            .unwrap_or_else(|| "manual".into()),
         active: input.active.or(bw.map(|w| w.active)).unwrap_or(true),
         start_at: pick(&input.start_at, bw.map(|w| &w.start_at)),
         end_at: pick(&input.end_at, bw.map(|w| &w.end_at)),
@@ -126,9 +164,25 @@ fn validate(conn: &Connection, input: &WindowIn, base: Option<(&MaintenanceWindo
             Some(v) => v,
             None => bw.and_then(|w| w.duration_minutes),
         },
-        timezone: input.timezone.clone().or_else(|| bw.map(|w| w.timezone.clone())).unwrap_or_else(|| "UTC".into()),
-        monitors: input.monitor_ids.clone().unwrap_or(bm).iter().map(i64::to_string).collect(),
-        status_pages: input.status_page_ids.clone().unwrap_or(bp).iter().map(i64::to_string).collect(),
+        timezone: input
+            .timezone
+            .clone()
+            .or_else(|| bw.map(|w| w.timezone.clone()))
+            .unwrap_or_else(|| "UTC".into()),
+        monitors: input
+            .monitor_ids
+            .clone()
+            .unwrap_or(bm)
+            .iter()
+            .map(i64::to_string)
+            .collect(),
+        status_pages: input
+            .status_page_ids
+            .clone()
+            .unwrap_or(bp)
+            .iter()
+            .map(i64::to_string)
+            .collect(),
     };
     let ids = |sql: &str| -> rusqlite::Result<HashMap<String, i64>> {
         let mut stmt = conn.prepare(sql)?;
@@ -137,16 +191,22 @@ fn validate(conn: &Connection, input: &WindowIn, base: Option<(&MaintenanceWindo
     };
     let monitors = ids("SELECT id FROM monitors")?;
     let pages = ids("SELECT id FROM status_pages")?;
-    Ok(config_io::validate_window(&doc, &monitors, &pages).map_err(|errors| {
-        V1Error::fields(errors.into_iter().map(|(k, v)| {
-            let k = match k.as_str() {
-                "monitors" => "monitor_ids".to_string(),
-                "status_pages" => "status_page_ids".to_string(),
-                _ => k,
-            };
-            (k, v.replace("with key", "with id").replace("with slug", "with id"))
-        }))
-    }))
+    Ok(
+        config_io::validate_window(&doc, &monitors, &pages).map_err(|errors| {
+            V1Error::fields(errors.into_iter().map(|(k, v)| {
+                let k = match k.as_str() {
+                    "monitors" => "monitor_ids".to_string(),
+                    "status_pages" => "status_page_ids".to_string(),
+                    _ => k,
+                };
+                (
+                    k,
+                    v.replace("with key", "with id")
+                        .replace("with slug", "with id"),
+                )
+            }))
+        }),
+    )
 }
 
 fn changed(state: &AppState) {
@@ -154,7 +214,11 @@ fn changed(state: &AppState) {
     state.notify_update();
 }
 
-async fn create(State(state): State<AppState>, user: CurrentUser, Body(input): Body<WindowIn>) -> V1Result<Response> {
+async fn create(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Body(input): Body<WindowIn>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     let id = state
         .with_conn(move |c| match validate(c, &input, None)? {
@@ -163,17 +227,29 @@ async fn create(State(state): State<AppState>, user: CurrentUser, Body(input): B
         })
         .await??;
     changed(&state);
-    Ok(created(format!("/api/v1/maintenance/{id}"), &load(&state, id).await?))
+    Ok(created(
+        format!("/api/v1/maintenance/{id}"),
+        &load(&state, id).await?,
+    ))
 }
 
-async fn update(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>, Body(input): Body<WindowIn>) -> V1Result<Response> {
+async fn update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+    Body(input): Body<WindowIn>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     state
         .with_conn(move |c| {
             let Some(w) = db_maint::get(c, id)? else {
                 return Ok(Err(V1Error::not_found()));
             };
-            let base = (&w, db_maint::monitor_ids(c, id)?, db_maint::status_page_ids(c, id)?);
+            let base = (
+                &w,
+                db_maint::monitor_ids(c, id)?,
+                db_maint::status_page_ids(c, id)?,
+            );
             match validate(c, &input, Some(base))? {
                 Ok(row) => db_maint::update(c, id, &row).map(|_| Ok(())),
                 Err(e) => Ok(Err(e)),
@@ -184,7 +260,11 @@ async fn update(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64
     Ok(json_ok(&HeaderMap::new(), &load(&state, id).await?))
 }
 
-async fn remove(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>) -> V1Result<Response> {
+async fn remove(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     if !state.with_conn(move |c| db_maint::delete(c, id)).await? {
         return Err(V1Error::not_found());

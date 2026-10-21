@@ -15,7 +15,9 @@ pub const WAHA: ProviderSchema = ProviderSchema {
     description: "WhatsApp messages through your WAHA server",
     docs_url: "https://waha.devlike.pro/docs/how-to/send-messages/",
     fields: &[
-        Field::url("server", "WAHA URL").required().placeholder("http://waha:3000…"),
+        Field::url("server", "WAHA URL")
+            .required()
+            .placeholder("http://waha:3000…"),
         Field::text("session", "Session").default("default"),
         Field::text("chat_id", "Chat")
             .required()
@@ -35,8 +37,12 @@ pub const EVOLUTION: ProviderSchema = ProviderSchema {
     description: "WhatsApp messages through your Evolution API server",
     docs_url: "https://doc.evolution-api.com/v2/api-reference/message-controller/send-text",
     fields: &[
-        Field::url("server", "Evolution API URL").required().placeholder("https://evolution.example.com…"),
-        Field::text("instance", "Instance").required().placeholder("vigilant…"),
+        Field::url("server", "Evolution API URL")
+            .required()
+            .placeholder("https://evolution.example.com…"),
+        Field::text("instance", "Instance")
+            .required()
+            .placeholder("vigilant…"),
         Field::secret("api_key", "API key").required(),
         Field::text("number", "Recipient")
             .required()
@@ -69,7 +75,10 @@ fn message(event: &NotificationEvent) -> String {
 fn check_evolution(config: &Value) -> Vec<FieldError> {
     match opt(config, "number") {
         Some(n) if !n.contains('@') && n.chars().filter(char::is_ascii_digit).count() < 7 => {
-            vec![field_error("number", crate::i18n::t("notif.err_phone_number"))]
+            vec![field_error(
+                "number",
+                crate::i18n::t("notif.err_phone_number"),
+            )]
         }
         _ => Vec::new(),
     }
@@ -89,15 +98,25 @@ pub fn build_waha(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRe
     Ok(vec![request])
 }
 
-pub fn build_evolution(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_evolution(
+    config: &Value,
+    event: &NotificationEvent,
+) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "server")?;
     let instance = req(config, "instance")?;
     let key = req(config, "api_key")?;
     let number = req(config, "number")?;
-    let number = if number.contains('@') { number.to_string() } else { number.chars().filter(char::is_ascii_digit).collect() };
+    let number = if number.contains('@') {
+        number.to_string()
+    } else {
+        number.chars().filter(char::is_ascii_digit).collect()
+    };
     Ok(vec![
         OutRequest::post_json(
-            join(server, &format!("/message/sendText/{}", path_segment(instance))),
+            join(
+                server,
+                &format!("/message/sendText/{}", path_segment(instance)),
+            ),
             json!({"number": number, "text": message(event)}),
         )
         .header("apikey", key),
@@ -114,13 +133,30 @@ mod tests {
     fn waha_posts_to_send_text_with_a_chat_id() {
         let mut e = event(EventKind::Down);
         e.url = Some("https://vv.example/monitors/7".into());
-        let r = &build_waha(&json!({"server": "http://waha:3000/", "chat_id": "+47 123 45 678", "api_key": "K"}), &e).unwrap()[0];
+        let r = &build_waha(
+            &json!({"server": "http://waha:3000/", "chat_id": "+47 123 45 678", "api_key": "K"}),
+            &e,
+        )
+        .unwrap()[0];
         assert_eq!(r.url, "http://waha:3000/api/sendText");
         assert_eq!(r.header_value("X-Api-Key"), Some("K"));
         let body = r.json().unwrap();
-        assert_eq!((body["session"].as_str(), body["chatId"].as_str()), (Some("default"), Some("4712345678@c.us")));
-        assert!(body["text"].as_str().unwrap().contains("Payments API is down") && body["text"].as_str().unwrap().ends_with("monitors/7"));
-        let group = &build_waha(&json!({"server": "http://waha:3000", "chat_id": "123@g.us", "session": "work"}), &e).unwrap()[0];
+        assert_eq!(
+            (body["session"].as_str(), body["chatId"].as_str()),
+            (Some("default"), Some("4712345678@c.us"))
+        );
+        assert!(
+            body["text"]
+                .as_str()
+                .unwrap()
+                .contains("Payments API is down")
+                && body["text"].as_str().unwrap().ends_with("monitors/7")
+        );
+        let group = &build_waha(
+            &json!({"server": "http://waha:3000", "chat_id": "123@g.us", "session": "work"}),
+            &e,
+        )
+        .unwrap()[0];
         assert_eq!(group.json().unwrap()["chatId"], "123@g.us");
         assert_eq!(group.json().unwrap()["session"], "work");
         assert!(group.header_value("X-Api-Key").is_none());
@@ -136,7 +172,11 @@ mod tests {
         assert_eq!(r.url, "https://evo.example/message/sendText/my%20inst");
         assert_eq!(r.header_value("apikey"), Some("K"));
         assert_eq!(r.json().unwrap()["number"], "4712345678");
-        assert!(check_evolution(&json!({"number": "12"})).iter().any(|(k, _)| k == "number"));
+        assert!(
+            check_evolution(&json!({"number": "12"}))
+                .iter()
+                .any(|(k, _)| k == "number")
+        );
         assert!(check_evolution(&json!({"number": "123456789"})).is_empty());
         assert!(check_evolution(&json!({"number": "123@g.us"})).is_empty());
     }

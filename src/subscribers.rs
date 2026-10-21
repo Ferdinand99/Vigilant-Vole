@@ -89,14 +89,20 @@ pub fn announce_incident(state: &AppState, page_id: i64, incident_id: i64, kind:
                     return Ok(None);
                 };
                 let latest = match kind {
-                    Kind::Update | Kind::Resolved => db_incidents::list_updates(c, incident_id)?.pop().map(|u| u.body),
+                    Kind::Update | Kind::Resolved => db_incidents::list_updates(c, incident_id)?
+                        .pop()
+                        .map(|u| u.body),
                     _ => None,
                 };
                 Ok(Some((incident, latest)))
             })
             .await;
-        let Ok(Some((incident, latest))) = found else { return };
-        let body = latest.filter(|b| !b.is_empty()).unwrap_or(incident.body.clone());
+        let Ok(Some((incident, latest))) = found else {
+            return;
+        };
+        let body = latest
+            .filter(|b| !b.is_empty())
+            .unwrap_or(incident.body.clone());
         announce(
             &state,
             Announcement {
@@ -114,7 +120,10 @@ pub fn announce_incident(state: &AppState, page_id: i64, incident_id: i64, kind:
 /// Maintenance started or ended on `monitor_ids`: tell the pages showing them.
 pub async fn announce_maintenance(state: &AppState, kind: Kind, title: &str, monitor_ids: &[i64]) {
     let ids = monitor_ids.to_vec();
-    let Ok(pages) = state.with_conn(move |c| db::pages_with_monitors(c, &ids)).await else {
+    let Ok(pages) = state
+        .with_conn(move |c| db::pages_with_monitors(c, &ids))
+        .await
+    else {
         return;
     };
     for page_id in pages {
@@ -158,8 +167,13 @@ fn plan(conn: &rusqlite::Connection, page_id: i64) -> rusqlite::Result<Option<Pl
 }
 
 /// The SMTP settings of the page's channel, if it is a working email channel.
-fn mail_config(conn: &rusqlite::Connection, channel_id: Option<i64>) -> rusqlite::Result<Option<Value>> {
-    let Some(id) = channel_id else { return Ok(None) };
+fn mail_config(
+    conn: &rusqlite::Connection,
+    channel_id: Option<i64>,
+) -> rusqlite::Result<Option<Value>> {
+    let Some(id) = channel_id else {
+        return Ok(None);
+    };
     Ok(crate::db::notifications::get_channel(conn, id)?
         .filter(|c| c.active && c.kind == "email")
         .and_then(|c| serde_json::from_str(&c.config).ok()))
@@ -167,25 +181,40 @@ fn mail_config(conn: &rusqlite::Connection, channel_id: Option<i64>) -> rusqlite
 
 async fn run(state: &AppState, a: Announcement) -> Result<(), String> {
     let page_id = a.page_id;
-    let Some(plan) = state.with_conn(move |c| plan(c, page_id)).await.map_err(|e| e.to_string())? else {
+    let Some(plan) = state
+        .with_conn(move |c| plan(c, page_id))
+        .await
+        .map_err(|e| e.to_string())?
+    else {
         return Ok(());
     };
     let site_base = site_base_url(state).await;
     for sub in &plan.subscribers {
         let lang = Lang::from_code(&sub.lang).unwrap_or_else(crate::i18n::site_default);
-        let base = if sub.base_url.is_empty() { site_base.clone() } else { sub.base_url.clone() };
+        let base = if sub.base_url.is_empty() {
+            site_base.clone()
+        } else {
+            sub.base_url.clone()
+        };
         let sent = crate::i18n::scope(lang, deliver(&plan, sub, &base, &a)).await;
         if let Err(e) = &sent {
             tracing::warn!(page = plan.page.id, subscriber = sub.id, kind = %sub.kind, error = %e, "subscriber delivery failed");
         }
         let id = sub.id;
         let ok = sent.is_ok();
-        let _ = state.with_conn(move |c| db::record_delivery(c, id, ok)).await;
+        let _ = state
+            .with_conn(move |c| db::record_delivery(c, id, ok))
+            .await;
     }
     Ok(())
 }
 
-async fn deliver(plan: &Plan, sub: &Subscriber, base: &str, a: &Announcement) -> Result<(), String> {
+async fn deliver(
+    plan: &Plan,
+    sub: &Subscriber,
+    base: &str,
+    a: &Announcement,
+) -> Result<(), String> {
     let links = Links::new(base, &plan.page, &sub.token);
     match sub.kind.as_str() {
         "email" => {
@@ -193,15 +222,26 @@ async fn deliver(plan: &Plan, sub: &Subscriber, base: &str, a: &Announcement) ->
             let message = announcement_mail(config, &plan.page, &sub.target, &links, a)?;
             crate::notification::email::deliver(config, message).await
         }
-        "webhook" if plan.webhooks => send_webhook(&sub.target, &announcement_json(&plan.page, &links, a)).await,
+        "webhook" if plan.webhooks => {
+            send_webhook(&sub.target, &announcement_json(&plan.page, &links, a)).await
+        }
         _ => Ok(()),
     }
 }
 
 /// Mails the confirmation link. For a webhook the same information goes out
 /// as JSON, so whoever runs the endpoint can open the link.
-pub async fn send_confirmation(state: &AppState, page_id: i64, sub: &Subscriber, base: &str) -> Result<(), String> {
-    let Some(plan) = state.with_conn(move |c| plan(c, page_id)).await.map_err(|e| e.to_string())? else {
+pub async fn send_confirmation(
+    state: &AppState,
+    page_id: i64,
+    sub: &Subscriber,
+    base: &str,
+) -> Result<(), String> {
+    let Some(plan) = state
+        .with_conn(move |c| plan(c, page_id))
+        .await
+        .map_err(|e| e.to_string())?
+    else {
         return Ok(());
     };
     let links = Links::new(base, &plan.page, &sub.token);
@@ -263,9 +303,17 @@ fn mailbox_from(config: &Value) -> Result<Mailbox, String> {
         .map_err(|e| format!("invalid from address: {e}"))
 }
 
-fn base_message(config: &Value, to: &str, subject: String, unsubscribe: Option<&str>) -> Result<lettre::message::MessageBuilder, String> {
+fn base_message(
+    config: &Value,
+    to: &str,
+    subject: String,
+    unsubscribe: Option<&str>,
+) -> Result<lettre::message::MessageBuilder, String> {
     let to: Mailbox = to.parse().map_err(|e| format!("invalid address: {e}"))?;
-    let mut b = Message::builder().from(mailbox_from(config)?).to(to).subject(subject);
+    let mut b = Message::builder()
+        .from(mailbox_from(config)?)
+        .to(to)
+        .subject(subject);
     if let Some(url) = unsubscribe {
         // Mail clients show an "unsubscribe" button for this header; the
         // link opens a confirmation page, so a scanner prefetching it
@@ -287,7 +335,12 @@ fn html_shell(heading: &str, inner: &str, footer: &str) -> String {
     )
 }
 
-fn confirmation_mail(config: &Value, page: &StatusPage, to: &str, links: &Links) -> Result<Message, String> {
+fn confirmation_mail(
+    config: &Value,
+    page: &StatusPage,
+    to: &str,
+    links: &Links,
+) -> Result<Message, String> {
     let subject = crate::i18n::tf("sub.confirm_subject", &[("page", &page.title)]);
     let intro = crate::i18n::tf("sub.confirm_body", &[("page", &page.title)]);
     let ignore = crate::i18n::t("sub.confirm_ignore");
@@ -309,7 +362,13 @@ fn confirmation_mail(config: &Value, page: &StatusPage, to: &str, links: &Links)
         .map_err(|e| e.to_string())
 }
 
-fn announcement_mail(config: &Value, page: &StatusPage, to: &str, links: &Links, a: &Announcement) -> Result<Message, String> {
+fn announcement_mail(
+    config: &Value,
+    page: &StatusPage,
+    to: &str,
+    links: &Links,
+    a: &Announcement,
+) -> Result<Message, String> {
     let label = crate::i18n::t(a.kind.label_key());
     let subject = format!("[{}] {label}: {}", page.title, a.title);
     let footer = crate::i18n::tf("sub.update_footer", &[("page", &page.title)]);
@@ -319,7 +378,10 @@ fn announcement_mail(config: &Value, page: &StatusPage, to: &str, links: &Links,
     if !a.body.trim().is_empty() {
         text.push_str(&format!("\n{}\n", a.body.trim()));
     }
-    text.push_str(&format!("\n{view}: {}\n\n{footer}\n{unsub}: {}\n", links.page, links.unsubscribe));
+    text.push_str(&format!(
+        "\n{view}: {}\n\n{footer}\n{unsub}: {}\n",
+        links.page, links.unsubscribe
+    ));
     let body_html = if a.body.trim().is_empty() {
         String::new()
     } else {
@@ -448,7 +510,13 @@ async fn post_pinned(url: url::Url, addrs: &[SocketAddr], body: &Value) -> Resul
         .json(body)
         .send()
         .await
-        .map_err(|e| if e.is_timeout() { "timed out".to_string() } else { "request failed".to_string() })?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                "timed out".to_string()
+            } else {
+                "request failed".to_string()
+            }
+        })?;
     if resp.status().is_success() {
         Ok(())
     } else {
@@ -467,7 +535,9 @@ const MAX_KEYS: usize = 20_000;
 /// within `window`.
 pub fn allow(key: &str, limit: u32, window: Duration) -> bool {
     let now = Instant::now();
-    let Ok(mut map) = ATTEMPTS.lock() else { return true };
+    let Ok(mut map) = ATTEMPTS.lock() else {
+        return true;
+    };
     if map.len() >= MAX_KEYS {
         map.retain(|_, (start, _)| now.duration_since(*start) < window);
         if map.len() >= MAX_KEYS {

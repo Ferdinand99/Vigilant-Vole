@@ -204,17 +204,24 @@ const BAD: &str = "Not a MongoDB server (malformed BSON)";
 
 impl<'a> Reader<'a> {
     fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
-        let out = self.buf.get(self.at..self.at.checked_add(n).ok_or(BAD)?).ok_or(BAD)?;
+        let out = self
+            .buf
+            .get(self.at..self.at.checked_add(n).ok_or(BAD)?)
+            .ok_or(BAD)?;
         self.at += n;
         Ok(out)
     }
 
     fn i32(&mut self) -> Result<i32, String> {
-        Ok(i32::from_le_bytes(self.take(4)?.try_into().map_err(|_| BAD)?))
+        Ok(i32::from_le_bytes(
+            self.take(4)?.try_into().map_err(|_| BAD)?,
+        ))
     }
 
     fn i64(&mut self) -> Result<i64, String> {
-        Ok(i64::from_le_bytes(self.take(8)?.try_into().map_err(|_| BAD)?))
+        Ok(i64::from_le_bytes(
+            self.take(8)?.try_into().map_err(|_| BAD)?,
+        ))
     }
 
     fn len(&mut self, min: i32) -> Result<usize, String> {
@@ -248,7 +255,10 @@ impl<'a> Reader<'a> {
         }
         let start = self.at;
         let len = self.len(5)?;
-        let end = start.checked_add(len).filter(|e| *e <= self.buf.len()).ok_or(BAD)?;
+        let end = start
+            .checked_add(len)
+            .filter(|e| *e <= self.buf.len())
+            .ok_or(BAD)?;
         let mut doc = Document::new();
         loop {
             let kind = *self.take(1)?.first().ok_or(BAD)?;
@@ -270,10 +280,18 @@ impl<'a> Reader<'a> {
 
     fn value(&mut self, kind: u8, depth: usize) -> Result<Bson, String> {
         Ok(match kind {
-            0x01 => Bson::Double(f64::from_le_bytes(self.take(8)?.try_into().map_err(|_| BAD)?)),
+            0x01 => Bson::Double(f64::from_le_bytes(
+                self.take(8)?.try_into().map_err(|_| BAD)?,
+            )),
             0x02 => Bson::String(self.string()?),
             0x03 => Bson::Document(self.document(depth + 1)?),
-            0x04 => Bson::Array(self.document(depth + 1)?.0.into_iter().map(|(_, v)| v).collect()),
+            0x04 => Bson::Array(
+                self.document(depth + 1)?
+                    .0
+                    .into_iter()
+                    .map(|(_, v)| v)
+                    .collect(),
+            ),
             0x05 => {
                 let len = self.len(0)?;
                 let subtype = self.take(1)?[0];
@@ -310,7 +328,11 @@ impl<'a> Reader<'a> {
                 self.take(16)?;
                 Bson::Other(kind)
             }
-            _ => return Err(format!("Not a MongoDB server (unknown BSON type {kind:#04x})")),
+            _ => {
+                return Err(format!(
+                    "Not a MongoDB server (unknown BSON type {kind:#04x})"
+                ));
+            }
         })
     }
 }
@@ -322,8 +344,14 @@ mod tests {
     #[test]
     fn encodes_the_bsonspec_examples() {
         let hello = Document::new().with("hello", "world");
-        assert_eq!(hello.to_bytes(), b"\x16\x00\x00\x00\x02hello\x00\x06\x00\x00\x00world\x00\x00");
-        let awesome = Document::new().with("BSON", Bson::Array(vec!["awesome".into(), 5.05.into(), 1986.into()]));
+        assert_eq!(
+            hello.to_bytes(),
+            b"\x16\x00\x00\x00\x02hello\x00\x06\x00\x00\x00world\x00\x00"
+        );
+        let awesome = Document::new().with(
+            "BSON",
+            Bson::Array(vec!["awesome".into(), 5.05.into(), 1986.into()]),
+        );
         let bytes = b"\x31\x00\x00\x00\x04BSON\x00\x26\x00\x00\x00\x020\x00\x08\x00\x00\x00awesome\x00\x011\x00\x33\x33\x33\x33\x33\x33\x14\x40\x102\x00\xc2\x07\x00\x00\x00\x00";
         assert_eq!(awesome.to_bytes(), bytes);
         assert_eq!(Document::from_bytes(bytes).unwrap(), (awesome, bytes.len()));
@@ -363,14 +391,28 @@ mod tests {
     #[test]
     fn malformed_and_hostile_input_is_refused() {
         assert!(Document::from_bytes(b"\x05\x00\x00").is_err(), "truncated");
-        assert!(Document::from_bytes(b"\xff\xff\xff\x7f\x00").is_err(), "length past the end");
-        assert!(Document::from_bytes(b"\x0c\x00\x00\x00\x02a\x00\xff\xff\xff\x7f\x00").is_err(), "string length past the end");
-        assert!(Document::from_bytes(b"\x08\x00\x00\x00\x20a\x00\x00").unwrap_err().contains("unknown BSON type"));
+        assert!(
+            Document::from_bytes(b"\xff\xff\xff\x7f\x00").is_err(),
+            "length past the end"
+        );
+        assert!(
+            Document::from_bytes(b"\x0c\x00\x00\x00\x02a\x00\xff\xff\xff\x7f\x00").is_err(),
+            "string length past the end"
+        );
+        assert!(
+            Document::from_bytes(b"\x08\x00\x00\x00\x20a\x00\x00")
+                .unwrap_err()
+                .contains("unknown BSON type")
+        );
         // 100 nested documents.
         let mut doc = Document::new().with("x", 1);
         for _ in 0..100 {
             doc = Document::new().with("x", doc);
         }
-        assert!(Document::from_bytes(&doc.to_bytes()).unwrap_err().contains("deeply"));
+        assert!(
+            Document::from_bytes(&doc.to_bytes())
+                .unwrap_err()
+                .contains("deeply")
+        );
     }
 }

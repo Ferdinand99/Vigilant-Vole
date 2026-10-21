@@ -78,17 +78,35 @@ struct UsersTemplate {
     roles: &'static [Role],
 }
 
-async fn list(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar) -> ApiResult<Response> {
+async fn list(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+) -> ApiResult<Response> {
     user.require_admin()?;
     let users = state.with_conn(|c| db_users::list_users(c)).await?;
-    let rows = users.into_iter().map(|u| UserRow::from_user(u, user.id)).collect();
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("nav.users"), "settings", "users").await;
-    Ok((jar, HtmlTemplate(UsersTemplate {
-        ctx,
-        users: rows,
-        roles: Role::all(),
-    }))
-    .into_response())
+    let rows = users
+        .into_iter()
+        .map(|u| UserRow::from_user(u, user.id))
+        .collect();
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("nav.users"),
+        "settings",
+        "users",
+    )
+    .await;
+    Ok((
+        jar,
+        HtmlTemplate(UsersTemplate {
+            ctx,
+            users: rows,
+            roles: Role::all(),
+        }),
+    )
+        .into_response())
 }
 
 fn back(jar: SignedCookieJar, kind: &str, message: impl Into<String>) -> Response {
@@ -128,7 +146,11 @@ async fn create(
     let username = form.username.trim().to_string();
     let display_name = form.display_name.trim().to_string();
     if let Some(problem) = auth::username_problem(&username) {
-        return Ok(back(jar, "error", crate::i18n::tf("users.err_username", &[("problem", problem)])));
+        return Ok(back(
+            jar,
+            "error",
+            crate::i18n::tf("users.err_username", &[("problem", problem)]),
+        ));
     }
     if display_name.chars().count() > 80 {
         return Ok(back(jar, "error", crate::i18n::t("users.err_display_long")));
@@ -137,11 +159,22 @@ async fn create(
         return Ok(back(jar, "error", crate::i18n::t("users.err_role")));
     };
     if let Some(problem) = auth::password_problem(&form.password, &username) {
-        return Ok(back(jar, "error", crate::i18n::tf("users.err_temp_password", &[("problem", problem)])));
+        return Ok(back(
+            jar,
+            "error",
+            crate::i18n::tf("users.err_temp_password", &[("problem", problem)]),
+        ));
     }
     let lookup = username.clone();
-    if state.with_conn(move |c| db_users::username_taken(c, &lookup)).await? {
-        return Ok(back(jar, "error", crate::i18n::tf("users.err_taken", &[("name", &username)])));
+    if state
+        .with_conn(move |c| db_users::username_taken(c, &lookup))
+        .await?
+    {
+        return Ok(back(
+            jar,
+            "error",
+            crate::i18n::tf("users.err_taken", &[("name", &username)]),
+        ));
     }
     let hash = auth::hash_password_async(form.password).await?;
     let (name, shown) = (username.clone(), display_name.clone());
@@ -212,13 +245,23 @@ async fn reset_password(
         return Ok(back(jar, "info", crate::i18n::t("users.own_password")));
     }
     let Some(target) = state.with_conn(move |c| db_users::get_user(c, id)).await? else {
-        return Ok(back(jar, "error", change_message(UserChangeError::NotFound)));
+        return Ok(back(
+            jar,
+            "error",
+            change_message(UserChangeError::NotFound),
+        ));
     };
     if let Some(problem) = auth::password_problem(&form.password, &target.username) {
-        return Ok(back(jar, "error", crate::i18n::tf("users.err_temp_password", &[("problem", problem)])));
+        return Ok(back(
+            jar,
+            "error",
+            crate::i18n::tf("users.err_temp_password", &[("problem", problem)]),
+        ));
     }
     let hash = auth::hash_password_async(form.password).await?;
-    state.with_conn(move |c| db_users::set_password(c, id, &hash)).await?;
+    state
+        .with_conn(move |c| db_users::set_password(c, id, &hash))
+        .await?;
     tracing::info!(admin = %user.username, user = %target.username, "password reset by admin");
     Ok(back(
         jar,
@@ -235,7 +278,11 @@ async fn reset_two_factor(
 ) -> ApiResult<Response> {
     user.require_admin()?;
     let Some(target) = state.with_conn(move |c| db_users::get_user(c, id)).await? else {
-        return Ok(back(jar, "error", change_message(UserChangeError::NotFound)));
+        return Ok(back(
+            jar,
+            "error",
+            change_message(UserChangeError::NotFound),
+        ));
     };
     state
         .with_conn(move |c| {
@@ -255,35 +302,68 @@ async fn reset_two_factor(
     ))
 }
 
-async fn set_active(state: AppState, user: CurrentUser, jar: SignedCookieJar, id: i64, active: bool) -> ApiResult<Response> {
+async fn set_active(
+    state: AppState,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    id: i64,
+    active: bool,
+) -> ApiResult<Response> {
     user.require_admin()?;
     if id == user.id && !active {
         return Ok(back(jar, "error", crate::i18n::t("users.err_disable_self")));
     }
-    let result = state.with_conn(move |c| db_users::set_active(c, id, active)).await?;
+    let result = state
+        .with_conn(move |c| db_users::set_active(c, id, active))
+        .await?;
     match result {
         Ok(()) => {
             tracing::info!(admin = %user.username, user_id = id, active, "user active state changed");
-            Ok(back(jar, "success", if active { crate::i18n::t("users.enabled") } else { crate::i18n::t("users.disabled_flash") }))
+            Ok(back(
+                jar,
+                "success",
+                if active {
+                    crate::i18n::t("users.enabled")
+                } else {
+                    crate::i18n::t("users.disabled_flash")
+                },
+            ))
         }
         Err(err) => Ok(back(jar, "error", change_message(err))),
     }
 }
 
-async fn enable(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, Path(id): Path<i64>) -> ApiResult<Response> {
+async fn enable(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
     set_active(state, user, jar, id, true).await
 }
 
-async fn disable(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, Path(id): Path<i64>) -> ApiResult<Response> {
+async fn disable(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
     set_active(state, user, jar, id, false).await
 }
 
-async fn delete(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, Path(id): Path<i64>) -> ApiResult<Response> {
+async fn delete(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
     user.require_admin()?;
     if id == user.id {
         return Ok(back(jar, "error", crate::i18n::t("users.err_delete_self")));
     }
-    let result = state.with_conn(move |c| db_users::delete_user(c, id)).await?;
+    let result = state
+        .with_conn(move |c| db_users::delete_user(c, id))
+        .await?;
     match result {
         Ok(()) => {
             tracing::info!(admin = %user.username, user_id = id, "user deleted");

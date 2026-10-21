@@ -91,7 +91,9 @@ async fn send(app: &Router, req: Request<Body>) -> Response {
 }
 
 async fn body_text(res: Response) -> String {
-    let bytes = axum::body::to_bytes(res.into_body(), 8 * 1024 * 1024).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
@@ -123,7 +125,10 @@ fn location(res: &Response) -> String {
 }
 
 fn created_id(res: &Response) -> i64 {
-    location(res).trim_start_matches("/monitors/").parse().unwrap()
+    location(res)
+        .trim_start_matches("/monitors/")
+        .parse()
+        .unwrap()
 }
 
 const HTTP_FORM: &str = "monitor_type=http&name=Payments+API&target_url=https%3A%2F%2F127.0.0.1%3A9%2Fhealth\
@@ -156,7 +161,11 @@ async fn create_then_view_detail_and_dashboard() {
         .await
         .unwrap();
     assert_eq!(
-        (tags[0].name.as_str(), tags[0].value.as_str(), tags[0].color.as_str()),
+        (
+            tags[0].name.as_str(),
+            tags[0].value.as_str(),
+            tags[0].color.as_str()
+        ),
         ("prod", "eu", "green")
     );
 
@@ -171,7 +180,11 @@ async fn create_then_view_detail_and_dashboard() {
         let res = send(&app, get(&format!("/monitors/{id}/chart?range={range}"))).await;
         assert_eq!(res.status(), StatusCode::OK);
     }
-    let res = send(&app, get(&format!("/monitors/{id}/heartbeats?before=999999"))).await;
+    let res = send(
+        &app,
+        get(&format!("/monitors/{id}/heartbeats?before=999999")),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
 
     let res = send(&app, get("/")).await;
@@ -253,7 +266,11 @@ async fn push_monitors_get_a_token_and_viewers_cannot_edit() {
     assert!(html.contains(&format!("/api/push/{token}")));
 
     // Regenerating replaces the token.
-    let res = send(&editor, htmx_post(&format!("/monitors/{id}/push-token"), "")).await;
+    let res = send(
+        &editor,
+        htmx_post(&format!("/monitors/{id}/push-token"), ""),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
     let html = body_text(res).await;
     assert!(!html.contains(&token));
@@ -264,12 +281,17 @@ async fn push_monitors_get_a_token_and_viewers_cannot_edit() {
         get(&format!("/monitors/{id}/edit")),
         post_form(&format!("/monitors/{id}/pause"), ""),
         post_form("/monitors/bulk", &format!("action=delete&ids={id}")),
-        Request::delete(format!("/monitors/{id}")).body(Body::empty()).unwrap(),
+        Request::delete(format!("/monitors/{id}"))
+            .body(Body::empty())
+            .unwrap(),
     ] {
         assert_eq!(send(&viewer, req).await.status(), StatusCode::FORBIDDEN);
     }
     let html = body_text(send(&viewer, get(&format!("/monitors/{id}"))).await).await;
-    assert!(!html.contains("/api/push/"), "viewers never see the push secret");
+    assert!(
+        !html.contains("/api/push/"),
+        "viewers never see the push secret"
+    );
     assert!(!html.contains("/edit\""), "no edit controls for viewers");
 }
 
@@ -299,7 +321,11 @@ async fn pause_resume_bulk_and_delete() {
     let res = send(&app, post_form(&format!("/monitors/{}/pause", ids[0]), "")).await;
     assert_eq!(location(&res), format!("/monitors/{}", ids[0]));
     assert_eq!(events(ids[0]).await, vec![("paused", true)]);
-    let res = send(&app, post_form(&format!("/monitors/{}/resume", ids[0]), "return_to=%2F")).await;
+    let res = send(
+        &app,
+        post_form(&format!("/monitors/{}/resume", ids[0]), "return_to=%2F"),
+    )
+    .await;
     assert_eq!(location(&res), "/");
     // Resuming closes the paused interval.
     assert_eq!(events(ids[0]).await, vec![("paused", false)]);
@@ -313,12 +339,18 @@ async fn pause_resume_bulk_and_delete() {
     let active = db::interact(&t.state.db, |c| db::monitors::list_active_monitors(c))
         .await
         .unwrap();
-    assert_eq!(active.iter().map(|m| m.id).collect::<Vec<_>>(), vec![ids[0]]);
+    assert_eq!(
+        active.iter().map(|m| m.id).collect::<Vec<_>>(),
+        vec![ids[0]]
+    );
 
     // Open redirects are refused.
     let res = send(
         &app,
-        post_form("/monitors/bulk", "action=resume&ids=1&return_to=%2F%2Fevil.example"),
+        post_form(
+            "/monitors/bulk",
+            "action=resume&ids=1&return_to=%2F%2Fevil.example",
+        ),
     )
     .await;
     assert_eq!(location(&res), "/");
@@ -326,7 +358,10 @@ async fn pause_resume_bulk_and_delete() {
     // "Apply to every monitor shown" uses the dashboard filter.
     let res = send(
         &app,
-        post_form("/monitors/bulk", "action=delete&all=true&filter=status%3Dpaused"),
+        post_form(
+            "/monitors/bulk",
+            "action=delete&all=true&filter=status%3Dpaused",
+        ),
     )
     .await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
@@ -345,7 +380,9 @@ async fn pause_resume_bulk_and_delete() {
     .await;
     assert_eq!(res.headers().get("hx-redirect").unwrap(), "/");
     assert_eq!(
-        send(&app, get(&format!("/monitors/{}", ids[0]))).await.status(),
+        send(&app, get(&format!("/monitors/{}", ids[0])))
+            .await
+            .status(),
         StatusCode::NOT_FOUND
     );
 }
@@ -354,7 +391,11 @@ async fn pause_resume_bulk_and_delete() {
 async fn tags_page_crud() {
     let t = app().await;
     let app = router(&t.state, Role::Editor);
-    let res = send(&app, post_form("/tags", "name=Team+%F0%9F%9A%80&color=pink")).await;
+    let res = send(
+        &app,
+        post_form("/tags", "name=Team+%F0%9F%9A%80&color=pink"),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     let html = body_text(send(&app, get("/tags")).await).await;
     assert!(html.contains("Team 🚀") && html.contains("tag-pink"));
@@ -363,8 +404,15 @@ async fn tags_page_crud() {
     assert_eq!(dup.headers().get("hx-retarget").unwrap(), "#new-tag-errors");
     assert!(body_text(dup).await.contains("already exists"));
 
-    let id = db::interact(&t.state.db, |c| db::tags::list_tags(c)).await.unwrap()[0].id;
-    let res = send(&app, htmx_post(&format!("/tags/{id}"), "name=Ops&color=%23ff0000")).await;
+    let id = db::interact(&t.state.db, |c| db::tags::list_tags(c))
+        .await
+        .unwrap()[0]
+        .id;
+    let res = send(
+        &app,
+        htmx_post(&format!("/tags/{id}"), "name=Ops&color=%23ff0000"),
+    )
+    .await;
     assert_eq!(res.headers().get("hx-refresh").unwrap(), "true");
     let tag = db::interact(&t.state.db, move |c| db::tags::get_tag(c, id))
         .await
@@ -382,10 +430,18 @@ async fn tags_page_crud() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
     assert!(res.headers().get("hx-trigger").is_some());
-    assert!(db::interact(&t.state.db, |c| db::tags::list_tags(c)).await.unwrap().is_empty());
+    assert!(
+        db::interact(&t.state.db, |c| db::tags::list_tags(c))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let viewer = router(&t.state, Role::Viewer);
-    assert_eq!(send(&viewer, post_form("/tags", "name=x")).await.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        send(&viewer, post_form("/tags", "name=x")).await.status(),
+        StatusCode::FORBIDDEN
+    );
     assert_eq!(send(&viewer, get("/tags")).await.status(), StatusCode::OK);
 }
 
@@ -414,12 +470,17 @@ fn safe_return_only_allows_local_paths() {
 async fn form_lists_channels_by_provider_name() {
     let t = app().await;
     let app = router(&t.state, Role::Editor);
-    db::interact(&t.state.db, |c| db::notifications::insert_channel(c, "Ops room", "discord", "{}", false))
-        .await
-        .unwrap();
+    db::interact(&t.state.db, |c| {
+        db::notifications::insert_channel(c, "Ops room", "discord", "{}", false)
+    })
+    .await
+    .unwrap();
     let html = body_text(send(&app, get("/monitors/new")).await).await;
     assert!(html.contains("Ops room"));
-    assert!(html.contains("<span class=\"list-sub\">Discord"), "provider label, not the raw kind");
+    assert!(
+        html.contains("<span class=\"list-sub\">Discord"),
+        "provider label, not the raw kind"
+    );
 }
 
 #[tokio::test]
@@ -433,11 +494,15 @@ async fn edit_form_never_shows_the_stored_basic_auth_password() {
     assert!(!html.contains("hunter2-secret"));
     assert!(html.contains(crate::notification::SECRET_MASK));
     // Saving the untouched form keeps the password.
-    let mask = url::form_urlencoded::byte_serialize(crate::notification::SECRET_MASK.as_bytes()).collect::<String>();
+    let mask = url::form_urlencoded::byte_serialize(crate::notification::SECRET_MASK.as_bytes())
+        .collect::<String>();
     let same = format!("{HTTP_FORM}&basic_auth_user=bot&basic_auth_pass={mask}");
     let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &same)).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(m.basic_auth_pass.as_deref(), Some("hunter2-secret"));
     // Pointing it elsewhere without re-entering the password is refused.
     let moved = same.replace("127.0.0.1%3A9", "attacker.example");
@@ -466,15 +531,26 @@ async fn edit_form_never_shows_the_oauth_secret_or_private_key() {
     let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
     assert!(!html.contains("client-secret-value"));
     assert!(html.contains(crate::notification::SECRET_MASK));
-    assert!(html.contains(r#"<option value="oauth2" selected>"#), "the saved method is selected");
+    assert!(
+        html.contains(r#"<option value="oauth2" selected>"#),
+        "the saved method is selected"
+    );
     assert!(html.contains(r#"<option value="client_secret_post" selected>"#));
     let same = oauth.replace("client-secret-value", &mask);
     let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &same)).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
-    assert_eq!(m.oauth_client_secret.as_deref(), Some("client-secret-value"));
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        m.oauth_client_secret.as_deref(),
+        Some("client-secret-value")
+    );
     // A rejected edit doesn't echo a freshly typed secret back.
-    let bad = oauth.replace("client-secret-value", "typed-secret-value").replace("login.example.com", "not a host");
+    let bad = oauth
+        .replace("client-secret-value", "typed-secret-value")
+        .replace("login.example.com", "not a host");
     let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &bad)).await;
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert!(!body_text(res).await.contains("typed-secret-value"));
@@ -487,22 +563,38 @@ async fn edit_form_never_shows_the_oauth_secret_or_private_key() {
         enc(&pki.ca_pem),
     );
     let res = send(&app, post_form("/monitors/new", &mtls)).await;
-    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    assert_eq!(
+        res.status(),
+        StatusCode::SEE_OTHER,
+        "{}",
+        body_text(res).await
+    );
     let id = {
-        let all = db::interact(&t.state.db, |c| db::monitors::list_monitors(c)).await.unwrap();
+        let all = db::interact(&t.state.db, |c| db::monitors::list_monitors(c))
+            .await
+            .unwrap();
         all.iter().find(|m| m.auth_method == "mtls").unwrap().id
     };
     let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
-    assert!(!html.contains(key_body), "the private key must not be in the page");
+    assert!(
+        !html.contains(key_body),
+        "the private key must not be in the page"
+    );
     assert!(html.contains("BEGIN CERTIFICATE"));
     assert!(html.contains(crate::notification::SECRET_MASK));
     let same = mtls.replace(&enc(&pki.client_key_pem.replace('\n', "\r\n")), &mask);
     let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &same)).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(m.tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
     // A pair that doesn't match is explained on the key field.
-    let mismatch = mtls.replace(&enc(&pki.client_key_pem.replace('\n', "\r\n")), &enc(&crate::monitor::checkers::http_auth::test_pki::unrelated_key_pem()));
+    let mismatch = mtls.replace(
+        &enc(&pki.client_key_pem.replace('\n', "\r\n")),
+        &enc(&crate::monitor::checkers::http_auth::test_pki::unrelated_key_pem()),
+    );
     let res = send(&app, post_form("/monitors/new", &mismatch)).await;
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let html = body_text(res).await;
@@ -547,18 +639,32 @@ async fn every_new_service_type_can_be_created_and_edited() {
         ("kafka", ""),
         ("rabbitmq", "&basic_auth_user=guest&basic_auth_pass=guest"),
         ("grpc", ""),
-        ("radius", "&basic_auth_user=vole&basic_auth_pass=pw&secret=testing123"),
+        (
+            "radius",
+            "&basic_auth_user=vole&basic_auth_pass=pw&secret=testing123",
+        ),
         ("snmp", "&secret=public"),
         ("sqlserver", "&basic_auth_user=sa&basic_auth_pass=pw"),
         ("mongodb", ""),
     ] {
         let res = send(&app, post_form("/monitors/new", &service_form(kind, extra))).await;
-        assert_eq!(res.status(), StatusCode::SEE_OTHER, "{kind}: {}", body_text(res).await);
+        assert_eq!(
+            res.status(),
+            StatusCode::SEE_OTHER,
+            "{kind}: {}",
+            body_text(res).await
+        );
         let id = created_id(&res);
-        let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+        let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(m.monitor_type.as_str(), kind);
         let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
-        assert!(html.contains(&format!("name=\"target_{kind}\"")), "{kind}: the edit form shows its own target field");
+        assert!(
+            html.contains(&format!("name=\"target_{kind}\"")),
+            "{kind}: the edit form shows its own target field"
+        );
         // The detail page renders too (icons, labels, type name).
         let res = send(&app, get(&format!("/monitors/{id}"))).await;
         assert_eq!(res.status(), StatusCode::OK, "{kind}");
@@ -571,18 +677,33 @@ async fn stored_service_secrets_are_never_shown_and_follow_the_destination() {
     let app = router(&t.state, Role::Editor);
     let enc = |s: &str| url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>();
     let mask = enc(crate::notification::SECRET_MASK);
-    let form = service_form("radius", "&basic_auth_user=vole&basic_auth_pass=user-pass-1&secret=shared-secret-1");
+    let form = service_form(
+        "radius",
+        "&basic_auth_user=vole&basic_auth_pass=user-pass-1&secret=shared-secret-1",
+    );
     let id = created_id(&send(&app, post_form("/monitors/new", &form)).await);
     let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
-    assert!(!html.contains("shared-secret-1") && !html.contains("user-pass-1"), "secrets stay out of the page");
+    assert!(
+        !html.contains("shared-secret-1") && !html.contains("user-pass-1"),
+        "secrets stay out of the page"
+    );
     assert!(html.contains(crate::notification::SECRET_MASK));
 
     // The untouched form keeps both.
-    let same = service_form("radius", &format!("&basic_auth_user=vole&basic_auth_pass={mask}&secret={mask}"));
+    let same = service_form(
+        "radius",
+        &format!("&basic_auth_user=vole&basic_auth_pass={mask}&secret={mask}"),
+    );
     let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &same)).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
-    assert_eq!((m.secret.as_deref(), m.basic_auth_pass.as_deref()), (Some("shared-secret-1"), Some("user-pass-1")));
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (m.secret.as_deref(), m.basic_auth_pass.as_deref()),
+        (Some("shared-secret-1"), Some("user-pass-1"))
+    );
 
     // Pointing it at another server without re-entering them is refused.
     let moved = same.replace("radius.local", "attacker.example");
@@ -598,7 +719,11 @@ async fn service_forms_explain_what_is_missing() {
     let app = router(&t.state, Role::Editor);
     let cases = [
         ("postgres", "", "Enter the user name."),
-        ("radius", "&basic_auth_user=vole&basic_auth_pass=pw", "Enter the shared secret."),
+        (
+            "radius",
+            "&basic_auth_user=vole&basic_auth_pass=pw",
+            "Enter the shared secret.",
+        ),
         ("mqtt", "&keyword=on", "Add a topic to the address"),
     ];
     for (kind, extra, want) in cases {
@@ -608,13 +733,24 @@ async fn service_forms_explain_what_is_missing() {
         };
         let form = service_form(kind, extra).replace(
             &format!("&target_{kind}="),
-            &if target.is_empty() { format!("&target_{kind}=") } else { format!("{target}&ignored=") },
+            &if target.is_empty() {
+                format!("&target_{kind}=")
+            } else {
+                format!("{target}&ignored=")
+            },
         );
         let res = send(&app, post_form("/monitors/new", &form)).await;
         assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{kind}");
         assert!(body_text(res).await.contains(want), "{kind}");
     }
-    let res = send(&app, post_form("/monitors/new", &service_form("redis", "").replace("redis%3A%2F%2F", "http%3A%2F%2F"))).await;
+    let res = send(
+        &app,
+        post_form(
+            "/monitors/new",
+            &service_form("redis", "").replace("redis%3A%2F%2F", "http%3A%2F%2F"),
+        ),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert!(body_text(res).await.contains("Unsupported scheme"));
 }
@@ -624,11 +760,33 @@ async fn type_picker_and_fields_partial_know_the_new_types() {
     let t = app().await;
     let app = router(&t.state, Role::Editor);
     let html = body_text(send(&app, get("/monitors/new")).await).await;
-    for label in ["TLS handshake", "SMTP", "Redis", "PostgreSQL", "MySQL / MariaDB", "MQTT", "Kafka", "RabbitMQ", "gRPC", "RADIUS", "SNMP", "SQL Server", "MongoDB"] {
+    for label in [
+        "TLS handshake",
+        "SMTP",
+        "Redis",
+        "PostgreSQL",
+        "MySQL / MariaDB",
+        "MQTT",
+        "Kafka",
+        "RabbitMQ",
+        "gRPC",
+        "RADIUS",
+        "SNMP",
+        "SQL Server",
+        "MongoDB",
+    ] {
         assert!(html.contains(label), "the type picker lists {label}");
     }
-    for (kind, want) in [("redis", "User name"), ("radius", "Shared secret"), ("snmp", "Community"), ("mqtt", "Message must contain"), ("sqlserver", "User name"), ("mongodb", "User name")] {
-        let html = body_text(send(&app, get(&format!("/monitors/form-fields?type={kind}"))).await).await;
+    for (kind, want) in [
+        ("redis", "User name"),
+        ("radius", "Shared secret"),
+        ("snmp", "Community"),
+        ("mqtt", "Message must contain"),
+        ("sqlserver", "User name"),
+        ("mongodb", "User name"),
+    ] {
+        let html =
+            body_text(send(&app, get(&format!("/monitors/form-fields?type={kind}"))).await).await;
         assert!(html.contains(want), "{kind} shows {want}");
     }
 }
@@ -637,7 +795,11 @@ async fn type_picker_and_fields_partial_know_the_new_types() {
 async fn the_monitor_form_never_repeats_an_element_id() {
     let t = app().await;
     let app = router(&t.state, Role::Editor);
-    for uri in ["/monitors/new", "/monitors/new?type=redis", "/monitors/form-fields?type=snmp"] {
+    for uri in [
+        "/monitors/new",
+        "/monitors/new?type=redis",
+        "/monitors/form-fields?type=snmp",
+    ] {
         let html = body_text(send(&app, get(uri)).await).await;
         let mut seen = std::collections::HashSet::new();
         for (at, _) in html.match_indices(" id=\"") {
@@ -654,20 +816,52 @@ async fn snmpv3_and_tailscale_ping_monitors_round_trip_through_the_form() {
     let form = "monitor_type=snmp&name=Core&target_snmp=core.local%2F1.3.6.1.2.1.1.5.0&snmp_version=3&snmp_auth=sha512&snmp_priv=aes192\
         &basic_auth_user=watcher&basic_auth_pass=authpass123&secret=privpass123";
     let res = send(&app, post_form("/monitors/new", &format!("{form}{COMMON}"))).await;
-    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    assert_eq!(
+        res.status(),
+        StatusCode::SEE_OTHER,
+        "{}",
+        body_text(res).await
+    );
     let id = created_id(&res);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
-    assert_eq!(m.target, "core.local/1.3.6.1.2.1.1.5.0?version=3&auth=sha512&priv=aes192");
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        m.target,
+        "core.local/1.3.6.1.2.1.1.5.0?version=3&auth=sha512&priv=aes192"
+    );
     let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
-    assert!(html.contains("value=\"core.local/1.3.6.1.2.1.1.5.0\""), "the target shows without the choices");
-    assert!(html.contains("value=\"3\" checked") && html.contains("value=\"sha512\" selected") && html.contains("value=\"aes192\" selected"));
-    assert!(!html.contains("authpass123") && !html.contains("privpass123"), "passwords are masked");
+    assert!(
+        html.contains("value=\"core.local/1.3.6.1.2.1.1.5.0\""),
+        "the target shows without the choices"
+    );
+    assert!(
+        html.contains("value=\"3\" checked")
+            && html.contains("value=\"sha512\" selected")
+            && html.contains("value=\"aes192\" selected")
+    );
+    assert!(
+        !html.contains("authpass123") && !html.contains("privpass123"),
+        "passwords are masked"
+    );
 
     let res = send(&app, post_form("/monitors/new", &format!("monitor_type=tailscale_ping&name=NAS&target_tailscale=nas&tailscale_type=icmp{COMMON}"))).await;
-    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    assert_eq!(
+        res.status(),
+        StatusCode::SEE_OTHER,
+        "{}",
+        body_text(res).await
+    );
     let id = created_id(&res);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
-    assert_eq!((m.monitor_type.as_str(), m.target.as_str()), ("tailscale_ping", "nas?type=icmp"));
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (m.monitor_type.as_str(), m.target.as_str()),
+        ("tailscale_ping", "nas?type=icmp")
+    );
     let html = body_text(send(&app, get("/monitors/form-fields?type=tailscale_ping")).await).await;
     assert!(html.contains("value=\"tsmp\"") && html.contains("VV_TAILSCALE_SOCKET"));
     let mut seen = std::collections::HashSet::new();
@@ -682,27 +876,92 @@ async fn game_server_monitors_keep_their_token_for_the_same_server_only() {
     let t = app().await;
     let app = router(&t.state, Role::Editor);
     let enc = |s: &str| url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>();
-    let form = |target: &str, extra: &str| format!("monitor_type=game_server&name=Factory&target_game={}{COMMON}{extra}", enc(target));
-    let res = send(&app, post_form("/monitors/new", &form("satisfactory://factory.lan", "&secret=api-token-1&keyword=Vole"))).await;
-    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    let form = |target: &str, extra: &str| {
+        format!(
+            "monitor_type=game_server&name=Factory&target_game={}{COMMON}{extra}",
+            enc(target)
+        )
+    };
+    let res = send(
+        &app,
+        post_form(
+            "/monitors/new",
+            &form(
+                "satisfactory://factory.lan",
+                "&secret=api-token-1&keyword=Vole",
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::SEE_OTHER,
+        "{}",
+        body_text(res).await
+    );
     let id = created_id(&res);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
-    assert_eq!((m.monitor_type, m.secret.as_deref(), m.keyword.as_deref()), (crate::db::models::MonitorType::GameServer, Some("api-token-1"), Some("Vole")));
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (m.monitor_type, m.secret.as_deref(), m.keyword.as_deref()),
+        (
+            crate::db::models::MonitorType::GameServer,
+            Some("api-token-1"),
+            Some("Vole")
+        )
+    );
 
     // The edit form picks the game, masks the token and shows the type's own fields.
     let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
-    assert!(html.contains(r#"<option value="satisfactory" data-port="7777" selected>"#), "the game picker follows the target");
+    assert!(
+        html.contains(r#"<option value="satisfactory" data-port="7777" selected>"#),
+        "the game picker follows the target"
+    );
     assert!(html.contains(r#"name="target_game""#) && html.contains("Server name must contain"));
     assert!(!html.contains("api-token-1") && html.contains(crate::notification::SECRET_MASK));
 
     let mask = enc(crate::notification::SECRET_MASK);
-    let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &form("satisfactory://factory.lan:7777", &format!("&secret={mask}")))).await;
-    assert_eq!(res.status(), StatusCode::SEE_OTHER, "the default port written out is the same server");
-    let res = send(&app, post_form(&format!("/monitors/{id}/edit"), &form("satisfactory://elsewhere.example", &format!("&secret={mask}")))).await;
-    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "another host needs the token again");
+    let res = send(
+        &app,
+        post_form(
+            &format!("/monitors/{id}/edit"),
+            &form(
+                "satisfactory://factory.lan:7777",
+                &format!("&secret={mask}"),
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::SEE_OTHER,
+        "the default port written out is the same server"
+    );
+    let res = send(
+        &app,
+        post_form(
+            &format!("/monitors/{id}/edit"),
+            &form(
+                "satisfactory://elsewhere.example",
+                &format!("&secret={mask}"),
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "another host needs the token again"
+    );
 
     // Unknown games point Valve titles at the Steam type.
-    let res = send(&app, post_form("/monitors/new", &form("csgo://1.2.3.4", ""))).await;
+    let res = send(
+        &app,
+        post_form("/monitors/new", &form("csgo://1.2.3.4", "")),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert!(body_text(res).await.contains("Steam type"));
 }
@@ -720,22 +979,70 @@ async fn grpc_keyword_monitors_compile_their_proto_on_save() {
             enc(proto)
         )
     };
-    let res = send(&app, post_form("/monitors/new", &form(proto, &format!("&http_body={}&keyword=Hello", enc("{\"name\":\"vole\"}"))))).await;
-    assert_eq!(res.status(), StatusCode::SEE_OTHER, "{}", body_text(res).await);
+    let res = send(
+        &app,
+        post_form(
+            "/monitors/new",
+            &form(
+                proto,
+                &format!("&http_body={}&keyword=Hello", enc("{\"name\":\"vole\"}")),
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::SEE_OTHER,
+        "{}",
+        body_text(res).await
+    );
     let id = created_id(&res);
-    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap();
+    let m = db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(m.monitor_type, crate::db::models::MonitorType::GrpcKeyword);
-    assert_eq!((m.grpc_proto.as_deref(), m.http_body.as_deref(), m.keyword.as_deref()), (Some(proto.trim()), Some("{\"name\":\"vole\"}"), Some("Hello")));
+    assert_eq!(
+        (
+            m.grpc_proto.as_deref(),
+            m.http_body.as_deref(),
+            m.keyword.as_deref()
+        ),
+        (
+            Some(proto.trim()),
+            Some("{\"name\":\"vole\"}"),
+            Some("Hello")
+        )
+    );
 
     let html = body_text(send(&app, get(&format!("/monitors/{id}/edit"))).await).await;
-    assert!(html.contains(r#"name="target_grpc_keyword""#) && html.contains(r#"name="grpc_proto""#) && html.contains("service Greeter"));
-    assert_eq!(send(&app, get(&format!("/monitors/{id}"))).await.status(), StatusCode::OK);
+    assert!(
+        html.contains(r#"name="target_grpc_keyword""#)
+            && html.contains(r#"name="grpc_proto""#)
+            && html.contains("service Greeter")
+    );
+    assert_eq!(
+        send(&app, get(&format!("/monitors/{id}"))).await.status(),
+        StatusCode::OK
+    );
 
     // Mistakes in the .proto show on the field, with the line.
-    let res = send(&app, post_form("/monitors/new", &form("syntax = \"proto3\";\nmessage X {\n  strin a = 1;\n}\n", ""))).await;
+    let res = send(
+        &app,
+        post_form(
+            "/monitors/new",
+            &form("syntax = \"proto3\";\nmessage X {\n  strin a = 1;\n}\n", ""),
+        ),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let html = body_text(res).await;
-    assert!(html.contains("f-grpc_proto-error") && html.contains("line 3") && html.contains("is not defined"), "the compiler's message is shown");
+    assert!(
+        html.contains("f-grpc_proto-error")
+            && html.contains("line 3")
+            && html.contains("is not defined"),
+        "the compiler's message is shown"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -752,15 +1059,24 @@ async fn seed(t: &TestApp, name: &str, kind: MonitorType, interval: i64) -> i64 
         timeout_seconds: 5,
         ..db::models::NewMonitor::default()
     };
-    db::interact(&t.state.db, move |c| db::monitors::insert_monitor(c, &m)).await.unwrap()
+    db::interact(&t.state.db, move |c| db::monitors::insert_monitor(c, &m))
+        .await
+        .unwrap()
 }
 
 async fn stored(t: &TestApp, id: i64) -> db::models::Monitor {
-    db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id)).await.unwrap().unwrap()
+    db::interact(&t.state.db, move |c| db::monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 fn header(res: &Response, name: &str) -> String {
-    res.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or_default().to_string()
+    res.headers()
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string()
 }
 
 #[tokio::test]
@@ -772,15 +1088,38 @@ async fn bulk_edit_sheet_renders_and_rerenders_with_errors() {
     let html = body_text(send(&app, get("/?select=1")).await).await;
     assert!(html.contains(r#"id="bulk-edit""#) && html.contains(r#"id="bulk-edit-fields""#));
     assert!(html.contains(r#"name="run_on_agents" value="on""#));
-    assert!(html.contains("/settings/notifications"), "no channels yet: link to settings");
-    assert!(!body_text(send(&app, get("/")).await).await.contains(r#"id="bulk-edit""#));
+    assert!(
+        html.contains("/settings/notifications"),
+        "no channels yet: link to settings"
+    );
+    assert!(
+        !body_text(send(&app, get("/")).await)
+            .await
+            .contains(r#"id="bulk-edit""#)
+    );
 
-    let res = send(&app, htmx_post("/monitors/bulk/edit", &format!("ids={id}&interval_seconds=5&retries=2"))).await;
+    let res = send(
+        &app,
+        htmx_post(
+            "/monitors/bulk/edit",
+            &format!("ids={id}&interval_seconds=5&retries=2"),
+        ),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
-    assert!(header(&res, "hx-retarget").is_empty(), "errors stay in the sheet");
+    assert!(
+        header(&res, "hx-retarget").is_empty(),
+        "errors stay in the sheet"
+    );
     let html = body_text(res).await;
-    assert!(html.contains("field-error") && html.contains(r#"aria-invalid="true""#), "{html}");
-    assert!(html.contains(r#"value="5""#) && html.contains(r#"value="2""#), "values kept");
+    assert!(
+        html.contains("field-error") && html.contains(r#"aria-invalid="true""#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"value="5""#) && html.contains(r#"value="2""#),
+        "values kept"
+    );
     assert_eq!(stored(&t, id).await.retries, 0, "nothing was applied");
 
     // Nothing chosen / nothing selected: a toast, no swap.
@@ -791,7 +1130,14 @@ async fn bulk_edit_sheet_renders_and_rerenders_with_errors() {
     assert_eq!(header(&res, "hx-reswap"), "none");
 
     // The summary line.
-    let res = send(&app, htmx_post("/monitors/bulk/edit/summary", &format!("ids={id}&ids={id}&retries=1&run_on_agents=off"))).await;
+    let res = send(
+        &app,
+        htmx_post(
+            "/monitors/bulk/edit/summary",
+            &format!("ids={id}&ids={id}&retries=1&run_on_agents=off"),
+        ),
+    )
+    .await;
     assert_eq!(body_text(res).await, "Changes 2 settings on 1 monitor");
 }
 
@@ -803,41 +1149,92 @@ async fn bulk_edit_applies_skips_and_reloads_changed_monitors_only() {
     let same = seed(&t, "already", MonitorType::Http, 120).await;
     let push = seed(&t, "cron", MonitorType::Push, 60).await;
     let group = seed(&t, "prod", MonitorType::Group, 60).await;
-    let ops = db::interact(&t.state.db, |c| db::notifications::insert_channel(c, "Ops", "discord", "{}", false)).await.unwrap();
+    let ops = db::interact(&t.state.db, |c| {
+        db::notifications::insert_channel(c, "Ops", "discord", "{}", false)
+    })
+    .await
+    .unwrap();
 
     let ids = format!("ids={web}&ids={same}&ids={push}&ids={group}");
-    let res = send(&app, htmx_post("/monitors/bulk/edit", &format!("{ids}&interval_seconds=120&return_to=%2F%3Fstatus%3Dup"))).await;
+    let res = send(
+        &app,
+        htmx_post(
+            "/monitors/bulk/edit",
+            &format!("{ids}&interval_seconds=120&return_to=%2F%3Fstatus%3Dup"),
+        ),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(header(&res, "hx-retarget"), "#dash-results");
     assert_eq!(header(&res, "hx-push-url"), "/?status=up");
     let trigger = header(&res, "hx-trigger");
-    assert!(trigger.contains("vv:close-sheet") && trigger.contains("Updated 2 monitors"), "{trigger}");
+    assert!(
+        trigger.contains("vv:close-sheet") && trigger.contains("Updated 2 monitors"),
+        "{trigger}"
+    );
     assert!(trigger.contains("skipped 1"), "{trigger}");
     let html = body_text(res).await;
-    assert!(html.contains(r#"id="dash-head" hx-swap-oob="true""#) && html.contains(r#"id="bulk-bar" hx-swap-oob="true""#));
+    assert!(
+        html.contains(r#"id="dash-head" hx-swap-oob="true""#)
+            && html.contains(r#"id="bulk-bar" hx-swap-oob="true""#)
+    );
     assert!(!html.contains(r#"name="select""#), "select mode is over");
-    assert_eq!((stored(&t, web).await.interval_seconds, stored(&t, push).await.interval_seconds), (120, 120));
-    assert!(t.state.scheduler.is_running(web), "changed monitors are reloaded");
-    assert!(!t.state.scheduler.is_running(same), "unchanged monitors are left alone");
+    assert_eq!(
+        (
+            stored(&t, web).await.interval_seconds,
+            stored(&t, push).await.interval_seconds
+        ),
+        (120, 120)
+    );
+    assert!(
+        t.state.scheduler.is_running(web),
+        "changed monitors are reloaded"
+    );
+    assert!(
+        !t.state.scheduler.is_running(same),
+        "unchanged monitors are left alone"
+    );
 
     // Agents, a channel and a new tag.
-    let body = format!("{ids}&run_on_agents=on&confirm_with_agents=on&channel_{ops}=add&new_tag_name=eu&new_tag_color=teal&new_tag_value=west");
+    let body = format!(
+        "{ids}&run_on_agents=on&confirm_with_agents=on&channel_{ops}=add&new_tag_name=eu&new_tag_color=teal&new_tag_value=west"
+    );
     let res = send(&app, htmx_post("/monitors/bulk/edit", &body)).await;
     let trigger = header(&res, "hx-trigger");
-    assert!(trigger.contains("Updated 4 monitors") && trigger.contains("skipped 2 (agents can"), "{trigger}");
+    assert!(
+        trigger.contains("Updated 4 monitors") && trigger.contains("skipped 2 (agents can"),
+        "{trigger}"
+    );
     let w = stored(&t, web).await;
     assert!(w.run_on_agents && w.confirm_with_agents);
     assert!(!stored(&t, push).await.run_on_agents);
     let (links, tags) = db::interact(&t.state.db, move |c| {
-        Ok((db::notifications::monitor_channel_links(c, group)?, db::tags::tags_for_monitor(c, push)?))
+        Ok((
+            db::notifications::monitor_channel_links(c, group)?,
+            db::tags::tags_for_monitor(c, push)?,
+        ))
     })
     .await
     .unwrap();
     assert_eq!(links, vec![(ops, false)]);
-    assert_eq!((tags[0].name.as_str(), tags[0].color.as_str(), tags[0].value.as_str()), ("eu", "teal", "west"));
+    assert_eq!(
+        (
+            tags[0].name.as_str(),
+            tags[0].color.as_str(),
+            tags[0].value.as_str()
+        ),
+        ("eu", "teal", "west")
+    );
 
     // Without JavaScript: flash and redirect back.
-    let res = send(&app, post_form("/monitors/bulk/edit", &format!("ids={web}&retries=4&return_to=%2F"))).await;
+    let res = send(
+        &app,
+        post_form(
+            "/monitors/bulk/edit",
+            &format!("ids={web}&retries=4&return_to=%2F"),
+        ),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(location(&res), "/");
     assert_eq!(stored(&t, web).await.retries, 4);
@@ -850,9 +1247,22 @@ async fn bulk_edit_all_matching_the_filter_and_roles() {
     let app = router(&t.state, Role::Editor);
     let tcp = seed(&t, "db", MonitorType::Tcp, 60).await;
     let http = seed(&t, "web", MonitorType::Http, 60).await;
-    let res = send(&app, htmx_post("/monitors/bulk/edit", &format!("ids={http}&all=true&filter=type%3Dtcp&retries=3"))).await;
+    let res = send(
+        &app,
+        htmx_post(
+            "/monitors/bulk/edit",
+            &format!("ids={http}&all=true&filter=type%3Dtcp&retries=3"),
+        ),
+    )
+    .await;
     assert!(header(&res, "hx-trigger").contains("Updated 1 monitor"));
-    assert_eq!((stored(&t, tcp).await.retries, stored(&t, http).await.retries), (3, 0));
+    assert_eq!(
+        (
+            stored(&t, tcp).await.retries,
+            stored(&t, http).await.retries
+        ),
+        (3, 0)
+    );
 
     let viewer = router(&t.state, Role::Viewer);
     for uri in ["/monitors/bulk/edit", "/monitors/bulk/edit/summary"] {
@@ -861,6 +1271,9 @@ async fn bulk_edit_all_matching_the_filter_and_roles() {
     }
     assert_eq!(stored(&t, tcp).await.retries, 3);
     let html = body_text(send(&viewer, get("/?select=1")).await).await;
-    assert!(!html.contains(r#"id="bulk-edit""#), "viewers never get select mode");
+    assert!(
+        !html.contains(r#"id="bulk-edit""#),
+        "viewers never get select mode"
+    );
     t.state.scheduler.shutdown().await;
 }

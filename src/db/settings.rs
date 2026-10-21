@@ -57,8 +57,12 @@ impl Settings {
 }
 
 pub fn get(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
-    conn.query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0))
-        .optional()
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        params![key],
+        |r| r.get(0),
+    )
+    .optional()
 }
 
 pub fn set(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
@@ -108,10 +112,18 @@ pub fn save(conn: &Connection, s: &Settings) -> rusqlite::Result<()> {
     set(conn, LANGUAGE, &s.language)?;
     set(conn, SITE_NAME, &s.site_name)?;
     set_bool(conn, DISCOVERY_ENABLED, s.discovery_enabled)?;
-    set_opt(conn, DISCOVERY_DOCKER_HOST, s.discovery_docker_host.as_deref())?;
+    set_opt(
+        conn,
+        DISCOVERY_DOCKER_HOST,
+        s.discovery_docker_host.as_deref(),
+    )?;
     set_bool(conn, METRICS_ENABLED, s.metrics_enabled)?;
     set_bool(conn, BADGES_PUBLIC, s.badges_public)?;
-    set_bool(conn, AGENT_CONFIRMATION_DEFAULT, s.agent_confirmation_default)?;
+    set_bool(
+        conn,
+        AGENT_CONFIRMATION_DEFAULT,
+        s.agent_confirmation_default,
+    )?;
     Ok(())
 }
 
@@ -154,7 +166,10 @@ fn apply(s: &mut Settings, key: &str, value: String) {
 }
 
 pub fn parse_bool(value: &str) -> bool {
-    matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes")
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "on" | "yes"
+    )
 }
 
 #[cfg(test)]
@@ -193,7 +208,10 @@ mod tests {
         set(&conn, RETENTION_DAYS, "-3").unwrap();
         set(&conn, SITE_NAME, "   ").unwrap();
         let s = load(&conn).unwrap();
-        assert_eq!((s.retention_days, s.site_name.as_str()), (90, "Vigilant Vole"));
+        assert_eq!(
+            (s.retention_days, s.site_name.as_str()),
+            (90, "Vigilant Vole")
+        );
     }
 
     #[test]
@@ -201,7 +219,10 @@ mod tests {
         let conn = test_conn();
         set(&conn, BASE_URL, "https://up.example.com/").unwrap();
         let s = load(&conn).unwrap();
-        assert_eq!(s.monitor_url(7).as_deref(), Some("https://up.example.com/monitors/7"));
+        assert_eq!(
+            s.monitor_url(7).as_deref(),
+            Some("https://up.example.com/monitors/7")
+        );
     }
 
     #[test]

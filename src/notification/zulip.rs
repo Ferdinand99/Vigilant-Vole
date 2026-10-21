@@ -23,7 +23,9 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
             .placeholder("vigilant-bot@yourorg.zulipchat.com…")
             .help("Settings → Bots → add a Generic bot."),
         Field::secret("api_key", "Bot API key").required(),
-        Field::text("stream", "Stream").required().placeholder("monitoring…"),
+        Field::text("stream", "Stream")
+            .required()
+            .placeholder("monitoring…"),
         Field::text("topic", "Topic")
             .default("Vigilant Vole")
             .help("Topics keep one subject together inside a stream."),
@@ -34,7 +36,10 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 
 fn check(config: &Value) -> Vec<FieldError> {
     match opt(config, "bot_email") {
-        Some(e) if !e.contains('@') => vec![field_error("bot_email", crate::i18n::t("notif.err_email_address"))],
+        Some(e) if !e.contains('@') => vec![field_error(
+            "bot_email",
+            crate::i18n::t("notif.err_email_address"),
+        )],
         _ => Vec::new(),
     }
 }
@@ -78,16 +83,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(reqs[0].url, "https://org.zulipchat.com/api/v1/messages");
-        assert!(reqs[0].header_value("Authorization").unwrap().starts_with("Basic "));
-        let OutBody::Form(fields) = &reqs[0].body else { panic!("form expected") };
-        let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).unwrap();
-        assert_eq!((get("type"), get("to"), get("topic")), ("stream", "ops", "Vigilant Vole"));
-        assert!(get("content").contains("Payments API is down") && get("content").contains("[View monitor](https://vv.example/monitors/7)"));
+        assert!(
+            reqs[0]
+                .header_value("Authorization")
+                .unwrap()
+                .starts_with("Basic ")
+        );
+        let OutBody::Form(fields) = &reqs[0].body else {
+            panic!("form expected")
+        };
+        let get = |k: &str| {
+            fields
+                .iter()
+                .find(|(n, _)| n == k)
+                .map(|(_, v)| v.as_str())
+                .unwrap()
+        };
+        assert_eq!(
+            (get("type"), get("to"), get("topic")),
+            ("stream", "ops", "Vigilant Vole")
+        );
+        assert!(
+            get("content").contains("Payments API is down")
+                && get("content").contains("[View monitor](https://vv.example/monitors/7)")
+        );
     }
 
     #[test]
     fn the_bot_email_needs_an_at_sign() {
-        assert!(check(&json!({"bot_email": "bot"})).iter().any(|(k, _)| k == "bot_email"));
+        assert!(
+            check(&json!({"bot_email": "bot"}))
+                .iter()
+                .any(|(k, _)| k == "bot_email")
+        );
         assert!(check(&json!({"bot_email": "bot@x.example"})).is_empty());
     }
 }

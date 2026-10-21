@@ -13,7 +13,9 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
-        let data_dir: PathBuf = env::var("DATA_DIR").unwrap_or_else(|_| "./data".into()).into();
+        let data_dir: PathBuf = env::var("DATA_DIR")
+            .unwrap_or_else(|_| "./data".into())
+            .into();
         let port = env::var("PORT").unwrap_or_else(|_| "3001".into());
         Self {
             data_dir,

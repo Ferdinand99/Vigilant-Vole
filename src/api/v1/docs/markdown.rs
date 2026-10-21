@@ -17,15 +17,43 @@ use crate::db::models::MonitorType;
 /// Error codes of the v1 envelope: code, HTTP status, when.
 const ERROR_CODES: &[(&str, u16, &str)] = &[
     ("bad_request", 400, "malformed query, cursor or body"),
-    ("unauthorized", 401, "missing, invalid, expired or revoked token"),
-    ("forbidden", 403, "your role or the token's scope doesn't allow it"),
+    (
+        "unauthorized",
+        401,
+        "missing, invalid, expired or revoked token",
+    ),
+    (
+        "forbidden",
+        403,
+        "your role or the token's scope doesn't allow it",
+    ),
     ("not_found", 404, "no such object or route"),
-    ("conflict", 409, "clashes with existing data or the object's state (duplicate tag name or slug, checking a paused monitor)"),
+    (
+        "conflict",
+        409,
+        "clashes with existing data or the object's state (duplicate tag name or slug, checking a paused monitor)",
+    ),
     ("too_large", 413, "configuration document over 2 MB"),
-    ("unsupported_media_type", 415, "body without `Content-Type: application/json`"),
-    ("validation_failed", 422, "invalid fields; `fields` maps each field to its message"),
-    ("invalid_document", 422, "configuration document that can't be parsed"),
-    ("delivery_failed", 502, "a test notification the provider refused"),
+    (
+        "unsupported_media_type",
+        415,
+        "body without `Content-Type: application/json`",
+    ),
+    (
+        "validation_failed",
+        422,
+        "invalid fields; `fields` maps each field to its message",
+    ),
+    (
+        "invalid_document",
+        422,
+        "configuration document that can't be parsed",
+    ),
+    (
+        "delivery_failed",
+        502,
+        "a test notification the provider refused",
+    ),
     ("internal", 500, "server error; try again"),
 ];
 
@@ -99,7 +127,10 @@ fn conventions(out: &mut String) {
 }
 
 fn errors(out: &mut String) {
-    let _ = write!(out, "## Errors\n\nEvery error uses one envelope (`fields` only on validation errors):\n\n```json\n{ERROR_EXAMPLE}\n```\n\n");
+    let _ = write!(
+        out,
+        "## Errors\n\nEvery error uses one envelope (`fields` only on validation errors):\n\n```json\n{ERROR_EXAMPLE}\n```\n\n"
+    );
     out.push_str("| Code | HTTP | When |\n|---|---|---|\n");
     for (code, status, when) in ERROR_CODES {
         let _ = writeln!(out, "| `{code}` | {status} | {when} |");
@@ -108,8 +139,15 @@ fn errors(out: &mut String) {
 }
 
 fn monitor_types(out: &mut String) {
-    let types: Vec<String> = MonitorType::all().iter().map(|t| format!("`{}`", t.as_str())).collect();
-    let _ = write!(out, "## Monitor types\n\n`monitor_type` is one of: {}.\n\n", types.join(", "));
+    let types: Vec<String> = MonitorType::all()
+        .iter()
+        .map(|t| format!("`{}`", t.as_str()))
+        .collect();
+    let _ = write!(
+        out,
+        "## Monitor types\n\n`monitor_type` is one of: {}.\n\n",
+        types.join(", ")
+    );
 }
 
 fn endpoints(out: &mut String) {
@@ -122,13 +160,26 @@ fn endpoints(out: &mut String) {
 }
 
 fn endpoint(out: &mut String, r: &RouteDoc) {
-    let _ = write!(out, "### {} {}\n\n{}\n\n- Access: {}\n", r.method, r.path, r.summary, access(r));
+    let _ = write!(
+        out,
+        "### {} {}\n\n{}\n\n- Access: {}\n",
+        r.method,
+        r.path,
+        r.summary,
+        access(r)
+    );
     let status = r.success_status();
-    let reason = StatusCode::from_u16(status).ok().and_then(|s| s.canonical_reason()).unwrap_or_default();
+    let reason = StatusCode::from_u16(status)
+        .ok()
+        .and_then(|s| s.canonical_reason())
+        .unwrap_or_default();
     let _ = writeln!(out, "- Success: `{status} {reason}`");
     let params = path_params(r.path);
     if !params.is_empty() {
-        let list: Vec<String> = params.iter().map(|p| format!("`{p}` ({})", path_param_type(p))).collect();
+        let list: Vec<String> = params
+            .iter()
+            .map(|p| format!("`{p}` ({})", path_param_type(p)))
+            .collect();
         let _ = writeln!(out, "- Path parameters: {}", list.join(", "));
     }
     if !r.query.is_empty() {
@@ -143,8 +194,16 @@ fn endpoint(out: &mut String, r: &RouteDoc) {
     }
     let _ = write!(out, "\nExample request:\n\n```bash\n{}\n```\n\n", curl(r));
     if !r.response.is_empty() {
-        let lang = if r.is_yaml() && r.method == "GET" { "yaml" } else { "json" };
-        let _ = write!(out, "Example response:\n\n```{lang}\n{}\n```\n\n", r.response);
+        let lang = if r.is_yaml() && r.method == "GET" {
+            "yaml"
+        } else {
+            "json"
+        };
+        let _ = write!(
+            out,
+            "Example response:\n\n```{lang}\n{}\n```\n\n",
+            r.response
+        );
     }
 }
 
@@ -171,8 +230,14 @@ fn body_fields(r: &RouteDoc) -> Option<String> {
     }
     match serde_json::from_str::<Value>(r.request) {
         Ok(Value::Object(map)) => {
-            let fields: Vec<String> = map.iter().map(|(k, v)| format!("`{k}` ({})", json_type(v))).collect();
-            Some(format!("JSON object; fields used in the example: {}", fields.join(", ")))
+            let fields: Vec<String> = map
+                .iter()
+                .map(|(k, v)| format!("`{k}` ({})", json_type(v)))
+                .collect();
+            Some(format!(
+                "JSON object; fields used in the example: {}",
+                fields.join(", ")
+            ))
         }
         Ok(Value::Array(_)) => Some("JSON array (see the example)".into()),
         _ => Some("see the example".into()),
@@ -197,7 +262,11 @@ fn curl(r: &RouteDoc) -> String {
         .path
         .split('/')
         .map(|seg| match seg {
-            "{id}" if r.path.starts_with("/api/v1/monitors") || r.path.starts_with("/api/badge") => "7".to_string(),
+            "{id}"
+                if r.path.starts_with("/api/v1/monitors") || r.path.starts_with("/api/badge") =>
+            {
+                "7".to_string()
+            }
             "{id}" | "{iid}" => "1".to_string(),
             "{token}" => "$VV_PUSH_TOKEN".to_string(),
             "{slug}" => "acme".to_string(),
@@ -211,19 +280,28 @@ fn curl(r: &RouteDoc) -> String {
         let _ = write!(cmd, " -X {}", r.method);
     }
     match r.access {
-        "viewer" | "editor" | "admin" | "metrics token" => cmd.push_str(" -H \"Authorization: Bearer $VV_TOKEN\""),
+        "viewer" | "editor" | "admin" | "metrics token" => {
+            cmd.push_str(" -H \"Authorization: Bearer $VV_TOKEN\"")
+        }
         "agent token" => cmd.push_str(" -H \"Authorization: Bearer $VV_AGENT_TOKEN\""),
         _ => {}
     }
     if r.is_yaml() && r.method == "POST" {
         url.push_str("?dry_run=1");
-        let _ = write!(cmd, " -H \"Content-Type: application/yaml\" --data-binary @vigilant.yml \"{url}\"");
+        let _ = write!(
+            cmd,
+            " -H \"Content-Type: application/yaml\" --data-binary @vigilant.yml \"{url}\""
+        );
     } else if r.is_yaml() {
         let _ = write!(cmd, " \"{url}\" -o vigilant.yml");
     } else if r.request.is_empty() {
         let _ = write!(cmd, " \"{url}\"");
     } else {
-        let _ = write!(cmd, " -H \"Content-Type: application/json\" \"{url}\" -d '{}'", shell_quote(r.request));
+        let _ = write!(
+            cmd,
+            " -H \"Content-Type: application/json\" \"{url}\" -d '{}'",
+            shell_quote(r.request)
+        );
     }
     cmd
 }
@@ -235,7 +313,10 @@ fn shell_quote(text: &str) -> String {
 
 /// The example request body of a documented route.
 fn example_body(method: &str, path: &str) -> &'static str {
-    ROUTES.iter().find(|r| r.method == method && r.path == path).map_or("{}", |r| r.request)
+    ROUTES
+        .iter()
+        .find(|r| r.method == method && r.path == path)
+        .map_or("{}", |r| r.request)
 }
 
 fn config_as_code(out: &mut String) {
@@ -311,10 +392,19 @@ mod tests {
     fn lists_every_documented_route() {
         let doc = document(BASE);
         for r in ROUTES {
-            assert!(doc.contains(&format!("### {} {}\n", r.method, r.path)), "missing {} {}", r.method, r.path);
+            assert!(
+                doc.contains(&format!("### {} {}\n", r.method, r.path)),
+                "missing {} {}",
+                r.method,
+                r.path
+            );
         }
         assert!(doc.contains("### POST /api/v1/monitors/bulk\n"));
-        assert_eq!(doc.matches("\n### ").count(), ROUTES.len() + 5, "one heading per route plus the common tasks");
+        assert_eq!(
+            doc.matches("\n### ").count(),
+            ROUTES.len() + 5,
+            "one heading per route plus the common tasks"
+        );
     }
 
     #[test]
@@ -363,20 +453,33 @@ mod tests {
         for prefix in ["vv_", "vva_"] {
             for (i, _) in doc.match_indices(prefix) {
                 let rest = &doc[i + prefix.len()..];
-                let run = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').count();
-                assert!(run < 8, "token-like text at {i}: {}", &doc[i..(i + 20).min(doc.len())]);
+                let run = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                    .count();
+                assert!(
+                    run < 8,
+                    "token-like text at {i}: {}",
+                    &doc[i..(i + 20).min(doc.len())]
+                );
             }
         }
     }
 
     #[test]
     fn curl_examples_quote_bodies_for_the_shell() {
-        let incident = ROUTES.iter().find(|r| r.method == "POST" && r.path == "/api/v1/status-pages/{id}/incidents").expect("route");
+        let incident = ROUTES
+            .iter()
+            .find(|r| r.method == "POST" && r.path == "/api/v1/status-pages/{id}/incidents")
+            .expect("route");
         let cmd = curl(incident);
         assert!(cmd.starts_with("curl -X POST -H \"Authorization: Bearer $VV_TOKEN\""));
         assert!(cmd.contains("\"$VV_URL/api/v1/status-pages/1/incidents\""));
         assert!(cmd.contains("We'\\''re looking into it."));
-        let push = ROUTES.iter().find(|r| r.path == "/api/push/{token}").expect("route");
+        let push = ROUTES
+            .iter()
+            .find(|r| r.path == "/api/push/{token}")
+            .expect("route");
         assert_eq!(curl(push), "curl \"$VV_URL/api/push/$VV_PUSH_TOKEN\"");
     }
 }

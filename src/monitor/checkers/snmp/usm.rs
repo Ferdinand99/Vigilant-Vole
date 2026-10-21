@@ -14,7 +14,9 @@ use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use hmac::Mac;
 use sha2::Digest;
 
-use super::{GET_REQUEST, NULL, OCTET_STRING, OID, SEQUENCE, decode_int, encode_int, read_tlv, tlv};
+use super::{
+    GET_REQUEST, NULL, OCTET_STRING, OID, SEQUENCE, decode_int, encode_int, read_tlv, tlv,
+};
 
 /// A Report PDU (discovery answers and USM errors).
 pub const REPORT: u8 = 0xA8;
@@ -41,15 +43,17 @@ pub enum Auth {
 impl Auth {
     /// The target's `auth=` value (`md5`, `sha`, `sha224` … `sha512`).
     pub fn parse(s: &str) -> Option<Auth> {
-        Some(match s.trim().to_ascii_lowercase().replace('-', "").as_str() {
-            "md5" => Auth::Md5,
-            "sha" | "sha1" => Auth::Sha1,
-            "sha224" => Auth::Sha224,
-            "sha256" => Auth::Sha256,
-            "sha384" => Auth::Sha384,
-            "sha512" => Auth::Sha512,
-            _ => return None,
-        })
+        Some(
+            match s.trim().to_ascii_lowercase().replace('-', "").as_str() {
+                "md5" => Auth::Md5,
+                "sha" | "sha1" => Auth::Sha1,
+                "sha224" => Auth::Sha224,
+                "sha256" => Auth::Sha256,
+                "sha384" => Auth::Sha384,
+                "sha512" => Auth::Sha512,
+                _ => return None,
+            },
+        )
     }
 
     pub fn name(self) -> &'static str {
@@ -90,7 +94,8 @@ impl Auth {
         macro_rules! hmac {
             ($h:ty) => {{
                 // HMAC takes keys of any length.
-                let mut mac = <hmac::Hmac<$h> as hmac::digest::KeyInit>::new_from_slice(key).expect("HMAC accepts any key length");
+                let mut mac = <hmac::Hmac<$h> as hmac::digest::KeyInit>::new_from_slice(key)
+                    .expect("HMAC accepts any key length");
                 mac.update(data);
                 mac.finalize().into_bytes().to_vec()
             }};
@@ -135,13 +140,15 @@ pub enum Priv {
 impl Priv {
     /// The target's `priv=` value (`des`, `aes`, `aes192`, `aes256`).
     pub fn parse(s: &str) -> Option<Priv> {
-        Some(match s.trim().to_ascii_lowercase().replace('-', "").as_str() {
-            "des" => Priv::Des,
-            "aes" | "aes128" => Priv::Aes128,
-            "aes192" => Priv::Aes192,
-            "aes256" => Priv::Aes256,
-            _ => return None,
-        })
+        Some(
+            match s.trim().to_ascii_lowercase().replace('-', "").as_str() {
+                "des" => Priv::Des,
+                "aes" | "aes128" => Priv::Aes128,
+                "aes192" => Priv::Aes192,
+                "aes256" => Priv::Aes256,
+                _ => return None,
+            },
+        )
     }
 
     pub fn name(self) -> &'static str {
@@ -192,7 +199,10 @@ impl Keys {
 impl Credentials {
     /// Keys for `engine_id`, from the cache when this user was seen before.
     pub fn keys(&self, engine_id: &[u8]) -> Keys {
-        let auth = self.auth.as_ref().map(|(a, pw)| (*a, cached_key(*a, None, pw, engine_id)));
+        let auth = self
+            .auth
+            .as_ref()
+            .map(|(a, pw)| (*a, cached_key(*a, None, pw, engine_id)));
         let privacy = match (&self.auth, &self.privacy) {
             (Some((a, _)), Some((p, pw))) => Some((*p, cached_key(*a, Some(*p), pw, engine_id))),
             _ => None,
@@ -227,7 +237,11 @@ fn cached_key(auth: Auth, privacy: Option<Priv>, password: &str, engine_id: &[u8
     id.update(password.as_bytes());
     id.update(engine_id);
     let id: [u8; 32] = id.finalize().into();
-    if let Some(key) = CACHE.lock().ok().and_then(|c| c.as_ref()?.get(&id).cloned()) {
+    if let Some(key) = CACHE
+        .lock()
+        .ok()
+        .and_then(|c| c.as_ref()?.get(&id).cloned())
+    {
         return key;
     }
     let key = derive_key(auth, privacy, password, engine_id);
@@ -312,16 +326,37 @@ pub struct Request<'a> {
 
 /// An unauthenticated, empty GET that makes the agent report its engine.
 pub fn discovery(msg_id: i32, request_id: i32) -> Vec<u8> {
-    build(&Request { msg_id, request_id, engine: &Engine::default(), user: "", keys: None, context: "", oid: None, salt: 0 })
+    build(&Request {
+        msg_id,
+        request_id,
+        engine: &Engine::default(),
+        user: "",
+        keys: None,
+        context: "",
+        oid: None,
+        salt: 0,
+    })
 }
 
 /// Encodes `req` (encrypting and signing it as its keys say).
 pub fn build(req: &Request) -> Vec<u8> {
     let varbinds = match req.oid {
-        Some(oid) => tlv(SEQUENCE, &tlv(SEQUENCE, &[tlv(OID, oid), tlv(NULL, &[])].concat())),
+        Some(oid) => tlv(
+            SEQUENCE,
+            &tlv(SEQUENCE, &[tlv(OID, oid), tlv(NULL, &[])].concat()),
+        ),
         None => tlv(SEQUENCE, &[]),
     };
-    let pdu = tlv(GET_REQUEST, &[encode_int(req.request_id.into()), encode_int(0), encode_int(0), varbinds].concat());
+    let pdu = tlv(
+        GET_REQUEST,
+        &[
+            encode_int(req.request_id.into()),
+            encode_int(0),
+            encode_int(0),
+            varbinds,
+        ]
+        .concat(),
+    );
     wrap(req, &pdu, true)
 }
 
@@ -334,10 +369,23 @@ pub fn reply(req: &Request, pdu: &[u8]) -> Vec<u8> {
 
 /// A whole message around an encoded `pdu` (requests are `reportable`).
 fn wrap(req: &Request, pdu: &[u8], reportable: bool) -> Vec<u8> {
-    let scoped = tlv(SEQUENCE, &[&tlv(OCTET_STRING, &req.engine.id), &tlv(OCTET_STRING, req.context.as_bytes()), pdu].concat());
+    let scoped = tlv(
+        SEQUENCE,
+        &[
+            &tlv(OCTET_STRING, &req.engine.id),
+            &tlv(OCTET_STRING, req.context.as_bytes()),
+            pdu,
+        ]
+        .concat(),
+    );
     let auth = req.keys.and_then(|k| k.auth.as_ref());
-    let privacy = req.keys.and_then(|k| k.privacy.as_ref()).filter(|_| auth.is_some());
-    let flags = if reportable { 0x04 } else { 0 } | u8::from(auth.is_some()) | if privacy.is_some() { 2 } else { 0 };
+    let privacy = req
+        .keys
+        .and_then(|k| k.privacy.as_ref())
+        .filter(|_| auth.is_some());
+    let flags = if reportable { 0x04 } else { 0 }
+        | u8::from(auth.is_some())
+        | if privacy.is_some() { 2 } else { 0 };
 
     let (data, priv_params) = match privacy {
         Some((Priv::Des, key)) => {
@@ -367,8 +415,25 @@ fn wrap(req: &Request, pdu: &[u8], reportable: bool) -> Vec<u8> {
     ]
     .concat();
     let auth_params = tlv(OCTET_STRING, &vec![0u8; mac_len]);
-    let usm = tlv(SEQUENCE, &[usm_head.as_slice(), &auth_params, &tlv(OCTET_STRING, &priv_params)].concat());
-    let header = tlv(SEQUENCE, &[encode_int(i64::from(req.msg_id)), encode_int(MAX_SIZE), tlv(OCTET_STRING, &[flags]), encode_int(USM)].concat());
+    let usm = tlv(
+        SEQUENCE,
+        &[
+            usm_head.as_slice(),
+            &auth_params,
+            &tlv(OCTET_STRING, &priv_params),
+        ]
+        .concat(),
+    );
+    let header = tlv(
+        SEQUENCE,
+        &[
+            encode_int(i64::from(req.msg_id)),
+            encode_int(MAX_SIZE),
+            tlv(OCTET_STRING, &[flags]),
+            encode_int(USM),
+        ]
+        .concat(),
+    );
     let version = encode_int(3);
     let security = tlv(OCTET_STRING, &usm);
     let body = [version.as_slice(), &header, &security, &data].concat();
@@ -379,7 +444,8 @@ fn wrap(req: &Request, pdu: &[u8], reportable: bool) -> Vec<u8> {
             + version.len()
             + header.len()
             + (security.len() - usm.len())
-            + (usm.len() - (usm_head.len() + auth_params.len() + tlv(OCTET_STRING, &priv_params).len()))
+            + (usm.len()
+                - (usm_head.len() + auth_params.len() + tlv(OCTET_STRING, &priv_params).len()))
             + usm_head.len()
             + (auth_params.len() - mac_len);
         let mac = a.mac(key, &msg);
@@ -455,8 +521,16 @@ pub fn parse(packet: &[u8], keys: Option<&Keys>) -> Result<Reply, String> {
     let (_, user, u) = read_tlv(u).ok_or_else(bad)?;
     let (_, auth_params, u) = read_tlv(u).ok_or_else(bad)?;
     let (_, priv_params, _) = read_tlv(u).ok_or_else(bad)?;
-    let clock = |b: &[u8]| decode_int(b).and_then(|v| u32::try_from(v).ok()).unwrap_or(0);
-    let engine = Engine { id: engine_id.to_vec(), boots: clock(boots), time: clock(time) };
+    let clock = |b: &[u8]| {
+        decode_int(b)
+            .and_then(|v| u32::try_from(v).ok())
+            .unwrap_or(0)
+    };
+    let engine = Engine {
+        id: engine_id.to_vec(),
+        boots: clock(boots),
+        time: clock(time),
+    };
 
     let authenticated = flags & 1 != 0;
     if authenticated {
@@ -477,7 +551,10 @@ pub fn parse(packet: &[u8], keys: Option<&Keys>) -> Result<Reply, String> {
     let encrypted = flags & 2 != 0;
     let plain;
     let scoped = if encrypted {
-        let Some((privacy, key)) = keys.and_then(|k| k.privacy.as_ref()).filter(|_| authenticated) else {
+        let Some((privacy, key)) = keys
+            .and_then(|k| k.privacy.as_ref())
+            .filter(|_| authenticated)
+        else {
             return Err("The device encrypted an answer to an unencrypted request".into());
         };
         let (tag, cipher_text, _) = read_tlv(data).ok_or_else(bad)?;
@@ -499,7 +576,8 @@ pub fn parse(packet: &[u8], keys: Option<&Keys>) -> Result<Reply, String> {
     } else {
         data
     };
-    let undecryptable = || "Can't decrypt the answer (wrong privacy password or protocol?)".to_string();
+    let undecryptable =
+        || "Can't decrypt the answer (wrong privacy password or protocol?)".to_string();
     let (tag, scoped, _) = read_tlv(scoped).ok_or_else(undecryptable)?;
     if tag != SEQUENCE {
         return Err(undecryptable());
@@ -549,11 +627,23 @@ impl ReportReason {
             ReportReason::UnsupportedSecurityLevel => format!(
                 "The device doesn't accept this security level for user \"{user}\" (set the passwords it expects: authentication only, or both)"
             ),
-            ReportReason::NotInTimeWindow => "The device rejected the request's time twice (notInTimeWindow)".into(),
-            ReportReason::UnknownUser => format!("The device doesn't know the SNMPv3 user \"{user}\""),
-            ReportReason::UnknownEngineId => "The device rejected its own engine ID (unknownEngineID)".into(),
-            ReportReason::WrongDigest => "Wrong authentication password or protocol (the device reported a wrong digest)".into(),
-            ReportReason::DecryptionError => "Wrong privacy password or protocol (the device couldn't decrypt the request)".into(),
+            ReportReason::NotInTimeWindow => {
+                "The device rejected the request's time twice (notInTimeWindow)".into()
+            }
+            ReportReason::UnknownUser => {
+                format!("The device doesn't know the SNMPv3 user \"{user}\"")
+            }
+            ReportReason::UnknownEngineId => {
+                "The device rejected its own engine ID (unknownEngineID)".into()
+            }
+            ReportReason::WrongDigest => {
+                "Wrong authentication password or protocol (the device reported a wrong digest)"
+                    .into()
+            }
+            ReportReason::DecryptionError => {
+                "Wrong privacy password or protocol (the device couldn't decrypt the request)"
+                    .into()
+            }
         }
     }
 }

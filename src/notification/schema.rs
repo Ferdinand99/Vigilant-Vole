@@ -81,7 +81,11 @@ impl ProviderSchema {
 
     /// Display name in the current language (brand names stay as they are).
     pub fn tr_label(&self) -> &'static str {
-        if self.kind == "email" { crate::i18n::t("notif.email_label") } else { self.label }
+        if self.kind == "email" {
+            crate::i18n::t("notif.email_label")
+        } else {
+            self.label
+        }
     }
 
     /// Picker description in the current language (`notif.<kind>.desc`).
@@ -229,7 +233,10 @@ impl Field {
         let key = format!("notif.{kind}.{}.required", self.key);
         let explicit = crate::i18n::t_or(&key, "");
         if explicit.is_empty() {
-            crate::i18n::tf("notif.err_required", &[("field", &self.tr_label(kind).to_lowercase())])
+            crate::i18n::tf(
+                "notif.err_required",
+                &[("field", &self.tr_label(kind).to_lowercase())],
+            )
         } else {
             explicit.to_string()
         }
@@ -237,7 +244,10 @@ impl Field {
 
     /// Placeholder in the current language (most are untranslated examples).
     pub fn tr_placeholder(&self, kind: &str) -> &'static str {
-        crate::i18n::t_or(&format!("notif.{kind}.{}.placeholder", self.key), self.placeholder)
+        crate::i18n::t_or(
+            &format!("notif.{kind}.{}.placeholder", self.key),
+            self.placeholder,
+        )
     }
 
     /// A select option's label in the current language.
@@ -422,7 +432,12 @@ pub fn destination_changed(schema: &ProviderSchema, new: &Value, old: &Value) ->
 }
 
 /// Secret fields whose stored value [`merge_secrets`] would restore.
-fn restored_secrets(schema: &ProviderSchema, new: &Value, old: &Value, clear: &[String]) -> Vec<&'static str> {
+fn restored_secrets(
+    schema: &ProviderSchema,
+    new: &Value,
+    old: &Value,
+    clear: &[String],
+) -> Vec<&'static str> {
     schema
         .fields
         .iter()
@@ -433,7 +448,8 @@ fn restored_secrets(schema: &ProviderSchema, new: &Value, old: &Value, clear: &[
             if field.kind == FieldKind::KeyValue {
                 return current.and_then(Value::as_object).is_some_and(|map| {
                     map.iter().any(|(k, v)| {
-                        v.as_str() == Some(SECRET_MASK) && old_value.and_then(|o| o.get(k)).is_some()
+                        v.as_str() == Some(SECRET_MASK)
+                            && old_value.and_then(|o| o.get(k)).is_some()
                     })
                 });
             }
@@ -731,7 +747,11 @@ mod tests {
         let email = &crate::notification::email::SCHEMA;
         let old = json!({"host": "smtp.example.com", "port": 587, "security": "starttls",
             "username": "a", "password": "PW", "from": "a@example.com", "to": "b@example.com"});
-        for (key, value) in [("host", json!("evil.example")), ("port", json!(25)), ("security", json!("none"))] {
+        for (key, value) in [
+            ("host", json!("evil.example")),
+            ("port", json!(25)),
+            ("security", json!("none")),
+        ] {
             let mut new = old.clone();
             new["password"] = json!("");
             new[key] = value;
@@ -756,7 +776,8 @@ mod tests {
         assert!(merge_secrets_checked(webhook, &mut same, &old, &[]).is_ok());
         assert_eq!(same, old);
         // New URL + masked header: the header must be retyped.
-        let mut moved = json!({"url": "https://attacker.example", "headers": {"Authorization": SECRET_MASK}});
+        let mut moved =
+            json!({"url": "https://attacker.example", "headers": {"Authorization": SECRET_MASK}});
         let errors = merge_secrets_checked(webhook, &mut moved, &old, &[]).unwrap_err();
         assert_eq!(errors[0].0, "headers");
         // Cosmetic URLs (avatars) aren't destinations.

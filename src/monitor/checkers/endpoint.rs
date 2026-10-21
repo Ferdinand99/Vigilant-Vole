@@ -39,7 +39,10 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub fn query(&self, key: &str) -> Option<&str> {
-        self.query.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v.as_str())
+        self.query
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -58,29 +61,78 @@ pub struct Fields {
     pub tls: bool,
 }
 
-const NONE: Fields = Fields { credentials: false, password_only: false, secret: false, keyword: false, tls: false };
+const NONE: Fields = Fields {
+    credentials: false,
+    password_only: false,
+    secret: false,
+    keyword: false,
+    tls: false,
+};
 
 pub fn fields(kind: MonitorType) -> Fields {
     match kind {
-        MonitorType::Tls | MonitorType::Smtp | MonitorType::Kafka | MonitorType::Grpc | MonitorType::GrpcKeyword => Fields { tls: true, ..NONE },
-        MonitorType::Redis => Fields { credentials: true, password_only: true, tls: true, ..NONE },
-        MonitorType::Postgres | MonitorType::Mysql | MonitorType::Rabbitmq | MonitorType::SqlServer | MonitorType::Mongodb => {
-            Fields { credentials: true, tls: true, ..NONE }
-        }
-        MonitorType::Mqtt => Fields { credentials: true, keyword: true, tls: true, ..NONE },
-        MonitorType::Radius => Fields { credentials: true, secret: true, ..NONE },
+        MonitorType::Tls
+        | MonitorType::Smtp
+        | MonitorType::Kafka
+        | MonitorType::Grpc
+        | MonitorType::GrpcKeyword => Fields { tls: true, ..NONE },
+        MonitorType::Redis => Fields {
+            credentials: true,
+            password_only: true,
+            tls: true,
+            ..NONE
+        },
+        MonitorType::Postgres
+        | MonitorType::Mysql
+        | MonitorType::Rabbitmq
+        | MonitorType::SqlServer
+        | MonitorType::Mongodb => Fields {
+            credentials: true,
+            tls: true,
+            ..NONE
+        },
+        MonitorType::Mqtt => Fields {
+            credentials: true,
+            keyword: true,
+            tls: true,
+            ..NONE
+        },
+        MonitorType::Radius => Fields {
+            credentials: true,
+            secret: true,
+            ..NONE
+        },
         // v1/v2c: the secret is the community. v3: user, authentication
         // password and (as the secret) privacy password.
-        MonitorType::Snmp => Fields { credentials: true, secret: true, keyword: true, ..NONE },
+        MonitorType::Snmp => Fields {
+            credentials: true,
+            secret: true,
+            keyword: true,
+            ..NONE
+        },
         // The secret is the Satisfactory API token; the keyword applies to the server name.
-        MonitorType::GameServer => Fields { secret: true, keyword: true, ..NONE },
+        MonitorType::GameServer => Fields {
+            secret: true,
+            keyword: true,
+            ..NONE
+        },
         _ => NONE,
     }
 }
 
 pub fn scheme(kind: MonitorType) -> Option<&'static Scheme> {
-    const fn s(plain: &'static [&'static str], tls: &'static [&'static str], port: u16, tls_port: u16) -> Scheme {
-        Scheme { plain, tls, port, tls_port }
+    const fn s(
+        plain: &'static [&'static str],
+        tls: &'static [&'static str],
+        port: u16,
+        tls_port: u16,
+    ) -> Scheme {
+        Scheme {
+            plain,
+            tls,
+            port,
+            tls_port,
+        }
     }
     static REDIS: Scheme = s(&["redis"], &["rediss"], 6379, 6379);
     static POSTGRES: Scheme = s(&["postgres", "postgresql"], &[], 5432, 5432);
@@ -94,7 +146,12 @@ pub fn scheme(kind: MonitorType) -> Option<&'static Scheme> {
     static SQLSERVER: Scheme = s(&["sqlserver", "mssql"], &[], 1433, 1433);
     static MONGODB: Scheme = s(&["mongodb"], &["mongodb+srv"], 27017, 27017);
     // Each game has its own default port: see `game_server::parse_target`.
-    static GAME: Scheme = s(&["minecraft", "bedrock", "satisfactory", "fivem", "mumble"], &[], 25565, 25565);
+    static GAME: Scheme = s(
+        &["minecraft", "bedrock", "satisfactory", "fivem", "mumble"],
+        &[],
+        25565,
+        25565,
+    );
     match kind {
         MonitorType::Redis => Some(&REDIS),
         MonitorType::Postgres => Some(&POSTGRES),
@@ -114,7 +171,8 @@ pub fn scheme(kind: MonitorType) -> Option<&'static Scheme> {
 
 /// Parse the target of a service monitor of type `kind`.
 pub fn parse(kind: MonitorType, target: &str) -> Result<Endpoint, String> {
-    let scheme = scheme(kind).ok_or_else(|| "This monitor type has no service target".to_string())?;
+    let scheme =
+        scheme(kind).ok_or_else(|| "This monitor type has no service target".to_string())?;
     if kind == MonitorType::Mongodb {
         return parse_mongodb(target);
     }
@@ -136,14 +194,24 @@ pub fn parse_with(scheme: &Scheme, target: &str) -> Result<Endpoint, String> {
     };
     let tls = scheme.tls.contains(&name.as_str());
     if !tls && !scheme.plain.contains(&name.as_str()) {
-        let all: Vec<String> = scheme.plain.iter().chain(scheme.tls).map(|s| format!("{s}://")).collect();
-        return Err(format!("Unsupported scheme \"{name}://\" (use {})", all.join(" or ")));
+        let all: Vec<String> = scheme
+            .plain
+            .iter()
+            .chain(scheme.tls)
+            .map(|s| format!("{s}://"))
+            .collect();
+        return Err(format!(
+            "Unsupported scheme \"{name}://\" (use {})",
+            all.join(" or ")
+        ));
     }
     // A fixed scheme makes the rest parse the same way for every service.
     let url = url::Url::parse(&format!("svc://{rest}"))
         .map_err(|_| format!("Invalid address \"{}\"", super::util::truncate(t, 80)))?;
     if !url.username().is_empty() || url.password().is_some() {
-        return Err("Don't put credentials in the address: use the user name and password fields".into());
+        return Err(
+            "Don't put credentials in the address: use the user name and password fields".into(),
+        );
     }
     let host = url
         .host_str()
@@ -153,10 +221,23 @@ pub fn parse_with(scheme: &Scheme, target: &str) -> Result<Endpoint, String> {
     if host.chars().any(char::is_whitespace) {
         return Err("The host can't contain spaces".into());
     }
-    let port = url.port().unwrap_or(if tls { scheme.tls_port } else { scheme.port });
+    let port = url
+        .port()
+        .unwrap_or(if tls { scheme.tls_port } else { scheme.port });
     let path = percent_decode(url.path().trim_start_matches('/'));
-    let query = url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
-    Ok(Endpoint { tls, host, port, path, query, more_hosts: Vec::new(), srv: false })
+    let query = url
+        .query_pairs()
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
+    Ok(Endpoint {
+        tls,
+        host,
+        port,
+        path,
+        query,
+        more_hosts: Vec::new(),
+        srv: false,
+    })
 }
 
 /// A MongoDB connection string without credentials:
@@ -172,14 +253,20 @@ pub fn parse_mongodb(target: &str) -> Result<Endpoint, String> {
         Some((name, rest)) => match name.to_ascii_lowercase().as_str() {
             "mongodb" => (false, rest),
             "mongodb+srv" => (true, rest),
-            other => return Err(format!("Unsupported scheme \"{other}://\" (use mongodb:// or mongodb+srv://)")),
+            other => {
+                return Err(format!(
+                    "Unsupported scheme \"{other}://\" (use mongodb:// or mongodb+srv://)"
+                ));
+            }
         },
         None => (false, t),
     };
     let split = rest.find(['/', '?']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(split);
     if authority.contains('@') {
-        return Err("Don't put credentials in the address: use the user name and password fields".into());
+        return Err(
+            "Don't put credentials in the address: use the user name and password fields".into(),
+        );
     }
     let (path, query) = match tail.split_once('?') {
         Some((path, query)) => (path, query),
@@ -189,12 +276,17 @@ pub fn parse_mongodb(target: &str) -> Result<Endpoint, String> {
     if path.contains('/') {
         return Err("The path is the database name and can't contain \"/\"".into());
     }
-    let query: Vec<(String, String)> = url::form_urlencoded::parse(query.as_bytes()).map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+    let query: Vec<(String, String)> = url::form_urlencoded::parse(query.as_bytes())
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
     let mut hosts = Vec::new();
     for raw in authority.split(',') {
         let raw = raw.trim();
         if raw.is_empty() {
-            return Err(format!("Address \"{}\" has an empty host", super::util::truncate(t, 80)));
+            return Err(format!(
+                "Address \"{}\" has an empty host",
+                super::util::truncate(t, 80)
+            ));
         }
         if raw.chars().any(char::is_whitespace) {
             return Err("The host can't contain spaces".into());
@@ -208,15 +300,31 @@ pub fn parse_mongodb(target: &str) -> Result<Endpoint, String> {
     if srv && hosts.len() != 1 {
         return Err("A mongodb+srv:// address is a single host name without a port".into());
     }
-    let ep = Endpoint { tls: false, host: String::new(), port: 0, path, query, more_hosts: Vec::new(), srv };
+    let ep = Endpoint {
+        tls: false,
+        host: String::new(),
+        port: 0,
+        path,
+        query,
+        more_hosts: Vec::new(),
+        srv,
+    };
     let flag = |key: &str| ep.query(key).map(|v| v.trim().eq_ignore_ascii_case("true"));
     let tls = flag("tls").or_else(|| flag("ssl")).unwrap_or(srv);
     if flag("directConnection") == Some(true) && (srv || hosts.len() > 1) {
         return Err("directConnection=true needs exactly one host (and no mongodb+srv://)".into());
     }
     let mut hosts = hosts.into_iter();
-    let (host, port) = hosts.next().ok_or_else(|| format!("Address \"{}\" has no host", super::util::truncate(t, 80)))?;
-    Ok(Endpoint { tls, host, port, more_hosts: hosts.collect(), ..ep })
+    let (host, port) = hosts
+        .next()
+        .ok_or_else(|| format!("Address \"{}\" has no host", super::util::truncate(t, 80)))?;
+    Ok(Endpoint {
+        tls,
+        host,
+        port,
+        more_hosts: hosts.collect(),
+        ..ep
+    })
 }
 
 pub fn percent_decode(s: &str) -> String {
@@ -245,7 +353,10 @@ mod tests {
     #[test]
     fn bare_host_uses_the_plain_defaults() {
         let e = parse(MonitorType::Redis, "cache.local").unwrap();
-        assert_eq!((e.tls, e.host.as_str(), e.port, e.path.as_str()), (false, "cache.local", 6379, ""));
+        assert_eq!(
+            (e.tls, e.host.as_str(), e.port, e.path.as_str()),
+            (false, "cache.local", 6379, "")
+        );
         let e = parse(MonitorType::Mqtt, "broker:1884").unwrap();
         assert_eq!((e.tls, e.port), (false, 1884));
     }
@@ -264,8 +375,15 @@ mod tests {
         assert_eq!(e.path, "/prod");
         let e = parse(MonitorType::Mqtt, "mqtt://b/home/sensor/temp").unwrap();
         assert_eq!(e.path, "home/sensor/temp");
-        let e = parse(MonitorType::Postgres, "postgres://db:5432/app?sslmode=require").unwrap();
-        assert_eq!((e.path.as_str(), e.query("SSLMODE")), ("app", Some("require")));
+        let e = parse(
+            MonitorType::Postgres,
+            "postgres://db:5432/app?sslmode=require",
+        )
+        .unwrap();
+        assert_eq!(
+            (e.path.as_str(), e.query("SSLMODE")),
+            ("app", Some("require"))
+        );
     }
 
     #[test]
@@ -277,8 +395,16 @@ mod tests {
     #[test]
     fn bad_targets_are_refused() {
         assert!(parse(MonitorType::Redis, "").is_err());
-        assert!(parse(MonitorType::Redis, "http://cache").unwrap_err().contains("Unsupported scheme"));
-        assert!(parse(MonitorType::Redis, "redis://user:pw@cache").unwrap_err().contains("credentials"));
+        assert!(
+            parse(MonitorType::Redis, "http://cache")
+                .unwrap_err()
+                .contains("Unsupported scheme")
+        );
+        assert!(
+            parse(MonitorType::Redis, "redis://user:pw@cache")
+                .unwrap_err()
+                .contains("credentials")
+        );
         assert!(parse(MonitorType::Redis, "redis://:6379").is_err());
         assert!(parse(MonitorType::Redis, "redis://host:99999").is_err());
         assert!(parse(MonitorType::Http, "x").is_err());
@@ -286,25 +412,71 @@ mod tests {
 
     #[test]
     fn sqlserver_uses_port_1433() {
-        let e = parse(MonitorType::SqlServer, "sqlserver://db.local/app?encrypt=strict").unwrap();
-        assert_eq!((e.tls, e.host.as_str(), e.port, e.path.as_str(), e.query("Encrypt")), (false, "db.local", 1433, "app", Some("strict")));
-        assert_eq!(parse(MonitorType::SqlServer, "mssql://db:14330").unwrap().port, 14330);
+        let e = parse(
+            MonitorType::SqlServer,
+            "sqlserver://db.local/app?encrypt=strict",
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                e.tls,
+                e.host.as_str(),
+                e.port,
+                e.path.as_str(),
+                e.query("Encrypt")
+            ),
+            (false, "db.local", 1433, "app", Some("strict"))
+        );
+        assert_eq!(
+            parse(MonitorType::SqlServer, "mssql://db:14330")
+                .unwrap()
+                .port,
+            14330
+        );
     }
 
     #[test]
     fn mongodb_seed_lists_and_srv_names() {
-        let e = parse(MonitorType::Mongodb, "mongodb://a.local,b.local:27018,[::1]/app?replicaSet=rs0&tls=true").unwrap();
-        assert_eq!((e.host.as_str(), e.port, e.tls, e.srv, e.path.as_str()), ("a.local", 27017, true, false, "app"));
-        assert_eq!(e.more_hosts, vec![("b.local".to_string(), 27018), ("::1".to_string(), 27017)]);
+        let e = parse(
+            MonitorType::Mongodb,
+            "mongodb://a.local,b.local:27018,[::1]/app?replicaSet=rs0&tls=true",
+        )
+        .unwrap();
+        assert_eq!(
+            (e.host.as_str(), e.port, e.tls, e.srv, e.path.as_str()),
+            ("a.local", 27017, true, false, "app")
+        );
+        assert_eq!(
+            e.more_hosts,
+            vec![("b.local".to_string(), 27018), ("::1".to_string(), 27017)]
+        );
         assert_eq!(e.query("replicaset"), Some("rs0"));
 
-        let e = parse(MonitorType::Mongodb, "mongodb+srv://cluster0.example.net/?authSource=admin").unwrap();
-        assert_eq!((e.host.as_str(), e.tls, e.srv, e.path.as_str()), ("cluster0.example.net", true, true, ""));
-        let e = parse(MonitorType::Mongodb, "mongodb+srv://cluster0.example.net/?tls=false").unwrap();
+        let e = parse(
+            MonitorType::Mongodb,
+            "mongodb+srv://cluster0.example.net/?authSource=admin",
+        )
+        .unwrap();
+        assert_eq!(
+            (e.host.as_str(), e.tls, e.srv, e.path.as_str()),
+            ("cluster0.example.net", true, true, "")
+        );
+        let e = parse(
+            MonitorType::Mongodb,
+            "mongodb+srv://cluster0.example.net/?tls=false",
+        )
+        .unwrap();
         assert!(!e.tls, "tls=false turns the SRV default off");
         let e = parse(MonitorType::Mongodb, "mongo.local").unwrap();
-        assert_eq!((e.host.as_str(), e.port, e.tls), ("mongo.local", 27017, false));
-        assert!(parse(MonitorType::Mongodb, "mongodb://h?ssl=true").unwrap().tls);
+        assert_eq!(
+            (e.host.as_str(), e.port, e.tls),
+            ("mongo.local", 27017, false)
+        );
+        assert!(
+            parse(MonitorType::Mongodb, "mongodb://h?ssl=true")
+                .unwrap()
+                .tls
+        );
     }
 
     #[test]
@@ -323,8 +495,13 @@ mod tests {
     #[test]
     fn every_service_type_has_a_scheme() {
         for kind in MonitorType::all() {
-            let service = fields(*kind) != NONE && !matches!(kind, MonitorType::Tls | MonitorType::Smtp);
-            assert_eq!(scheme(*kind).is_some(), service || matches!(kind, MonitorType::Kafka | MonitorType::Grpc), "{kind}");
+            let service =
+                fields(*kind) != NONE && !matches!(kind, MonitorType::Tls | MonitorType::Smtp);
+            assert_eq!(
+                scheme(*kind).is_some(),
+                service || matches!(kind, MonitorType::Kafka | MonitorType::Grpc),
+                "{kind}"
+            );
         }
     }
 }

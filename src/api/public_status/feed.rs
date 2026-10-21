@@ -69,17 +69,35 @@ pub fn build_feed(
     let page_url = format!("{base}/status/{}", page.slug);
     let mut out = String::new();
     out.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
-    out.push_str(&format!("<feed xmlns=\"http://www.w3.org/2005/Atom\" xml:lang=\"{}\">\n", xml_escape(lang)));
+    out.push_str(&format!(
+        "<feed xmlns=\"http://www.w3.org/2005/Atom\" xml:lang=\"{}\">\n",
+        xml_escape(lang)
+    ));
     out.push_str(&format!(
         "  <title>{}</title>\n",
-        xml_escape(&crate::i18n::tf("pub.feed_title", &[("title", &page.title)]))
+        xml_escape(&crate::i18n::tf(
+            "pub.feed_title",
+            &[("title", &page.title)]
+        ))
     ));
     out.push_str(&format!("  <id>{}/feed.xml</id>\n", xml_escape(&page_url)));
-    out.push_str(&format!("  <link rel=\"self\" type=\"application/atom+xml\" href=\"{}/feed.xml\"/>\n", xml_escape(&page_url)));
-    out.push_str(&format!("  <link rel=\"alternate\" type=\"text/html\" href=\"{}\"/>\n", xml_escape(&page_url)));
+    out.push_str(&format!(
+        "  <link rel=\"self\" type=\"application/atom+xml\" href=\"{}/feed.xml\"/>\n",
+        xml_escape(&page_url)
+    ));
+    out.push_str(&format!(
+        "  <link rel=\"alternate\" type=\"text/html\" href=\"{}\"/>\n",
+        xml_escape(&page_url)
+    ));
     let latest = items
         .iter()
-        .map(|(i, u)| u.iter().map(|u| u.created_at.as_str()).chain([i.updated_at.as_str(), i.created_at.as_str()]).max().unwrap_or(""))
+        .map(|(i, u)| {
+            u.iter()
+                .map(|u| u.created_at.as_str())
+                .chain([i.updated_at.as_str(), i.created_at.as_str()])
+                .max()
+                .unwrap_or("")
+        })
         .max()
         .map(rfc3339)
         .unwrap_or_else(|| now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string());
@@ -95,28 +113,61 @@ pub fn build_feed(
             .unwrap_or(&incident.created_at);
         out.push_str("  <entry>\n");
         out.push_str(&format!("    <id>{}</id>\n", xml_escape(&url)));
-        out.push_str(&format!("    <title>{}</title>\n", xml_escape(&incident.title)));
-        out.push_str(&format!("    <link rel=\"alternate\" type=\"text/html\" href=\"{}\"/>\n", xml_escape(&url)));
-        out.push_str(&format!("    <published>{}</published>\n", rfc3339(&incident.created_at)));
+        out.push_str(&format!(
+            "    <title>{}</title>\n",
+            xml_escape(&incident.title)
+        ));
+        out.push_str(&format!(
+            "    <link rel=\"alternate\" type=\"text/html\" href=\"{}\"/>\n",
+            xml_escape(&url)
+        ));
+        out.push_str(&format!(
+            "    <published>{}</published>\n",
+            rfc3339(&incident.created_at)
+        ));
         out.push_str(&format!("    <updated>{}</updated>\n", rfc3339(newest)));
-        out.push_str(&format!("    <category term=\"{}\"/>\n", xml_escape(&incident.severity)));
-        let state = updates.first().map(|u| u.status.as_str()).unwrap_or(if incident.is_resolved() { "resolved" } else { "investigating" });
+        out.push_str(&format!(
+            "    <category term=\"{}\"/>\n",
+            xml_escape(&incident.severity)
+        ));
+        let state =
+            updates
+                .first()
+                .map(|u| u.status.as_str())
+                .unwrap_or(if incident.is_resolved() {
+                    "resolved"
+                } else {
+                    "investigating"
+                });
         out.push_str(&format!("    <category term=\"{}\"/>\n", xml_escape(state)));
-        out.push_str(&format!("    <content type=\"html\">{}</content>\n", xml_escape(&entry_html(incident, updates))));
+        out.push_str(&format!(
+            "    <content type=\"html\">{}</content>\n",
+            xml_escape(&entry_html(incident, updates))
+        ));
         out.push_str("  </entry>\n");
     }
     out.push_str("</feed>\n");
     out
 }
 
-pub async fn feed(State(state): State<AppState>, jar: SignedCookieJar, headers: HeaderMap, Path(slug): Path<String>) -> ApiResult<Response> {
+pub async fn feed(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
     let (view, access) = resolve(&state, slug, &jar).await?;
     // Only published pages have a feed; a preview of a draft stays in the browser.
     if !view.page.published {
         return Err(ApiError::NotFound);
     }
     if !access.allows(&view.page) {
-        return Ok((StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")], "This status page is password protected.\n").into_response());
+        return Ok((
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, "no-store")],
+            "This status page is password protected.\n",
+        )
+            .into_response());
     }
     let page_id = view.page.id;
     let (items, settings) = state
@@ -124,17 +175,38 @@ pub async fn feed(State(state): State<AppState>, jar: SignedCookieJar, headers: 
             let incidents = db_incidents::list_recent(c, page_id, ENTRIES)?;
             let ids: Vec<i64> = incidents.iter().map(|i| i.id).collect();
             let mut timelines = db_incidents::updates_for(c, &ids)?;
-            let items = incidents.into_iter().map(|i| { let u = timelines.remove(&i.id).unwrap_or_default(); (i, u) }).collect::<Vec<_>>();
+            let items = incidents
+                .into_iter()
+                .map(|i| {
+                    let u = timelines.remove(&i.id).unwrap_or_default();
+                    (i, u)
+                })
+                .collect::<Vec<_>>();
             Ok((items, crate::db::settings::load(c)?))
         })
         .await?;
     let base = crate::api::agents::public_base_url(&settings, &headers);
-    let body = build_feed(&view.page, &base, crate::i18n::current().code(), &items, Timestamp::now());
+    let body = build_feed(
+        &view.page,
+        &base,
+        crate::i18n::current().code(),
+        &items,
+        Timestamp::now(),
+    );
     let mut resp = body.into_response();
     let h = resp.headers_mut();
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/atom+xml; charset=utf-8"));
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=60"));
-    h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/atom+xml; charset=utf-8"),
+    );
+    h.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=60"),
+    );
+    h.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
     Ok(resp)
 }
 
@@ -144,7 +216,10 @@ mod tests {
 
     #[test]
     fn xml_escaping_covers_markup_and_control_characters() {
-        assert_eq!(xml_escape("a<b>&\"'c\u{1}\u{7}d\te"), "a&lt;b&gt;&amp;&quot;&apos;cd\te");
+        assert_eq!(
+            xml_escape("a<b>&\"'c\u{1}\u{7}d\te"),
+            "a&lt;b&gt;&amp;&quot;&apos;cd\te"
+        );
     }
 
     #[test]

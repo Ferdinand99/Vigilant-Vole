@@ -34,7 +34,11 @@ pub struct ExportQuery {
 }
 
 /// Renders the export (shared with the backup page).
-pub async fn export_response(state: &AppState, user: &CurrentUser, q: &ExportQuery) -> V1Result<Response> {
+pub async fn export_response(
+    state: &AppState,
+    user: &CurrentUser,
+    q: &ExportQuery,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     let format = match q.format.as_deref() {
         None => Format::Yaml,
@@ -42,13 +46,24 @@ pub async fn export_response(state: &AppState, user: &CurrentUser, q: &ExportQue
     };
     let secrets = truthy(q.secrets.as_deref());
     if secrets {
-        user.require(Role::Admin).map_err(|_| V1Error::forbidden_msg("Only admins can export secrets."))?;
+        user.require(Role::Admin)
+            .map_err(|_| V1Error::forbidden_msg("Only admins can export secrets."))?;
     }
-    let doc = state.with_conn(move |c| config_io::export(c, secrets)).await?;
+    let doc = state
+        .with_conn(move |c| config_io::export(c, secrets))
+        .await?;
     let text = config_io::render(&doc, format).map_err(V1Error::internal)?;
     tracing::info!(user = %user.username, secrets, "configuration exported");
-    let mut res = ([(header::CONTENT_TYPE, HeaderValue::from_static(format.content_type()))], text).into_response();
-    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    let mut res = (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static(format.content_type()),
+        )],
+        text,
+    )
+        .into_response();
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     if truthy(q.download.as_deref()) {
         let stamp = time::OffsetDateTime::now_utc();
         let name = format!(
@@ -65,7 +80,11 @@ pub async fn export_response(state: &AppState, user: &CurrentUser, q: &ExportQue
     Ok(res)
 }
 
-async fn export(State(state): State<AppState>, user: CurrentUser, Params(q): Params<ExportQuery>) -> V1Result<Response> {
+async fn export(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Params(q): Params<ExportQuery>,
+) -> V1Result<Response> {
     export_response(&state, &user, &q).await
 }
 
@@ -114,9 +133,15 @@ fn invalid(plan: &Plan) -> Response {
     (StatusCode::UNPROCESSABLE_ENTITY, axum::Json(body)).into_response()
 }
 
-async fn import(State(state): State<AppState>, user: CurrentUser, Params(q): Params<ImportQuery>, body: Bytes) -> V1Result<Response> {
+async fn import(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Params(q): Params<ImportQuery>,
+    body: Bytes,
+) -> V1Result<Response> {
     user.require_admin()?;
-    let mode = Mode::parse(q.mode.as_deref().unwrap_or("merge")).ok_or_else(|| V1Error::field("mode", "Use merge or replace."))?;
+    let mode = Mode::parse(q.mode.as_deref().unwrap_or("merge"))
+        .ok_or_else(|| V1Error::field("mode", "Use merge or replace."))?;
     let dry_run = truthy(q.dry_run.as_deref());
     if mode == Mode::Replace && !dry_run && !truthy(q.confirm.as_deref()) {
         return Err(V1Error::new(
@@ -126,10 +151,16 @@ async fn import(State(state): State<AppState>, user: CurrentUser, Params(q): Par
         ));
     }
     if body.len() > MAX_DOCUMENT_BYTES {
-        return Err(V1Error::new(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "The document is larger than 2 MB."));
+        return Err(V1Error::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "too_large",
+            "The document is larger than 2 MB.",
+        ));
     }
-    let text = std::str::from_utf8(&body).map_err(|_| V1Error::bad_request("The document must be UTF-8 text (YAML or JSON)."))?;
-    let doc = config_io::parse_document(text).map_err(|msg| V1Error::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_document", msg))?;
+    let text = std::str::from_utf8(&body)
+        .map_err(|_| V1Error::bad_request("The document must be UTF-8 text (YAML or JSON)."))?;
+    let doc = config_io::parse_document(text)
+        .map_err(|msg| V1Error::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_document", msg))?;
     match config_io::import(&state, doc, mode, dry_run).await {
         Ok(plan) => {
             if !dry_run {

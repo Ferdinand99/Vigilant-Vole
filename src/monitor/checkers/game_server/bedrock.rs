@@ -7,7 +7,9 @@ use std::time::Duration;
 use super::{Status, Target, Verdict, strip_section_codes, udp_exchange};
 
 /// RakNet's "offline message" magic.
-pub const MAGIC: [u8; 16] = [0x00, 0xFF, 0xFF, 0x00, 0xFE, 0xFE, 0xFE, 0xFE, 0xFD, 0xFD, 0xFD, 0xFD, 0x12, 0x34, 0x56, 0x78];
+pub const MAGIC: [u8; 16] = [
+    0x00, 0xFF, 0xFF, 0x00, 0xFE, 0xFE, 0xFE, 0xFE, 0xFD, 0xFD, 0xFD, 0xFD, 0x12, 0x34, 0x56, 0x78,
+];
 const UNCONNECTED_PING: u8 = 0x01;
 const UNCONNECTED_PONG: u8 = 0x1C;
 
@@ -50,15 +52,27 @@ pub fn parse_status(text: &str) -> Result<Status, String> {
         _ => "Bedrock",
     };
     let version = f[3].trim();
-    let product = if version.is_empty() { edition.to_string() } else { format!("{edition} {version}") };
+    let product = if version.is_empty() {
+        edition.to_string()
+    } else {
+        format!("{edition} {version}")
+    };
     let players = match (f[4].trim().parse::<u64>(), f[5].trim().parse::<u64>()) {
         (Ok(online), Ok(max)) => Some((online, max)),
         _ => None,
     };
-    Ok(Status { product, players, name: strip_section_codes(f[1]), detail: None })
+    Ok(Status {
+        product,
+        players,
+        name: strip_section_codes(f[1]),
+        detail: None,
+    })
 }
 
 pub async fn query(target: &Target, timeout: Duration) -> Result<(Status, i64), String> {
     let nonce = super::nonce();
-    udp_exchange(&target.host, target.port, &ping(nonce), timeout, |buf| parse_pong(buf, nonce)).await
+    udp_exchange(&target.host, target.port, &ping(nonce), timeout, |buf| {
+        parse_pong(buf, nonce)
+    })
+    .await
 }

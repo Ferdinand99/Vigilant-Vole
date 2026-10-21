@@ -4,17 +4,23 @@
 
 use super::{Errors, FormValues, MAX_BODY_LEN, first_line, int_in, non_empty};
 use crate::db::models::NewMonitor;
-use crate::monitor::checkers::{self, grpc_keyword};
 use crate::monitor::checkers::grpc_keyword::schema;
+use crate::monitor::checkers::{self, grpc_keyword};
 
 pub(super) fn validate(v: &FormValues, m: &mut NewMonitor, e: &mut Errors) {
     // Metadata: a JSON object of header names and values.
     m.http_headers = match non_empty(&v.http_headers) {
         None => None,
         Some(h) => match checkers::parse_headers(&h) {
-            Ok(map) => match map.keys().find(|n| checkers::grpc::is_reserved_metadata(n.as_str())) {
+            Ok(map) => match map
+                .keys()
+                .find(|n| checkers::grpc::is_reserved_metadata(n.as_str()))
+            {
                 Some(name) => {
-                    e.insert("http_headers", crate::i18n::tf("grpckw.err_metadata_reserved", &[("name", name.as_str())]));
+                    e.insert(
+                        "http_headers",
+                        crate::i18n::tf("grpckw.err_metadata_reserved", &[("name", name.as_str())]),
+                    );
                     None
                 }
                 None => Some(h),
@@ -32,7 +38,10 @@ pub(super) fn validate(v: &FormValues, m: &mut NewMonitor, e: &mut Errors) {
     if let Some(body) = &m.http_body {
         if body.len() > MAX_BODY_LEN {
             e.insert("http_body", crate::i18n::t("validation.body_long").into());
-        } else if !matches!(serde_json::from_str::<serde_json::Value>(body), Ok(serde_json::Value::Object(_))) {
+        } else if !matches!(
+            serde_json::from_str::<serde_json::Value>(body),
+            Ok(serde_json::Value::Object(_))
+        ) {
             e.insert("http_body", crate::i18n::t("grpckw.err_body_json").into());
         }
     }
@@ -40,17 +49,34 @@ pub(super) fn validate(v: &FormValues, m: &mut NewMonitor, e: &mut Errors) {
     m.keyword = (!v.keyword.trim().is_empty()).then(|| v.keyword.clone());
     m.keyword_invert = v.keyword_invert;
     m.expiry_notify = v.expiry_notify;
-    m.expiry_days = int_in(e, "expiry_days", &v.expiry_days, 1, 365, crate::i18n::t("validation.what_days")).unwrap_or(m.expiry_days);
+    m.expiry_days = int_in(
+        e,
+        "expiry_days",
+        &v.expiry_days,
+        1,
+        365,
+        crate::i18n::t("validation.what_days"),
+    )
+    .unwrap_or(m.expiry_days);
 
     // The .proto: compiled now, then the method and body checked against it.
     m.grpc_proto = non_empty(&v.grpc_proto.replace("\r\n", "\n"));
     if let Some(proto) = &m.grpc_proto {
         if proto.len() > schema::MAX_PROTO_LEN {
-            e.insert("grpc_proto", crate::i18n::tf("grpckw.err_proto_long", &[("max", &(schema::MAX_PROTO_LEN / 1024).to_string())]));
+            e.insert(
+                "grpc_proto",
+                crate::i18n::tf(
+                    "grpckw.err_proto_long",
+                    &[("max", &(schema::MAX_PROTO_LEN / 1024).to_string())],
+                ),
+            );
         } else {
             match schema::compile_proto(proto) {
                 Err(msg) => {
-                    e.insert("grpc_proto", crate::i18n::tf("grpckw.err_proto", &[("err", &msg)]));
+                    e.insert(
+                        "grpc_proto",
+                        crate::i18n::tf("grpckw.err_proto", &[("err", &msg)]),
+                    );
                 }
                 Ok(pool) => {
                     if let Ok(target) = grpc_keyword::parse_target(&m.target) {
@@ -60,7 +86,10 @@ pub(super) fn validate(v: &FormValues, m: &mut NewMonitor, e: &mut Errors) {
                             }
                             Ok(method) => {
                                 if !e.contains_key("http_body")
-                                    && let Err(msg) = schema::encode_request(&method, m.http_body.as_deref().unwrap_or_default())
+                                    && let Err(msg) = schema::encode_request(
+                                        &method,
+                                        m.http_body.as_deref().unwrap_or_default(),
+                                    )
                                 {
                                     e.insert("http_body", first_line(&msg));
                                 }
@@ -99,7 +128,10 @@ mod tests {
         let mut list: Vec<(String, String)> = [
             ("name", "Greeter"),
             ("monitor_type", "grpc_keyword"),
-            ("target_grpc_keyword", "grpc://api.local:50051/demo.v1.Greeter/SayHello"),
+            (
+                "target_grpc_keyword",
+                "grpc://api.local:50051/demo.v1.Greeter/SayHello",
+            ),
             ("interval_seconds", "60"),
             ("timeout_seconds", "10"),
             ("retries", "0"),
@@ -118,7 +150,11 @@ mod tests {
     }
 
     fn run(extra: &[(&str, &str)]) -> Result<Validated, Errors> {
-        validate(&FormValues::from_pairs(&pairs(extra), &[]), &NewMonitor::default(), &FormContext::default())
+        validate(
+            &FormValues::from_pairs(&pairs(extra), &[]),
+            &NewMonitor::default(),
+            &FormContext::default(),
+        )
     }
 
     #[test]
@@ -134,51 +170,136 @@ mod tests {
         .unwrap()
         .monitor;
         assert_eq!(ok.monitor_type, MonitorType::GrpcKeyword);
-        assert_eq!(ok.grpc_proto.as_deref(), Some(PROTO.replace("\r\n", "\n").trim()), "line endings normalised");
-        assert_eq!((ok.keyword.as_deref(), ok.keyword_invert, ok.ignore_tls), (Some("Hello"), true, true));
-        assert_eq!(ok.http_headers.as_deref(), Some("{\"authorization\": \"Bearer x\"}"));
+        assert_eq!(
+            ok.grpc_proto.as_deref(),
+            Some(PROTO.replace("\r\n", "\n").trim()),
+            "line endings normalised"
+        );
+        assert_eq!(
+            (ok.keyword.as_deref(), ok.keyword_invert, ok.ignore_tls),
+            (Some("Hello"), true, true)
+        );
+        assert_eq!(
+            ok.http_headers.as_deref(),
+            Some("{\"authorization\": \"Bearer x\"}")
+        );
         assert_eq!(ok.http_body_encoding, "json");
         // Without a .proto (server reflection) only the shape is checked.
-        let ok = run(&[("target_grpc_keyword", "grpcs://api.example.com/Greeter/sayHello")]).unwrap().monitor;
+        let ok = run(&[(
+            "target_grpc_keyword",
+            "grpcs://api.example.com/Greeter/sayHello",
+        )])
+        .unwrap()
+        .monitor;
         assert_eq!((ok.grpc_proto, ok.keyword), (None, None));
     }
 
     #[test]
     fn proto_mistakes_show_on_the_field() {
-        let err = run(&[("grpc_proto", "syntax = \"proto3\";\nmessage X {\n  strin a = 1;\n}\n")]).unwrap_err();
+        let err = run(&[(
+            "grpc_proto",
+            "syntax = \"proto3\";\nmessage X {\n  strin a = 1;\n}\n",
+        )])
+        .unwrap_err();
         let msg = &err["grpc_proto"];
-        assert!(msg.contains("line 3") && msg.contains("name 'strin' is not defined"), "{msg}");
-        let err = run(&[("grpc_proto", "syntax = \"proto3\";\nimport \"other.proto\";\n")]).unwrap_err();
-        assert!(err["grpc_proto"].contains("import 'other.proto' not found"), "{}", err["grpc_proto"]);
+        assert!(
+            msg.contains("line 3") && msg.contains("name 'strin' is not defined"),
+            "{msg}"
+        );
+        let err = run(&[(
+            "grpc_proto",
+            "syntax = \"proto3\";\nimport \"other.proto\";\n",
+        )])
+        .unwrap_err();
+        assert!(
+            err["grpc_proto"].contains("import 'other.proto' not found"),
+            "{}",
+            err["grpc_proto"]
+        );
         let long = "x".repeat(crate::monitor::checkers::grpc_keyword::schema::MAX_PROTO_LEN + 1);
-        assert!(run(&[("grpc_proto", &long)]).unwrap_err().contains_key("grpc_proto"));
+        assert!(
+            run(&[("grpc_proto", &long)])
+                .unwrap_err()
+                .contains_key("grpc_proto")
+        );
     }
 
     #[test]
     fn method_and_body_are_checked_against_the_proto() {
-        let err = run(&[("grpc_proto", PROTO), ("target_grpc_keyword", "grpc://h/demo.v1.Greeter/Watch")]).unwrap_err();
-        assert!(err["target"].contains("v1.Greeter.Watch is a streaming method"), "{}", err["target"]);
-        let err = run(&[("grpc_proto", PROTO), ("target_grpc_keyword", "grpc://h/demo.v1.Greeter/Nope")]).unwrap_err();
-        assert!(err["target"].contains("has no method \"Nope\" (methods: SayHello, Watch)"), "{}", err["target"]);
-        let err = run(&[("grpc_proto", PROTO), ("target_grpc_keyword", "grpc://h/Other/SayHello")]).unwrap_err();
-        assert!(err["target"].contains("No service \"Other\""), "{}", err["target"]);
+        let err = run(&[
+            ("grpc_proto", PROTO),
+            ("target_grpc_keyword", "grpc://h/demo.v1.Greeter/Watch"),
+        ])
+        .unwrap_err();
+        assert!(
+            err["target"].contains("v1.Greeter.Watch is a streaming method"),
+            "{}",
+            err["target"]
+        );
+        let err = run(&[
+            ("grpc_proto", PROTO),
+            ("target_grpc_keyword", "grpc://h/demo.v1.Greeter/Nope"),
+        ])
+        .unwrap_err();
+        assert!(
+            err["target"].contains("has no method \"Nope\" (methods: SayHello, Watch)"),
+            "{}",
+            err["target"]
+        );
+        let err = run(&[
+            ("grpc_proto", PROTO),
+            ("target_grpc_keyword", "grpc://h/Other/SayHello"),
+        ])
+        .unwrap_err();
+        assert!(
+            err["target"].contains("No service \"Other\""),
+            "{}",
+            err["target"]
+        );
         let err = run(&[("grpc_proto", PROTO), ("http_body", "{\"name\": 5}")]).unwrap_err();
-        assert!(err["http_body"].contains("demo.v1.HelloRequest"), "{}", err["http_body"]);
-        assert!(run(&[("http_body", "[1]")]).unwrap_err().contains_key("http_body"));
-        assert!(run(&[("http_body", "{")]).unwrap_err().contains_key("http_body"));
+        assert!(
+            err["http_body"].contains("demo.v1.HelloRequest"),
+            "{}",
+            err["http_body"]
+        );
+        assert!(
+            run(&[("http_body", "[1]")])
+                .unwrap_err()
+                .contains_key("http_body")
+        );
+        assert!(
+            run(&[("http_body", "{")])
+                .unwrap_err()
+                .contains_key("http_body")
+        );
     }
 
     #[test]
     fn targets_need_a_service_and_method() {
-        for bad in ["grpc://h:50051", "grpc://h/OnlyService", "grpc://h/a b/C", "http://h/S/M", "grpc://h/S/M.x"] {
-            assert!(run(&[("target_grpc_keyword", bad)]).unwrap_err().contains_key("target"), "{bad}");
+        for bad in [
+            "grpc://h:50051",
+            "grpc://h/OnlyService",
+            "grpc://h/a b/C",
+            "http://h/S/M",
+            "grpc://h/S/M.x",
+        ] {
+            assert!(
+                run(&[("target_grpc_keyword", bad)])
+                    .unwrap_err()
+                    .contains_key("target"),
+                "{bad}"
+            );
         }
     }
 
     #[test]
     fn reserved_metadata_and_stale_secrets() {
         let err = run(&[("http_headers", "{\"content-type\": \"text/plain\"}")]).unwrap_err();
-        assert!(err["http_headers"].contains("content-type"), "{}", err["http_headers"]);
+        assert!(
+            err["http_headers"].contains("content-type"),
+            "{}",
+            err["http_headers"]
+        );
         let base = NewMonitor {
             monitor_type: MonitorType::Http,
             auth_method: "basic".into(),
@@ -187,8 +308,17 @@ mod tests {
             proxy_url: Some("http://proxy:3128".into()),
             ..NewMonitor::default()
         };
-        let ok = validate(&FormValues::from_pairs(&pairs(&[]), &[]), &base, &FormContext::default()).unwrap().monitor;
-        assert_eq!((ok.auth_method.as_str(), ok.basic_auth_pass, ok.proxy_url), ("none", None, None));
+        let ok = validate(
+            &FormValues::from_pairs(&pairs(&[]), &[]),
+            &base,
+            &FormContext::default(),
+        )
+        .unwrap()
+        .monitor;
+        assert_eq!(
+            (ok.auth_method.as_str(), ok.basic_auth_pass, ok.proxy_url),
+            ("none", None, None)
+        );
     }
 
     #[test]

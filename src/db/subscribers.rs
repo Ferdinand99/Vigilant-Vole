@@ -72,7 +72,8 @@ pub fn mask(kind: &str, target: &str) -> String {
     }
 }
 
-const COLUMNS: &str = "id, page_id, kind, target, token, lang, base_url, created_at, confirmed_at, failures";
+const COLUMNS: &str =
+    "id, page_id, kind, target, token, lang, base_url, created_at, confirmed_at, failures";
 
 fn row(r: &Row) -> rusqlite::Result<Subscriber> {
     Ok(Subscriber {
@@ -187,7 +188,10 @@ pub fn confirm(conn: &Connection, token: &str) -> rusqlite::Result<Option<Subscr
 
 /// Removes the subscriber behind `token`; `false` if there was none.
 pub fn unsubscribe(conn: &Connection, token: &str) -> rusqlite::Result<bool> {
-    Ok(conn.execute("DELETE FROM status_page_subscribers WHERE token = ?1", params![token])? > 0)
+    Ok(conn.execute(
+        "DELETE FROM status_page_subscribers WHERE token = ?1",
+        params![token],
+    )? > 0)
 }
 
 pub fn count(conn: &Connection, page_id: i64) -> rusqlite::Result<i64> {
@@ -222,9 +226,15 @@ pub fn delete(conn: &Connection, page_id: i64, id: i64) -> rusqlite::Result<bool
 /// Records a delivery result; a subscriber that keeps failing is removed.
 pub fn record_delivery(conn: &Connection, id: i64, ok: bool) -> rusqlite::Result<()> {
     if ok {
-        conn.execute("UPDATE status_page_subscribers SET failures = 0 WHERE id = ?1", params![id])?;
+        conn.execute(
+            "UPDATE status_page_subscribers SET failures = 0 WHERE id = ?1",
+            params![id],
+        )?;
     } else {
-        conn.execute("UPDATE status_page_subscribers SET failures = failures + 1 WHERE id = ?1", params![id])?;
+        conn.execute(
+            "UPDATE status_page_subscribers SET failures = failures + 1 WHERE id = ?1",
+            params![id],
+        )?;
         conn.execute(
             "DELETE FROM status_page_subscribers WHERE id = ?1 AND failures >= ?2",
             params![id, MAX_FAILURES],
@@ -268,7 +278,11 @@ mod tests {
     use crate::db::test_conn;
 
     fn page(conn: &Connection) -> i64 {
-        conn.execute("INSERT INTO status_pages (slug, title) VALUES ('s', 'S')", []).unwrap();
+        conn.execute(
+            "INSERT INTO status_pages (slug, title) VALUES ('s', 'S')",
+            [],
+        )
+        .unwrap();
         conn.last_insert_rowid()
     }
 
@@ -276,17 +290,25 @@ mod tests {
     fn sign_up_confirm_unsubscribe() {
         let conn = test_conn();
         let p = page(&conn);
-        let Added::Pending(token) = add(&conn, p, "email", "a@example.com", "en", "https://x").unwrap() else {
+        let Added::Pending(token) =
+            add(&conn, p, "email", "a@example.com", "en", "https://x").unwrap()
+        else {
             panic!("expected pending");
         };
         assert!(list_confirmed(&conn, p).unwrap().is_empty());
         // The same address again keeps the token.
-        assert_eq!(add(&conn, p, "email", "a@example.com", "nb", "https://x").unwrap(), Added::Pending(token.clone()));
+        assert_eq!(
+            add(&conn, p, "email", "a@example.com", "nb", "https://x").unwrap(),
+            Added::Pending(token.clone())
+        );
         assert_eq!(by_token(&conn, &token).unwrap().unwrap().lang, "nb");
         let sub = confirm(&conn, &token).unwrap().unwrap();
         assert!(sub.is_confirmed());
         assert_eq!(list_confirmed(&conn, p).unwrap().len(), 1);
-        assert_eq!(add(&conn, p, "email", "a@example.com", "en", "").unwrap(), Added::AlreadySubscribed);
+        assert_eq!(
+            add(&conn, p, "email", "a@example.com", "en", "").unwrap(),
+            Added::AlreadySubscribed
+        );
         assert!(unsubscribe(&conn, &token).unwrap());
         assert!(!unsubscribe(&conn, &token).unwrap());
         assert_eq!(count(&conn, p).unwrap(), 0);
@@ -296,11 +318,25 @@ mod tests {
     fn pending_expire_and_failures_drop() {
         let conn = test_conn();
         let p = page(&conn);
-        let Added::Pending(old) = add(&conn, p, "email", "old@example.com", "en", "").unwrap() else { panic!() };
-        conn.execute("UPDATE status_page_subscribers SET created_at = datetime('now', '-4 days')", []).unwrap();
-        assert!(confirm(&conn, &old).unwrap().is_none(), "expired sign-ups can't be confirmed");
+        let Added::Pending(old) = add(&conn, p, "email", "old@example.com", "en", "").unwrap()
+        else {
+            panic!()
+        };
+        conn.execute(
+            "UPDATE status_page_subscribers SET created_at = datetime('now', '-4 days')",
+            [],
+        )
+        .unwrap();
+        assert!(
+            confirm(&conn, &old).unwrap().is_none(),
+            "expired sign-ups can't be confirmed"
+        );
 
-        let Added::Pending(t) = add(&conn, p, "webhook", "https://example.com/h", "en", "").unwrap() else { panic!() };
+        let Added::Pending(t) =
+            add(&conn, p, "webhook", "https://example.com/h", "en", "").unwrap()
+        else {
+            panic!()
+        };
         let sub = confirm(&conn, &t).unwrap().unwrap();
         for _ in 0..MAX_FAILURES {
             record_delivery(&conn, sub.id, false).unwrap();
@@ -311,7 +347,10 @@ mod tests {
     #[test]
     fn masks_targets() {
         assert_eq!(mask("email", "jonas@example.com"), "jo***@example.com");
-        assert_eq!(mask("webhook", "https://hooks.example.com/secret/abc"), "https://hooks.example.com/…");
+        assert_eq!(
+            mask("webhook", "https://hooks.example.com/secret/abc"),
+            "https://hooks.example.com/…"
+        );
     }
 
     #[test]
@@ -319,7 +358,11 @@ mod tests {
         let conn = test_conn();
         let p = page(&conn);
         assert!(!settings(&conn, p).unwrap().enabled);
-        let s = Settings { enabled: true, channel_id: None, webhooks: true };
+        let s = Settings {
+            enabled: true,
+            channel_id: None,
+            webhooks: true,
+        };
         assert!(set_settings(&conn, p, &s).unwrap());
         assert_eq!(settings(&conn, p).unwrap(), s);
     }

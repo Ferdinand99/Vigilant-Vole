@@ -4,23 +4,35 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, join, list, opt, req};
-use super::message::{PRODUCT, body_text, headline, link, severity, summary, Severity};
+use super::message::{PRODUCT, Severity, body_text, headline, link, severity, summary};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
 use crate::db::models::NotificationEvent;
 
 fn valid_email(addr: &str) -> bool {
-    let Some((local, domain)) = addr.split_once('@') else { return false };
-    !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !addr.contains(char::is_whitespace)
+    let Some((local, domain)) = addr.split_once('@') else {
+        return false;
+    };
+    !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !addr.contains(char::is_whitespace)
 }
 
 /// Email problems for the `from` and `to` fields of the email APIs.
 fn check_addresses(config: &Value) -> Vec<FieldError> {
     let mut errors = Vec::new();
     if opt(config, "from").is_some_and(|f| !valid_email(f)) {
-        errors.push(field_error("from", crate::i18n::t("notif.err_email_address")));
+        errors.push(field_error(
+            "from",
+            crate::i18n::t("notif.err_email_address"),
+        ));
     }
     if let Some(bad) = list(config, "to").into_iter().find(|a| !valid_email(a)) {
-        errors.push(field_error("to", crate::i18n::tf("notif.err_email_to", &[("value", &bad)])));
+        errors.push(field_error(
+            "to",
+            crate::i18n::tf("notif.err_email_to", &[("value", &bad)]),
+        ));
     }
     errors
 }
@@ -59,13 +71,19 @@ pub const SENDGRID: ProviderSchema = ProviderSchema {
             .placeholder("alerts@example.com…")
             .help("A verified sender in SendGrid."),
         Field::text("from_name", "Sender name").placeholder("Vigilant Vole…"),
-        Field::text("to", "To").required().placeholder("ops@example.com…").help("Separate several addresses with commas."),
+        Field::text("to", "To")
+            .required()
+            .placeholder("ops@example.com…")
+            .help("Separate several addresses with commas."),
     ],
     transport: Transport::Http(build_sendgrid),
     check: Some(check_addresses),
 };
 
-pub fn build_sendgrid(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_sendgrid(
+    config: &Value,
+    event: &NotificationEvent,
+) -> Result<Vec<OutRequest>, String> {
     let key = req(config, "api_key")?;
     let from = req(config, "from")?;
     let to = list(config, "to");
@@ -82,7 +100,9 @@ pub fn build_sendgrid(config: &Value, event: &NotificationEvent) -> Result<Vec<O
         "subject": email_subject(event),
         "content": [{"type": "text/plain", "value": plain_text(event)}],
     });
-    Ok(vec![OutRequest::post_json("https://api.sendgrid.com/v3/mail/send", body).bearer(key)])
+    Ok(vec![
+        OutRequest::post_json("https://api.sendgrid.com/v3/mail/send", body).bearer(key),
+    ])
 }
 
 // -- Brevo ------------------------------------------------------------------------
@@ -95,13 +115,18 @@ pub const BREVO: ProviderSchema = ProviderSchema {
     description: "Email through the Brevo (Sendinblue) API",
     docs_url: "https://developers.brevo.com/reference/sendtransacemail",
     fields: &[
-        Field::secret("api_key", "API key").required().placeholder("xkeysib-…"),
+        Field::secret("api_key", "API key")
+            .required()
+            .placeholder("xkeysib-…"),
         Field::text("from", "From")
             .required()
             .placeholder("alerts@example.com…")
             .help("A sender you have added in Brevo."),
         Field::text("from_name", "Sender name").placeholder("Vigilant Vole…"),
-        Field::text("to", "To").required().placeholder("ops@example.com…").help("Separate several addresses with commas."),
+        Field::text("to", "To")
+            .required()
+            .placeholder("ops@example.com…")
+            .help("Separate several addresses with commas."),
     ],
     transport: Transport::Http(build_brevo),
     check: Some(check_addresses),
@@ -120,7 +145,9 @@ pub fn build_brevo(config: &Value, event: &NotificationEvent) -> Result<Vec<OutR
         "subject": email_subject(event),
         "textContent": plain_text(event),
     });
-    Ok(vec![OutRequest::post_json("https://api.brevo.com/v3/smtp/email", body).header("api-key", key)])
+    Ok(vec![
+        OutRequest::post_json("https://api.brevo.com/v3/smtp/email", body).header("api-key", key),
+    ])
 }
 
 // -- ClickSend ---------------------------------------------------------------------
@@ -139,7 +166,9 @@ pub const CLICKSEND: ProviderSchema = ProviderSchema {
             .required()
             .placeholder("+4712345678…")
             .help("Separate several numbers with commas."),
-        Field::text("from", "Sender").placeholder("Vole…").help("Optional: a sender ID or number you own."),
+        Field::text("from", "Sender")
+            .placeholder("Vole…")
+            .help("Optional: a sender ID or number you own."),
     ],
     transport: Transport::Http(build_clicksend),
     check: Some(check_numbers),
@@ -147,12 +176,18 @@ pub const CLICKSEND: ProviderSchema = ProviderSchema {
 
 fn check_numbers(config: &Value) -> Vec<FieldError> {
     match list(config, "to").into_iter().find(|n| !n.starts_with('+')) {
-        Some(bad) => vec![field_error("to", crate::i18n::tf("notif.err_twilio_to", &[("value", &bad)]))],
+        Some(bad) => vec![field_error(
+            "to",
+            crate::i18n::tf("notif.err_twilio_to", &[("value", &bad)]),
+        )],
         None => Vec::new(),
     }
 }
 
-pub fn build_clicksend(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_clicksend(
+    config: &Value,
+    event: &NotificationEvent,
+) -> Result<Vec<OutRequest>, String> {
     let user = req(config, "username")?;
     let key = req(config, "api_key")?;
     let to = list(config, "to");
@@ -171,7 +206,11 @@ pub fn build_clicksend(config: &Value, event: &NotificationEvent) -> Result<Vec<
         })
         .collect();
     Ok(vec![
-        OutRequest::post_json("https://rest.clicksend.com/v3/sms/send", json!({ "messages": messages })).basic_auth(user, key),
+        OutRequest::post_json(
+            "https://rest.clicksend.com/v3/sms/send",
+            json!({ "messages": messages }),
+        )
+        .basic_auth(user, key),
     ])
 }
 
@@ -195,7 +234,10 @@ pub const ELKS: ProviderSchema = ProviderSchema {
     description: "Text messages through 46elks",
     docs_url: "https://46elks.com/docs/send-sms",
     fields: &[
-        Field::text("username", "API username").destination().required().placeholder("u…"),
+        Field::text("username", "API username")
+            .destination()
+            .required()
+            .placeholder("u…"),
         Field::secret("password", "API password").required(),
         Field::text("from", "From")
             .required()
@@ -220,7 +262,11 @@ pub fn build_elks(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRe
         .map(|to| {
             OutRequest::post_form(
                 "https://api.46elks.com/a1/sms",
-                vec![("from".into(), from.into()), ("to".into(), to), ("message".into(), text.clone())],
+                vec![
+                    ("from".into(), from.into()),
+                    ("to".into(), to),
+                    ("message".into(), text.clone()),
+                ],
             )
             .basic_auth(user, pass)
         })
@@ -241,8 +287,15 @@ pub const GORUSH: ProviderSchema = ProviderSchema {
     description: "Push to iOS, Android and Huawei devices through your Gorush server",
     docs_url: "https://github.com/appleboy/gorush",
     fields: &[
-        Field::url("server", "Gorush URL").required().placeholder("http://gorush:8088…"),
-        Field::select("platform", "Platform", &[("ios", "iOS"), ("android", "Android"), ("huawei", "Huawei")]).default("android"),
+        Field::url("server", "Gorush URL")
+            .required()
+            .placeholder("http://gorush:8088…"),
+        Field::select(
+            "platform",
+            "Platform",
+            &[("ios", "iOS"), ("android", "Android"), ("huawei", "Huawei")],
+        )
+        .default("android"),
         Field::text("tokens", "Device tokens")
             .required()
             .help("Separate several tokens with commas."),
@@ -277,7 +330,10 @@ pub fn build_gorush(config: &Value, event: &NotificationEvent) -> Result<Vec<Out
     {
         notification["topic"] = json!(topic);
     }
-    Ok(vec![OutRequest::post_json(join(server, "/api/push"), json!({ "notifications": [notification] }))])
+    Ok(vec![OutRequest::post_json(
+        join(server, "/api/push"),
+        json!({ "notifications": [notification] }),
+    )])
 }
 
 #[cfg(test)]
@@ -294,30 +350,61 @@ mod tests {
         assert_eq!(r.url, "https://api.sendgrid.com/v3/mail/send");
         assert_eq!(r.header_value("Authorization"), Some("Bearer SG.key"));
         let b = r.json().unwrap();
-        assert_eq!(b["personalizations"][0]["to"], json!([{"email": "a@example.com"}, {"email": "b@example.com"}]));
-        assert_eq!((b["from"]["email"].as_str(), b["from"]["name"].as_str()), (Some("alerts@example.com"), Some("Vole")));
-        assert!(b["subject"].as_str().unwrap().contains("Payments API is down"));
+        assert_eq!(
+            b["personalizations"][0]["to"],
+            json!([{"email": "a@example.com"}, {"email": "b@example.com"}])
+        );
+        assert_eq!(
+            (b["from"]["email"].as_str(), b["from"]["name"].as_str()),
+            (Some("alerts@example.com"), Some("Vole"))
+        );
+        assert!(
+            b["subject"]
+                .as_str()
+                .unwrap()
+                .contains("Payments API is down")
+        );
         assert_eq!(b["content"][0]["type"], "text/plain");
     }
 
     #[test]
     fn brevo_uses_the_api_key_header_and_text_content() {
-        let c = json!({"api_key": "xkeysib-1", "from": "alerts@example.com", "to": "ops@example.com"});
+        let c =
+            json!({"api_key": "xkeysib-1", "from": "alerts@example.com", "to": "ops@example.com"});
         let r = &build_brevo(&c, &event(EventKind::Up)).unwrap()[0];
         assert_eq!(r.url, "https://api.brevo.com/v3/smtp/email");
         assert_eq!(r.header_value("api-key"), Some("xkeysib-1"));
         let b = r.json().unwrap();
-        assert_eq!((b["sender"]["email"].as_str(), b["sender"]["name"].as_str()), (Some("alerts@example.com"), Some("Vigilant Vole")));
+        assert_eq!(
+            (b["sender"]["email"].as_str(), b["sender"]["name"].as_str()),
+            (Some("alerts@example.com"), Some("Vigilant Vole"))
+        );
         assert_eq!(b["to"], json!([{"email": "ops@example.com"}]));
         assert!(b["textContent"].as_str().unwrap().contains("Payments API"));
     }
 
     #[test]
     fn email_addresses_are_checked() {
-        assert!(check_addresses(&json!({"from": "nope", "to": "a@b.example"})).iter().any(|(k, _)| k == "from"));
-        assert!(check_addresses(&json!({"from": "a@b.example", "to": "ok@b.example, bad"})).iter().any(|(k, _)| k == "to"));
-        assert!(check_addresses(&json!({"from": "a@b.example", "to": "x@y.example,z@w.example"})).is_empty());
-        assert!(valid_email("a.b+c@sub.example.com") && !valid_email("a@b") && !valid_email("@b.example") && !valid_email("a b@c.example"));
+        assert!(
+            check_addresses(&json!({"from": "nope", "to": "a@b.example"}))
+                .iter()
+                .any(|(k, _)| k == "from")
+        );
+        assert!(
+            check_addresses(&json!({"from": "a@b.example", "to": "ok@b.example, bad"}))
+                .iter()
+                .any(|(k, _)| k == "to")
+        );
+        assert!(
+            check_addresses(&json!({"from": "a@b.example", "to": "x@y.example,z@w.example"}))
+                .is_empty()
+        );
+        assert!(
+            valid_email("a.b+c@sub.example.com")
+                && !valid_email("a@b")
+                && !valid_email("@b.example")
+                && !valid_email("a b@c.example")
+        );
     }
 
     #[test]
@@ -325,10 +412,22 @@ mod tests {
         let c = json!({"username": "u", "api_key": "K", "to": "+4711111111, +4722222222", "from": "Vole"});
         let reqs = build_clicksend(&c, &event(EventKind::Down)).unwrap();
         assert_eq!(reqs.len(), 1);
-        assert!(reqs[0].header_value("Authorization").unwrap().starts_with("Basic "));
+        assert!(
+            reqs[0]
+                .header_value("Authorization")
+                .unwrap()
+                .starts_with("Basic ")
+        );
         let m = &reqs[0].json().unwrap()["messages"];
         assert_eq!(m.as_array().unwrap().len(), 2);
-        assert_eq!((m[1]["to"].as_str(), m[1]["from"].as_str(), m[0]["source"].as_str()), (Some("+4722222222"), Some("Vole"), Some("vigilant-vole")));
+        assert_eq!(
+            (
+                m[1]["to"].as_str(),
+                m[1]["from"].as_str(),
+                m[0]["source"].as_str()
+            ),
+            (Some("+4722222222"), Some("Vole"), Some("vigilant-vole"))
+        );
         assert!(!check_numbers(&json!({"to": "4711111111"})).is_empty());
     }
 
@@ -338,9 +437,14 @@ mod tests {
         let reqs = build_elks(&c, &event(EventKind::Down)).unwrap();
         assert_eq!(reqs.len(), 2);
         assert_eq!(reqs[0].url, "https://api.46elks.com/a1/sms");
-        let OutBody::Form(f) = &reqs[1].body else { panic!("form") };
+        let OutBody::Form(f) = &reqs[1].body else {
+            panic!("form")
+        };
         let get = |k: &str| f.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
-        assert_eq!((get("from"), get("to")), (Some("Vole"), Some("+46702222222")));
+        assert_eq!(
+            (get("from"), get("to")),
+            (Some("Vole"), Some("+46702222222"))
+        );
         assert!(get("message").unwrap().contains("Payments API is down"));
     }
 
@@ -350,15 +454,30 @@ mod tests {
         let android = &build_gorush(&base, &event(EventKind::Down)).unwrap()[0];
         assert_eq!(android.url, "http://gorush:8088/api/push");
         let n = &android.json().unwrap()["notifications"][0];
-        assert_eq!((n["platform"].as_i64(), n["priority"].as_str()), (Some(2), Some("high")));
+        assert_eq!(
+            (n["platform"].as_i64(), n["priority"].as_str()),
+            (Some(2), Some("high"))
+        );
         assert_eq!(n["tokens"], json!(["t1", "t2"]));
         assert!(n.get("topic").is_none());
         let mut ios = base.clone();
         ios["platform"] = json!("ios");
         let built = build_gorush(&ios, &event(EventKind::Up)).unwrap();
         let n = &built[0].json().unwrap()["notifications"][0];
-        assert_eq!((n["platform"].as_i64(), n["topic"].as_str(), n["priority"].as_str()), (Some(1), Some("com.example.app"), Some("normal")));
+        assert_eq!(
+            (
+                n["platform"].as_i64(),
+                n["topic"].as_str(),
+                n["priority"].as_str()
+            ),
+            (Some(1), Some("com.example.app"), Some("normal"))
+        );
         ios["platform"] = json!("huawei");
-        assert_eq!(build_gorush(&ios, &event(EventKind::Up)).unwrap()[0].json().unwrap()["notifications"][0]["platform"], 3);
+        assert_eq!(
+            build_gorush(&ios, &event(EventKind::Up)).unwrap()[0]
+                .json()
+                .unwrap()["notifications"][0]["platform"],
+            3
+        );
     }
 }

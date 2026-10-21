@@ -116,10 +116,17 @@ impl Settings {
         let trust = match ep.query("trustServerCertificate") {
             None => None,
             Some(raw) => Some(yes_no(raw).ok_or_else(|| {
-                format!("Unsupported trustServerCertificate \"{}\" (use true or false)", util::truncate(raw, 20))
+                format!(
+                    "Unsupported trustServerCertificate \"{}\" (use true or false)",
+                    util::truncate(raw, 20)
+                )
             })?),
         };
-        let verify = if trust == Some(false) && encrypt >= Encrypt::Require { Verify::Full } else { Verify::None };
+        let verify = if trust == Some(false) && encrypt >= Encrypt::Require {
+            Verify::Full
+        } else {
+            Verify::None
+        };
         Ok(Settings { encrypt, verify })
     }
 
@@ -171,7 +178,9 @@ fn negotiate(settings: Settings, server: u8) -> Result<Mode, String> {
         ENCRYPT_OFF if sent == ENCRYPT_NOT_SUP => Ok(Mode::Plain),
         ENCRYPT_OFF if sent == ENCRYPT_OFF => Ok(Mode::LoginOnly),
         ENCRYPT_OFF => Ok(Mode::Full),
-        other => Err(format!("Not a SQL Server (unknown encryption option {other:#04x})")),
+        other => Err(format!(
+            "Not a SQL Server (unknown encryption option {other:#04x})"
+        )),
     }
 }
 
@@ -206,15 +215,25 @@ fn frame(kind: u8, payload: &[u8], packet_id: &mut u8) -> Vec<u8> {
     out
 }
 
-async fn send<S: AsyncWrite + Unpin + ?Sized>(s: &mut S, kind: u8, payload: &[u8]) -> Result<(), String> {
-    s.write_all(&frame(kind, payload, &mut 0)).await.map_err(io_err)?;
+async fn send<S: AsyncWrite + Unpin + ?Sized>(
+    s: &mut S,
+    kind: u8,
+    payload: &[u8],
+) -> Result<(), String> {
+    s.write_all(&frame(kind, payload, &mut 0))
+        .await
+        .map_err(io_err)?;
     s.flush().await.map_err(io_err)
 }
 
 /// Read one message of type `kind`. `skip_tls` drops whole TLS records
 /// found between packets (after a login-only handshake a TLS 1.3 server may
 /// still send session tickets the client never reads through TLS).
-async fn read_message<S: AsyncRead + Unpin + ?Sized>(s: &mut S, kind: u8, skip_tls: bool) -> Result<Vec<u8>, String> {
+async fn read_message<S: AsyncRead + Unpin + ?Sized>(
+    s: &mut S,
+    kind: u8,
+    skip_tls: bool,
+) -> Result<Vec<u8>, String> {
     let mut body = Vec::new();
     loop {
         let mut h = [0u8; HEADER];
@@ -303,7 +322,11 @@ impl<S: AsyncWrite + Unpin> PreloginTls<S> {
 }
 
 impl<S: AsyncRead + AsyncWrite + Unpin> AsyncRead for PreloginTls<S> {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         let this = self.get_mut();
         // A handshake message must leave before its answer can come.
         if !this.staged.is_empty() || this.out_pos < this.out.len() {
@@ -351,7 +374,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncRead for PreloginTls<S> {
             this.header_len = 0;
             let len = usize::from(u16::from_be_bytes([this.header[2], this.header[3]]));
             if len < HEADER {
-                return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "bad PRELOGIN packet")));
+                return Poll::Ready(Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "bad PRELOGIN packet",
+                )));
             }
             this.read_left = len - HEADER;
         }
@@ -359,7 +385,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncRead for PreloginTls<S> {
 }
 
 impl<S: AsyncWrite + Unpin> AsyncWrite for PreloginTls<S> {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, data: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        data: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
         let this = self.get_mut();
         if this.handshake {
             this.staged.extend_from_slice(data);
@@ -411,8 +441,18 @@ fn prelogin_options(options: &[(u8, Vec<u8>)]) -> Vec<u8> {
 }
 
 fn client_prelogin(encryption: u8) -> Vec<u8> {
-    let (major, minor) = (env!("CARGO_PKG_VERSION_MAJOR"), env!("CARGO_PKG_VERSION_MINOR"));
-    let version = [major.parse().unwrap_or(0), minor.parse().unwrap_or(0), 0, 0, 0, 0];
+    let (major, minor) = (
+        env!("CARGO_PKG_VERSION_MAJOR"),
+        env!("CARGO_PKG_VERSION_MINOR"),
+    );
+    let version = [
+        major.parse().unwrap_or(0),
+        minor.parse().unwrap_or(0),
+        0,
+        0,
+        0,
+        0,
+    ];
     prelogin_options(&[
         (PL_VERSION, version.to_vec()),
         (PL_ENCRYPTION, vec![encryption]),
@@ -444,14 +484,22 @@ fn parse_prelogin(body: &[u8]) -> Result<ServerPrelogin, String> {
         let value = body.get(offset..offset + len).ok_or_else(bad)?;
         match token {
             PL_VERSION if len >= 4 => {
-                version = Some(format!("{}.{}.{}", value[0], value[1], u16::from_be_bytes([value[2], value[3]])));
+                version = Some(format!(
+                    "{}.{}.{}",
+                    value[0],
+                    value[1],
+                    u16::from_be_bytes([value[2], value[3]])
+                ));
             }
             PL_ENCRYPTION if len >= 1 => encryption = Some(value[0]),
             _ => {}
         }
         at += 5;
     }
-    Ok(ServerPrelogin { version, encryption: encryption.ok_or_else(bad)? })
+    Ok(ServerPrelogin {
+        version,
+        encryption: encryption.ok_or_else(bad)?,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -465,7 +513,10 @@ fn utf16(s: &str) -> Vec<u8> {
 /// MS-TDS 2.2.6.4: every byte of the UTF-16LE password has its nibbles
 /// swapped and is XORed with 0xA5.
 fn obfuscate(password: &str) -> Vec<u8> {
-    utf16(password).into_iter().map(|b| b.rotate_left(4) ^ 0xA5).collect()
+    utf16(password)
+        .into_iter()
+        .map(|b| b.rotate_left(4) ^ 0xA5)
+        .collect()
 }
 
 struct Login<'a> {
@@ -496,12 +547,15 @@ fn login7(login: &Login<'_>) -> Vec<u8> {
     let fields: [(Vec<u8>, usize); 9] = [
         (utf16(hostname), hostname.encode_utf16().count()),
         (utf16(login.user), login.user.encode_utf16().count()),
-        (obfuscate(login.password), login.password.encode_utf16().count()),
+        (
+            obfuscate(login.password),
+            login.password.encode_utf16().count(),
+        ),
         (utf16("Vigilant Vole"), 13),
         (utf16(login.server), login.server.encode_utf16().count()),
-        (Vec::new(), 0), // extension
+        (Vec::new(), 0),                                    // extension
         (utf16(hostname), hostname.encode_utf16().count()), // CltIntName
-        (Vec::new(), 0), // language
+        (Vec::new(), 0),                                    // language
         (utf16(login.database), login.database.encode_utf16().count()),
     ];
     for (bytes, chars) in fields {
@@ -556,7 +610,10 @@ struct Cursor<'a> {
 
 impl<'a> Cursor<'a> {
     fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
-        let out = self.buf.get(self.at..self.at + n).ok_or("Not a SQL Server (truncated reply)")?;
+        let out = self
+            .buf
+            .get(self.at..self.at + n)
+            .ok_or("Not a SQL Server (truncated reply)")?;
         self.at += n;
         Ok(out)
     }
@@ -573,7 +630,13 @@ impl<'a> Cursor<'a> {
     }
     /// A string of `chars` UTF-16 code units.
     fn text(&mut self, chars: usize) -> Result<String, String> {
-        let units: Vec<u16> = self.take(chars * 2)?.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
+        let units: Vec<u16> = self
+            .take(chars * 2)?
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect();
         Ok(String::from_utf16_lossy(&units))
     }
 }
@@ -615,7 +678,11 @@ fn parse_reply(body: &[u8]) -> Result<Reply, String> {
                             c.u8()?; // maximum length
                             Column::ByteLen(matches!(kind, 0x26 | 0x68))
                         }
-                        other => return Err(format!("Unexpected column type {other:#04x} in the reply")),
+                        other => {
+                            return Err(format!(
+                                "Unexpected column type {other:#04x} in the reply"
+                            ));
+                        }
                     };
                     let name_len = usize::from(c.u8()?);
                     c.take(name_len * 2)?;
@@ -643,7 +710,10 @@ fn parse_reply(body: &[u8]) -> Result<Reply, String> {
             // ERROR, INFO
             kind @ (0xAA | 0xAB) => {
                 let len = usize::from(c.u16()?);
-                let mut t = Cursor { buf: c.take(len)?, at: 0 };
+                let mut t = Cursor {
+                    buf: c.take(len)?,
+                    at: 0,
+                };
                 let number = t.u32()? as i32;
                 t.take(2)?; // State, Class
                 let chars = usize::from(t.u16()?);
@@ -655,12 +725,20 @@ fn parse_reply(body: &[u8]) -> Result<Reply, String> {
             // LOGINACK
             0xAD => {
                 let len = usize::from(c.u16()?);
-                let mut t = Cursor { buf: c.take(len)?, at: 0 };
+                let mut t = Cursor {
+                    buf: c.take(len)?,
+                    at: 0,
+                };
                 t.take(5)?; // Interface, TDSVersion
                 let name_len = usize::from(t.u8()?);
                 t.take(name_len * 2)?;
                 let v = t.take(4)?;
-                reply.login_version = Some(format!("{}.{}.{}", v[0], v[1], u16::from_be_bytes([v[2], v[3]])));
+                reply.login_version = Some(format!(
+                    "{}.{}.{}",
+                    v[0],
+                    v[1],
+                    u16::from_be_bytes([v[2], v[3]])
+                ));
             }
             // DONE, DONEPROC, DONEINPROC
             0xFD..=0xFF => {
@@ -697,7 +775,10 @@ fn parse_reply(body: &[u8]) -> Result<Reply, String> {
 }
 
 fn server_error(number: i32, message: &str) -> String {
-    format!("Server error {number}: {}", util::truncate(message.trim(), 160))
+    format!(
+        "Server error {number}: {}",
+        util::truncate(message.trim(), 160)
+    )
 }
 
 /// `SELECT 1` as a SQL batch: ALL_HEADERS (a transaction descriptor, as
@@ -761,29 +842,51 @@ struct Opened {
 }
 
 /// Run PRELOGIN over `s`.
-async fn prelogin<S: AsyncRead + AsyncWrite + Unpin + ?Sized>(s: &mut S, settings: Settings) -> Result<ServerPrelogin, String> {
+async fn prelogin<S: AsyncRead + AsyncWrite + Unpin + ?Sized>(
+    s: &mut S,
+    settings: Settings,
+) -> Result<ServerPrelogin, String> {
     send(s, PRELOGIN, &client_prelogin(settings.prelogin_value())).await?;
     parse_prelogin(&read_message(s, REPLY, false).await?)
 }
 
 /// The certificate of a server whose verified handshake failed, fetched
 /// again without verification (PRELOGIN replayed first).
-async fn fetch_cert(addr: std::net::SocketAddr, host: String, settings: Settings) -> Option<CertSummary> {
+async fn fetch_cert(
+    addr: std::net::SocketAddr,
+    host: String,
+    settings: Settings,
+) -> Option<CertSummary> {
     let mut tcp = TcpStream::connect(addr).await.ok()?;
     if settings.encrypt == Encrypt::Strict {
-        return tls::peer_cert(&tls::upgrade_with(tcp, &host, Verify::None, &[ALPN_TDS8]).await.ok()?);
+        return tls::peer_cert(
+            &tls::upgrade_with(tcp, &host, Verify::None, &[ALPN_TDS8])
+                .await
+                .ok()?,
+        );
     }
     let answer = prelogin(&mut tcp, settings).await.ok()?;
     (negotiate(settings, answer.encryption).ok()? != Mode::Plain).then_some(())?;
-    tls::peer_cert(&tls::upgrade_with(PreloginTls::new(tcp), &host, Verify::None, &[]).await.ok()?)
+    tls::peer_cert(
+        &tls::upgrade_with(PreloginTls::new(tcp), &host, Verify::None, &[])
+            .await
+            .ok()?,
+    )
 }
 
-async fn open(ep: &Endpoint, settings: Settings, ignore_tls: bool, timeout: std::time::Duration) -> Result<Opened, Failure> {
+async fn open(
+    ep: &Endpoint,
+    settings: Settings,
+    ignore_tls: bool,
+    timeout: std::time::Duration,
+) -> Result<Opened, Failure> {
     let (mut tcp, addr) = conn::tcp(&ep.host, ep.port).await.map_err(Failure::Down)?;
     let verify = settings.verify.unless_ignored(ignore_tls);
     let tls_failed = |err: std::io::Error| async move {
         let fetch = || fetch_cert(addr, ep.host.clone(), settings);
-        Failure::Outcome(Box::new(conn::tls_failure_with(&err, verify == Verify::None, timeout, fetch).await))
+        Failure::Outcome(Box::new(
+            conn::tls_failure_with(&err, verify == Verify::None, timeout, fetch).await,
+        ))
     };
     if settings.encrypt == Encrypt::Strict {
         let tls = match tls::upgrade_with(tcp, &ep.host, verify, &[ALPN_TDS8]).await {
@@ -793,12 +896,24 @@ async fn open(ep: &Endpoint, settings: Settings, ignore_tls: bool, timeout: std:
         let (cert, tls_version) = (tls::peer_cert(&tls), Some(tls::version_label(&tls)));
         let mut stream: Stream = Box::new(tls);
         let answer = prelogin(&mut stream, settings).await?;
-        return Ok(Opened { channel: Channel::Stream(stream), version: answer.version, mode: Mode::Full, cert, tls_version });
+        return Ok(Opened {
+            channel: Channel::Stream(stream),
+            version: answer.version,
+            mode: Mode::Full,
+            cert,
+            tls_version,
+        });
     }
     let answer = prelogin(&mut tcp, settings).await?;
     let mode = negotiate(settings, answer.encryption)?;
     if mode == Mode::Plain {
-        return Ok(Opened { channel: Channel::Stream(Box::new(tcp)), version: answer.version, mode, cert: None, tls_version: None });
+        return Ok(Opened {
+            channel: Channel::Stream(Box::new(tcp)),
+            version: answer.version,
+            mode,
+            cert: None,
+            tls_version: None,
+        });
     }
     let mut tls = match tls::upgrade_with(PreloginTls::new(tcp), &ep.host, verify, &[]).await {
         Ok(tls) => tls,
@@ -806,15 +921,41 @@ async fn open(ep: &Endpoint, settings: Settings, ignore_tls: bool, timeout: std:
     };
     tls.get_mut().0.handshake = false;
     let (cert, tls_version) = (tls::peer_cert(&tls), Some(tls::version_label(&tls)));
-    let channel = if mode == Mode::LoginOnly { Channel::LoginOnly(Box::new(tls)) } else { Channel::Stream(Box::new(tls)) };
-    Ok(Opened { channel, version: answer.version, mode, cert, tls_version })
+    let channel = if mode == Mode::LoginOnly {
+        Channel::LoginOnly(Box::new(tls))
+    } else {
+        Channel::Stream(Box::new(tls))
+    };
+    Ok(Opened {
+        channel,
+        version: answer.version,
+        mode,
+        cert,
+        tls_version,
+    })
 }
 
-async fn session(ep: &Endpoint, settings: Settings, monitor: &Monitor, timeout: std::time::Duration) -> Result<Found, Failure> {
+async fn session(
+    ep: &Endpoint,
+    settings: Settings,
+    monitor: &Monitor,
+    timeout: std::time::Duration,
+) -> Result<Found, Failure> {
     let opened = open(ep, settings, monitor.ignore_tls, timeout).await?;
-    let tls = opened.tls_version.map(|v| if opened.mode == Mode::LoginOnly { format!("{v} (login only)") } else { v.to_string() });
+    let tls = opened.tls_version.map(|v| {
+        if opened.mode == Mode::LoginOnly {
+            format!("{v} (login only)")
+        } else {
+            v.to_string()
+        }
+    });
     let Some(user) = monitor.basic_auth_user.as_deref() else {
-        return Ok(Found { version: opened.version, logged_in: false, cert: opened.cert, tls });
+        return Ok(Found {
+            version: opened.version,
+            logged_in: false,
+            cert: opened.cert,
+            tls,
+        });
     };
     let login = login7(&Login {
         user,
@@ -849,7 +990,12 @@ async fn session(ep: &Endpoint, settings: Settings, monitor: &Monitor, timeout: 
         return Err("SELECT 1 did not return 1".into());
     }
     let _ = stream.shutdown().await;
-    Ok(Found { version: Some(version), logged_in: true, cert: opened.cert, tls })
+    Ok(Found {
+        version: Some(version),
+        logged_in: true,
+        cert: opened.cert,
+        tls,
+    })
 }
 
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
@@ -864,7 +1010,9 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     if let Some(user) = monitor.basic_auth_user.as_deref()
         && user.contains('\\')
     {
-        return CheckOutcome::down("Windows authentication (DOMAIN\\user) isn't supported: use a SQL Server login");
+        return CheckOutcome::down(
+            "Windows authentication (DOMAIN\\user) isn't supported: use a SQL Server login",
+        );
     }
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();

@@ -76,31 +76,53 @@ async fn fallback() -> V1Error {
 
 /// Content types a cross-site `<form>` (or a CORS "simple request") can send.
 fn is_simple_content_type(headers: &HeaderMap) -> bool {
-    let Some(ct) = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()) else {
+    let Some(ct) = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    else {
         return true;
     };
-    let essence = ct.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
-    matches!(essence.as_str(), "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain")
+    let essence = ct
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        essence.as_str(),
+        "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain"
+    )
 }
 
 /// Cookie-authenticated writes to `/api/v1` (exempt from the global CSRF
 /// guard because tokens don't need it) must still prove they're ours.
 async fn session_write_guard(request: Request, next: Next) -> Response {
-    let is_session = matches!(request.extensions().get::<AuthMethod>(), Some(AuthMethod::Session));
+    let is_session = matches!(
+        request.extensions().get::<AuthMethod>(),
+        Some(AuthMethod::Session)
+    );
     let method = request.method().clone();
     let safe = matches!(method, Method::GET | Method::HEAD | Method::OPTIONS);
     if !is_session || safe {
         return next.run(request).await;
     }
     let headers = request.headers();
-    let preflighted = matches!(method, Method::PUT | Method::PATCH | Method::DELETE) || !is_simple_content_type(headers);
+    let preflighted = matches!(method, Method::PUT | Method::PATCH | Method::DELETE)
+        || !is_simple_content_type(headers);
     // Same check as the HTML side, against a non-exempt path.
-    let same_origin = crate::auth::csrf::is_allowed(&method, "/api-v1-session", headers, crate::auth::session::trust_proxy(), None);
+    let same_origin = crate::auth::csrf::is_allowed(
+        &method,
+        "/api-v1-session",
+        headers,
+        crate::auth::session::trust_proxy(),
+        None,
+    );
     if preflighted || same_origin {
         return next.run(request).await;
     }
     tracing::warn!(method = %method, path = %request.uri().path(), "blocked cross-site API write");
-    V1Error::forbidden_msg("Cross-site request refused. Use an API token or send JSON.").into_response()
+    V1Error::forbidden_msg("Cross-site request refused. Use an API token or send JSON.")
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -121,10 +143,14 @@ where
         use axum::extract::rejection::JsonRejection;
         match axum::Json::<T>::from_request(req, state).await {
             Ok(axum::Json(v)) => Ok(Body(v)),
-            Err(JsonRejection::MissingJsonContentType(_)) => {
-                Err(V1Error::new(StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type", "Send JSON with Content-Type: application/json."))
+            Err(JsonRejection::MissingJsonContentType(_)) => Err(V1Error::new(
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_media_type",
+                "Send JSON with Content-Type: application/json.",
+            )),
+            Err(JsonRejection::JsonDataError(e)) => {
+                Err(V1Error::validation(e.body_text(), Default::default()))
             }
-            Err(JsonRejection::JsonDataError(e)) => Err(V1Error::validation(e.body_text(), Default::default())),
             Err(e) => Err(V1Error::bad_request(e.body_text())),
         }
     }
@@ -182,7 +208,10 @@ pub fn limit(raw: Option<i64>) -> i64 {
 pub fn parse_cursor(raw: Option<&str>) -> V1Result<Option<i64>> {
     match raw.map(str::trim).filter(|c| !c.is_empty()) {
         None => Ok(None),
-        Some(c) => c.parse::<i64>().map(Some).map_err(|_| V1Error::bad_request("Invalid cursor.")),
+        Some(c) => c
+            .parse::<i64>()
+            .map(Some)
+            .map_err(|_| V1Error::bad_request("Invalid cursor.")),
     }
 }
 
@@ -193,9 +222,18 @@ pub struct ListPage<T: Serialize> {
 }
 
 /// One page of `items` (sorted by id) after `cursor`.
-pub fn paginate<T: Serialize>(items: Vec<T>, id: impl Fn(&T) -> i64, cursor: Option<i64>, limit: i64) -> ListPage<T> {
+pub fn paginate<T: Serialize>(
+    items: Vec<T>,
+    id: impl Fn(&T) -> i64,
+    cursor: Option<i64>,
+    limit: i64,
+) -> ListPage<T> {
     let limit = usize::try_from(limit).unwrap_or(1);
-    let mut data: Vec<T> = items.into_iter().filter(|x| cursor.is_none_or(|c| id(x) > c)).take(limit + 1).collect();
+    let mut data: Vec<T> = items
+        .into_iter()
+        .filter(|x| cursor.is_none_or(|c| id(x) > c))
+        .take(limit + 1)
+        .collect();
     let next_cursor = if data.len() > limit {
         data.truncate(limit);
         data.last().map(|x| id(x).to_string())
@@ -224,12 +262,19 @@ pub fn cached_ok(headers: &HeaderMap, body: Vec<u8>, content_type: &'static str)
     let mut res = if matches {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
-        ([(header::CONTENT_TYPE, HeaderValue::from_static(content_type))], body).into_response()
+        (
+            [(header::CONTENT_TYPE, HeaderValue::from_static(content_type))],
+            body,
+        )
+            .into_response()
     };
     if let Ok(v) = HeaderValue::from_str(&etag) {
         res.headers_mut().insert(header::ETAG, v);
     }
-    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
+    res.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-cache"),
+    );
     res
 }
 

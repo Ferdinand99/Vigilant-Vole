@@ -18,9 +18,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use jiff::Timestamp;
 use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
-use jiff::Timestamp;
 
 pub use cron::CronSpec;
 use rusqlite::Connection;
@@ -106,7 +106,10 @@ impl Strategy {
 
     /// Recurring strategies that run between two times of day.
     pub fn uses_times(self) -> bool {
-        matches!(self, Strategy::Daily | Strategy::Weekly | Strategy::Interval | Strategy::Monthly)
+        matches!(
+            self,
+            Strategy::Daily | Strategy::Weekly | Strategy::Interval | Strategy::Monthly
+        )
     }
 }
 
@@ -147,11 +150,19 @@ impl Schedule {
             active: w.active,
             start_at: w.start_at.as_deref().and_then(parse_db_ts),
             end_at: w.end_at.as_deref().and_then(parse_db_ts),
-            weekdays: w.weekdays.as_deref().map(parse_weekdays).unwrap_or_default(),
+            weekdays: w
+                .weekdays
+                .as_deref()
+                .map(parse_weekdays)
+                .unwrap_or_default(),
             time_from: w.time_from.as_deref().and_then(parse_hhmm),
             time_to: w.time_to.as_deref().and_then(parse_hhmm),
             interval_days: w.interval_days.unwrap_or(0),
-            month_days: w.month_days.as_deref().map(parse_month_days).unwrap_or_default(),
+            month_days: w
+                .month_days
+                .as_deref()
+                .map(parse_month_days)
+                .unwrap_or_default(),
             cron: w.cron.as_deref().and_then(|c| CronSpec::parse(c).ok()),
             duration_minutes: w.duration_minutes.unwrap_or(0),
             tz: TimeZone::get(&w.timezone).unwrap_or(TimeZone::UTC),
@@ -204,9 +215,21 @@ impl WindowState {
 fn occurrence_on(s: &Schedule, date: Date) -> Option<(Timestamp, Timestamp)> {
     let from = s.time_from?;
     let to = s.time_to?;
-    let start = date.to_datetime(from).to_zoned(s.tz.clone()).ok()?.timestamp();
-    let end_date = if to > from { date } else { date.tomorrow().ok()? };
-    let end = end_date.to_datetime(to).to_zoned(s.tz.clone()).ok()?.timestamp();
+    let start = date
+        .to_datetime(from)
+        .to_zoned(s.tz.clone())
+        .ok()?
+        .timestamp();
+    let end_date = if to > from {
+        date
+    } else {
+        date.tomorrow().ok()?
+    };
+    let end = end_date
+        .to_datetime(to)
+        .to_zoned(s.tz.clone())
+        .ok()?
+        .timestamp();
     Some((start, end))
 }
 
@@ -221,7 +244,9 @@ fn day_matches(s: &Schedule, date: Date) -> bool {
                 return false;
             };
             // Whole days between the two local dates.
-            let days = date.since(anchor).map_or(-1, |span| i64::from(span.get_days()));
+            let days = date
+                .since(anchor)
+                .map_or(-1, |span| i64::from(span.get_days()));
             days >= 0 && s.interval_days > 0 && days % s.interval_days == 0
         }
         Strategy::Monthly => {
@@ -241,11 +266,15 @@ fn starts_on(s: &Schedule, date: Date) -> Vec<(Timestamp, Timestamp)> {
     if s.strategy != Strategy::Cron {
         return occurrence_on(s, date).into_iter().collect();
     }
-    let Some(cron) = &s.cron else { return Vec::new() };
+    let Some(cron) = &s.cron else {
+        return Vec::new();
+    };
     cron.times()
         .filter_map(|(h, m)| {
             let start = date.at(h, m, 0, 0).to_zoned(s.tz.clone()).ok()?.timestamp();
-            let end = start.checked_add(jiff::SignedDuration::from_mins(s.duration_minutes)).ok()?;
+            let end = start
+                .checked_add(jiff::SignedDuration::from_mins(s.duration_minutes))
+                .ok()?;
             Some((start, end))
         })
         .collect()
@@ -292,7 +321,8 @@ pub fn next_occurrence(s: &Schedule, now: Timestamp) -> Option<(Timestamp, Times
             for _ in 0..=(ahead_days + back_days) {
                 if day_matches(s, date) {
                     for (start, end) in starts_on(s, date) {
-                        let in_range = s.start_at.is_none_or(|a| start >= a) && s.end_at.is_none_or(|b| start < b);
+                        let in_range = s.start_at.is_none_or(|a| start >= a)
+                            && s.end_at.is_none_or(|b| start < b);
                         let skipped = s.skip_until.is_some_and(|k| start < k);
                         if start < end && end > now && in_range && !skipped {
                             return Some((start, end));
@@ -316,7 +346,11 @@ pub fn window_is_active(s: &Schedule, now: Timestamp) -> bool {
 
 pub fn window_state(s: &Schedule, now: Timestamp) -> WindowState {
     if s.strategy == Strategy::Manual {
-        return if s.active { WindowState::Active } else { WindowState::Off };
+        return if s.active {
+            WindowState::Active
+        } else {
+            WindowState::Off
+        };
     }
     if !s.active {
         return WindowState::Paused;
@@ -354,13 +388,21 @@ pub fn parse_hhmm(s: &str) -> Option<Time> {
 /// `last` / `L` mean `-1`. Separated by commas or spaces.
 pub fn parse_month_days_strict(s: &str) -> Result<Vec<i8>, String> {
     let mut days = Vec::new();
-    for tok in s.split([',', ' ', ';']).map(str::trim).filter(|t| !t.is_empty()) {
+    for tok in s
+        .split([',', ' ', ';'])
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
         let day = match tok.to_ascii_lowercase().as_str() {
             "last" | "l" => -1,
-            other => other.parse::<i8>().map_err(|_| format!("“{tok}” isn’t a day of the month."))?,
+            other => other
+                .parse::<i8>()
+                .map_err(|_| format!("“{tok}” isn’t a day of the month."))?,
         };
         if day == 0 || !(-31..=31).contains(&day) {
-            return Err(format!("“{tok}” isn’t a day of the month (1–31, or -1 for the last day)."));
+            return Err(format!(
+                "“{tok}” isn’t a day of the month (1–31, or -1 for the last day)."
+            ));
         }
         days.push(day);
     }
@@ -425,7 +467,9 @@ pub fn parse_local_datetime(s: &str, tz: &TimeZone) -> Option<Timestamp> {
 
 /// Instant → `YYYY-MM-DDTHH:MM` in `tz`, for `datetime-local` inputs.
 pub fn fmt_local_input(ts: Timestamp, tz: &TimeZone) -> String {
-    ts.to_zoned(tz.clone()).strftime("%Y-%m-%dT%H:%M").to_string()
+    ts.to_zoned(tz.clone())
+        .strftime("%Y-%m-%dT%H:%M")
+        .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -439,7 +483,8 @@ struct Snapshot {
 }
 
 /// Snapshots keyed by database file path (tests use several databases).
-static SNAPSHOTS: LazyLock<Mutex<HashMap<String, Snapshot>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static SNAPSHOTS: LazyLock<Mutex<HashMap<String, Snapshot>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 /// Wakes the background job early (after edits).
 static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
 
@@ -464,7 +509,10 @@ pub struct ActiveSet {
 
 impl ActiveSet {
     pub fn covered(&self) -> HashSet<i64> {
-        self.windows.iter().flat_map(|(_, _, m)| m.iter().copied()).collect()
+        self.windows
+            .iter()
+            .flat_map(|(_, _, m)| m.iter().copied())
+            .collect()
     }
 }
 
@@ -486,7 +534,8 @@ pub fn active_set(conn: &Connection, now: Timestamp) -> rusqlite::Result<ActiveS
             Some(c) => c,
             None => children.insert(child_map(conn)?),
         };
-        set.windows.push((w.id, w.title, expand_groups(&direct, children)));
+        set.windows
+            .push((w.id, w.title, expand_groups(&direct, children)));
     }
     Ok(set)
 }
@@ -573,8 +622,11 @@ pub fn spawn(state: AppState) {
             let now = Timestamp::now();
             let next_change = match db::interact(&state.db, move |c| active_set(c, now)).await {
                 Ok(set) => {
-                    let current: HashMap<i64, (String, HashSet<i64>)> =
-                        set.windows.into_iter().map(|(id, title, m)| (id, (title, m))).collect();
+                    let current: HashMap<i64, (String, HashSet<i64>)> = set
+                        .windows
+                        .into_iter()
+                        .map(|(id, title, m)| (id, (title, m)))
+                        .collect();
                     if let Some(prev) = &previous {
                         handle_changes(&state, prev, &current).await;
                     }
@@ -588,7 +640,8 @@ pub fn spawn(state: AppState) {
             };
             let mut wait = SNAPSHOT_TTL;
             if let Some(change) = next_change {
-                let until = Duration::try_from(Timestamp::now().duration_until(change)).unwrap_or_default();
+                let until =
+                    Duration::try_from(Timestamp::now().duration_until(change)).unwrap_or_default();
                 wait = wait.min(until + Duration::from_millis(250));
             }
             tokio::select! {
@@ -615,14 +668,20 @@ async fn handle_changes(
         .map(|(id, v)| (*id, v))
         .collect();
     let monitors_changed = prev.values().flat_map(|(_, m)| m).collect::<HashSet<_>>()
-        != current.values().flat_map(|(_, m)| m).collect::<HashSet<_>>();
+        != current
+            .values()
+            .flat_map(|(_, m)| m)
+            .collect::<HashSet<_>>();
     if started.is_empty() && ended.is_empty() && !monitors_changed {
         return;
     }
     invalidate_snapshots_only();
 
     let mut affected: HashSet<i64> = HashSet::new();
-    for (kind, list) in [(EventKind::MaintenanceStart, &started), (EventKind::MaintenanceEnd, &ended)] {
+    for (kind, list) in [
+        (EventKind::MaintenanceStart, &started),
+        (EventKind::MaintenanceEnd, &ended),
+    ] {
         for (id, (title, monitors)) in list {
             tracing::info!(window = id, %title, "maintenance {}", if kind == EventKind::MaintenanceStart { "started" } else { "ended" });
             affected.extend(monitors.iter().copied());
@@ -657,7 +716,13 @@ fn invalidate_snapshots_only() {
     }
 }
 
-async fn notify_window(state: &AppState, kind: EventKind, window_id: i64, title: &str, monitors: &HashSet<i64>) {
+async fn notify_window(
+    state: &AppState,
+    kind: EventKind,
+    window_id: i64,
+    title: &str,
+    monitors: &HashSet<i64>,
+) {
     let ids: Vec<i64> = monitors.iter().copied().collect();
     let loaded = db::interact(&state.db, move |c| {
         let mut channels: Vec<NotificationChannel> = Vec::new();
@@ -670,7 +735,9 @@ async fn notify_window(state: &AppState, kind: EventKind, window_id: i64, title:
                 }
             }
             let name: Option<String> = c
-                .query_row("SELECT name FROM monitors WHERE id = ?1", [id], |r| r.get(0))
+                .query_row("SELECT name FROM monitors WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
                 .ok();
             names.extend(name);
         }
@@ -817,13 +884,25 @@ mod tests {
             ..sched(Strategy::Once, "UTC")
         };
         assert!(!window_is_active(&s, ts("2026-10-19T09:59:59Z")));
-        assert_eq!(window_state(&s, ts("2026-10-19T09:00:00Z")), WindowState::Scheduled);
+        assert_eq!(
+            window_state(&s, ts("2026-10-19T09:00:00Z")),
+            WindowState::Scheduled
+        );
         assert!(window_is_active(&s, ts("2026-10-19T10:00:00Z")));
         assert!(window_is_active(&s, ts("2026-10-19T11:59:59Z")));
         assert!(!window_is_active(&s, ts("2026-10-19T12:00:00Z")));
-        assert_eq!(window_state(&s, ts("2026-10-19T13:00:00Z")), WindowState::Ended);
-        assert_eq!(next_transition(&s, ts("2026-10-19T09:00:00Z")), Some(ts("2026-10-19T10:00:00Z")));
-        assert_eq!(next_transition(&s, ts("2026-10-19T11:00:00Z")), Some(ts("2026-10-19T12:00:00Z")));
+        assert_eq!(
+            window_state(&s, ts("2026-10-19T13:00:00Z")),
+            WindowState::Ended
+        );
+        assert_eq!(
+            next_transition(&s, ts("2026-10-19T09:00:00Z")),
+            Some(ts("2026-10-19T10:00:00Z"))
+        );
+        assert_eq!(
+            next_transition(&s, ts("2026-10-19T11:00:00Z")),
+            Some(ts("2026-10-19T12:00:00Z"))
+        );
     }
 
     #[test]
@@ -914,7 +993,10 @@ mod tests {
         assert!(window_is_active(&s, ts("2026-10-22T03:00:00Z")));
         // After the range: nothing left.
         assert_eq!(next_occurrence(&s, ts("2026-10-23T01:00:00Z")), None);
-        assert_eq!(window_state(&s, ts("2026-10-24T01:00:00Z")), WindowState::Ended);
+        assert_eq!(
+            window_state(&s, ts("2026-10-24T01:00:00Z")),
+            WindowState::Ended
+        );
     }
 
     #[test]
@@ -1046,10 +1128,22 @@ mod tests {
 
     #[test]
     fn parses_db_timestamps_and_times() {
-        assert_eq!(parse_db_ts("2026-10-19 14:03:00"), Some(ts("2026-10-19T14:03:00Z")));
-        assert_eq!(parse_db_ts("2026-10-19T14:03:00"), Some(ts("2026-10-19T14:03:00Z")));
-        assert_eq!(parse_db_ts("2026-10-19T14:03:00Z"), Some(ts("2026-10-19T14:03:00Z")));
-        assert_eq!(parse_db_ts("2026-10-19T16:03:00+02:00"), Some(ts("2026-10-19T14:03:00Z")));
+        assert_eq!(
+            parse_db_ts("2026-10-19 14:03:00"),
+            Some(ts("2026-10-19T14:03:00Z"))
+        );
+        assert_eq!(
+            parse_db_ts("2026-10-19T14:03:00"),
+            Some(ts("2026-10-19T14:03:00Z"))
+        );
+        assert_eq!(
+            parse_db_ts("2026-10-19T14:03:00Z"),
+            Some(ts("2026-10-19T14:03:00Z"))
+        );
+        assert_eq!(
+            parse_db_ts("2026-10-19T16:03:00+02:00"),
+            Some(ts("2026-10-19T14:03:00Z"))
+        );
         assert_eq!(parse_db_ts("garbage"), None);
         assert_eq!(fmt_db_ts(ts("2026-10-19T14:03:09Z")), "2026-10-19 14:03:09");
         assert_eq!(parse_hhmm("22:05"), Some(jiff::civil::time(22, 5, 0, 0)));
@@ -1137,14 +1231,26 @@ mod tests {
     fn cron_runs_at_the_local_time_and_follows_dst() {
         // Sundays 02:00 Oslo for 90 minutes. Summer time (UTC+2) before 25 October.
         let s = cron("0 2 * * 0", 90, "Europe/Oslo");
-        assert_eq!(span(&s, "2026-10-14T12:00:00Z"), pair("2026-10-18T00:00:00Z", "2026-10-18T01:30:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-14T12:00:00Z"),
+            pair("2026-10-18T00:00:00Z", "2026-10-18T01:30:00Z")
+        );
         // 25 October: 02:00 happens twice; the earlier one (still UTC+2) is used.
-        assert_eq!(span(&s, "2026-10-19T12:00:00Z"), pair("2026-10-25T00:00:00Z", "2026-10-25T01:30:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-19T12:00:00Z"),
+            pair("2026-10-25T00:00:00Z", "2026-10-25T01:30:00Z")
+        );
         // The following Sunday is in winter time (UTC+1).
-        assert_eq!(span(&s, "2026-10-26T12:00:00Z"), pair("2026-11-01T01:00:00Z", "2026-11-01T02:30:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-26T12:00:00Z"),
+            pair("2026-11-01T01:00:00Z", "2026-11-01T02:30:00Z")
+        );
         // Spring forward 29 March 2026: 02:30 doesn't exist and moves to 03:30 (UTC+2).
         let gap = cron("30 2 * * 0", 30, "Europe/Oslo");
-        assert_eq!(span(&gap, "2026-03-25T00:00:00Z"), pair("2026-03-29T01:30:00Z", "2026-03-29T02:00:00Z"));
+        assert_eq!(
+            span(&gap, "2026-03-25T00:00:00Z"),
+            pair("2026-03-29T01:30:00Z", "2026-03-29T02:00:00Z")
+        );
     }
 
     #[test]
@@ -1154,10 +1260,22 @@ mod tests {
         assert!(window_is_active(&s, ts("2026-10-18T02:00:00Z")));
         assert!(window_is_active(&s, ts("2026-10-18T03:29:59Z")));
         assert!(!window_is_active(&s, ts("2026-10-18T03:30:00Z")));
-        assert_eq!(window_state(&s, ts("2026-10-18T02:30:00Z")), WindowState::Active);
-        assert_eq!(window_state(&s, ts("2026-10-18T05:00:00Z")), WindowState::Scheduled);
-        assert_eq!(next_transition(&s, ts("2026-10-18T02:30:00Z")), Some(ts("2026-10-18T03:30:00Z")));
-        assert_eq!(next_transition(&s, ts("2026-10-18T05:00:00Z")), Some(ts("2026-10-25T02:00:00Z")));
+        assert_eq!(
+            window_state(&s, ts("2026-10-18T02:30:00Z")),
+            WindowState::Active
+        );
+        assert_eq!(
+            window_state(&s, ts("2026-10-18T05:00:00Z")),
+            WindowState::Scheduled
+        );
+        assert_eq!(
+            next_transition(&s, ts("2026-10-18T02:30:00Z")),
+            Some(ts("2026-10-18T03:30:00Z"))
+        );
+        assert_eq!(
+            next_transition(&s, ts("2026-10-18T05:00:00Z")),
+            Some(ts("2026-10-25T02:00:00Z"))
+        );
     }
 
     #[test]
@@ -1166,19 +1284,34 @@ mod tests {
         let s = cron("0 0 1 * *", 3 * 24 * 60, "UTC");
         assert!(window_is_active(&s, ts("2026-10-03T12:00:00Z")));
         assert!(!window_is_active(&s, ts("2026-10-04T00:00:00Z")));
-        assert_eq!(span(&s, "2026-10-03T12:00:00Z"), pair("2026-10-01T00:00:00Z", "2026-10-04T00:00:00Z"));
-        assert_eq!(span(&s, "2026-10-04T00:00:00Z"), pair("2026-11-01T00:00:00Z", "2026-11-04T00:00:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-03T12:00:00Z"),
+            pair("2026-10-01T00:00:00Z", "2026-10-04T00:00:00Z")
+        );
+        assert_eq!(
+            span(&s, "2026-10-04T00:00:00Z"),
+            pair("2026-11-01T00:00:00Z", "2026-11-04T00:00:00Z")
+        );
     }
 
     #[test]
     fn cron_handles_leap_days_and_month_ends() {
         let leap = cron("0 0 29 2 *", 60, "UTC");
-        assert_eq!(span(&leap, "2026-03-01T00:00:00Z"), pair("2028-02-29T00:00:00Z", "2028-02-29T01:00:00Z"));
+        assert_eq!(
+            span(&leap, "2026-03-01T00:00:00Z"),
+            pair("2028-02-29T00:00:00Z", "2028-02-29T01:00:00Z")
+        );
         let end = cron("0 12 31 * *", 60, "UTC");
         // 30-day months are skipped.
-        assert_eq!(span(&end, "2026-11-01T00:00:00Z"), pair("2026-12-31T12:00:00Z", "2026-12-31T13:00:00Z"));
+        assert_eq!(
+            span(&end, "2026-11-01T00:00:00Z"),
+            pair("2026-12-31T12:00:00Z", "2026-12-31T13:00:00Z")
+        );
         // An expression that can never fire has no occurrence.
-        assert_eq!(next_occurrence(&cron("0 0 31 2 *", 60, "UTC"), ts("2026-01-01T00:00:00Z")), None);
+        assert_eq!(
+            next_occurrence(&cron("0 0 31 2 *", 60, "UTC"), ts("2026-01-01T00:00:00Z")),
+            None
+        );
     }
 
     #[test]
@@ -1186,12 +1319,18 @@ mod tests {
         let mut s = cron("0 2 * * *", 60, "UTC");
         s.start_at = Some(ts("2026-10-20T00:00:00Z"));
         s.end_at = Some(ts("2026-10-22T00:00:00Z"));
-        assert_eq!(span(&s, "2026-10-10T00:00:00Z"), pair("2026-10-20T02:00:00Z", "2026-10-20T03:00:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-10T00:00:00Z"),
+            pair("2026-10-20T02:00:00Z", "2026-10-20T03:00:00Z")
+        );
         assert_eq!(next_occurrence(&s, ts("2026-10-21T04:00:00Z")), None);
         assert_eq!(next_occurrence(&s, ts("2026-10-22T00:00:00Z")), None);
         // "End now" during the 20th's window skips just that occurrence.
         s.skip_until = Some(ts("2026-10-20T02:30:00Z"));
-        assert_eq!(span(&s, "2026-10-20T02:30:00Z"), pair("2026-10-21T02:00:00Z", "2026-10-21T03:00:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-20T02:30:00Z"),
+            pair("2026-10-21T02:00:00Z", "2026-10-21T03:00:00Z")
+        );
     }
 
     #[test]
@@ -1218,9 +1357,17 @@ mod tests {
         let s = Schedule::from_window(&w);
         assert_eq!(s.strategy, Strategy::Cron);
         assert_eq!(next_occurrence(&s, ts("2026-10-19T00:00:00Z")), None);
-        let ok = Schedule::from_window(&MaintenanceWindow { cron: Some("0 2 * * *".into()), duration_minutes: Some(0), ..w.clone() });
+        let ok = Schedule::from_window(&MaintenanceWindow {
+            cron: Some("0 2 * * *".into()),
+            duration_minutes: Some(0),
+            ..w.clone()
+        });
         assert_eq!(next_occurrence(&ok, ts("2026-10-19T00:00:00Z")), None);
-        let ok = Schedule::from_window(&MaintenanceWindow { cron: Some("0 2 * * *".into()), duration_minutes: Some(30), ..w });
+        let ok = Schedule::from_window(&MaintenanceWindow {
+            cron: Some("0 2 * * *".into()),
+            duration_minutes: Some(30),
+            ..w
+        });
         assert!(next_occurrence(&ok, ts("2026-10-19T00:00:00Z")).is_some());
     }
 
@@ -1229,21 +1376,45 @@ mod tests {
     #[test]
     fn monthly_runs_on_the_listed_days_and_skips_short_months() {
         let s = monthly(&[1, 15], "02:00", "04:00", "UTC");
-        assert_eq!(span(&s, "2026-10-10T00:00:00Z"), pair("2026-10-15T02:00:00Z", "2026-10-15T04:00:00Z"));
-        assert_eq!(span(&s, "2026-10-15T03:00:00Z"), pair("2026-10-15T02:00:00Z", "2026-10-15T04:00:00Z"));
-        assert_eq!(span(&s, "2026-10-16T00:00:00Z"), pair("2026-11-01T02:00:00Z", "2026-11-01T04:00:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-10T00:00:00Z"),
+            pair("2026-10-15T02:00:00Z", "2026-10-15T04:00:00Z")
+        );
+        assert_eq!(
+            span(&s, "2026-10-15T03:00:00Z"),
+            pair("2026-10-15T02:00:00Z", "2026-10-15T04:00:00Z")
+        );
+        assert_eq!(
+            span(&s, "2026-10-16T00:00:00Z"),
+            pair("2026-11-01T02:00:00Z", "2026-11-01T04:00:00Z")
+        );
         let thirty_first = monthly(&[31], "02:00", "04:00", "UTC");
-        assert_eq!(span(&thirty_first, "2026-11-01T00:00:00Z"), pair("2026-12-31T02:00:00Z", "2026-12-31T04:00:00Z"));
+        assert_eq!(
+            span(&thirty_first, "2026-11-01T00:00:00Z"),
+            pair("2026-12-31T02:00:00Z", "2026-12-31T04:00:00Z")
+        );
     }
 
     #[test]
     fn monthly_counts_from_the_end_including_leap_years() {
         let last = monthly(&[-1], "22:00", "23:00", "UTC");
-        assert_eq!(span(&last, "2026-02-01T00:00:00Z"), pair("2026-02-28T22:00:00Z", "2026-02-28T23:00:00Z"));
-        assert_eq!(span(&last, "2028-02-01T00:00:00Z"), pair("2028-02-29T22:00:00Z", "2028-02-29T23:00:00Z"));
-        assert_eq!(span(&last, "2026-04-01T00:00:00Z"), pair("2026-04-30T22:00:00Z", "2026-04-30T23:00:00Z"));
+        assert_eq!(
+            span(&last, "2026-02-01T00:00:00Z"),
+            pair("2026-02-28T22:00:00Z", "2026-02-28T23:00:00Z")
+        );
+        assert_eq!(
+            span(&last, "2028-02-01T00:00:00Z"),
+            pair("2028-02-29T22:00:00Z", "2028-02-29T23:00:00Z")
+        );
+        assert_eq!(
+            span(&last, "2026-04-01T00:00:00Z"),
+            pair("2026-04-30T22:00:00Z", "2026-04-30T23:00:00Z")
+        );
         let second_last = monthly(&[-2], "22:00", "23:00", "UTC");
-        assert_eq!(span(&second_last, "2026-02-01T00:00:00Z"), pair("2026-02-27T22:00:00Z", "2026-02-27T23:00:00Z"));
+        assert_eq!(
+            span(&second_last, "2026-02-01T00:00:00Z"),
+            pair("2026-02-27T22:00:00Z", "2026-02-27T23:00:00Z")
+        );
     }
 
     #[test]
@@ -1256,7 +1427,10 @@ mod tests {
 
     #[test]
     fn month_day_lists_parse_strictly_and_leniently() {
-        assert_eq!(parse_month_days_strict("15, 1; last 1"), Ok(vec![1, 15, -1]));
+        assert_eq!(
+            parse_month_days_strict("15, 1; last 1"),
+            Ok(vec![1, 15, -1])
+        );
         assert_eq!(parse_month_days_strict("-2 L"), Ok(vec![-1, -2]));
         assert!(parse_month_days_strict("0").is_err());
         assert!(parse_month_days_strict("32").is_err());
@@ -1272,8 +1446,14 @@ mod tests {
     fn interval_counts_days_from_the_first_date() {
         // Every 3rd day from 1 October, 22:00-23:00 UTC: 1, 4, 7, 10 …
         let s = every(3, "2026-10-01T00:00:00Z", "22:00", "23:00", "UTC");
-        assert_eq!(span(&s, "2026-09-01T00:00:00Z"), pair("2026-10-01T22:00:00Z", "2026-10-01T23:00:00Z"));
-        assert_eq!(span(&s, "2026-10-05T12:00:00Z"), pair("2026-10-07T22:00:00Z", "2026-10-07T23:00:00Z"));
+        assert_eq!(
+            span(&s, "2026-09-01T00:00:00Z"),
+            pair("2026-10-01T22:00:00Z", "2026-10-01T23:00:00Z")
+        );
+        assert_eq!(
+            span(&s, "2026-10-05T12:00:00Z"),
+            pair("2026-10-07T22:00:00Z", "2026-10-07T23:00:00Z")
+        );
         assert!(window_is_active(&s, ts("2026-10-07T22:30:00Z")));
         assert!(!window_is_active(&s, ts("2026-10-08T22:30:00Z")));
     }
@@ -1281,13 +1461,25 @@ mod tests {
     #[test]
     fn interval_crosses_month_and_year_ends() {
         let s = every(10, "2026-10-25T00:00:00Z", "01:00", "02:00", "UTC");
-        assert_eq!(span(&s, "2026-10-26T00:00:00Z"), pair("2026-11-04T01:00:00Z", "2026-11-04T02:00:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-26T00:00:00Z"),
+            pair("2026-11-04T01:00:00Z", "2026-11-04T02:00:00Z")
+        );
         let year = every(7, "2026-12-27T00:00:00Z", "01:00", "02:00", "UTC");
-        assert_eq!(span(&year, "2026-12-28T00:00:00Z"), pair("2027-01-03T01:00:00Z", "2027-01-03T02:00:00Z"));
+        assert_eq!(
+            span(&year, "2026-12-28T00:00:00Z"),
+            pair("2027-01-03T01:00:00Z", "2027-01-03T02:00:00Z")
+        );
         // February in a leap year: 2028-02-22 + 7 = 2028-02-29, then 2028-03-07.
         let leap = every(7, "2028-02-22T00:00:00Z", "01:00", "02:00", "UTC");
-        assert_eq!(span(&leap, "2028-02-23T00:00:00Z"), pair("2028-02-29T01:00:00Z", "2028-02-29T02:00:00Z"));
-        assert_eq!(span(&leap, "2028-03-01T00:00:00Z"), pair("2028-03-07T01:00:00Z", "2028-03-07T02:00:00Z"));
+        assert_eq!(
+            span(&leap, "2028-02-23T00:00:00Z"),
+            pair("2028-02-29T01:00:00Z", "2028-02-29T02:00:00Z")
+        );
+        assert_eq!(
+            span(&leap, "2028-03-01T00:00:00Z"),
+            pair("2028-03-07T01:00:00Z", "2028-03-07T02:00:00Z")
+        );
     }
 
     #[test]
@@ -1296,7 +1488,10 @@ mod tests {
         // back on 25 October; 26 October is winter time.
         let s = every(2, "2026-10-23T22:00:00Z", "02:30", "03:30", "Europe/Oslo");
         // 24 Oct 02:30 CEST = 00:30Z, 26 Oct 02:30 CET = 01:30Z.
-        assert_eq!(span(&s, "2026-10-24T12:00:00Z"), pair("2026-10-26T01:30:00Z", "2026-10-26T02:30:00Z"));
+        assert_eq!(
+            span(&s, "2026-10-24T12:00:00Z"),
+            pair("2026-10-26T01:30:00Z", "2026-10-26T02:30:00Z")
+        );
     }
 
     #[test]
@@ -1316,7 +1511,11 @@ mod tests {
         for s in Strategy::ALL {
             assert_eq!(Strategy::parse(s.as_str()), Some(s));
         }
-        assert!(Strategy::Cron.is_recurring() && Strategy::Interval.is_recurring() && Strategy::Monthly.is_recurring());
+        assert!(
+            Strategy::Cron.is_recurring()
+                && Strategy::Interval.is_recurring()
+                && Strategy::Monthly.is_recurring()
+        );
         assert!(!Strategy::Cron.uses_times() && Strategy::Monthly.uses_times());
     }
 }

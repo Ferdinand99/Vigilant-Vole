@@ -42,7 +42,10 @@ pub const CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 /// Protected routes (behind `require_auth`; `CurrentUser` is available).
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/settings/integrations", get(integrations_page).post(save_integrations))
+        .route(
+            "/settings/integrations",
+            get(integrations_page).post(save_integrations),
+        )
         .route("/settings/integrations/sync", post(sync_now))
 }
 
@@ -124,7 +127,11 @@ pub fn format_value(v: f64) -> String {
     if v.is_nan() {
         "NaN".into()
     } else if v.is_infinite() {
-        if v > 0.0 { "+Inf".into() } else { "-Inf".into() }
+        if v > 0.0 {
+            "+Inf".into()
+        } else {
+            "-Inf".into()
+        }
     } else if v.fract() == 0.0 && v.abs() < 1e15 {
         format!("{}", v as i64)
     } else {
@@ -198,10 +205,16 @@ pub fn redact_target(target: &str) -> String {
 /// Kuma's `monitor_url` / `monitor_hostname` / `monitor_port` labels.
 fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) {
     match t {
-        MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery | MonitorType::Websocket | MonitorType::RealBrowser => {
-            (redact_target(target), String::new(), String::new())
-        }
-        MonitorType::Tcp | MonitorType::Steam | MonitorType::Ntp | MonitorType::Tls | MonitorType::Smtp => match target.trim().rsplit_once(':') {
+        MonitorType::Http
+        | MonitorType::Keyword
+        | MonitorType::JsonQuery
+        | MonitorType::Websocket
+        | MonitorType::RealBrowser => (redact_target(target), String::new(), String::new()),
+        MonitorType::Tcp
+        | MonitorType::Steam
+        | MonitorType::Ntp
+        | MonitorType::Tls
+        | MonitorType::Smtp => match target.trim().rsplit_once(':') {
             Some((h, p)) if p.parse::<u16>().is_ok() => (
                 String::new(),
                 h.trim_start_matches('[').trim_end_matches(']').to_string(),
@@ -232,7 +245,9 @@ fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) 
             Ok(e) => (String::new(), e.host, e.port.to_string()),
             Err(_) => (String::new(), target.trim().to_string(), String::new()),
         },
-        MonitorType::Docker | MonitorType::Push | MonitorType::Group => (String::new(), String::new(), String::new()),
+        MonitorType::Docker | MonitorType::Push | MonitorType::Group => {
+            (String::new(), String::new(), String::new())
+        }
     }
 }
 
@@ -240,8 +255,12 @@ fn kuma_target_labels(t: MonitorType, target: &str) -> (String, String, String) 
 pub fn render(input: &MetricsInput) -> String {
     let mut e = Exposition::new();
 
-    e.family("vigilant_build_info", "gauge", "Vigilant Vole build information.")
-        .sample("vigilant_build_info", &[("version", &input.version)], 1.0);
+    e.family(
+        "vigilant_build_info",
+        "gauge",
+        "Vigilant Vole build information.",
+    )
+    .sample("vigilant_build_info", &[("version", &input.version)], 1.0);
 
     // -- per monitor, Vigilant names -------------------------------------
     let monitors: Vec<_> = input.monitors.iter().collect();
@@ -263,7 +282,11 @@ pub fn render(input: &MetricsInput) -> String {
         "1 if the monitor is active, 0 if paused.",
     );
     for (i, m) in monitors.iter().enumerate() {
-        e.sample("vigilant_monitor_active", &base(i), f64::from(u8::from(m.active)));
+        e.sample(
+            "vigilant_monitor_active",
+            &base(i),
+            f64::from(u8::from(m.active)),
+        );
     }
 
     e.family(
@@ -284,7 +307,11 @@ pub fn render(input: &MetricsInput) -> String {
     );
     for (i, m) in monitors.iter().enumerate() {
         if let (true, Some(ms)) = (m.active, m.response_time_ms) {
-            e.sample("vigilant_monitor_response_time_seconds", &base(i), ms as f64 / 1000.0);
+            e.sample(
+                "vigilant_monitor_response_time_seconds",
+                &base(i),
+                ms as f64 / 1000.0,
+            );
         }
     }
 
@@ -320,7 +347,11 @@ pub fn render(input: &MetricsInput) -> String {
     );
     for (i, m) in monitors.iter().enumerate() {
         if let Some(d) = m.domain_days {
-            e.sample("vigilant_monitor_domain_days_remaining", &base(i), d.floor());
+            e.sample(
+                "vigilant_monitor_domain_days_remaining",
+                &base(i),
+                d.floor(),
+            );
         }
     }
 
@@ -350,7 +381,11 @@ pub fn render(input: &MetricsInput) -> String {
             e.sample("monitor_status", &kuma_labels(i), kuma_status(s));
         }
     }
-    e.family("monitor_response_time", "gauge", "Monitor Response Time (ms)");
+    e.family(
+        "monitor_response_time",
+        "gauge",
+        "Monitor Response Time (ms)",
+    );
     for (i, m) in monitors.iter().enumerate() {
         if let (true, Some(ms)) = (m.active, m.response_time_ms) {
             e.sample("monitor_response_time", &kuma_labels(i), ms as f64);
@@ -373,7 +408,11 @@ pub fn render(input: &MetricsInput) -> String {
     );
     for (i, m) in monitors.iter().enumerate() {
         if let (true, Some(d)) = (m.active, m.cert_days) {
-            e.sample("monitor_cert_is_valid", &kuma_labels(i), if d > 0.0 { 1.0 } else { 0.0 });
+            e.sample(
+                "monitor_cert_is_valid",
+                &kuma_labels(i),
+                if d > 0.0 { 1.0 } else { 0.0 },
+            );
         }
     }
 
@@ -390,7 +429,11 @@ pub fn render(input: &MetricsInput) -> String {
         "counter",
         "Recorded heartbeats that were down or pending since start.",
     )
-    .sample("vigilant_checks_failed_total", &[], eng.checks_failed as f64);
+    .sample(
+        "vigilant_checks_failed_total",
+        &[],
+        eng.checks_failed as f64,
+    );
     e.family(
         "vigilant_running_tasks",
         "gauge",
@@ -398,14 +441,22 @@ pub fn render(input: &MetricsInput) -> String {
     )
     .sample("vigilant_running_tasks", &[], eng.running_tasks as f64);
 
-    let monitor_ids: Vec<String> = eng.monitors.iter().map(|m| m.monitor_id.to_string()).collect();
+    let monitor_ids: Vec<String> = eng
+        .monitors
+        .iter()
+        .map(|m| m.monitor_id.to_string())
+        .collect();
     e.family(
         "vigilant_monitor_checks_total",
         "counter",
         "Heartbeats recorded per monitor since start.",
     );
     for (m, id) in eng.monitors.iter().zip(&monitor_ids) {
-        e.sample("vigilant_monitor_checks_total", &[("monitor_id", id)], m.checks_total as f64);
+        e.sample(
+            "vigilant_monitor_checks_total",
+            &[("monitor_id", id)],
+            m.checks_total as f64,
+        );
     }
     e.family(
         "vigilant_monitor_checks_failed_total",
@@ -413,7 +464,11 @@ pub fn render(input: &MetricsInput) -> String {
         "Down or pending heartbeats per monitor since start.",
     );
     for (m, id) in eng.monitors.iter().zip(&monitor_ids) {
-        e.sample("vigilant_monitor_checks_failed_total", &[("monitor_id", id)], m.checks_failed as f64);
+        e.sample(
+            "vigilant_monitor_checks_failed_total",
+            &[("monitor_id", id)],
+            m.checks_failed as f64,
+        );
     }
 
     e.family(
@@ -453,7 +508,11 @@ pub fn render(input: &MetricsInput) -> String {
         "Notifications delivered by channel kind since start.",
     );
     for n in &eng.notifications {
-        e.sample("vigilant_notifications_sent_total", &[("kind", &n.kind)], n.sent as f64);
+        e.sample(
+            "vigilant_notifications_sent_total",
+            &[("kind", &n.kind)],
+            n.sent as f64,
+        );
     }
     e.family(
         "vigilant_notifications_failed_total",
@@ -461,7 +520,11 @@ pub fn render(input: &MetricsInput) -> String {
         "Notification deliveries that failed by channel kind since start.",
     );
     for n in &eng.notifications {
-        e.sample("vigilant_notifications_failed_total", &[("kind", &n.kind)], n.failed as f64);
+        e.sample(
+            "vigilant_notifications_failed_total",
+            &[("kind", &n.kind)],
+            n.failed as f64,
+        );
     }
 
     // -- agents -----------------------------------------------------------------
@@ -480,7 +543,11 @@ pub fn render(input: &MetricsInput) -> String {
         "1 if the remote agent is enabled and checked in within 90 seconds.",
     );
     for (i, a) in input.agents.iter().enumerate() {
-        e.sample("vigilant_agent_up", &agent_labels(i), f64::from(u8::from(a.online)));
+        e.sample(
+            "vigilant_agent_up",
+            &agent_labels(i),
+            f64::from(u8::from(a.online)),
+        );
     }
     e.family(
         "vigilant_agent_last_seen_timestamp_seconds",
@@ -489,7 +556,11 @@ pub fn render(input: &MetricsInput) -> String {
     );
     for (i, a) in input.agents.iter().enumerate() {
         if let Some(ts) = a.last_seen_unix {
-            e.sample("vigilant_agent_last_seen_timestamp_seconds", &agent_labels(i), ts as f64);
+            e.sample(
+                "vigilant_agent_last_seen_timestamp_seconds",
+                &agent_labels(i),
+                ts as f64,
+            );
         }
     }
     e.family(
@@ -541,7 +612,11 @@ pub fn render(input: &MetricsInput) -> String {
             "gauge",
             "Unix time of the last Docker discovery sync attempt.",
         )
-        .sample("vigilant_discovery_last_sync_timestamp_seconds", &[], ts as f64);
+        .sample(
+            "vigilant_discovery_last_sync_timestamp_seconds",
+            &[],
+            ts as f64,
+        );
         e.family(
             "vigilant_discovery_last_sync_success",
             "gauge",
@@ -562,7 +637,10 @@ pub fn render(input: &MetricsInput) -> String {
 // ---------------------------------------------------------------------------
 
 fn unauthorized() -> Response {
-    let mut r = (StatusCode::UNAUTHORIZED, "Unauthorized: send an API token as a Bearer token or basic-auth password\n")
+    let mut r = (
+        StatusCode::UNAUTHORIZED,
+        "Unauthorized: send an API token as a Bearer token or basic-auth password\n",
+    )
         .into_response();
     r.headers_mut().insert(
         header::WWW_AUTHENTICATE,
@@ -574,10 +652,17 @@ fn unauthorized() -> Response {
 async fn metrics(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let settings = state.settings().await?;
     if !settings.metrics_enabled {
-        return Ok((StatusCode::NOT_FOUND, "Prometheus metrics are turned off (Settings → Integrations)\n").into_response());
+        return Ok((
+            StatusCode::NOT_FOUND,
+            "Prometheus metrics are turned off (Settings → Integrations)\n",
+        )
+            .into_response());
     }
     // Any valid API token (read scope is enough), as Bearer or basic-auth password.
-    if super::auth::authenticate_headers(&state, &headers).await?.is_none() {
+    if super::auth::authenticate_headers(&state, &headers)
+        .await?
+        .is_none()
+    {
         return Ok(unauthorized());
     }
     let input = collect(&state).await?;
@@ -598,7 +683,11 @@ fn load_snapshot(conn: &mut Connection) -> rusqlite::Result<DbSnapshot> {
             "SELECT monitor_id, kind, julianday(expires_at) - julianday('now') FROM monitor_expiry",
         )?;
         let rows = stmt.query_map([], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<f64>>(2)?))
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<f64>>(2)?,
+            ))
         })?;
         for row in rows {
             let (id, kind, days) = row?;
@@ -617,7 +706,10 @@ fn load_snapshot(conn: &mut Connection) -> rusqlite::Result<DbSnapshot> {
             .query_row(params![m.id], |r| Ok((r.get(0)?, r.get(1)?)))
             .optional()?;
         let (uptime_24h, uptime_30d) = if m.active {
-            (rollups::uptime_pct(conn, m.id, 1)?, rollups::uptime_pct(conn, m.id, 30)?)
+            (
+                rollups::uptime_pct(conn, m.id, 1)?,
+                rollups::uptime_pct(conn, m.id, 30)?,
+            )
         } else {
             (None, None)
         };
@@ -645,7 +737,10 @@ fn load_snapshot(conn: &mut Connection) -> rusqlite::Result<DbSnapshot> {
             results: results
                 .iter()
                 .filter(|r| r.agent_id == s.agent.id)
-                .filter_map(|r| HeartbeatStatus::parse(&r.status).map(|st| (r.monitor_id, st, r.response_time_ms)))
+                .filter_map(|r| {
+                    HeartbeatStatus::parse(&r.status)
+                        .map(|st| (r.monitor_id, st, r.response_time_ms))
+                })
                 .collect(),
             last_seen_unix: s
                 .agent
@@ -663,7 +758,10 @@ fn load_snapshot(conn: &mut Connection) -> rusqlite::Result<DbSnapshot> {
 }
 
 async fn collect(state: &AppState) -> ApiResult<MetricsInput> {
-    let DbSnapshot { mut monitors, agents } = state.with_conn(load_snapshot).await?;
+    let DbSnapshot {
+        mut monitors,
+        agents,
+    } = state.with_conn(load_snapshot).await?;
     // Prefer the engine's live status (it knows retries/maintenance) over the
     // latest heartbeat row.
     for m in monitors.iter_mut().filter(|m| m.active) {
@@ -731,7 +829,9 @@ pub fn scrape_config(base_url: &str) -> String {
 
 /// `claude mcp add …` for Claude Code, with a placeholder for the token.
 pub fn mcp_claude_code_command(base_url: &str) -> String {
-    format!("claude mcp add --transport http vigilant-vole {base_url}/mcp --header \"Authorization: Bearer vv_YOUR_API_TOKEN\"")
+    format!(
+        "claude mcp add --transport http vigilant-vole {base_url}/mcp --header \"Authorization: Bearer vv_YOUR_API_TOKEN\""
+    )
 }
 
 /// Config for Claude Desktop and other stdio-only clients (the bridge).
@@ -751,7 +851,15 @@ async fn integrations_page(
     let settings = state.settings().await?;
     let base = public_base_url(&settings, &headers);
     let status = discovery::status();
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("nav.integrations"), "settings", "integrations").await;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("nav.integrations"),
+        "settings",
+        "integrations",
+    )
+    .await;
     let page = IntegrationsTemplate {
         ctx,
         discovery_enabled: settings.discovery_enabled,
@@ -785,7 +893,10 @@ async fn save_integrations(
     user.require(Role::Admin)?;
     let host = form.discovery_docker_host.trim().to_string();
     if let Err(msg) = discovery::validate_docker_host(&host) {
-        return Ok((flash(jar, "error", msg), Redirect::to("/settings/integrations")));
+        return Ok((
+            flash(jar, "error", msg),
+            Redirect::to("/settings/integrations"),
+        ));
     }
     let (discovery_enabled, metrics_enabled) = (form.discovery_enabled, form.metrics_enabled);
     state
@@ -803,7 +914,10 @@ async fn save_integrations(
         .await?;
     tracing::info!(discovery_enabled, metrics_enabled, user = %user.username, "integration settings saved");
     discovery::trigger();
-    Ok((flash(jar, "success", crate::i18n::t("integ.saved")), Redirect::to("/settings/integrations")))
+    Ok((
+        flash(jar, "success", crate::i18n::t("integ.saved")),
+        Redirect::to("/settings/integrations"),
+    ))
 }
 
 async fn sync_now(
@@ -820,8 +934,16 @@ async fn sync_now(
         ));
     }
     let message = match discovery::sync_once(&state).await {
-        Ok(summary) => flash(jar, "success", crate::i18n::tf("integ.synced", &[("summary", &summary)])),
-        Err(err) => flash(jar, "error", crate::i18n::tf("integ.sync_failed", &[("err", &err.to_string())])),
+        Ok(summary) => flash(
+            jar,
+            "success",
+            crate::i18n::tf("integ.synced", &[("summary", &summary)]),
+        ),
+        Err(err) => flash(
+            jar,
+            "error",
+            crate::i18n::tf("integ.sync_failed", &[("err", &err.to_string())]),
+        ),
     };
     Ok((message, Redirect::to("/settings/integrations")))
 }
@@ -862,7 +984,10 @@ mod tests {
 
     #[test]
     fn credentials_are_removed_from_targets() {
-        assert_eq!(redact_target("https://bob:secret@example.com/x"), "https://example.com/x");
+        assert_eq!(
+            redact_target("https://bob:secret@example.com/x"),
+            "https://example.com/x"
+        );
         assert_eq!(redact_target("example.com:443"), "example.com:443");
     }
 
@@ -949,20 +1074,32 @@ mod tests {
         assert!(has(
             "monitor_status{monitor_id=\"8\",monitor_name=\"db\",monitor_type=\"tcp\",monitor_url=\"\",monitor_hostname=\"db.local\",monitor_port=\"5432\"} 3"
         ));
-        assert!(has(
-            "monitor_response_time{monitor_id=\"7\",monitor_name=\"Web \\\"main\\\"\",monitor_type=\"http\",monitor_url=\"https://example.com/\",monitor_hostname=\"\",monitor_port=\"\"} 120"
-        ) || has(
-            "monitor_response_time{monitor_id=\"7\",monitor_name=\"Web \\\"main\\\"\",monitor_type=\"http\",monitor_url=\"https://example.com\",monitor_hostname=\"\",monitor_port=\"\"} 120"
-        ));
+        assert!(
+            has(
+                "monitor_response_time{monitor_id=\"7\",monitor_name=\"Web \\\"main\\\"\",monitor_type=\"http\",monitor_url=\"https://example.com/\",monitor_hostname=\"\",monitor_port=\"\"} 120"
+            ) || has(
+                "monitor_response_time{monitor_id=\"7\",monitor_name=\"Web \\\"main\\\"\",monitor_type=\"http\",monitor_url=\"https://example.com\",monitor_hostname=\"\",monitor_port=\"\"} 120"
+            )
+        );
         assert!(text.contains("vigilant_monitor_response_time_seconds{monitor_id=\"7\""));
         assert!(text.contains("monitor_cert_days_remaining{monitor_id=\"7\""));
         assert!(text.contains("} 12\n"));
         assert!(text.contains("window=\"24h\"} 0.995"));
-        assert!(has("vigilant_check_duration_seconds_bucket{monitor_type=\"http\",le=\"+Inf\"} 4"));
-        assert!(has("vigilant_check_duration_seconds_bucket{monitor_type=\"http\",le=\"0.1\"} 1"));
-        assert!(has("vigilant_check_duration_seconds_sum{monitor_type=\"http\"} 1.5"));
-        assert!(has("vigilant_notifications_failed_total{kind=\"discord\"} 1"));
-        assert!(has("vigilant_agent_up{agent_id=\"1\",agent_name=\"fra\",agent_location=\"eu\"} 1"));
+        assert!(has(
+            "vigilant_check_duration_seconds_bucket{monitor_type=\"http\",le=\"+Inf\"} 4"
+        ));
+        assert!(has(
+            "vigilant_check_duration_seconds_bucket{monitor_type=\"http\",le=\"0.1\"} 1"
+        ));
+        assert!(has(
+            "vigilant_check_duration_seconds_sum{monitor_type=\"http\"} 1.5"
+        ));
+        assert!(has(
+            "vigilant_notifications_failed_total{kind=\"discord\"} 1"
+        ));
+        assert!(has(
+            "vigilant_agent_up{agent_id=\"1\",agent_name=\"fra\",agent_location=\"eu\"} 1"
+        ));
         assert!(has(
             "vigilant_agent_monitor_status{agent_id=\"1\",agent_name=\"fra\",agent_location=\"eu\",monitor_id=\"7\"} 0"
         ));
@@ -978,7 +1115,10 @@ mod tests {
         for line in text.lines() {
             if let Some(rest) = line.strip_prefix("# TYPE ") {
                 let name = rest.split(' ').next().unwrap();
-                assert!(declared.insert(name.to_string()), "duplicate TYPE for {name}");
+                assert!(
+                    declared.insert(name.to_string()),
+                    "duplicate TYPE for {name}"
+                );
                 continue;
             }
             if line.starts_with('#') {
@@ -1042,12 +1182,21 @@ mod tests {
             .unwrap();
         assert_eq!(call(None).await.unwrap().status(), StatusCode::UNAUTHORIZED);
         let bad = format!("Bearer {}", tokens::generate());
-        assert_eq!(call(Some(bad)).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            call(Some(bad)).await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
+        );
 
         let resp = call(Some(format!("Bearer {token}"))).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.headers()[header::CONTENT_TYPE], CONTENT_TYPE);
-        let body = String::from_utf8(to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        let body = String::from_utf8(
+            to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
         assert!(body.contains("vigilant_build_info{version="));
         assert!(body.contains("vigilant_monitor_active{monitor_id=\"1\",monitor_name=\"Site\""));
 
@@ -1073,10 +1222,15 @@ mod tests {
             cmd,
             "claude mcp add --transport http vigilant-vole https://status.example.com/mcp --header \"Authorization: Bearer vv_YOUR_API_TOKEN\""
         );
-        let cfg: serde_json::Value = serde_json::from_str(&mcp_desktop_config("https://status.example.com")).expect("valid JSON");
+        let cfg: serde_json::Value =
+            serde_json::from_str(&mcp_desktop_config("https://status.example.com"))
+                .expect("valid JSON");
         let server = &cfg["mcpServers"]["vigilant-vole"];
         assert_eq!(server["command"], "vigilant-vole");
-        assert_eq!(server["args"], serde_json::json!(["mcp", "--url", "https://status.example.com"]));
+        assert_eq!(
+            server["args"],
+            serde_json::json!(["mcp", "--url", "https://status.example.com"])
+        );
         assert_eq!(server["env"]["VV_MCP_TOKEN"], "vv_YOUR_API_TOKEN");
     }
 }

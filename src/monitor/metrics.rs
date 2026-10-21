@@ -88,13 +88,16 @@ pub(crate) fn record_result(monitor_id: i64, status: HeartbeatStatus, latency_ms
     with_registry(|r| {
         r.checks_total += 1;
         r.checks_failed += u64::from(failed);
-        let m = r.monitors.entry(monitor_id).or_insert_with(|| MonitorMetrics {
-            monitor_id,
-            checks_total: 0,
-            checks_failed: 0,
-            last_latency_ms: None,
-            last_status: None,
-        });
+        let m = r
+            .monitors
+            .entry(monitor_id)
+            .or_insert_with(|| MonitorMetrics {
+                monitor_id,
+                checks_total: 0,
+                checks_failed: 0,
+                last_latency_ms: None,
+                last_status: None,
+            });
         m.checks_total += 1;
         m.checks_failed += u64::from(failed);
         m.last_latency_ms = latency_ms;
@@ -154,7 +157,11 @@ pub(crate) fn snapshot() -> EngineMetrics {
             .iter()
             .map(|(t, (buckets, sum, count))| DurationHistogram {
                 monitor_type: t.clone(),
-                buckets: DURATION_BUCKETS.iter().copied().zip(buckets.iter().copied()).collect(),
+                buckets: DURATION_BUCKETS
+                    .iter()
+                    .copied()
+                    .zip(buckets.iter().copied())
+                    .collect(),
                 sum_seconds: *sum,
                 count: *count,
             })
@@ -184,7 +191,11 @@ mod tests {
         record_result(9_001, HeartbeatStatus::Up, Some(12));
         record_result(9_001, HeartbeatStatus::Down, None);
         let snap = snapshot();
-        let m = snap.monitors.iter().find(|m| m.monitor_id == 9_001).unwrap();
+        let m = snap
+            .monitors
+            .iter()
+            .find(|m| m.monitor_id == 9_001)
+            .unwrap();
         assert_eq!((m.checks_total, m.checks_failed), (2, 1));
         assert_eq!(m.last_status, Some(HeartbeatStatus::Down));
         assert!(snap.checks_total >= 2);
@@ -210,7 +221,11 @@ mod tests {
         record_notification("test-kind", false);
         record_notification("test-kind", true);
         let snap = snapshot();
-        let n = snap.notifications.iter().find(|n| n.kind == "test-kind").unwrap();
+        let n = snap
+            .notifications
+            .iter()
+            .find(|n| n.kind == "test-kind")
+            .unwrap();
         assert_eq!((n.sent, n.failed), (2, 1));
     }
 

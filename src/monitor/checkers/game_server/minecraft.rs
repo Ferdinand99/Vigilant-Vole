@@ -59,9 +59,13 @@ async fn read_varint_after<R: AsyncRead + Unpin>(r: &mut R, first: u8) -> Result
 
 fn read_error(e: std::io::Error) -> String {
     if e.kind() == std::io::ErrorKind::UnexpectedEof {
-        "The server closed the connection without a status reply (not a Minecraft Java server?)".into()
+        "The server closed the connection without a status reply (not a Minecraft Java server?)"
+            .into()
     } else {
-        format!("Reading the status reply failed: {}", util::tidy_io_error(&e))
+        format!(
+            "Reading the status reply failed: {}",
+            util::tidy_io_error(&e)
+        )
     }
 }
 
@@ -73,7 +77,9 @@ async fn read_packet<R: AsyncRead + Unpin>(r: &mut R) -> Result<Vec<u8>, String>
     }
     let len = read_varint_after(r, first).await? as usize;
     if len == 0 || len > MAX_PACKET {
-        return Err(format!("Not a Minecraft status reply (packet length {len})"));
+        return Err(format!(
+            "Not a Minecraft status reply (packet length {len})"
+        ));
     }
     let mut body = vec![0u8; len];
     r.read_exact(&mut body).await.map_err(read_error)?;
@@ -109,7 +115,8 @@ pub fn status_json(body: &[u8]) -> Result<&[u8], String> {
         return Err(format!("Not a Minecraft status reply (packet 0x{id:02X})"));
     }
     let len = take_varint(&mut rest)? as usize;
-    rest.get(..len).ok_or_else(|| "Truncated Minecraft status reply".to_string())
+    rest.get(..len)
+        .ok_or_else(|| "Truncated Minecraft status reply".to_string())
 }
 
 /// Plain text of a chat component: `text`, then `extra` children in order
@@ -141,22 +148,35 @@ pub fn chat_text(v: &Value) -> String {
 
 /// Version, players and MOTD from the status JSON.
 pub fn parse_status(json: &[u8]) -> Result<Status, String> {
-    let v: Value = serde_json::from_slice(json).map_err(|e| format!("Unreadable Minecraft status JSON: {e}"))?;
+    let v: Value = serde_json::from_slice(json)
+        .map_err(|e| format!("Unreadable Minecraft status JSON: {e}"))?;
     if !v.is_object() {
         return Err("Unreadable Minecraft status JSON: not an object".into());
     }
-    let version = v["version"]["name"].as_str().map(strip_section_codes).unwrap_or_default();
+    let version = v["version"]["name"]
+        .as_str()
+        .map(strip_section_codes)
+        .unwrap_or_default();
     let product = match version.chars().next() {
         None => "Minecraft".to_string(),
         Some(c) if c.is_ascii_digit() => format!("Minecraft {version}"),
         Some(_) => version,
     };
-    let count = |key: &str| v["players"][key].as_u64().or_else(|| v["players"][key].as_i64().map(|n| n.max(0) as u64));
+    let count = |key: &str| {
+        v["players"][key]
+            .as_u64()
+            .or_else(|| v["players"][key].as_i64().map(|n| n.max(0) as u64))
+    };
     let players = match (count("online"), count("max")) {
         (Some(online), Some(max)) => Some((online, max)),
         _ => None,
     };
-    Ok(Status { product, players, name: chat_text(&v["description"]), detail: None })
+    Ok(Status {
+        product,
+        players,
+        name: chat_text(&v["description"]),
+        detail: None,
+    })
 }
 
 /// An SRV answer: priority, weight, target host, port.
@@ -178,7 +198,10 @@ async fn srv_lookup(host: &str, timeout: Duration) -> Option<(String, u16)> {
 
     let resolver = crate::monitor::checkers::dns::build_resolver(None, timeout).ok()?;
     let name = Name::from_utf8(format!("_minecraft._tcp.{}.", host.trim_end_matches('.'))).ok()?;
-    let lookup = tokio::time::timeout(timeout, resolver.lookup(name, RecordType::SRV)).await.ok()?.ok()?;
+    let lookup = tokio::time::timeout(timeout, resolver.lookup(name, RecordType::SRV))
+        .await
+        .ok()?
+        .ok()?;
     let records: Vec<SrvRecord> = lookup
         .answers()
         .iter()
@@ -206,12 +229,22 @@ pub async fn query(target: &Target, timeout: Duration) -> Result<(Status, i64), 
     let (host, port, via_srv) = address(target, timeout).await;
     let (mut tcp, _) = conn::tcp(&host, port).await?;
     let start = Instant::now();
-    tcp.write_all(&status_request(&host, port)).await.map_err(|e| format!("Sending the status request failed: {}", util::tidy_io_error(&e)))?;
+    tcp.write_all(&status_request(&host, port))
+        .await
+        .map_err(|e| {
+            format!(
+                "Sending the status request failed: {}",
+                util::tidy_io_error(&e)
+            )
+        })?;
     let body = read_packet(&mut tcp).await?;
     let status_ms = util::elapsed_ms(start);
     let mut status = parse_status(status_json(&body)?)?;
     if via_srv {
-        status.detail = Some(format!("via SRV {}", util::truncate(&format!("{host}:{port}"), 60)));
+        status.detail = Some(format!(
+            "via SRV {}",
+            util::truncate(&format!("{host}:{port}"), 60)
+        ));
     }
 
     // Ping/pong: the latency the game shows. Some proxies close after the
@@ -225,6 +258,10 @@ pub async fn query(target: &Target, timeout: Duration) -> Result<(Status, i64), 
         let body = read_packet(&mut tcp).await.ok()?;
         (body.len() == 9 && body[0] == 0x01).then(|| util::elapsed_ms(ping_start))
     };
-    let rtt = tokio::time::timeout(timeout / 3, pong).await.ok().flatten().unwrap_or(status_ms);
+    let rtt = tokio::time::timeout(timeout / 3, pong)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(status_ms);
     Ok((status, rtt))
 }

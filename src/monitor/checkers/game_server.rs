@@ -49,7 +49,13 @@ pub enum Game {
 }
 
 impl Game {
-    pub const ALL: [Game; 5] = [Game::Minecraft, Game::Bedrock, Game::Satisfactory, Game::FiveM, Game::Mumble];
+    pub const ALL: [Game; 5] = [
+        Game::Minecraft,
+        Game::Bedrock,
+        Game::Satisfactory,
+        Game::FiveM,
+        Game::Mumble,
+    ];
 
     /// The target's scheme.
     pub fn scheme(self) -> &'static str {
@@ -78,7 +84,9 @@ impl Game {
     }
 
     pub fn from_scheme(scheme: &str) -> Option<Game> {
-        Game::ALL.into_iter().find(|g| g.scheme().eq_ignore_ascii_case(scheme))
+        Game::ALL
+            .into_iter()
+            .find(|g| g.scheme().eq_ignore_ascii_case(scheme))
     }
 }
 
@@ -93,7 +101,10 @@ pub struct Target {
 }
 
 fn schemes_hint() -> String {
-    let all: Vec<String> = Game::ALL.iter().map(|g| format!("{}://", g.scheme())).collect();
+    let all: Vec<String> = Game::ALL
+        .iter()
+        .map(|g| format!("{}://", g.scheme()))
+        .collect();
     all.join(", ")
 }
 
@@ -103,26 +114,56 @@ pub fn parse_target(target: &str) -> Result<Target, String> {
         return Err("Target is empty".into());
     }
     let Some((name, _)) = t.split_once("://") else {
-        return Err(format!("Start the address with the game: {}", schemes_hint()));
+        return Err(format!(
+            "Start the address with the game: {}",
+            schemes_hint()
+        ));
     };
-    let game = Game::from_scheme(name)
-        .ok_or_else(|| format!("Unsupported game \"{}://\" (use {}; Valve/Steam games use the Steam type)", util::truncate(name, 20), schemes_hint()))?;
+    let game = Game::from_scheme(name).ok_or_else(|| {
+        format!(
+            "Unsupported game \"{}://\" (use {}; Valve/Steam games use the Steam type)",
+            util::truncate(name, 20),
+            schemes_hint()
+        )
+    })?;
     // Port 0 marks "not given", so the game's own default (or SRV) applies.
-    let scheme = Scheme { plain: std::slice::from_ref(&SCHEMES[game as usize]), tls: &[], port: 0, tls_port: 0 };
+    let scheme = Scheme {
+        plain: std::slice::from_ref(&SCHEMES[game as usize]),
+        tls: &[],
+        port: 0,
+        tls_port: 0,
+    };
     let plain = format!("{}{}", game.scheme(), &t[name.len()..]);
     let ep = super::endpoint::parse_with(&scheme, &plain)?;
     if !ep.path.is_empty() || !ep.query.is_empty() {
         return Err("A game server address has no path or options: game://host[:port]".into());
     }
     let explicit_port = ep.port != 0;
-    Ok(Target { game, host: ep.host, port: if explicit_port { ep.port } else { game.default_port() }, explicit_port })
+    Ok(Target {
+        game,
+        host: ep.host,
+        port: if explicit_port {
+            ep.port
+        } else {
+            game.default_port()
+        },
+        explicit_port,
+    })
 }
 
 /// The target as a service [`Endpoint`] (for the form's "same server" test
 /// and the metrics labels).
 pub fn endpoint(target: &str) -> Result<Endpoint, String> {
     let t = parse_target(target)?;
-    Ok(Endpoint { tls: false, host: t.host, port: t.port, path: String::new(), query: Vec::new(), more_hosts: Vec::new(), srv: false })
+    Ok(Endpoint {
+        tls: false,
+        host: t.host,
+        port: t.port,
+        path: String::new(),
+        query: Vec::new(),
+        more_hosts: Vec::new(),
+        srv: false,
+    })
 }
 
 /// What a server said about itself.
@@ -145,7 +186,11 @@ pub fn describe(game: Game, s: &Status) -> String {
         parts.push(detail.to_string());
     }
     if let Some((online, max)) = s.players {
-        let noun = if game == Game::Mumble { "users" } else { "players" };
+        let noun = if game == Game::Mumble {
+            "users"
+        } else {
+            "players"
+        };
         parts.push(format!("{online}/{max} {noun}"));
     }
     if !s.name.is_empty() {
@@ -182,7 +227,14 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     let result = match target.game {
         Game::Minecraft => minecraft::query(&target, timeout).await,
         Game::Bedrock => bedrock::query(&target, timeout).await,
-        Game::Satisfactory => satisfactory::query(&target, monitor.secret.as_deref().filter(|s| !s.trim().is_empty()), timeout).await,
+        Game::Satisfactory => {
+            satisfactory::query(
+                &target,
+                monitor.secret.as_deref().filter(|s| !s.trim().is_empty()),
+                timeout,
+            )
+            .await
+        }
         Game::FiveM => fivem::query(&target, timeout).await,
         Game::Mumble => mumble::query(&target, timeout).await,
     };
@@ -192,12 +244,18 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     };
     let message = describe(target.game, &status);
     match monitor.keyword.as_deref().filter(|k| !k.is_empty()) {
-        Some(keyword) if status.name.contains(keyword) == monitor.keyword_invert => CheckOutcome::down(format!(
-            "Server name {} \"{}\": {message}",
-            if monitor.keyword_invert { "contains" } else { "doesn't contain" },
-            util::truncate(keyword, 40)
-        ))
-        .with_response_time(rtt),
+        Some(keyword) if status.name.contains(keyword) == monitor.keyword_invert => {
+            CheckOutcome::down(format!(
+                "Server name {} \"{}\": {message}",
+                if monitor.keyword_invert {
+                    "contains"
+                } else {
+                    "doesn't contain"
+                },
+                util::truncate(keyword, 40)
+            ))
+            .with_response_time(rtt)
+        }
         _ => CheckOutcome::up(rtt).with_message(message),
     }
 }
@@ -220,16 +278,34 @@ enum Verdict<T> {
 /// accepts, sending again every [`RESEND_AFTER`] (datagrams get lost) until
 /// most of `timeout` is used. Returns the reply and the round trip since
 /// the last send, in milliseconds.
-async fn udp_exchange<T>(host: &str, port: u16, request: &[u8], timeout: Duration, judge: impl Fn(&[u8]) -> Verdict<T>) -> Result<(T, i64), String> {
+async fn udp_exchange<T>(
+    host: &str,
+    port: u16,
+    request: &[u8],
+    timeout: Duration,
+    judge: impl Fn(&[u8]) -> Verdict<T>,
+) -> Result<(T, i64), String> {
     let addr = util::resolve(host, port).await?;
-    let bind = if addr.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
-    let socket = UdpSocket::bind(bind).await.map_err(|e| format!("Could not open UDP socket: {}", util::tidy_io_error(&e)))?;
-    socket.connect(addr).await.map_err(|e| format!("Could not reach {addr}: {}", util::tidy_io_error(&e)))?;
+    let bind = if addr.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    };
+    let socket = UdpSocket::bind(bind)
+        .await
+        .map_err(|e| format!("Could not open UDP socket: {}", util::tidy_io_error(&e)))?;
+    socket
+        .connect(addr)
+        .await
+        .map_err(|e| format!("Could not reach {addr}: {}", util::tidy_io_error(&e)))?;
     let deadline = Instant::now() + timeout.mul_f32(0.9);
     let mut buf = vec![0u8; 2048];
     loop {
         let sent = Instant::now();
-        socket.send(request).await.map_err(|e| format!("Could not send query: {}", util::tidy_io_error(&e)))?;
+        socket
+            .send(request)
+            .await
+            .map_err(|e| format!("Could not send query: {}", util::tidy_io_error(&e)))?;
         let resend_at = (sent + RESEND_AFTER).min(deadline);
         loop {
             let wait = resend_at.saturating_duration_since(Instant::now());
@@ -238,18 +314,29 @@ async fn udp_exchange<T>(host: &str, port: u16, request: &[u8], timeout: Duratio
                     Verdict::Ignore => continue,
                     Verdict::Done(result) => return result.map(|v| (v, util::elapsed_ms(sent))),
                 },
-                Ok(Err(e)) => return Err(format!("No reply from {addr}: {}", util::udp_recv_error(&e))),
+                Ok(Err(e)) => {
+                    return Err(format!(
+                        "No reply from {addr}: {}",
+                        util::udp_recv_error(&e)
+                    ));
+                }
                 Err(_) => break,
             }
         }
         if Instant::now() >= deadline {
-            return Err(format!("No reply from {addr} within {}", util::format_secs(timeout)));
+            return Err(format!(
+                "No reply from {addr} within {}",
+                util::format_secs(timeout)
+            ));
         }
     }
 }
 
 /// A 64-bit value that differs between checks (for nonces/cookies).
 fn nonce() -> u64 {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
     (nanos as u64) ^ 0x5654_564f_4c45_2021
 }

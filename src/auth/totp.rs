@@ -31,12 +31,17 @@ pub fn generate_secret() -> String {
 fn label_part(s: &str) -> String {
     let cleaned: String = s.chars().map(|c| if c == ':' { '-' } else { c }).collect();
     let trimmed = cleaned.trim();
-    if trimmed.is_empty() { "Vigilant Vole".into() } else { trimmed.to_string() }
+    if trimmed.is_empty() {
+        "Vigilant Vole".into()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Builds the TOTP for a stored base32 secret.
 pub fn build(secret_base32: &str, account: &str, issuer: &str) -> Result<Totp, ApiError> {
-    let secret = Secret::try_from_base32(secret_base32).map_err(|e| ApiError::internal(format!("bad totp secret: {e:?}")))?;
+    let secret = Secret::try_from_base32(secret_base32)
+        .map_err(|e| ApiError::internal(format!("bad totp secret: {e:?}")))?;
     Builder::new()
         .with_algorithm(Algorithm::SHA1)
         .with_digits(DIGITS as u8)
@@ -66,7 +71,10 @@ pub fn qr_data_uri(data: &str) -> Result<String, ApiError> {
         .dark_color(svg::Color("#000"))
         .light_color(svg::Color("#fff"))
         .build();
-    Ok(format!("data:image/svg+xml;base64,{}", STANDARD.encode(svg)))
+    Ok(format!(
+        "data:image/svg+xml;base64,{}",
+        STANDARD.encode(svg)
+    ))
 }
 
 /// Groups a base32 secret in fours for manual entry.
@@ -81,7 +89,10 @@ pub fn format_secret(secret: &str) -> String {
 
 /// Strips spaces/dashes from a typed code; `None` unless exactly 6 digits.
 pub fn normalize_code(input: &str) -> Option<String> {
-    let digits: String = input.chars().filter(|c| !c.is_whitespace() && *c != '-').collect();
+    let digits: String = input
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
     (digits.len() == DIGITS && digits.bytes().all(|b| b.is_ascii_digit())).then_some(digits)
 }
 
@@ -131,7 +142,9 @@ fn random_recovery_code() -> String {
                 break;
             }
             if usize::from(b) < limit {
-                out.push(char::from(RECOVERY_ALPHABET[usize::from(b) % RECOVERY_ALPHABET.len()]));
+                out.push(char::from(
+                    RECOVERY_ALPHABET[usize::from(b) % RECOVERY_ALPHABET.len()],
+                ));
             }
         }
     }
@@ -140,7 +153,9 @@ fn random_recovery_code() -> String {
 
 /// Ten fresh codes like `k7m2p-x9q4r` (≈50 bits each). Shown once.
 pub fn generate_recovery_codes() -> Vec<String> {
-    (0..RECOVERY_CODE_COUNT).map(|_| random_recovery_code()).collect()
+    (0..RECOVERY_CODE_COUNT)
+        .map(|_| random_recovery_code())
+        .collect()
 }
 
 /// Canonical form for hashing/comparison: lowercase, no separators.
@@ -234,7 +249,10 @@ mod tests {
     fn previous_step_code_is_rejected_after_a_newer_one_was_used() {
         let t = totp();
         let prev = code_at(&t, NOW - STEP_SECS);
-        assert_eq!(match_step(&t, &prev, NOW, Some((NOW / STEP_SECS) as i64)), None);
+        assert_eq!(
+            match_step(&t, &prev, NOW, Some((NOW / STEP_SECS) as i64)),
+            None
+        );
     }
 
     #[test]
@@ -261,7 +279,11 @@ mod tests {
 
     #[test]
     fn qr_is_an_svg_data_uri() {
-        assert!(qr_data_uri("otpauth://totp/x").unwrap().starts_with("data:image/svg+xml;base64,"));
+        assert!(
+            qr_data_uri("otpauth://totp/x")
+                .unwrap()
+                .starts_with("data:image/svg+xml;base64,")
+        );
     }
 
     #[test]
@@ -292,7 +314,10 @@ mod tests {
     fn recovery_code_matches_its_hash_in_any_format() {
         let codes = vec!["abcde-fghjk".to_string(), "mnpqr-stuvw".to_string()];
         let hashes = hash_recovery_codes(&codes).unwrap();
-        assert_eq!(find_recovery_code(&hashes, "MNPQR STUVW"), Some(hashes[1].clone()));
+        assert_eq!(
+            find_recovery_code(&hashes, "MNPQR STUVW"),
+            Some(hashes[1].clone())
+        );
         assert_eq!(find_recovery_code(&hashes, "zzzzz-zzzzz"), None);
     }
 

@@ -76,7 +76,8 @@ pub struct TokenOwner {
     pub needs_touch: bool,
 }
 
-const TOKEN_SELECT: &str = "SELECT t.id, t.user_id, u.username, t.name, t.prefix, t.scope, t.created_at,
+const TOKEN_SELECT: &str =
+    "SELECT t.id, t.user_id, u.username, t.name, t.prefix, t.scope, t.created_at,
         t.last_used_at, t.expires_at,
         (t.expires_at IS NOT NULL AND t.expires_at <= datetime('now')) AS expired
      FROM api_tokens t JOIN users u ON u.id = t.user_id";
@@ -112,13 +113,22 @@ pub fn insert(
         "INSERT INTO api_tokens (user_id, name, prefix, token_hash, scope, expires_at)
          VALUES (?1, ?2, ?3, ?4, ?5,
                  CASE WHEN ?6 IS NULL THEN NULL ELSE datetime('now', '+' || ?6 || ' days') END)",
-        params![user_id, name, prefix, token_hash, scope.as_str(), expires_in_days],
+        params![
+            user_id,
+            name,
+            prefix,
+            token_hash,
+            scope.as_str(),
+            expires_in_days
+        ],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
 pub fn list_for_user(conn: &Connection, user_id: i64) -> rusqlite::Result<Vec<ApiToken>> {
-    let mut stmt = conn.prepare(&format!("{TOKEN_SELECT} WHERE t.user_id = ?1 ORDER BY t.created_at DESC, t.id DESC"))?;
+    let mut stmt = conn.prepare(&format!(
+        "{TOKEN_SELECT} WHERE t.user_id = ?1 ORDER BY t.created_at DESC, t.id DESC"
+    ))?;
     let rows = stmt.query_map(params![user_id], row_to_token)?;
     rows.collect()
 }
@@ -132,8 +142,12 @@ pub fn list_all(conn: &Connection) -> rusqlite::Result<Vec<ApiToken>> {
 }
 
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<ApiToken>> {
-    conn.query_row(&format!("{TOKEN_SELECT} WHERE t.id = ?1"), params![id], row_to_token)
-        .optional()
+    conn.query_row(
+        &format!("{TOKEN_SELECT} WHERE t.id = ?1"),
+        params![id],
+        row_to_token,
+    )
+    .optional()
 }
 
 pub fn delete(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
@@ -142,7 +156,10 @@ pub fn delete(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
 
 /// Resolves a token hash to an unexpired token of an active user.
 /// `needs_touch` is set when `last_used_at` is older than a minute (throttles writes).
-pub fn find_valid_by_hash(conn: &Connection, token_hash: &str) -> rusqlite::Result<Option<TokenOwner>> {
+pub fn find_valid_by_hash(
+    conn: &Connection,
+    token_hash: &str,
+) -> rusqlite::Result<Option<TokenOwner>> {
     conn.query_row(
         "SELECT t.id, t.scope, u.id, u.username, u.display_name, u.role,
                 (t.last_used_at IS NULL OR t.last_used_at < datetime('now', '-60 seconds'))
@@ -202,15 +219,30 @@ mod tests {
         let (conn, uid) = setup();
         insert(&conn, uid, "ci", "vv_abc", "hash1", TokenScope::Write, None).unwrap();
         let owner = find_valid_by_hash(&conn, "hash1").unwrap().unwrap();
-        assert_eq!((owner.user_id, owner.scope, owner.role, owner.needs_touch), (uid, TokenScope::Write, Role::Editor, true));
+        assert_eq!(
+            (owner.user_id, owner.scope, owner.role, owner.needs_touch),
+            (uid, TokenScope::Write, Role::Editor, true)
+        );
     }
 
     #[test]
     fn expired_token_is_rejected() {
         let (conn, uid) = setup();
-        let id = insert(&conn, uid, "ci", "vv_abc", "hash1", TokenScope::Read, Some(30)).unwrap();
-        conn.execute("UPDATE api_tokens SET expires_at = datetime('now', '-1 second') WHERE id = ?1", [id])
-            .unwrap();
+        let id = insert(
+            &conn,
+            uid,
+            "ci",
+            "vv_abc",
+            "hash1",
+            TokenScope::Read,
+            Some(30),
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE api_tokens SET expires_at = datetime('now', '-1 second') WHERE id = ?1",
+            [id],
+        )
+        .unwrap();
         assert!(find_valid_by_hash(&conn, "hash1").unwrap().is_none());
         assert!(get(&conn, id).unwrap().unwrap().expired);
     }
@@ -219,7 +251,8 @@ mod tests {
     fn disabled_owner_invalidates_token() {
         let (conn, uid) = setup();
         insert(&conn, uid, "ci", "vv_abc", "hash1", TokenScope::Read, None).unwrap();
-        conn.execute("UPDATE users SET active = 0 WHERE id = ?1", [uid]).unwrap();
+        conn.execute("UPDATE users SET active = 0 WHERE id = ?1", [uid])
+            .unwrap();
         assert!(find_valid_by_hash(&conn, "hash1").unwrap().is_none());
     }
 
@@ -228,7 +261,12 @@ mod tests {
         let (conn, uid) = setup();
         let id = insert(&conn, uid, "ci", "vv_abc", "hash1", TokenScope::Read, None).unwrap();
         touch(&conn, id).unwrap();
-        assert!(!find_valid_by_hash(&conn, "hash1").unwrap().unwrap().needs_touch);
+        assert!(
+            !find_valid_by_hash(&conn, "hash1")
+                .unwrap()
+                .unwrap()
+                .needs_touch
+        );
     }
 
     #[test]

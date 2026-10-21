@@ -11,22 +11,39 @@ use serde_json::{Map, Value, json};
 use super::{Row, b, get, raw, s};
 
 /// `(our type, target)`; the other settings go into `opts`.
-pub(super) fn map(row: &Row, opts: &mut Map<String, Value>, warnings: &mut Vec<String>) -> Result<(&'static str, String), String> {
+pub(super) fn map(
+    row: &Row,
+    opts: &mut Map<String, Value>,
+    warnings: &mut Vec<String>,
+) -> Result<(&'static str, String), String> {
     let url = s(row, &["grpc_url", "grpcUrl"]).ok_or("It has no gRPC server address.")?;
     let tls = b(row, &["grpc_enable_tls", "grpcEnableTls"]).unwrap_or(false);
     // Kuma's address is `host:port`; a scheme in front decides nothing there.
-    let address = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest).trim_end_matches('/');
-    let service = s(row, &["grpc_service_name", "grpcServiceName"]).ok_or("It names no gRPC service.")?;
+    let address = url
+        .split_once("://")
+        .map_or(url.as_str(), |(_, rest)| rest)
+        .trim_end_matches('/');
+    let service =
+        s(row, &["grpc_service_name", "grpcServiceName"]).ok_or("It names no gRPC service.")?;
     let method = s(row, &["grpc_method", "grpcMethod"]).ok_or("It names no gRPC method.")?;
     let scheme = if tls { "grpcs" } else { "grpc" };
-    let target = format!("{scheme}://{address}/{}/{}", service.trim().trim_matches('.'), method.trim());
+    let target = format!(
+        "{scheme}://{address}/{}/{}",
+        service.trim().trim_matches('.'),
+        method.trim()
+    );
 
-    if let Some(proto) = raw(row, &["grpc_protobuf", "grpcProtobuf"]).filter(|p| !p.trim().is_empty()) {
+    if let Some(proto) =
+        raw(row, &["grpc_protobuf", "grpcProtobuf"]).filter(|p| !p.trim().is_empty())
+    {
         opts.insert("grpc_proto".into(), json!(proto));
     } else {
         warnings.push("it has no .proto, so the server is asked for its schema (server reflection must be on).".into());
     }
-    if let Some(body) = get(row, &["grpc_body", "grpcBody"]).and_then(Value::as_str).filter(|b| !b.trim().is_empty()) {
+    if let Some(body) = get(row, &["grpc_body", "grpcBody"])
+        .and_then(Value::as_str)
+        .filter(|b| !b.trim().is_empty())
+    {
         opts.insert("http_body".into(), json!(body));
         opts.insert("http_body_encoding".into(), json!("json"));
     }
@@ -34,13 +51,18 @@ pub(super) fn map(row: &Row, opts: &mut Map<String, Value>, warnings: &mut Vec<S
         match serde_json::from_str::<Value>(&meta) {
             Ok(Value::Object(map)) if !map.is_empty() => {
                 opts.insert("http_headers".into(), Value::Object(map));
-                warnings.push("its metadata is now sent with the call (Uptime Kuma never sent it).".into());
+                warnings.push(
+                    "its metadata is now sent with the call (Uptime Kuma never sent it).".into(),
+                );
             }
             Ok(Value::Object(_)) => {}
             _ => warnings.push("its metadata isn’t a JSON object and was left out.".into()),
         }
     }
-    if let Some(keyword) = get(row, &["keyword"]).and_then(Value::as_str).filter(|k| !k.is_empty()) {
+    if let Some(keyword) = get(row, &["keyword"])
+        .and_then(Value::as_str)
+        .filter(|k| !k.is_empty())
+    {
         opts.insert("keyword".into(), json!(keyword));
     }
     if b(row, &["invert_keyword", "invertKeyword"]).unwrap_or(false) {
@@ -71,16 +93,42 @@ mod tests {
         }"#;
         let import = read_json(json).unwrap();
         let monitors = import.doc.monitors.as_ref().unwrap();
-        let doc = |name: &str| monitors.iter().find(|m| m.name == name).unwrap_or_else(|| panic!("{name} missing"));
+        let doc = |name: &str| {
+            monitors
+                .iter()
+                .find(|m| m.name == name)
+                .unwrap_or_else(|| panic!("{name} missing"))
+        };
         let greeter = doc("Greeter");
-        assert_eq!((greeter.monitor_type.as_str(), greeter.target.as_str()), ("grpc_keyword", "grpcs://api.local:50051/demo.v1.Greeter/sayHello"));
+        assert_eq!(
+            (greeter.monitor_type.as_str(), greeter.target.as_str()),
+            (
+                "grpc_keyword",
+                "grpcs://api.local:50051/demo.v1.Greeter/sayHello"
+            )
+        );
         let o = &greeter.options;
-        assert!(o["grpc_proto"].as_str().unwrap().contains("service Greeter"));
-        assert_eq!((o["http_body"].as_str(), o["keyword"].as_str(), o["keyword_invert"].as_bool()), (Some("{\"name\": \"vole\"}"), Some("Hello"), Some(true)));
+        assert!(
+            o["grpc_proto"]
+                .as_str()
+                .unwrap()
+                .contains("service Greeter")
+        );
+        assert_eq!(
+            (
+                o["http_body"].as_str(),
+                o["keyword"].as_str(),
+                o["keyword_invert"].as_bool()
+            ),
+            (Some("{\"name\": \"vole\"}"), Some("Hello"), Some(true))
+        );
         assert_eq!(o["http_headers"]["x-team"], "ops");
         let plain = doc("Plain");
         assert_eq!(plain.target, "grpc://10.0.0.5:9000/Health/check");
-        assert!(!plain.options.contains_key("http_headers") && !plain.options.contains_key("grpc_proto"));
+        assert!(
+            !plain.options.contains_key("http_headers")
+                && !plain.options.contains_key("grpc_proto")
+        );
         assert!(!monitors.iter().any(|m| m.name == "Broken"));
         let notes = format!("{:?} {:?}", import.warnings, import.skipped);
         assert!(notes.contains("CANCELLED"), "{notes}");

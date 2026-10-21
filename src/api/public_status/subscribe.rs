@@ -60,7 +60,10 @@ impl SubscribeTemplate {
         let mut resp = (status, HtmlTemplate(self)).into_response();
         resp.extensions_mut().insert(PublicPage);
         let h = resp.headers_mut();
-        h.insert(header::CACHE_CONTROL, header::HeaderValue::from_static("no-store"));
+        h.insert(
+            header::CACHE_CONTROL,
+            header::HeaderValue::from_static("no-store"),
+        );
         h.insert("x-robots-tag", header::HeaderValue::from_static("noindex"));
         resp
     }
@@ -75,7 +78,11 @@ async fn open_page(
     let (view, access) = super::resolve(state, slug, jar).await?;
     let page = view.page;
     if !access.allows(&page) {
-        return Ok(Err(access::locked_response(&page, None, StatusCode::UNAUTHORIZED)));
+        return Ok(Err(access::locked_response(
+            &page,
+            None,
+            StatusCode::UNAUTHORIZED,
+        )));
     }
     let id = page.id;
     let settings = state.with_conn(move |c| db::settings(c, id)).await?;
@@ -91,7 +98,9 @@ fn offers(settings: &Settings, mail_ok: bool) -> (bool, bool) {
 
 /// Whether the page's mail channel is a usable email channel.
 async fn mail_ok(state: &AppState, settings: &Settings) -> bool {
-    let Some(id) = settings.channel_id else { return false };
+    let Some(id) = settings.channel_id else {
+        return false;
+    };
     state
         .with_conn(move |c| crate::db::notifications::get_channel(c, id))
         .await
@@ -108,12 +117,18 @@ async fn form_page(state: &AppState, page: StatusPage, settings: &Settings) -> S
     tpl
 }
 
-pub async fn form(State(state): State<AppState>, jar: SignedCookieJar, Path(slug): Path<String>) -> ApiResult<Response> {
+pub async fn form(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
     let (page, settings) = match open_page(&state, &jar, slug).await? {
         Ok(v) => v,
         Err(resp) => return Ok(resp),
     };
-    Ok(form_page(&state, page, &settings).await.respond(StatusCode::OK))
+    Ok(form_page(&state, page, &settings)
+        .await
+        .respond(StatusCode::OK))
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,8 +159,16 @@ fn base_url_for(configured: &str, headers: &HeaderMap) -> String {
         .and_then(|h| h.split(',').next())
         .map(str::trim)
         .unwrap_or_default();
-    let scheme = if session::is_https(headers, trust) { "https" } else { "http" };
-    if host.is_empty() { String::new() } else { format!("{scheme}://{host}") }
+    let scheme = if session::is_https(headers, trust) {
+        "https"
+    } else {
+        "http"
+    };
+    if host.is_empty() {
+        String::new()
+    } else {
+        format!("{scheme}://{host}")
+    }
 }
 
 pub async fn sign_up(
@@ -165,10 +188,15 @@ pub async fn sign_up(
     again.email = email_on;
     again.webhook = webhook_on;
 
-    let ip = session::client_ip(&headers, peer, session::trust_proxy()).map_or_else(|| "unknown".to_string(), |ip| ip.to_string());
+    let ip = session::client_ip(&headers, peer, session::trust_proxy())
+        .map_or_else(|| "unknown".to_string(), |ip| ip.to_string());
     // The data directory tells app instances apart (tests run several).
     let scope = state.config.data_dir.display();
-    if !send::allow(&format!("sub-ip:{scope}:{ip}"), 20, Duration::from_secs(600)) {
+    if !send::allow(
+        &format!("sub-ip:{scope}:{ip}"),
+        20,
+        Duration::from_secs(600),
+    ) {
         again.error = Some(crate::i18n::t("sub.err_rate").into());
         return Ok(again.respond(StatusCode::TOO_MANY_REQUESTS));
     }
@@ -196,18 +224,36 @@ pub async fn sign_up(
         }
         ("webhook", hook)
     } else {
-        again.error = Some(crate::i18n::t(if email_on { "sub.err_email" } else { "sub.err_webhook" }).into());
+        again.error = Some(
+            crate::i18n::t(if email_on {
+                "sub.err_email"
+            } else {
+                "sub.err_webhook"
+            })
+            .into(),
+        );
         return Ok(again.respond(StatusCode::UNPROCESSABLE_ENTITY));
     };
 
     // One address can't be used to spam someone with confirmation mails.
-    if !send::allow(&format!("sub-target:{scope}:{}:{kind}:{target}", page.id), 3, Duration::from_secs(3600)) {
+    if !send::allow(
+        &format!("sub-target:{scope}:{}:{kind}:{target}", page.id),
+        3,
+        Duration::from_secs(3600),
+    ) {
         return Ok(SubscribeTemplate::new(page, "sent").respond(StatusCode::OK));
     }
 
     let base = base_url_for(&send::site_base_url(&state).await, &headers);
-    let (page_id, lang, t, b) = (page.id, crate::i18n::current().code(), target.clone(), base.clone());
-    let added = state.with_conn(move |c| db::add(c, page_id, kind, &t, lang, &b)).await?;
+    let (page_id, lang, t, b) = (
+        page.id,
+        crate::i18n::current().code(),
+        target.clone(),
+        base.clone(),
+    );
+    let added = state
+        .with_conn(move |c| db::add(c, page_id, kind, &t, lang, &b))
+        .await?;
     if let Added::Pending(token) = added {
         let sub = state
             .with_conn(move |c| db::by_token(c, &token))
@@ -226,14 +272,22 @@ pub async fn sign_up(
 }
 
 /// Looks the token up and the page it belongs to.
-async fn by_token(state: &AppState, slug: String, token: String) -> ApiResult<Option<(StatusPage, db::Subscriber)>> {
+async fn by_token(
+    state: &AppState,
+    slug: String,
+    token: String,
+) -> ApiResult<Option<(StatusPage, db::Subscriber)>> {
     if !crate::auth::tokens::is_well_formed(&token) {
         return Ok(None);
     }
     state
         .with_conn(move |c| {
-            let Some(sub) = db::by_token(c, &token)? else { return Ok(None) };
-            let Some(page) = crate::db::status_pages::get(c, sub.page_id)? else { return Ok(None) };
+            let Some(sub) = db::by_token(c, &token)? else {
+                return Ok(None);
+            };
+            let Some(page) = crate::db::status_pages::get(c, sub.page_id)? else {
+                return Ok(None);
+            };
             Ok((page.slug == slug && page.published).then_some((page, sub)))
         })
         .await
@@ -254,7 +308,12 @@ async fn page_for_error(state: &AppState, slug: String) -> ApiResult<Response> {
     Ok(invalid(page))
 }
 
-async fn token_page(state: &AppState, slug: String, token: String, mode: &'static str) -> ApiResult<Response> {
+async fn token_page(
+    state: &AppState,
+    slug: String,
+    token: String,
+    mode: &'static str,
+) -> ApiResult<Response> {
     let Some((page, sub)) = by_token(state, slug.clone(), token.clone()).await? else {
         return page_for_error(state, slug).await;
     };
@@ -264,11 +323,17 @@ async fn token_page(state: &AppState, slug: String, token: String, mode: &'stati
     Ok(tpl.respond(StatusCode::OK))
 }
 
-pub async fn confirm_page(State(state): State<AppState>, Path((slug, token)): Path<(String, String)>) -> ApiResult<Response> {
+pub async fn confirm_page(
+    State(state): State<AppState>,
+    Path((slug, token)): Path<(String, String)>,
+) -> ApiResult<Response> {
     token_page(&state, slug, token, "confirm").await
 }
 
-pub async fn confirm(State(state): State<AppState>, Path((slug, token)): Path<(String, String)>) -> ApiResult<Response> {
+pub async fn confirm(
+    State(state): State<AppState>,
+    Path((slug, token)): Path<(String, String)>,
+) -> ApiResult<Response> {
     let Some((page, _)) = by_token(&state, slug.clone(), token.clone()).await? else {
         return page_for_error(&state, slug).await;
     };
@@ -279,11 +344,17 @@ pub async fn confirm(State(state): State<AppState>, Path((slug, token)): Path<(S
     })
 }
 
-pub async fn unsubscribe_page(State(state): State<AppState>, Path((slug, token)): Path<(String, String)>) -> ApiResult<Response> {
+pub async fn unsubscribe_page(
+    State(state): State<AppState>,
+    Path((slug, token)): Path<(String, String)>,
+) -> ApiResult<Response> {
     token_page(&state, slug, token, "unsubscribe").await
 }
 
-pub async fn unsubscribe(State(state): State<AppState>, Path((slug, token)): Path<(String, String)>) -> ApiResult<Response> {
+pub async fn unsubscribe(
+    State(state): State<AppState>,
+    Path((slug, token)): Path<(String, String)>,
+) -> ApiResult<Response> {
     let Some((page, _)) = by_token(&state, slug.clone(), token.clone()).await? else {
         // Already gone: say so as if it worked, the goal is reached.
         let page = state

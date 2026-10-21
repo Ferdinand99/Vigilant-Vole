@@ -58,7 +58,10 @@ fn validate_name(name: &str) -> Result<String, String> {
         return Err(crate::i18n::t("tags.err_name").into());
     }
     if name.chars().count() > db_tags::MAX_NAME_LEN {
-        return Err(crate::i18n::tf("validation.tag_name_long", &[("max", &db_tags::MAX_NAME_LEN.to_string())]));
+        return Err(crate::i18n::tf(
+            "validation.tag_name_long",
+            &[("max", &db_tags::MAX_NAME_LEN.to_string())],
+        ));
     }
     if name.chars().any(char::is_control) {
         return Err(crate::i18n::t("tags.err_control").into());
@@ -71,7 +74,8 @@ fn done(jar: SignedCookieJar, headers: &HeaderMap, message: String) -> Response 
     let jar = flash(jar, "success", message);
     if is_htmx(headers) {
         let mut res = (jar, StatusCode::OK).into_response();
-        res.headers_mut().insert("hx-refresh", HeaderValue::from_static("true"));
+        res.headers_mut()
+            .insert("hx-refresh", HeaderValue::from_static("true"));
         res
     } else {
         (jar, Redirect::to("/tags")).into_response()
@@ -79,13 +83,19 @@ fn done(jar: SignedCookieJar, headers: &HeaderMap, message: String) -> Response 
 }
 
 /// Validation failure: swap the message into the sheet (htmx) or flash it.
-fn failed(jar: SignedCookieJar, headers: &HeaderMap, error_target: &str, message: String) -> Response {
+fn failed(
+    jar: SignedCookieJar,
+    headers: &HeaderMap,
+    error_target: &str,
+    message: String,
+) -> Response {
     if is_htmx(headers) {
         let mut res = HtmlTemplate(TagErrorTemplate { message }).into_response();
         if let Ok(target) = HeaderValue::from_str(error_target) {
             res.headers_mut().insert("hx-retarget", target);
         }
-        res.headers_mut().insert("hx-reswap", HeaderValue::from_static("innerHTML"));
+        res.headers_mut()
+            .insert("hx-reswap", HeaderValue::from_static("innerHTML"));
         res
     } else {
         (flash(jar, "error", message), Redirect::to("/tags")).into_response()
@@ -97,8 +107,18 @@ async fn list(
     user: CurrentUser,
     jar: SignedCookieJar,
 ) -> ApiResult<impl IntoResponse> {
-    let tags = state.with_conn(|c| db_tags::list_tags_with_counts(c)).await?;
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("dashboard.tags"), "dashboard", "").await;
+    let tags = state
+        .with_conn(|c| db_tags::list_tags_with_counts(c))
+        .await?;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("dashboard.tags"),
+        "dashboard",
+        "",
+    )
+    .await;
     Ok((
         jar,
         HtmlTemplate(TagsTemplate {
@@ -141,7 +161,11 @@ async fn create(
         ));
     }
     state.notify_update();
-    Ok(done(jar, &headers, crate::i18n::tf("tags.created", &[("name", &name)])))
+    Ok(done(
+        jar,
+        &headers,
+        crate::i18n::tf("tags.created", &[("name", &name)]),
+    ))
 }
 
 async fn update(
@@ -182,7 +206,11 @@ async fn update(
         ));
     }
     state.notify_update();
-    Ok(done(jar, &headers, crate::i18n::tf("tags.saved", &[("name", &name)])))
+    Ok(done(
+        jar,
+        &headers,
+        crate::i18n::tf("tags.saved", &[("name", &name)]),
+    ))
 }
 
 async fn delete(

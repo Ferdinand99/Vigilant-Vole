@@ -26,10 +26,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 fn check(config: &Value) -> Vec<FieldError> {
     match opt(config, "url") {
         Some(u) if !u.starts_with("https://chat.googleapis.com/") => {
-            vec![field_error(
-                "url",
-                crate::i18n::t("notif.err_googlechat"),
-            )]
+            vec![field_error("url", crate::i18n::t("notif.err_googlechat"))]
         }
         _ => Vec::new(),
     }

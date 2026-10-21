@@ -92,7 +92,12 @@ pub fn count_active_admins(conn: &Connection) -> rusqlite::Result<i64> {
     )
 }
 
-pub fn insert_user(conn: &Connection, username: &str, password_hash: &str, role: Role) -> rusqlite::Result<i64> {
+pub fn insert_user(
+    conn: &Connection,
+    username: &str,
+    password_hash: &str,
+    role: Role,
+) -> rusqlite::Result<i64> {
     insert_user_full(conn, username, password_hash, role, "")
 }
 
@@ -150,7 +155,10 @@ pub fn username_taken(conn: &Connection, username: &str) -> rusqlite::Result<boo
 
 /// Sets (or with `None` clears) a user's own interface language.
 pub fn set_language(conn: &Connection, id: i64, language: Option<&str>) -> rusqlite::Result<()> {
-    conn.execute("UPDATE users SET language = ?2 WHERE id = ?1", params![id, language])?;
+    conn.execute(
+        "UPDATE users SET language = ?2 WHERE id = ?1",
+        params![id, language],
+    )?;
     Ok(())
 }
 
@@ -172,7 +180,10 @@ pub fn list_users(conn: &Connection) -> rusqlite::Result<Vec<User>> {
 }
 
 pub fn touch_last_login(conn: &Connection, id: i64) -> rusqlite::Result<()> {
-    conn.execute("UPDATE users SET last_login_at = datetime('now') WHERE id = ?1", params![id])?;
+    conn.execute(
+        "UPDATE users SET last_login_at = datetime('now') WHERE id = ?1",
+        params![id],
+    )?;
     Ok(())
 }
 
@@ -213,7 +224,12 @@ fn is_last_active_admin(conn: &Connection, user: &User) -> rusqlite::Result<bool
 }
 
 /// Changes role and display name. Refuses to demote the last active admin.
-pub fn update_profile(conn: &mut Connection, id: i64, display_name: &str, role: Role) -> ChangeResult {
+pub fn update_profile(
+    conn: &mut Connection,
+    id: i64,
+    display_name: &str,
+    role: Role,
+) -> ChangeResult {
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let Some(user) = get_user(&tx, id)? else {
         return Ok(Err(UserChangeError::NotFound));
@@ -285,7 +301,8 @@ pub fn get_totp(conn: &Connection, id: i64) -> rusqlite::Result<Option<TotpState
 }
 
 fn parse_codes(json: Option<&str>) -> Vec<String> {
-    json.and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default()
+    json.and_then(|j| serde_json::from_str(j).ok())
+        .unwrap_or_default()
 }
 
 fn codes_json(codes: &[String]) -> String {
@@ -303,7 +320,12 @@ pub fn set_pending_totp_secret(conn: &Connection, id: i64, secret: &str) -> rusq
 
 /// Turns 2FA on (after the user confirmed a code) with fresh recovery codes,
 /// recording the confirming step so that code can't be replayed at login.
-pub fn enable_totp(conn: &Connection, id: i64, step: i64, recovery_hashes: &[String]) -> rusqlite::Result<bool> {
+pub fn enable_totp(
+    conn: &Connection,
+    id: i64,
+    step: i64,
+    recovery_hashes: &[String],
+) -> rusqlite::Result<bool> {
     let n = conn.execute(
         "UPDATE users SET totp_enabled = 1, totp_last_step = ?2, recovery_codes = ?3
          WHERE id = ?1 AND totp_enabled = 0 AND totp_secret IS NOT NULL",
@@ -322,7 +344,11 @@ pub fn disable_totp(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn replace_recovery_codes(conn: &Connection, id: i64, recovery_hashes: &[String]) -> rusqlite::Result<()> {
+pub fn replace_recovery_codes(
+    conn: &Connection,
+    id: i64,
+    recovery_hashes: &[String],
+) -> rusqlite::Result<()> {
     conn.execute(
         "UPDATE users SET recovery_codes = ?2 WHERE id = ?1 AND totp_enabled = 1",
         params![id, codes_json(recovery_hashes)],
@@ -343,8 +369,17 @@ pub fn consume_totp_step(conn: &Connection, id: i64, step: i64) -> rusqlite::Res
 
 /// Removes one used recovery code. Compare-and-swap on the stored list, so two
 /// concurrent logins with the same code can't both succeed.
-pub fn consume_recovery_code(conn: &Connection, id: i64, before: &[String], used_hash: &str) -> rusqlite::Result<bool> {
-    let remaining: Vec<String> = before.iter().filter(|h| h.as_str() != used_hash).cloned().collect();
+pub fn consume_recovery_code(
+    conn: &Connection,
+    id: i64,
+    before: &[String],
+    used_hash: &str,
+) -> rusqlite::Result<bool> {
+    let remaining: Vec<String> = before
+        .iter()
+        .filter(|h| h.as_str() != used_hash)
+        .cloned()
+        .collect();
     if remaining.len() == before.len() {
         return Ok(false);
     }
@@ -376,7 +411,10 @@ mod tests {
     fn username_lookup_ignores_case() {
         let conn = test_conn();
         let id = add(&conn, "Alice", Role::Admin);
-        assert_eq!(get_user_by_username(&conn, "alice").unwrap().map(|u| u.id), Some(id));
+        assert_eq!(
+            get_user_by_username(&conn, "alice").unwrap().map(|u| u.id),
+            Some(id)
+        );
         assert!(username_taken(&conn, "ALICE").unwrap());
     }
 
@@ -384,21 +422,30 @@ mod tests {
     fn last_admin_cannot_be_demoted() {
         let mut conn = test_conn();
         let id = add(&conn, "admin", Role::Admin);
-        assert_eq!(update_profile(&mut conn, id, "", Role::Editor).unwrap(), Err(UserChangeError::LastAdmin));
+        assert_eq!(
+            update_profile(&mut conn, id, "", Role::Editor).unwrap(),
+            Err(UserChangeError::LastAdmin)
+        );
     }
 
     #[test]
     fn last_admin_cannot_be_disabled() {
         let mut conn = test_conn();
         let id = add(&conn, "admin", Role::Admin);
-        assert_eq!(set_active(&mut conn, id, false).unwrap(), Err(UserChangeError::LastAdmin));
+        assert_eq!(
+            set_active(&mut conn, id, false).unwrap(),
+            Err(UserChangeError::LastAdmin)
+        );
     }
 
     #[test]
     fn last_admin_cannot_be_deleted() {
         let mut conn = test_conn();
         let id = add(&conn, "admin", Role::Admin);
-        assert_eq!(delete_user(&mut conn, id).unwrap(), Err(UserChangeError::LastAdmin));
+        assert_eq!(
+            delete_user(&mut conn, id).unwrap(),
+            Err(UserChangeError::LastAdmin)
+        );
         assert_eq!(count_users(&conn).unwrap(), 1);
     }
 
@@ -408,7 +455,10 @@ mod tests {
         let a = add(&conn, "a", Role::Admin);
         let b = add(&conn, "b", Role::Admin);
         set_active(&mut conn, b, false).unwrap().unwrap();
-        assert_eq!(delete_user(&mut conn, a).unwrap(), Err(UserChangeError::LastAdmin));
+        assert_eq!(
+            delete_user(&mut conn, a).unwrap(),
+            Err(UserChangeError::LastAdmin)
+        );
     }
 
     #[test]
@@ -422,7 +472,10 @@ mod tests {
     #[test]
     fn missing_user_change_reports_not_found() {
         let mut conn = test_conn();
-        assert_eq!(set_active(&mut conn, 99, true).unwrap(), Err(UserChangeError::NotFound));
+        assert_eq!(
+            set_active(&mut conn, 99, true).unwrap(),
+            Err(UserChangeError::NotFound)
+        );
     }
 
     #[test]
@@ -432,7 +485,10 @@ mod tests {
         let id = add(&conn, "v", Role::Viewer);
         let before = get_user(&conn, id).unwrap().unwrap().session_version;
         set_active(&mut conn, id, false).unwrap().unwrap();
-        assert_eq!(get_user(&conn, id).unwrap().unwrap().session_version, before + 1);
+        assert_eq!(
+            get_user(&conn, id).unwrap().unwrap().session_version,
+            before + 1
+        );
     }
 
     #[test]
@@ -461,7 +517,12 @@ mod tests {
         assert!(enable_totp(&conn, id, 5, &["h1".into(), "h2".into()]).unwrap());
         let state = get_totp(&conn, id).unwrap().unwrap();
         assert_eq!(
-            (state.enabled, state.secret.as_deref(), state.last_step, state.recovery_codes.len()),
+            (
+                state.enabled,
+                state.secret.as_deref(),
+                state.last_step,
+                state.recovery_codes.len()
+            ),
             (true, Some("SECRET"), Some(5), 2)
         );
         // Re-enrolling while enabled must not overwrite the secret.
@@ -480,6 +541,9 @@ mod tests {
         assert!(consume_recovery_code(&conn, id, &codes, "h1").unwrap());
         // A second consumer still holding the old list loses the race.
         assert!(!consume_recovery_code(&conn, id, &codes, "h1").unwrap());
-        assert_eq!(get_totp(&conn, id).unwrap().unwrap().recovery_codes, vec!["h2".to_string()]);
+        assert_eq!(
+            get_totp(&conn, id).unwrap().unwrap().recovery_codes,
+            vec!["h2".to_string()]
+        );
     }
 }

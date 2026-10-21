@@ -33,7 +33,11 @@ impl Frame {
             return None;
         }
         let p = &self.payload;
-        Some((u16::from_be_bytes([p[0], p[1]]), u16::from_be_bytes([p[2], p[3]]), &p[4..]))
+        Some((
+            u16::from_be_bytes([p[0], p[1]]),
+            u16::from_be_bytes([p[2], p[3]]),
+            &p[4..],
+        ))
     }
 }
 
@@ -60,7 +64,10 @@ async fn read_frame(s: &mut Stream) -> Result<Frame, String> {
     if payload.pop() != Some(FRAME_END) {
         return Err("Not an AMQP broker (bad frame)".into());
     }
-    Ok(Frame { kind: head[0], payload })
+    Ok(Frame {
+        kind: head[0],
+        payload,
+    })
 }
 
 fn method_frame(class: u16, method: u16, args: &[u8]) -> Vec<u8> {
@@ -109,7 +116,10 @@ fn skip_value(b: &[u8], at: &mut usize) -> Option<()> {
 /// `product` and `version` from the server-properties table of `Connection.Start`.
 fn server_properties(args: &[u8]) -> (Option<String>, Option<String>) {
     let mut at = 2; // version major / minor
-    let Some(len) = args.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize) else {
+    let Some(len) = args
+        .get(at..at + 4)
+        .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    else {
         return (None, None);
     };
     at += 4;
@@ -118,10 +128,14 @@ fn server_properties(args: &[u8]) -> (Option<String>, Option<String>) {
     while at < end {
         let Some(&name_len) = args.get(at) else { break };
         let name_end = at + 1 + usize::from(name_len);
-        let Some(name) = args.get(at + 1..name_end) else { break };
+        let Some(name) = args.get(at + 1..name_end) else {
+            break;
+        };
         at = name_end;
         if args.get(at) == Some(&b'S')
-            && let Some(len) = args.get(at + 1..at + 5).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize)
+            && let Some(len) = args
+                .get(at + 1..at + 5)
+                .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize)
             && let Some(text) = args.get(at + 5..at + 5 + len)
         {
             match name {
@@ -139,8 +153,14 @@ fn server_properties(args: &[u8]) -> (Option<String>, Option<String>) {
 
 /// The text of a `Connection.Close`: `(code, text)`.
 fn close_reason(args: &[u8]) -> (u16, String) {
-    let code = args.get(..2).map_or(0, |b| u16::from_be_bytes([b[0], b[1]]));
-    let text = args.get(2).and_then(|n| args.get(3..3 + usize::from(*n))).map(|t| String::from_utf8_lossy(t).into_owned()).unwrap_or_default();
+    let code = args
+        .get(..2)
+        .map_or(0, |b| u16::from_be_bytes([b[0], b[1]]));
+    let text = args
+        .get(2)
+        .and_then(|n| args.get(3..3 + usize::from(*n)))
+        .map(|t| String::from_utf8_lossy(t).into_owned())
+        .unwrap_or_default();
     (code, text)
 }
 
@@ -149,7 +169,10 @@ fn explain(code: u16, text: &str) -> String {
         403 => "Authentication failed: wrong user name or password".into(),
         530 => format!("Not allowed: {}", util::truncate(text, 100)),
         320 => "The broker is shutting down".into(),
-        _ => format!("The broker closed the connection ({code}): {}", util::truncate(text, 100)),
+        _ => format!(
+            "The broker closed the connection ({code}): {}",
+            util::truncate(text, 100)
+        ),
     }
 }
 
@@ -158,7 +181,11 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Ok(ep) => ep,
         Err(e) => return CheckOutcome::down(e),
     };
-    let vhost = if ep.path.is_empty() { "/" } else { ep.path.as_str() };
+    let vhost = if ep.path.is_empty() {
+        "/"
+    } else {
+        ep.path.as_str()
+    };
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
     let probe = async {
@@ -178,8 +205,14 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         };
         let Some(user) = monitor.basic_auth_user.as_deref() else {
             let ms = util::elapsed_ms(start);
-            let message = format!("{name} · greeting received (set a user name to check the login)");
-            return Ok(conn::up(ms, message, connected.cert.as_ref(), connected.tls_version));
+            let message =
+                format!("{name} · greeting received (set a user name to check the login)");
+            return Ok(conn::up(
+                ms,
+                message,
+                connected.cert.as_ref(),
+                connected.tls_version,
+            ));
         };
 
         // Start-Ok: client properties, mechanism, response, locale.
@@ -189,10 +222,18 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         let mut plain = vec![0];
         plain.extend_from_slice(user.as_bytes());
         plain.push(0);
-        plain.extend_from_slice(monitor.basic_auth_pass.as_deref().unwrap_or_default().as_bytes());
+        plain.extend_from_slice(
+            monitor
+                .basic_auth_pass
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
         long_str(&mut ok, &plain);
         short_str(&mut ok, "en_US");
-        s.write_all(&method_frame(10, 11, &ok)).await.map_err(|e| fail(io_err(e)))?;
+        s.write_all(&method_frame(10, 11, &ok))
+            .await
+            .map_err(|e| fail(io_err(e)))?;
 
         let tune = loop {
             // RabbitMQ drops the connection without a word when the login is refused.
@@ -206,18 +247,26 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
                     return Err(fail(explain(code, &text)));
                 }
                 _ if f.kind == 8 => {}
-                _ => return Err(fail("Not an AMQP broker (unexpected frame during login)".into())),
+                _ => {
+                    return Err(fail(
+                        "Not an AMQP broker (unexpected frame during login)".into(),
+                    ));
+                }
             }
         };
         // Tune-Ok: accept the broker's channel and frame limits, no heartbeat.
         let mut tune_ok = tune.get(..6).unwrap_or(&[0; 6]).to_vec();
         tune_ok.extend_from_slice(&[0, 0]);
-        s.write_all(&method_frame(10, 31, &tune_ok)).await.map_err(|e| fail(io_err(e)))?;
+        s.write_all(&method_frame(10, 31, &tune_ok))
+            .await
+            .map_err(|e| fail(io_err(e)))?;
         let mut open = Vec::new();
         short_str(&mut open, vhost);
         short_str(&mut open, "");
         open.push(0);
-        s.write_all(&method_frame(10, 40, &open)).await.map_err(|e| fail(io_err(e)))?;
+        s.write_all(&method_frame(10, 40, &open))
+            .await
+            .map_err(|e| fail(io_err(e)))?;
         loop {
             let f = read_frame(&mut s).await.map_err(fail)?;
             match f.method() {
@@ -227,7 +276,11 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
                     return Err(fail(explain(code, &text)));
                 }
                 _ if f.kind == 8 => {}
-                _ => return Err(fail("Not an AMQP broker (unexpected frame opening the virtual host)".into())),
+                _ => {
+                    return Err(fail(
+                        "Not an AMQP broker (unexpected frame opening the virtual host)".into(),
+                    ));
+                }
             }
         }
         let ms = util::elapsed_ms(start);
@@ -236,7 +289,12 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         close.extend_from_slice(&[0, 0, 0, 0]);
         let _ = s.write_all(&method_frame(10, 50, &close)).await;
         let message = format!("{name} · vhost {} opened", util::truncate(vhost, 40));
-        Ok(conn::up(ms, message, connected.cert.as_ref(), connected.tls_version))
+        Ok(conn::up(
+            ms,
+            message,
+            connected.cert.as_ref(),
+            connected.tls_version,
+        ))
     };
     match tokio::time::timeout(timeout, probe).await {
         Ok(Ok(outcome)) | Ok(Err(outcome)) => outcome,
@@ -283,7 +341,9 @@ mod tests {
         long_str(&mut start, b"en_US");
         s.write_all(&method_frame(10, 10, &start)).await.unwrap();
 
-        let Ok(f) = read_frame(&mut s).await else { return };
+        let Ok(f) = read_frame(&mut s).await else {
+            return;
+        };
         let (_, _, args) = f.method().unwrap();
         // client props (longstr), mechanism, response, locale
         let mut at = 4 + u32::from_be_bytes(args[..4].try_into().unwrap()) as usize;
@@ -293,7 +353,10 @@ mod tests {
         let response = args[at + 4..at + 4 + resp_len].to_vec();
         if response != b"\0guest\0guest" {
             let mut close = 403u16.to_be_bytes().to_vec();
-            short_str(&mut close, "ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN");
+            short_str(
+                &mut close,
+                "ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN",
+            );
             close.extend_from_slice(&[0, 10, 0, 11]);
             s.write_all(&method_frame(10, 50, &close)).await.unwrap();
             return;
@@ -308,7 +371,10 @@ mod tests {
         let vhost = String::from_utf8_lossy(&args[1..1 + usize::from(args[0])]).into_owned();
         if vhost != "/" && vhost != "prod" {
             let mut close = 530u16.to_be_bytes().to_vec();
-            short_str(&mut close, &format!("NOT_ALLOWED - vhost {vhost} not found"));
+            short_str(
+                &mut close,
+                &format!("NOT_ALLOWED - vhost {vhost} not found"),
+            );
             close.extend_from_slice(&[0, 10, 0, 40]);
             s.write_all(&method_frame(10, 50, &close)).await.unwrap();
             return;
@@ -356,7 +422,10 @@ mod tests {
         let addr = serve(false).await;
         let out = check(&amqp(&addr.to_string(), None, "")).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        assert_eq!(out.message.as_deref(), Some("RabbitMQ 3.12.1 · greeting received (set a user name to check the login)"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("RabbitMQ 3.12.1 · greeting received (set a user name to check the login)")
+        );
     }
 
     #[tokio::test]
@@ -364,14 +433,36 @@ mod tests {
         let addr = serve(false).await;
         let out = check(&amqp(&addr.to_string(), Some("guest"), "guest")).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        assert_eq!(out.message.as_deref(), Some("RabbitMQ 3.12.1 · vhost / opened"));
-        let out = check(&amqp(&format!("amqp://{addr}/prod"), Some("guest"), "guest")).await;
-        assert_eq!(out.message.as_deref(), Some("RabbitMQ 3.12.1 · vhost prod opened"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("RabbitMQ 3.12.1 · vhost / opened")
+        );
+        let out = check(&amqp(
+            &format!("amqp://{addr}/prod"),
+            Some("guest"),
+            "guest",
+        ))
+        .await;
+        assert_eq!(
+            out.message.as_deref(),
+            Some("RabbitMQ 3.12.1 · vhost prod opened")
+        );
 
         let out = check(&amqp(&addr.to_string(), Some("guest"), "wrong")).await;
-        assert_eq!(out.message.as_deref(), Some("Authentication failed: wrong user name or password"));
-        let out = check(&amqp(&format!("amqp://{addr}/nope"), Some("guest"), "guest")).await;
-        assert_eq!(out.message.as_deref(), Some("Not allowed: NOT_ALLOWED - vhost nope not found"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Authentication failed: wrong user name or password")
+        );
+        let out = check(&amqp(
+            &format!("amqp://{addr}/nope"),
+            Some("guest"),
+            "guest",
+        ))
+        .await;
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Not allowed: NOT_ALLOWED - vhost nope not found")
+        );
     }
 
     #[tokio::test]
@@ -379,7 +470,11 @@ mod tests {
         let addr = serve(true).await;
         let target = format!("amqps://localhost:{}", addr.port());
         let out = check(&amqp(&target, Some("guest"), "guest")).await;
-        assert!(out.message.as_deref().unwrap().contains("not trusted"), "{:?}", out.message);
+        assert!(
+            out.message.as_deref().unwrap().contains("not trusted"),
+            "{:?}",
+            out.message
+        );
         let mut m = amqp(&target, Some("guest"), "guest");
         m.ignore_tls = true;
         let out = check(&m).await;
@@ -390,7 +485,10 @@ mod tests {
 
     #[tokio::test]
     async fn other_servers_are_down() {
-        let addr = crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\nxxxxxxxxxxxx").await;
+        let addr = crate::monitor::checkers::test_support::foreign_server(
+            b"HTTP/1.1 400 Bad Request\r\n\r\nxxxxxxxxxxxx",
+        )
+        .await;
         let out = check(&amqp(&addr.to_string(), None, "")).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not an AMQP broker"), "");
@@ -407,7 +505,10 @@ mod tests {
         let mut args = vec![0, 9];
         args.extend_from_slice(&(props.len() as u32).to_be_bytes());
         args.extend_from_slice(&props);
-        assert_eq!(server_properties(&args), (Some("RabbitMQ".into()), Some("4.0.2".into())));
+        assert_eq!(
+            server_properties(&args),
+            (Some("RabbitMQ".into()), Some("4.0.2".into()))
+        );
         assert_eq!(server_properties(&[0, 9, 0, 0, 0, 5, 1]), (None, None));
     }
 
@@ -416,11 +517,16 @@ mod tests {
     #[ignore = "needs a RabbitMQ broker (VV_TEST_RABBITMQ)"]
     async fn live_broker() {
         let spec = std::env::var("VV_TEST_RABBITMQ").expect("VV_TEST_RABBITMQ");
-        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else { panic!("target,user,password") };
+        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else {
+            panic!("target,user,password")
+        };
         let out = check(&amqp(target, Some(user), pass)).await;
         println!("{:?}", out.message);
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        println!("{:?}", check(&amqp(target, Some(user), "wrong")).await.message);
+        println!(
+            "{:?}",
+            check(&amqp(target, Some(user), "wrong")).await.message
+        );
         println!("{:?}", check(&amqp(target, None, "")).await.message);
     }
 }

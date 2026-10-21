@@ -172,9 +172,17 @@ pub fn build_chart(range: Range, buckets: &[ChartBucket], expected_gap: i64) -> 
     let step = width / (n - 1) as f64;
     let x_of = |i: i64| (i.clamp(0, n - 1) as f64) * step;
 
-    let values: Vec<f64> = buckets.iter().filter_map(|b| b.avg_ms).filter(|v| v.is_finite()).collect();
+    let values: Vec<f64> = buckets
+        .iter()
+        .filter_map(|b| b.avg_ms)
+        .filter(|v| v.is_finite())
+        .collect();
     let peak = values.iter().copied().fold(0.0_f64, f64::max);
-    let avg = if values.is_empty() { 0.0 } else { values.iter().sum::<f64>() / values.len() as f64 };
+    let avg = if values.is_empty() {
+        0.0
+    } else {
+        values.iter().sum::<f64>() / values.len() as f64
+    };
     let max = nice_ceiling(peak * 1.1);
     let y_of = |ms: f64| CHART_PAD_TOP + plot_h * (1.0 - (ms / max).clamp(0.0, 1.0));
 
@@ -266,12 +274,24 @@ pub fn build_chart(range: Range, buckets: &[ChartBucket], expected_gap: i64) -> 
         max_label: format_ms(max),
         mid_label: format_ms(max / 2.0),
         has_data,
-        avg_label: if has_data { format_ms(avg) } else { "—".into() },
-        peak_label: if has_data { format_ms(peak) } else { "—".into() },
+        avg_label: if has_data {
+            format_ms(avg)
+        } else {
+            "—".into()
+        },
+        peak_label: if has_data {
+            format_ms(peak)
+        } else {
+            "—".into()
+        },
         aria_label: if has_data {
             crate::i18n::tf(
                 "detail.chart_aria",
-                &[("range", range.aria_span()), ("avg", &format_ms(avg)), ("peak", &format_ms(peak))],
+                &[
+                    ("range", range.aria_span()),
+                    ("avg", &format_ms(avg)),
+                    ("peak", &format_ms(peak)),
+                ],
             )
         } else {
             crate::i18n::t("detail.chart_aria_empty").into()
@@ -307,7 +327,10 @@ pub fn uptime_days(days: &[DayStat]) -> Vec<UptimeDay> {
         .map(|d| {
             let label = short_date(&d.day);
             let (class, what) = match d.uptime_pct {
-                None if d.maintenance > 0 => ("status-maintenance", crate::i18n::t("status.maintenance").to_string()),
+                None if d.maintenance > 0 => (
+                    "status-maintenance",
+                    crate::i18n::t("status.maintenance").to_string(),
+                ),
                 None => ("status-none", crate::i18n::t("detail.no_data").to_string()),
                 Some(p) if d.down == 0 => ("status-up", day_uptime(p)),
                 Some(p) if p >= 90.0 => ("status-pending", day_uptime(p)),
@@ -429,7 +452,11 @@ mod tests {
 
     #[test]
     fn chart_ignores_out_of_range_buckets() {
-        let chart = build_chart(Range::Hour, &[bucket(-1, Some(5.0), 1), bucket(60, Some(5.0), 0)], 1);
+        let chart = build_chart(
+            Range::Hour,
+            &[bucket(-1, Some(5.0), 1), bucket(60, Some(5.0), 0)],
+            1,
+        );
         assert!(chart.segments.is_empty());
     }
 
@@ -454,7 +481,13 @@ mod tests {
         let classes: Vec<_> = cells.iter().map(|c| c.class).collect();
         assert_eq!(
             classes,
-            vec!["status-none", "status-up", "status-pending", "status-down", "status-maintenance"]
+            vec![
+                "status-none",
+                "status-up",
+                "status-pending",
+                "status-down",
+                "status-maintenance"
+            ]
         );
         assert_eq!(cells[2].tip, "Oct 3 · 99.00% uptime");
         assert_eq!(cells[0].tip, "Oct 1 · No data");

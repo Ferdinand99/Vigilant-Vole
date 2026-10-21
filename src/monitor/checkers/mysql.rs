@@ -75,7 +75,11 @@ async fn read_packet<R: AsyncRead + Unpin>(s: &mut R) -> Result<(u8, Vec<u8>), S
     Ok((head[3], body))
 }
 
-async fn write_packet<W: AsyncWrite + Unpin>(s: &mut W, seq: u8, body: &[u8]) -> Result<(), String> {
+async fn write_packet<W: AsyncWrite + Unpin>(
+    s: &mut W,
+    seq: u8,
+    body: &[u8],
+) -> Result<(), String> {
     let len = body.len();
     let mut out = vec![len as u8, (len >> 8) as u8, (len >> 16) as u8, seq];
     out.extend_from_slice(body);
@@ -84,9 +88,15 @@ async fn write_packet<W: AsyncWrite + Unpin>(s: &mut W, seq: u8, body: &[u8]) ->
 
 /// `ERR` packet text: (code, message).
 fn parse_error(body: &[u8]) -> (u16, String) {
-    let code = body.get(1..3).map_or(0, |b| u16::from_le_bytes([b[0], b[1]]));
+    let code = body
+        .get(1..3)
+        .map_or(0, |b| u16::from_le_bytes([b[0], b[1]]));
     let rest = body.get(3..).unwrap_or_default();
-    let rest = if rest.first() == Some(&b'#') { rest.get(6..).unwrap_or_default() } else { rest };
+    let rest = if rest.first() == Some(&b'#') {
+        rest.get(6..).unwrap_or_default()
+    } else {
+        rest
+    };
     (code, String::from_utf8_lossy(rest).into_owned())
 }
 
@@ -94,9 +104,15 @@ fn explain(code: u16, message: &str, database: &str) -> String {
     match code {
         1045 => "Authentication failed: wrong user name or password".into(),
         1044 | 1142 => format!("Access denied: {}", util::truncate(message, 100)),
-        1049 => format!("The database \"{}\" does not exist", util::truncate(database, 40)),
+        1049 => format!(
+            "The database \"{}\" does not exist",
+            util::truncate(database, 40)
+        ),
         1040 => "The server has too many connections".into(),
-        1129 | 1130 => format!("The server refuses this host: {}", util::truncate(message, 100)),
+        1129 | 1130 => format!(
+            "The server refuses this host: {}",
+            util::truncate(message, 100)
+        ),
         _ => format!("Server error {code}: {}", util::truncate(message, 100)),
     }
 }
@@ -113,7 +129,10 @@ impl Greeting {
     fn product(&self) -> String {
         match self.version.split_once("-MariaDB") {
             Some((v, _)) => format!("MariaDB {}", v.strip_prefix("5.5.5-").unwrap_or(v)),
-            None => format!("MySQL {}", self.version.split(['-', ' ']).next().unwrap_or_default()),
+            None => format!(
+                "MySQL {}",
+                self.version.split(['-', ' ']).next().unwrap_or_default()
+            ),
         }
     }
 }
@@ -136,7 +155,8 @@ fn parse_greeting(body: &[u8]) -> Result<Greeting, String> {
     at += 2 + 1 + 2; // charset, status
     let caps_high = body.get(at..at + 2).ok_or_else(bad)?;
     at += 2;
-    let capabilities = u32::from(u16::from_le_bytes([caps_low[0], caps_low[1]])) | u32::from(u16::from_le_bytes([caps_high[0], caps_high[1]])) << 16;
+    let capabilities = u32::from(u16::from_le_bytes([caps_low[0], caps_low[1]]))
+        | u32::from(u16::from_le_bytes([caps_high[0], caps_high[1]])) << 16;
     let data_len = usize::from(*body.get(at).ok_or_else(bad)?);
     at += 1 + 10; // reserved
     let mut scramble = part1.to_vec();
@@ -152,7 +172,12 @@ fn parse_greeting(body: &[u8]) -> Result<Greeting, String> {
     } else {
         "mysql_native_password".to_string()
     };
-    Ok(Greeting { version, capabilities, scramble, plugin })
+    Ok(Greeting {
+        version,
+        capabilities,
+        scramble,
+        plugin,
+    })
 }
 
 fn native_token(password: &str, scramble: &[u8]) -> Vec<u8> {
@@ -162,7 +187,11 @@ fn native_token(password: &str, scramble: &[u8]) -> Vec<u8> {
     let mut h = Sha1::new();
     h.update(scramble);
     h.update(stage2);
-    stage1.iter().zip(h.finalize()).map(|(a, b)| a ^ b).collect()
+    stage1
+        .iter()
+        .zip(h.finalize())
+        .map(|(a, b)| a ^ b)
+        .collect()
 }
 
 fn sha2_token(password: &str, scramble: &[u8]) -> Vec<u8> {
@@ -171,7 +200,11 @@ fn sha2_token(password: &str, scramble: &[u8]) -> Vec<u8> {
     let mut h = Sha256::new();
     h.update(stage2);
     h.update(scramble);
-    stage1.iter().zip(h.finalize()).map(|(a, b)| a ^ b).collect()
+    stage1
+        .iter()
+        .zip(h.finalize())
+        .map(|(a, b)| a ^ b)
+        .collect()
 }
 
 fn token(plugin: &str, password: &str, scramble: &[u8]) -> Result<Vec<u8>, String> {
@@ -181,7 +214,10 @@ fn token(plugin: &str, password: &str, scramble: &[u8]) -> Result<Vec<u8>, Strin
     match plugin {
         "mysql_native_password" => Ok(native_token(password, scramble)),
         "caching_sha2_password" => Ok(sha2_token(password, scramble)),
-        other => Err(format!("The server wants the authentication plugin \"{}\", which this monitor doesn't support", util::truncate(other, 40))),
+        other => Err(format!(
+            "The server wants the authentication plugin \"{}\", which this monitor doesn't support",
+            util::truncate(other, 40)
+        )),
     }
 }
 
@@ -204,7 +240,11 @@ fn client_flags(login: &Login<'_>, ssl: bool) -> u32 {
         | CLIENT_TRANSACTIONS
         | CLIENT_SECURE_CONNECTION
         | CLIENT_PLUGIN_AUTH
-        | if login.database.is_some() { CLIENT_CONNECT_WITH_DB } else { 0 }
+        | if login.database.is_some() {
+            CLIENT_CONNECT_WITH_DB
+        } else {
+            0
+        }
         | if ssl { CLIENT_SSL } else { 0 }
 }
 
@@ -217,7 +257,11 @@ fn ssl_request(flags: u32) -> Vec<u8> {
     b
 }
 
-fn handshake_response(login: &Login<'_>, flags: u32, greeting: &Greeting) -> Result<Vec<u8>, String> {
+fn handshake_response(
+    login: &Login<'_>,
+    flags: u32,
+    greeting: &Greeting,
+) -> Result<Vec<u8>, String> {
     let mut b = ssl_request(flags);
     b.extend_from_slice(login.user.as_bytes());
     b.push(0);
@@ -248,7 +292,12 @@ async fn session(
         return Err(sslmode.no_tls_message().into());
     }
     let Some(login) = login else {
-        return Ok(Found { greeting, logged_in: false, cert: None, tls_version: None });
+        return Ok(Found {
+            greeting,
+            logged_in: false,
+            cert: None,
+            tls_version: None,
+        });
     };
 
     let use_tls = server_tls && sslmode != SslMode::Disable;
@@ -268,7 +317,8 @@ async fn session(
                     write_packet(&mut tcp, 1, &ssl_request(flags)).await.ok()?;
                     tls::peer_cert(&tls::upgrade(tcp, &ep.host, true).await.ok()?)
                 };
-                let outcome = conn::tls_failure_with(&err, verify == tls::Verify::None, timeout, fetch).await;
+                let outcome =
+                    conn::tls_failure_with(&err, verify == tls::Verify::None, timeout, fetch).await;
                 return Err(Failure::Outcome(Box::new(outcome)));
             }
         }
@@ -277,7 +327,12 @@ async fn session(
     };
 
     let database = login.database.unwrap_or_default();
-    write_packet(&mut stream, seq, &handshake_response(login, flags, &greeting)?).await?;
+    write_packet(
+        &mut stream,
+        seq,
+        &handshake_response(login, flags, &greeting)?,
+    )
+    .await?;
     loop {
         let (got, body) = read_packet(&mut stream).await?;
         seq = got.wrapping_add(1);
@@ -290,10 +345,22 @@ async fn session(
             Some(0xFE) => {
                 // AuthSwitchRequest: plugin name, then the new scramble.
                 let rest = &body[1..];
-                let nul = rest.iter().position(|b| *b == 0).ok_or("Not a MySQL server (bad auth switch)")?;
+                let nul = rest
+                    .iter()
+                    .position(|b| *b == 0)
+                    .ok_or("Not a MySQL server (bad auth switch)")?;
                 let plugin = String::from_utf8_lossy(&rest[..nul]).into_owned();
-                let scramble: Vec<u8> = rest[nul + 1..].iter().copied().take_while(|b| *b != 0).collect();
-                write_packet(&mut stream, seq, &token(&plugin, login.password, &scramble)?).await?;
+                let scramble: Vec<u8> = rest[nul + 1..]
+                    .iter()
+                    .copied()
+                    .take_while(|b| *b != 0)
+                    .collect();
+                write_packet(
+                    &mut stream,
+                    seq,
+                    &token(&plugin, login.password, &scramble)?,
+                )
+                .await?;
             }
             Some(0x01) => match body.get(1) {
                 Some(3) => {} // fast authentication: the OK follows
@@ -316,7 +383,12 @@ async fn session(
         return Err("The server did not answer the ping".into());
     }
     let _ = write_packet(&mut stream, 0, &[0x01]).await; // COM_QUIT
-    Ok(Found { greeting, logged_in: true, cert, tls_version })
+    Ok(Found {
+        greeting,
+        logged_in: true,
+        cert,
+        tls_version,
+    })
 }
 
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
@@ -335,13 +407,21 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     });
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
-    match tokio::time::timeout(timeout, session(&ep, sslmode, monitor.ignore_tls, login.as_ref(), timeout)).await {
+    match tokio::time::timeout(
+        timeout,
+        session(&ep, sslmode, monitor.ignore_tls, login.as_ref(), timeout),
+    )
+    .await
+    {
         Ok(Ok(found)) => {
             let ms = util::elapsed_ms(start);
             let message = if found.logged_in {
                 format!("{} · login OK", found.greeting.product())
             } else {
-                format!("{} · greeting received (set a user name to check the login)", found.greeting.product())
+                format!(
+                    "{} · greeting received (set a user name to check the login)",
+                    found.greeting.product()
+                )
             };
             conn::up(ms, message, found.cert.as_ref(), found.tls_version)
         }
@@ -370,8 +450,16 @@ mod tests {
     }
 
     fn greeting(server: Server, tls: bool) -> Vec<u8> {
-        let plugin = if matches!(server, Server::Sha2 { .. }) { "caching_sha2_password" } else { "mysql_native_password" };
-        let mut caps = CLIENT_LONG_PASSWORD | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_PLUGIN_AUTH | CLIENT_CONNECT_WITH_DB;
+        let plugin = if matches!(server, Server::Sha2 { .. }) {
+            "caching_sha2_password"
+        } else {
+            "mysql_native_password"
+        };
+        let mut caps = CLIENT_LONG_PASSWORD
+            | CLIENT_PROTOCOL_41
+            | CLIENT_SECURE_CONNECTION
+            | CLIENT_PLUGIN_AUTH
+            | CLIENT_CONNECT_WITH_DB;
         if tls {
             caps |= CLIENT_SSL;
         }
@@ -405,12 +493,20 @@ mod tests {
     async fn serve_conn(tcp: TcpStream, server: Server, acceptor: tokio_rustls::TlsAcceptor) {
         let mut tcp = tcp;
         let tls_offered = matches!(server, Server::Sha2 { .. } | Server::Switch);
-        write_packet(&mut tcp, 0, &greeting(server, tls_offered)).await.unwrap();
-        let Ok((mut seq, mut body)) = read_packet(&mut tcp).await else { return };
+        write_packet(&mut tcp, 0, &greeting(server, tls_offered))
+            .await
+            .unwrap();
+        let Ok((mut seq, mut body)) = read_packet(&mut tcp).await else {
+            return;
+        };
         let mut stream: Stream = if body.len() == 32 {
-            let Ok(stream) = acceptor.accept(tcp).await else { return };
+            let Ok(stream) = acceptor.accept(tcp).await else {
+                return;
+            };
             let mut stream: Stream = Box::new(stream);
-            let Ok((s2, b2)) = read_packet(&mut stream).await else { return };
+            let Ok((s2, b2)) = read_packet(&mut stream).await else {
+                return;
+            };
             (seq, body) = (s2, b2);
             stream
         } else {
@@ -477,10 +573,14 @@ mod tests {
             error(&mut stream, next, 1049, "Unknown database").await;
             return;
         }
-        write_packet(&mut stream, next, &[0, 0, 0, 2, 0, 0, 0]).await.unwrap();
+        write_packet(&mut stream, next, &[0, 0, 0, 2, 0, 0, 0])
+            .await
+            .unwrap();
         while let Ok((_, cmd)) = read_packet(&mut stream).await {
             match cmd.first() {
-                Some(0x0E) => write_packet(&mut stream, 1, &[0, 0, 0, 2, 0, 0, 0]).await.unwrap(),
+                Some(0x0E) => write_packet(&mut stream, 1, &[0, 0, 0, 2, 0, 0, 0])
+                    .await
+                    .unwrap(),
                 _ => return,
             }
         }
@@ -524,11 +624,25 @@ mod tests {
         assert!(out.message.unwrap().ends_with("· login OK"));
 
         let out = check(&my(&format!("mysql://{addr}/app"), Some("vole"), "nope")).await;
-        assert_eq!(out.message.as_deref(), Some("Authentication failed: wrong user name or password"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Authentication failed: wrong user name or password")
+        );
         let out = check(&my(&format!("mysql://{addr}/other"), Some("vole"), "pw")).await;
-        assert_eq!(out.message.as_deref(), Some("The database \"other\" does not exist"));
-        let out = check(&my(&format!("mysql://{addr}?sslmode=require"), Some("vole"), "pw")).await;
-        assert_eq!(out.message.as_deref(), Some("The server doesn't support TLS (sslmode=require)"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The database \"other\" does not exist")
+        );
+        let out = check(&my(
+            &format!("mysql://{addr}?sslmode=require"),
+            Some("vole"),
+            "pw",
+        ))
+        .await;
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The server doesn't support TLS (sslmode=require)")
+        );
     }
 
     #[tokio::test]
@@ -544,15 +658,31 @@ mod tests {
             let mut m = my(&format!("{target}?sslmode={mode}"), Some("vole"), "pw");
             let out = check(&m).await;
             assert_eq!(out.status, HeartbeatStatus::Down, "{mode}");
-            assert!(out.message.as_deref().unwrap().contains("not trusted"), "{mode}: {:?}", out.message);
+            assert!(
+                out.message.as_deref().unwrap().contains("not trusted"),
+                "{mode}: {:?}",
+                out.message
+            );
             m.ignore_tls = true;
-            assert_eq!(check(&m).await.status, HeartbeatStatus::Up, "{mode} with TLS errors ignored");
+            assert_eq!(
+                check(&m).await.status,
+                HeartbeatStatus::Up,
+                "{mode} with TLS errors ignored"
+            );
         }
 
         let addr = serve(Server::Sha2 { cached: false }).await;
-        let mut m = my(&format!("mysql://localhost:{}/app", addr.port()), Some("vole"), "pw");
+        let mut m = my(
+            &format!("mysql://localhost:{}/app", addr.port()),
+            Some("vole"),
+            "pw",
+        );
         m.ignore_tls = true;
-        assert_eq!(check(&m).await.status, HeartbeatStatus::Up, "full authentication over TLS");
+        assert_eq!(
+            check(&m).await.status,
+            HeartbeatStatus::Up,
+            "full authentication over TLS"
+        );
         // Without TLS the cleartext exchange must not happen.
         m.target.push_str("?sslmode=disable");
         let out = check(&m).await;
@@ -562,7 +692,11 @@ mod tests {
     #[tokio::test]
     async fn auth_switch_request_is_followed() {
         let addr = serve(Server::Switch).await;
-        let mut m = my(&format!("mysql://localhost:{}/app", addr.port()), Some("vole"), "pw");
+        let mut m = my(
+            &format!("mysql://localhost:{}/app", addr.port()),
+            Some("vole"),
+            "pw",
+        );
         m.ignore_tls = true;
         let out = check(&m).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
@@ -588,7 +722,11 @@ mod tests {
         assert_eq!(native_token("password", &[1; 20]).len(), 20);
         assert_eq!(sha2_token("password", &[1; 20]).len(), 32);
         assert_ne!(native_token("a", &SCRAMBLE), native_token("b", &SCRAMBLE));
-        assert!(token("sha256_password", "pw", &SCRAMBLE).unwrap_err().contains("doesn't support"));
+        assert!(
+            token("sha256_password", "pw", &SCRAMBLE)
+                .unwrap_err()
+                .contains("doesn't support")
+        );
         assert!(token("sha256_password", "", &SCRAMBLE).unwrap().is_empty());
     }
 
@@ -597,7 +735,9 @@ mod tests {
     #[ignore = "needs a MySQL or MariaDB server (VV_TEST_MYSQL)"]
     async fn live_server() {
         let spec = std::env::var("VV_TEST_MYSQL").expect("VV_TEST_MYSQL");
-        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else { panic!("host:port/db,user,password") };
+        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else {
+            panic!("host:port/db,user,password")
+        };
         let mut m = my(target, Some(user), pass);
         m.ignore_tls = true;
         let out = check(&m).await;

@@ -36,7 +36,9 @@ pub fn bundled_store() -> Arc<RootCertStore> {
     STORE
         .get_or_init(|| {
             let mut store = RootCertStore::empty();
-            store.add_parsable_certificates(webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().cloned());
+            store.add_parsable_certificates(
+                webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().cloned(),
+            );
             Arc::new(store)
         })
         .clone()

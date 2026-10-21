@@ -88,16 +88,25 @@ pub fn headline(event: &NotificationEvent) -> String {
         EventKind::Up => with_name("msg.up", name),
         EventKind::Reminder => with_name("msg.still_down", name),
         EventKind::Escalation => match event.downtime {
-            Some(d) => crate::i18n::tf("msg.down_for_long", &[("name", name), ("duration", &format_duration(d))]),
+            Some(d) => crate::i18n::tf(
+                "msg.down_for_long",
+                &[("name", name), ("duration", &format_duration(d))],
+            ),
             None => with_name("msg.down_too_long", name),
         },
         EventKind::CertExpiring => crate::i18n::tf(
             "msg.cert",
-            &[("name", name), ("phrase", &expiry_phrase(event.expires_in_days))],
+            &[
+                ("name", name),
+                ("phrase", &expiry_phrase(event.expires_in_days)),
+            ],
         ),
         EventKind::DomainExpiring => crate::i18n::tf(
             "msg.domain",
-            &[("name", name), ("phrase", &expiry_phrase(event.expires_in_days))],
+            &[
+                ("name", name),
+                ("phrase", &expiry_phrase(event.expires_in_days)),
+            ],
         ),
         EventKind::MaintenanceStart => with_name("msg.maintenance", name),
         EventKind::MaintenanceEnd => with_name("msg.maintenance_ended", name),
@@ -115,7 +124,10 @@ pub fn detail(event: &NotificationEvent) -> Option<String> {
         .filter(|m| !m.is_empty());
     match event.kind {
         EventKind::Up => match event.downtime {
-            Some(d) => Some(crate::i18n::tf("msg.down_for", &[("duration", &format_duration(d))])),
+            Some(d) => Some(crate::i18n::tf(
+                "msg.down_for",
+                &[("duration", &format_duration(d))],
+            )),
             None => message.map(str::to_string),
         },
         EventKind::Reminder => {
@@ -158,14 +170,20 @@ pub fn facts(event: &NotificationEvent) -> Vec<(&'static str, String)> {
         out.push((crate::i18n::t("msg.fact_target"), event.target.clone()));
     }
     if !event.monitor_type.is_empty() {
-        out.push((crate::i18n::t("msg.fact_type"), monitor_type_label(&event.monitor_type)));
+        out.push((
+            crate::i18n::t("msg.fact_type"),
+            monitor_type_label(&event.monitor_type),
+        ));
     }
     if let (EventKind::Up | EventKind::Reminder | EventKind::Escalation, Some(d)) =
         (event.kind, event.downtime)
     {
         out.push((crate::i18n::t("msg.fact_downtime"), format_duration(d)));
     }
-    out.push((crate::i18n::t("msg.fact_time"), format_time(event.occurred_at)));
+    out.push((
+        crate::i18n::t("msg.fact_time"),
+        format_time(event.occurred_at),
+    ));
     out
 }
 

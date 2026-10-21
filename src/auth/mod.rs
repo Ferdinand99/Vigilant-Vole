@@ -26,8 +26,8 @@ pub mod session;
 pub mod tokens;
 pub mod totp;
 
-use crate::api::{ApiError, ApiResult};
 pub use crate::api::auth::{authenticate_headers, authenticate_token};
+use crate::api::{ApiError, ApiResult};
 pub use crate::db::api_tokens::TokenScope;
 pub use crate::db::models::Role;
 
@@ -113,7 +113,10 @@ impl<S: Send + Sync> FromRequestParts<S> for CurrentUser {
 impl<S: Send + Sync> OptionalFromRequestParts<S> for CurrentUser {
     type Rejection = std::convert::Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Option<Self>, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> Result<Option<Self>, Self::Rejection> {
         Ok(parts.extensions.get::<CurrentUser>().cloned())
     }
 }
@@ -166,13 +169,31 @@ pub async fn verify_password_async(hash: String, password: String) -> ApiResult<
 /// A real Argon2 hash nobody knows the password for. Logins for unknown or
 /// disabled users verify against it, so they take as long as real failures
 /// and usernames can't be enumerated by timing.
-pub static DUMMY_HASH: LazyLock<String> =
-    LazyLock::new(|| try_hash_password("vigilant-vole/no-such-user/timing-equaliser").unwrap_or_default());
+pub static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
+    try_hash_password("vigilant-vole/no-such-user/timing-equaliser").unwrap_or_default()
+});
 
 const COMMON_PASSWORDS: &[&str] = &[
-    "password", "password1", "password12", "password123", "passw0rd", "1234567890", "12345678910",
-    "0123456789", "qwertyuiop", "qwerty1234", "1q2w3e4r5t", "iloveyou12", "letmein123", "welcome123",
-    "admin12345", "administrator", "changeme123", "abcdefghij", "1111111111", "uptimekuma",
+    "password",
+    "password1",
+    "password12",
+    "password123",
+    "passw0rd",
+    "1234567890",
+    "12345678910",
+    "0123456789",
+    "qwertyuiop",
+    "qwerty1234",
+    "1q2w3e4r5t",
+    "iloveyou12",
+    "letmein123",
+    "welcome123",
+    "admin12345",
+    "administrator",
+    "changeme123",
+    "abcdefghij",
+    "1111111111",
+    "uptimekuma",
     "vigilantvole",
 ];
 
@@ -261,7 +282,10 @@ mod tests {
 
     #[test]
     fn require_rejects_lower_roles() {
-        assert!(matches!(user(Role::Viewer).require(Role::Editor), Err(ApiError::Forbidden)));
+        assert!(matches!(
+            user(Role::Viewer).require(Role::Editor),
+            Err(ApiError::Forbidden)
+        ));
     }
 
     #[test]

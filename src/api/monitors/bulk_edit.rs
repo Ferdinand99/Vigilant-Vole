@@ -40,7 +40,10 @@ pub enum ChannelEdit {
     Unchanged,
     /// Link `(channel_id, escalation)` (an existing link takes the new flag)
     /// and unlink channel ids. Removals go first.
-    Change { add: Vec<(i64, bool)>, remove: Vec<i64> },
+    Change {
+        add: Vec<(i64, bool)>,
+        remove: Vec<i64>,
+    },
     /// Exactly these `(channel_id, escalation)` links (empty: none).
     Replace(Vec<(i64, bool)>),
 }
@@ -156,10 +159,20 @@ impl BulkValues {
             retry_interval: p.text("retry_interval_seconds"),
             timeout: p.text("timeout_seconds"),
             retries: p.text("retries"),
-            channels_mode: if p.text("channels_mode") == MODE_REPLACE { MODE_REPLACE.into() } else { "change".into() },
+            channels_mode: if p.text("channels_mode") == MODE_REPLACE {
+                MODE_REPLACE.into()
+            } else {
+                "change".into()
+            },
             channel_ops: channel_ids
                 .iter()
-                .map(|id| (*id, op(&p.text(&format!("channel_{id}"))), p.flag(&format!("channel_{id}_escalation"))))
+                .map(|id| {
+                    (
+                        *id,
+                        op(&p.text(&format!("channel_{id}"))),
+                        p.flag(&format!("channel_{id}_escalation")),
+                    )
+                })
                 .collect(),
             replace: channel_ids
                 .iter()
@@ -167,7 +180,13 @@ impl BulkValues {
                 .collect(),
             tag_ops: tag_ids
                 .iter()
-                .map(|id| (*id, op(&p.text(&format!("tag_{id}"))), p.text(&format!("tag_value_{id}"))))
+                .map(|id| {
+                    (
+                        *id,
+                        op(&p.text(&format!("tag_{id}"))),
+                        p.text(&format!("tag_value_{id}")),
+                    )
+                })
                 .collect(),
             tags_clear: p.flag("tags_clear"),
             new_tag_name: p.text("new_tag_name"),
@@ -190,7 +209,10 @@ impl BulkValues {
     }
 
     pub fn channel_op(&self, id: &i64) -> &str {
-        self.channel_ops.iter().find(|(c, _, _)| c == id).map_or("", |(_, o, _)| o.as_str())
+        self.channel_ops
+            .iter()
+            .find(|(c, _, _)| c == id)
+            .map_or("", |(_, o, _)| o.as_str())
     }
 
     pub fn channel_escalation(&self, id: &i64) -> bool {
@@ -198,15 +220,25 @@ impl BulkValues {
     }
 
     pub fn replace_mode(&self, id: &i64) -> &'static str {
-        self.replace.iter().find(|(c, _)| c == id).map_or(ChannelMode::Off, |(_, m)| *m).as_str()
+        self.replace
+            .iter()
+            .find(|(c, _)| c == id)
+            .map_or(ChannelMode::Off, |(_, m)| *m)
+            .as_str()
     }
 
     pub fn tag_op(&self, id: &i64) -> &str {
-        self.tag_ops.iter().find(|(t, _, _)| t == id).map_or("", |(_, o, _)| o.as_str())
+        self.tag_ops
+            .iter()
+            .find(|(t, _, _)| t == id)
+            .map_or("", |(_, o, _)| o.as_str())
     }
 
     pub fn tag_value(&self, id: &i64) -> &str {
-        self.tag_ops.iter().find(|(t, _, _)| t == id).map_or("", |(_, _, v)| v.as_str())
+        self.tag_ops
+            .iter()
+            .find(|(t, _, _)| t == id)
+            .map_or("", |(_, _, v)| v.as_str())
     }
 
     /// How many settings the sheet changes as filled in (for the summary
@@ -216,7 +248,10 @@ impl BulkValues {
         let channels = if self.replaces_channels() {
             1
         } else {
-            self.channel_ops.iter().filter(|(_, o, _)| !o.is_empty()).count()
+            self.channel_ops
+                .iter()
+                .filter(|(_, o, _)| !o.is_empty())
+                .count()
         };
         set(&self.run_on_agents)
             + set(&self.confirm_with_agents)
@@ -225,7 +260,11 @@ impl BulkValues {
             + set(&self.timeout)
             + set(&self.retries)
             + channels
-            + self.tag_ops.iter().filter(|(_, o, _)| !o.is_empty()).count()
+            + self
+                .tag_ops
+                .iter()
+                .filter(|(_, o, _)| !o.is_empty())
+                .count()
             + usize::from(self.tags_clear)
             + set(&self.new_tag_name)
     }
@@ -245,7 +284,8 @@ pub fn validate(v: &BulkValues) -> Result<BulkEdit, Errors> {
         run_on_agents: parse_tri(&v.run_on_agents),
         confirm_with_agents: parse_tri(&v.confirm_with_agents),
         interval: given(&v.interval).and_then(|raw| form::check_interval(&mut e, raw)),
-        retry_interval: given(&v.retry_interval).and_then(|raw| form::check_retry_interval(&mut e, raw)),
+        retry_interval: given(&v.retry_interval)
+            .and_then(|raw| form::check_retry_interval(&mut e, raw)),
         timeout: given(&v.timeout).and_then(|raw| form::check_timeout(&mut e, raw)),
         retries: given(&v.retries).and_then(|raw| form::check_retries(&mut e, raw)),
         ..BulkEdit::default()
@@ -266,9 +306,23 @@ pub fn validate(v: &BulkValues) -> Result<BulkEdit, Errors> {
                 .collect(),
         )
     } else {
-        let add: Vec<(i64, bool)> = v.channel_ops.iter().filter(|(_, o, _)| o == OP_ADD).map(|(id, _, esc)| (*id, *esc)).collect();
-        let remove: Vec<i64> = v.channel_ops.iter().filter(|(_, o, _)| o == OP_REMOVE).map(|(id, _, _)| *id).collect();
-        if add.is_empty() && remove.is_empty() { ChannelEdit::Unchanged } else { ChannelEdit::Change { add, remove } }
+        let add: Vec<(i64, bool)> = v
+            .channel_ops
+            .iter()
+            .filter(|(_, o, _)| o == OP_ADD)
+            .map(|(id, _, esc)| (*id, *esc))
+            .collect();
+        let remove: Vec<i64> = v
+            .channel_ops
+            .iter()
+            .filter(|(_, o, _)| o == OP_REMOVE)
+            .map(|(id, _, _)| *id)
+            .collect();
+        if add.is_empty() && remove.is_empty() {
+            ChannelEdit::Unchanged
+        } else {
+            ChannelEdit::Change { add, remove }
+        }
     };
 
     edit.tags.clear = v.tags_clear;
@@ -285,7 +339,9 @@ pub fn validate(v: &BulkValues) -> Result<BulkEdit, Errors> {
         }
     }
     if let Some(name) = given(&v.new_tag_name) {
-        if let Some(msg) = form::tag_name_error(name).or_else(|| form::tag_value_error(&v.new_tag_value)) {
+        if let Some(msg) =
+            form::tag_name_error(name).or_else(|| form::tag_value_error(&v.new_tag_value))
+        {
             e.insert("new_tag_name", msg);
         }
         edit.tags.create.push(NewTag {
@@ -317,7 +373,12 @@ pub enum Skip {
 }
 
 impl Skip {
-    pub const ALL: [Skip; 4] = [Skip::Agents, Skip::Timing, Skip::TimeoutOverInterval, Skip::EscalationDelay];
+    pub const ALL: [Skip; 4] = [
+        Skip::Agents,
+        Skip::Timing,
+        Skip::TimeoutOverInterval,
+        Skip::EscalationDelay,
+    ];
 
     /// Stable machine code (REST API).
     pub fn code(self) -> &'static str {
@@ -359,7 +420,12 @@ pub fn apply_settings(m: &mut NewMonitor, edit: &BulkEdit) -> Vec<Skip> {
 
     // The monitor form's rules: groups have no timing at all; push monitors
     // only an interval and retries.
-    let before = (m.interval_seconds, m.retries, m.retry_interval_seconds, m.timeout_seconds);
+    let before = (
+        m.interval_seconds,
+        m.retries,
+        m.retry_interval_seconds,
+        m.timeout_seconds,
+    );
     let mut unsupported = false;
     if kind == MonitorType::Group {
         unsupported |= edit.interval.is_some() || edit.retries.is_some();
@@ -379,8 +445,14 @@ pub fn apply_settings(m: &mut NewMonitor, edit: &BulkEdit) -> Vec<Skip> {
         skips.push(Skip::Timing);
     }
     let moved = (m.interval_seconds, m.timeout_seconds) != (before.0, before.3);
-    if kind.is_active_check() && moved && !form::timeout_fits(m.timeout_seconds, m.interval_seconds) {
-        (m.interval_seconds, m.retries, m.retry_interval_seconds, m.timeout_seconds) = before;
+    if kind.is_active_check() && moved && !form::timeout_fits(m.timeout_seconds, m.interval_seconds)
+    {
+        (
+            m.interval_seconds,
+            m.retries,
+            m.retry_interval_seconds,
+            m.timeout_seconds,
+        ) = before;
         skips.push(Skip::TimeoutOverInterval);
     }
     skips
@@ -389,7 +461,12 @@ pub fn apply_settings(m: &mut NewMonitor, edit: &BulkEdit) -> Vec<Skip> {
 /// The channel links after `edit` (sorted by channel id). Escalation links
 /// need `escalation_ok` (the monitor has an escalation delay); otherwise they
 /// are skipped.
-pub fn apply_channels(current: &[(i64, bool)], edit: &ChannelEdit, escalation_ok: bool, skips: &mut Vec<Skip>) -> Vec<(i64, bool)> {
+pub fn apply_channels(
+    current: &[(i64, bool)],
+    edit: &ChannelEdit,
+    escalation_ok: bool,
+    skips: &mut Vec<Skip>,
+) -> Vec<(i64, bool)> {
     let mut links: BTreeMap<i64, bool> = current.iter().copied().collect();
     let mut add = |links: &mut BTreeMap<i64, bool>, list: &[(i64, bool)]| {
         for (id, escalation) in list {
@@ -420,8 +497,16 @@ pub fn apply_channels(current: &[(i64, bool)], edit: &ChannelEdit, escalation_ok
 
 /// The tags after `edit` (sorted by tag id); `created` are the resolved
 /// `(tag_id, value)` of [`TagEdit::create`].
-pub fn apply_tags(current: &[(i64, String)], edit: &TagEdit, created: &[(i64, String)]) -> Vec<(i64, String)> {
-    let mut tags: BTreeMap<i64, String> = if edit.clear { BTreeMap::new() } else { current.iter().cloned().collect() };
+pub fn apply_tags(
+    current: &[(i64, String)],
+    edit: &TagEdit,
+    created: &[(i64, String)],
+) -> Vec<(i64, String)> {
+    let mut tags: BTreeMap<i64, String> = if edit.clear {
+        BTreeMap::new()
+    } else {
+        current.iter().cloned().collect()
+    };
     for id in &edit.remove {
         tags.remove(id);
     }
@@ -457,14 +542,20 @@ impl Outcome {
         } else {
             crate::i18n::tf(
                 "bulk.updated",
-                &[("monitors", &crate::i18n::tn("count.monitors", self.updated.len() as i64))],
+                &[(
+                    "monitors",
+                    &crate::i18n::tn("count.monitors", self.updated.len() as i64),
+                )],
             )
         };
         for (skip, n) in self.skip_counts() {
             out.push_str(" · ");
             out.push_str(&crate::i18n::tf(
                 "bulk.skipped",
-                &[("n", &crate::i18n::fmt_int(n as i64)), ("reason", skip.reason())],
+                &[
+                    ("n", &crate::i18n::fmt_int(n as i64)),
+                    ("reason", skip.reason()),
+                ],
             ));
         }
         out
@@ -494,7 +585,12 @@ pub fn apply(conn: &mut Connection, ids: &[i64], edit: &BulkEdit) -> rusqlite::R
         .tags
         .create
         .iter()
-        .map(|t| Ok((db_tags::get_or_create(&tx, &t.name, &t.color)?, t.value.clone())))
+        .map(|t| {
+            Ok((
+                db_tags::get_or_create(&tx, &t.name, &t.color)?,
+                t.value.clone(),
+            ))
+        })
         .collect::<rusqlite::Result<_>>()?;
     let mut out = Outcome::default();
     let mut seen = BTreeSet::new();
@@ -515,15 +611,22 @@ pub fn apply(conn: &mut Connection, ids: &[i64], edit: &BulkEdit) -> rusqlite::R
         }
         if edit.channels != ChannelEdit::Unchanged {
             let current = db_notifications::monitor_channel_links(&tx, id)?;
-            let next = apply_channels(&current, &edit.channels, m.escalation_minutes > 0, &mut skips);
+            let next = apply_channels(
+                &current,
+                &edit.channels,
+                m.escalation_minutes > 0,
+                &mut skips,
+            );
             if next != current {
                 db_notifications::set_monitor_channels(&tx, id, &next)?;
                 changed = true;
             }
         }
         if !edit.tags.is_empty() {
-            let mut current: Vec<(i64, String)> =
-                db_tags::tags_for_monitor(&tx, id)?.into_iter().map(|t| (t.tag_id, t.value)).collect();
+            let mut current: Vec<(i64, String)> = db_tags::tags_for_monitor(&tx, id)?
+                .into_iter()
+                .map(|t| (t.tag_id, t.value))
+                .collect();
             current.sort_by_key(|(tag, _)| *tag);
             let next = apply_tags(&current, &edit.tags, &created);
             if next != current {

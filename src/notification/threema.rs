@@ -24,10 +24,16 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
         Field::select(
             "recipient_type",
             "Send to",
-            &[("identity", "Threema ID"), ("phone", "Phone number"), ("email", "Email address")],
+            &[
+                ("identity", "Threema ID"),
+                ("phone", "Phone number"),
+                ("email", "Email address"),
+            ],
         )
         .default("identity"),
-        Field::text("recipient", "Recipient").required().placeholder("ABCD1234…"),
+        Field::text("recipient", "Recipient")
+            .required()
+            .placeholder("ABCD1234…"),
     ],
     transport: Transport::Http(build),
     check: Some(check),
@@ -36,7 +42,10 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 fn check(config: &Value) -> Vec<FieldError> {
     let mut errors = Vec::new();
     if opt(config, "gateway_id").is_some_and(|id| !(id.len() == 8 && id.starts_with('*'))) {
-        errors.push(field_error("gateway_id", crate::i18n::t("notif.err_threema_gateway")));
+        errors.push(field_error(
+            "gateway_id",
+            crate::i18n::t("notif.err_threema_gateway"),
+        ));
     }
     if let Some(to) = opt(config, "recipient") {
         let ok = match opt(config, "recipient_type").unwrap_or("identity") {
@@ -45,7 +54,10 @@ fn check(config: &Value) -> Vec<FieldError> {
             _ => to.len() == 8 && to.chars().all(|c| c.is_ascii_alphanumeric()),
         };
         if !ok {
-            errors.push(field_error("recipient", crate::i18n::t("notif.err_threema_recipient")));
+            errors.push(field_error(
+                "recipient",
+                crate::i18n::t("notif.err_threema_recipient"),
+            ));
         }
     }
     errors
@@ -93,21 +105,37 @@ mod tests {
 
     #[test]
     fn sends_a_simple_message_to_the_chosen_kind_of_recipient() {
-        for (kind, to, field) in [("identity", "ABCD1234", "to"), ("phone", "+4712345678", "phone"), ("email", "me@example.com", "email")] {
+        for (kind, to, field) in [
+            ("identity", "ABCD1234", "to"),
+            ("phone", "+4712345678", "phone"),
+            ("email", "me@example.com", "email"),
+        ] {
             let r = &build(&json!({"gateway_id": "*VOLE123", "secret": "S", "recipient_type": kind, "recipient": to}), &event(EventKind::Down)).unwrap()[0];
             assert_eq!(r.url, "https://msgapi.threema.ch/send_simple");
             let f = fields(r);
             let get = |k: &str| f.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
             assert_eq!(get("from").as_deref(), Some("*VOLE123"));
-            assert_eq!(get(field).as_deref(), Some(to.trim_start_matches('+')), "{kind}");
+            assert_eq!(
+                get(field).as_deref(),
+                Some(to.trim_start_matches('+')),
+                "{kind}"
+            );
             assert!(get("text").unwrap().contains("Payments API is down"));
         }
     }
 
     #[test]
     fn ids_and_recipients_are_checked() {
-        assert!(check(&json!({"gateway_id": "VOLE123"})).iter().any(|(k, _)| k == "gateway_id"));
-        assert!(check(&json!({"gateway_id": "*VOLE123", "recipient": "abc"})).iter().any(|(k, _)| k == "recipient"));
+        assert!(
+            check(&json!({"gateway_id": "VOLE123"}))
+                .iter()
+                .any(|(k, _)| k == "gateway_id")
+        );
+        assert!(
+            check(&json!({"gateway_id": "*VOLE123", "recipient": "abc"}))
+                .iter()
+                .any(|(k, _)| k == "recipient")
+        );
         assert!(check(&json!({"gateway_id": "*VOLE123", "recipient": "ABCD1234"})).is_empty());
         assert!(check(&json!({"recipient_type": "phone", "recipient": "4712345678"})).is_empty());
         assert!(!check(&json!({"recipient_type": "email", "recipient": "nope"})).is_empty());

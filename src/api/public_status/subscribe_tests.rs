@@ -1,8 +1,8 @@
 //! Router tests for status page subscriptions: sign-up, double opt-in,
 //! unsubscribe, abuse limits, password pages and the editor tab.
 
-use super::router_tests::{TestApp, app, get, login, seed, send};
 use super::invalidate_views;
+use super::router_tests::{TestApp, app, get, login, seed, send};
 use crate::db::models::Role;
 use crate::db::status_pages::extras;
 use crate::db::subscribers::{self as db, Settings};
@@ -15,11 +15,25 @@ async fn enable(t: &TestApp, pid: i64, email: bool, webhooks: bool) {
     t.state
         .with_conn(move |c| {
             let channel = if email {
-                Some(crate::db::notifications::insert_channel(c, "Mail", "email", EMAIL_CONFIG, false)?)
+                Some(crate::db::notifications::insert_channel(
+                    c,
+                    "Mail",
+                    "email",
+                    EMAIL_CONFIG,
+                    false,
+                )?)
             } else {
                 None
             };
-            db::set_settings(c, pid, &Settings { enabled: true, channel_id: channel, webhooks })?;
+            db::set_settings(
+                c,
+                pid,
+                &Settings {
+                    enabled: true,
+                    channel_id: channel,
+                    webhooks,
+                },
+            )?;
             Ok(())
         })
         .await
@@ -43,7 +57,10 @@ async fn the_form_only_exists_when_the_page_offers_subscriptions() {
     enable(&t, pid, true, false).await;
     let (status, headers, body) = get(&t, "/status/acme/subscribe", None, None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert!(body.contains("name=\"email\"") && !body.contains("name=\"webhook\""), "{body}");
+    assert!(
+        body.contains("name=\"email\"") && !body.contains("name=\"webhook\""),
+        "{body}"
+    );
     assert_eq!(headers.get("cache-control"), Some("no-store"));
     assert!(headers.get("x-robots-tag").is_some());
     let (_, _, page) = get(&t, "/status/acme", None, None).await;
@@ -51,14 +68,30 @@ async fn the_form_only_exists_when_the_page_offers_subscriptions() {
 
     // Webhooks only: no email field.
     t.state
-        .with_conn(move |c| db::set_settings(c, pid, &Settings { enabled: true, channel_id: None, webhooks: true }))
+        .with_conn(move |c| {
+            db::set_settings(
+                c,
+                pid,
+                &Settings {
+                    enabled: true,
+                    channel_id: None,
+                    webhooks: true,
+                },
+            )
+        })
         .await
         .unwrap();
     let (_, _, body) = get(&t, "/status/acme/subscribe", None, None).await;
-    assert!(!body.contains("name=\"email\"") && body.contains("name=\"webhook\""), "{body}");
+    assert!(
+        !body.contains("name=\"email\"") && body.contains("name=\"webhook\""),
+        "{body}"
+    );
 
     // Unpublished pages offer nothing.
-    t.state.with_conn(move |c| c.execute("UPDATE status_pages SET published = 0 WHERE id = ?1", [pid])).await.unwrap();
+    t.state
+        .with_conn(move |c| c.execute("UPDATE status_pages SET published = 0 WHERE id = ?1", [pid]))
+        .await
+        .unwrap();
     invalidate_views();
     let (status, _, _) = get(&t, "/status/acme/subscribe", None, None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -70,35 +103,72 @@ async fn email_sign_up_needs_confirmation_and_leaks_nothing() {
     let (pid, _) = seed(&t, true, None).await;
     enable(&t, pid, true, false).await;
 
-    let (status, _, first) = send(&t, "POST", "/status/acme/subscribe", "", "email=Jo%40Example.com").await;
+    let (status, _, first) = send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "email=Jo%40Example.com",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{first}");
     assert!(first.contains("Check your inbox"), "{first}");
     let subs = subscribers(&t, pid).await;
     assert_eq!(subs.len(), 1);
-    assert_eq!((subs[0].target.as_str(), subs[0].kind.as_str(), subs[0].is_confirmed()), ("jo@example.com", "email", false));
+    assert_eq!(
+        (
+            subs[0].target.as_str(),
+            subs[0].kind.as_str(),
+            subs[0].is_confirmed()
+        ),
+        ("jo@example.com", "email", false)
+    );
     let token = subs[0].token.clone();
 
     // Pending: no announcements go to it.
-    let confirmed = t.state.with_conn(move |c| db::list_confirmed(c, pid)).await.unwrap();
+    let confirmed = t
+        .state
+        .with_conn(move |c| db::list_confirmed(c, pid))
+        .await
+        .unwrap();
     assert!(confirmed.is_empty());
 
     // Opening the link (a mail scanner would) confirms nothing.
     let confirm_url = format!("/status/acme/subscribe/confirm/{token}");
     let (status, headers, body) = get(&t, &confirm_url, None, None).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("method=\"post\"") && body.contains("Confirm subscription"), "{body}");
-    assert!(body.contains("<meta name=\"referrer\" content=\"no-referrer\">"), "{body}");
+    assert!(
+        body.contains("method=\"post\"") && body.contains("Confirm subscription"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<meta name=\"referrer\" content=\"no-referrer\">"),
+        "{body}"
+    );
     let _ = headers;
-    assert!(body.contains("jo***@example.com") && !body.contains("jo@example.com"), "masked: {body}");
+    assert!(
+        body.contains("jo***@example.com") && !body.contains("jo@example.com"),
+        "masked: {body}"
+    );
     assert!(!subscribers(&t, pid).await[0].is_confirmed());
 
     let (status, _, body) = send(&t, "POST", &confirm_url, "", "").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("You&#39;re subscribed") || body.contains("You're subscribed"), "{body}");
+    assert!(
+        body.contains("You&#39;re subscribed") || body.contains("You're subscribed"),
+        "{body}"
+    );
     assert!(subscribers(&t, pid).await[0].is_confirmed());
 
     // Signing up again looks exactly the same and changes nothing.
-    let (status, _, again) = send(&t, "POST", "/status/acme/subscribe", "", "email=jo%40example.com").await;
+    let (status, _, again) = send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "email=jo%40example.com",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(first, again, "a known address must not look different");
     assert_eq!(subscribers(&t, pid).await.len(), 1);
@@ -144,14 +214,41 @@ async fn bad_sign_ups_are_turned_back() {
     assert!(subscribers(&t, pid).await.is_empty());
 
     // The hidden field is for bots: they get the success page and nothing is stored.
-    let (status, _, body) = send(&t, "POST", "/status/acme/subscribe", "", "email=a%40example.com&website=http%3A%2F%2Fspam").await;
+    let (status, _, body) = send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "email=a%40example.com&website=http%3A%2F%2Fspam",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("Check your inbox"));
     assert!(subscribers(&t, pid).await.is_empty());
 
     // A webhook subscription is refused when the page doesn't take them.
-    t.state.with_conn(move |c| db::set_settings(c, pid, &Settings { enabled: true, channel_id: None, webhooks: false })).await.unwrap();
-    let (status, _, _) = send(&t, "POST", "/status/acme/subscribe", "", "webhook=https%3A%2F%2F93.184.216.34%2Fh").await;
+    t.state
+        .with_conn(move |c| {
+            db::set_settings(
+                c,
+                pid,
+                &Settings {
+                    enabled: true,
+                    channel_id: None,
+                    webhooks: false,
+                },
+            )
+        })
+        .await
+        .unwrap();
+    let (status, _, _) = send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "webhook=https%3A%2F%2F93.184.216.34%2Fh",
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -160,13 +257,32 @@ async fn public_webhooks_can_subscribe() {
     let t = app().await;
     let (pid, _) = seed(&t, true, None).await;
     enable(&t, pid, false, true).await;
-    let (status, _, body) = send(&t, "POST", "/status/acme/subscribe", "", "webhook=https%3A%2F%2F93.184.216.34%2Fhook%3Fk%3Dsecret").await;
+    let (status, _, body) = send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "webhook=https%3A%2F%2F93.184.216.34%2Fhook%3Fk%3Dsecret",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let subs = subscribers(&t, pid).await;
-    assert_eq!((subs[0].kind.as_str(), subs[0].target.as_str()), ("webhook", "https://93.184.216.34/hook?k=secret"));
+    assert_eq!(
+        (subs[0].kind.as_str(), subs[0].target.as_str()),
+        ("webhook", "https://93.184.216.34/hook?k=secret")
+    );
     // The confirmation page shows the host, never the secret path or query.
-    let (_, _, body) = get(&t, &format!("/status/acme/subscribe/confirm/{}", subs[0].token), None, None).await;
-    assert!(body.contains("https://93.184.216.34/…") && !body.contains("secret"), "{body}");
+    let (_, _, body) = get(
+        &t,
+        &format!("/status/acme/subscribe/confirm/{}", subs[0].token),
+        None,
+        None,
+    )
+    .await;
+    assert!(
+        body.contains("https://93.184.216.34/…") && !body.contains("secret"),
+        "{body}"
+    );
 }
 
 #[tokio::test]
@@ -175,10 +291,24 @@ async fn sign_ups_are_rate_limited() {
     let (pid, _) = seed(&t, true, None).await;
     enable(&t, pid, true, false).await;
     for n in 0..20 {
-        let (status, _, _) = send(&t, "POST", "/status/acme/subscribe", "", &format!("email=u{n}%40example.com")).await;
+        let (status, _, _) = send(
+            &t,
+            "POST",
+            "/status/acme/subscribe",
+            "",
+            &format!("email=u{n}%40example.com"),
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "attempt {n}");
     }
-    let (status, _, body) = send(&t, "POST", "/status/acme/subscribe", "", "email=late%40example.com").await;
+    let (status, _, body) = send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "email=late%40example.com",
+    )
+    .await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
     assert_eq!(subscribers(&t, pid).await.len(), 20);
 }
@@ -188,7 +318,14 @@ async fn tokens_only_work_on_their_own_page_and_are_not_guessable() {
     let t = app().await;
     let (pid, _) = seed(&t, true, None).await;
     enable(&t, pid, true, false).await;
-    send(&t, "POST", "/status/acme/subscribe", "", "email=a%40example.com").await;
+    send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "email=a%40example.com",
+    )
+    .await;
     let token = subscribers(&t, pid).await[0].token.clone();
     for uri in [
         format!("/status/acme/subscribe/confirm/{}x", token),
@@ -210,12 +347,22 @@ async fn password_pages_ask_for_the_password_first() {
     let (pid, _) = seed(&t, true, None).await;
     enable(&t, pid, true, false).await;
     let hash = crate::auth::hash_password("correct horse");
-    t.state.with_conn(move |c| extras::set_password_hash(c, pid, Some(&hash))).await.unwrap();
+    t.state
+        .with_conn(move |c| extras::set_password_hash(c, pid, Some(&hash)))
+        .await
+        .unwrap();
     invalidate_views();
     let (status, _, body) = get(&t, "/status/acme/subscribe", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(!body.contains("name=\"email\""), "{body}");
-    let (status, _, _) = send(&t, "POST", "/status/acme/subscribe", "", "email=a%40example.com").await;
+    let (status, _, _) = send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "email=a%40example.com",
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(subscribers(&t, pid).await.is_empty());
 }
@@ -232,41 +379,97 @@ async fn the_editor_tab_manages_settings_and_subscribers() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, _, body) = get(&t, &url, None, Some(&ed)).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert!(body.contains("Let visitors subscribe") && body.contains("No subscribers yet"), "{body}");
+    assert!(
+        body.contains("Let visitors subscribe") && body.contains("No subscribers yet"),
+        "{body}"
+    );
 
     // Only email channels can be picked.
     let (email_id, other_id) = t
         .state
         .with_conn(|c| {
             Ok((
-                crate::db::notifications::insert_channel(c, "Ops mail", "email", EMAIL_CONFIG, false)?,
-                crate::db::notifications::insert_channel(c, "Hook", "webhook", r#"{"url":"https://example.com/h"}"#, false)?,
+                crate::db::notifications::insert_channel(
+                    c,
+                    "Ops mail",
+                    "email",
+                    EMAIL_CONFIG,
+                    false,
+                )?,
+                crate::db::notifications::insert_channel(
+                    c,
+                    "Hook",
+                    "webhook",
+                    r#"{"url":"https://example.com/h"}"#,
+                    false,
+                )?,
             ))
         })
         .await
         .unwrap();
     let (status, _, _) = send(&t, "POST", &url, &viewer, "enabled=true").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _, _) = send(&t, "POST", &url, &ed, &format!("enabled=true&channel_id={other_id}")).await;
+    let (status, _, _) = send(
+        &t,
+        "POST",
+        &url,
+        &ed,
+        &format!("enabled=true&channel_id={other_id}"),
+    )
+    .await;
     assert!(status.is_redirection());
-    assert!(!t.state.with_conn(move |c| db::settings(c, pid)).await.unwrap().enabled, "a non-email channel is refused");
+    assert!(
+        !t.state
+            .with_conn(move |c| db::settings(c, pid))
+            .await
+            .unwrap()
+            .enabled,
+        "a non-email channel is refused"
+    );
 
-    let (status, _, _) = send(&t, "POST", &url, &ed, &format!("enabled=true&webhooks=true&channel_id={email_id}")).await;
+    let (status, _, _) = send(
+        &t,
+        "POST",
+        &url,
+        &ed,
+        &format!("enabled=true&webhooks=true&channel_id={email_id}"),
+    )
+    .await;
     assert!(status.is_redirection());
-    let s = t.state.with_conn(move |c| db::settings(c, pid)).await.unwrap();
-    assert_eq!((s.enabled, s.webhooks, s.channel_id), (true, true, Some(email_id)));
+    let s = t
+        .state
+        .with_conn(move |c| db::settings(c, pid))
+        .await
+        .unwrap();
+    assert_eq!(
+        (s.enabled, s.webhooks, s.channel_id),
+        (true, true, Some(email_id))
+    );
     let (_, _, body) = get(&t, &url, None, Some(&ed)).await;
-    assert!(body.contains("Ops mail") && !body.contains(">Hook<"), "{body}");
+    assert!(
+        body.contains("Ops mail") && !body.contains(">Hook<"),
+        "{body}"
+    );
 
     // The public page picks the change up right away.
     let (_, _, page) = get(&t, "/status/acme", None, None).await;
     assert!(page.contains("/status/acme/subscribe"), "{page}");
 
     // The list shows full addresses to editors and lets them remove one.
-    send(&t, "POST", "/status/acme/subscribe", "", "email=visitor%40example.com").await;
+    send(
+        &t,
+        "POST",
+        "/status/acme/subscribe",
+        "",
+        "email=visitor%40example.com",
+    )
+    .await;
     let sid = subscribers(&t, pid).await[0].id;
     let (_, _, body) = get(&t, &url, None, Some(&ed)).await;
-    assert!(body.contains("visitor@example.com") && body.contains("Pending"), "{body}");
+    assert!(
+        body.contains("visitor@example.com") && body.contains("Pending"),
+        "{body}"
+    );
     let (status, _, _) = send(&t, "DELETE", &format!("{url}/{sid}"), &viewer, "").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, _, _) = send(&t, "DELETE", &format!("{url}/{sid}"), &ed, "").await;

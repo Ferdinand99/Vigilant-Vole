@@ -37,7 +37,9 @@ pub fn public_routes() -> Router<AppState> {
 pub fn editor_routes() -> Router<AppState> {
     Router::new().route(
         "/status-pages/{id}/assets/{kind}",
-        post(upload).delete(remove).layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)),
+        post(upload)
+            .delete(remove)
+            .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)),
     )
 }
 
@@ -56,7 +58,12 @@ fn etag(asset: &Asset) -> String {
 
 /// The image response: sniffed type, ETag/304, and a CSP that forbids
 /// everything (an image needs none of it, and it blocks content sniffing tricks).
-pub fn asset_response(asset: &Asset, kind: AssetKind, versioned: bool, request: &HeaderMap) -> Response {
+pub fn asset_response(
+    asset: &Asset,
+    kind: AssetKind,
+    versioned: bool,
+    request: &HeaderMap,
+) -> Response {
     let tag = etag(asset);
     let not_modified = request
         .get(header::IF_NONE_MATCH)
@@ -69,12 +76,22 @@ pub fn asset_response(asset: &Asset, kind: AssetKind, versioned: bool, request: 
     };
     let h = resp.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static(asset.mime));
-    h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    h.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
     h.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static(if versioned { "public, max-age=31536000, immutable" } else { "public, no-cache" }),
+        HeaderValue::from_static(if versioned {
+            "public, max-age=31536000, immutable"
+        } else {
+            "public, no-cache"
+        }),
     );
-    h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'none'; sandbox"));
+    h.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; sandbox"),
+    );
     h.insert(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_static(match kind {
@@ -91,7 +108,12 @@ pub fn asset_response(asset: &Asset, kind: AssetKind, versioned: bool, request: 
 /// Loads an asset of a page visitors may see: published pages for everyone
 /// (protected ones included: a logo isn't status data), drafts only for
 /// logged-in users.
-async fn load_public(state: &AppState, jar: &SignedCookieJar, slug: String, kind: AssetKind) -> ApiResult<Asset> {
+async fn load_public(
+    state: &AppState,
+    jar: &SignedCookieJar,
+    slug: String,
+    kind: AssetKind,
+) -> ApiResult<Asset> {
     let found = state
         .with_conn(move |c| {
             let Some(page) = db_pages::get_by_slug(c, &slug)? else {
@@ -107,7 +129,14 @@ async fn load_public(state: &AppState, jar: &SignedCookieJar, slug: String, kind
     asset.ok_or(ApiError::NotFound)
 }
 
-async fn serve(state: AppState, jar: SignedCookieJar, headers: HeaderMap, slug: String, kind: AssetKind, v: Option<String>) -> ApiResult<Response> {
+async fn serve(
+    state: AppState,
+    jar: SignedCookieJar,
+    headers: HeaderMap,
+    slug: String,
+    kind: AssetKind,
+    v: Option<String>,
+) -> ApiResult<Response> {
     let asset = load_public(&state, &jar, slug, kind).await?;
     let versioned = v.is_some_and(|v| v.len() >= 8 && asset.sha256.starts_with(&v));
     Ok(asset_response(&asset, kind, versioned, &headers))
@@ -134,7 +163,11 @@ async fn favicon(
 }
 
 /// `/favicon.ico` on a custom domain: the page's favicon, if it has one.
-pub async fn custom_domain_favicon(state: &AppState, slug: String, headers: &HeaderMap) -> Option<Response> {
+pub async fn custom_domain_favicon(
+    state: &AppState,
+    slug: String,
+    headers: &HeaderMap,
+) -> Option<Response> {
     let asset = state
         .with_conn(move |c| match db_pages::get_by_slug(c, &slug)? {
             Some(p) if p.published => extras::get_asset(c, p.id, AssetKind::Favicon),
@@ -182,7 +215,11 @@ impl AssetsPartial {
                 kind: "logo",
                 icon: "globe",
                 title: t("spx.logo"),
-                sub: if page.logo_sha.is_some() { t("spx.logo_set") } else { t("spx.logo_help") },
+                sub: if page.logo_sha.is_some() {
+                    t("spx.logo_set")
+                } else {
+                    t("spx.logo_help")
+                },
                 src: page.logo_url(),
                 upload_label: t("spx.upload_logo"),
                 remove_label: t("spx.remove_logo"),
@@ -192,7 +229,11 @@ impl AssetsPartial {
                 kind: "favicon",
                 icon: "logo",
                 title: t("spx.favicon"),
-                sub: if page.favicon_sha.is_some() { t("spx.favicon_set") } else { t("spx.favicon_help") },
+                sub: if page.favicon_sha.is_some() {
+                    t("spx.favicon_set")
+                } else {
+                    t("spx.favicon_help")
+                },
                 src: page.favicon_url(),
                 upload_label: t("spx.upload_favicon"),
                 remove_label: t("spx.remove_favicon"),
@@ -210,7 +251,11 @@ impl AssetsPartial {
 
 /// A multipart read error: over the body limit, or a broken upload.
 fn read_error(err: &axum::extract::multipart::MultipartError) -> AssetError {
-    if err.status() == StatusCode::PAYLOAD_TOO_LARGE { AssetError::TooLarge } else { AssetError::Empty }
+    if err.status() == StatusCode::PAYLOAD_TOO_LARGE {
+        AssetError::TooLarge
+    } else {
+        AssetError::Empty
+    }
 }
 
 /// Reads the `file` field, stopping one byte past the limit.
@@ -267,7 +312,11 @@ async fn respond(
             Ok(msg) => flash(jar, "success", *msg),
             Err(err) => flash(jar, "error", err.clone()),
         };
-        return Ok((jar, Redirect::to(&format!("/status-pages/{id}/edit?tab=settings"))).into_response());
+        return Ok((
+            jar,
+            Redirect::to(&format!("/status-pages/{id}/edit?tab=settings")),
+        )
+            .into_response());
     }
     let page = state
         .with_conn(move |c| db_pages::get(c, id))
@@ -279,7 +328,8 @@ async fn respond(
     };
     let mut resp = HtmlTemplate(AssetsPartial::new(page, error)).into_response();
     if let Some(msg) = toast {
-        resp.headers_mut().insert("hx-trigger", toast_trigger(msg, "success", false));
+        resp.headers_mut()
+            .insert("hx-trigger", toast_trigger(msg, "success", false));
     }
     Ok(resp)
 }
@@ -294,10 +344,15 @@ async fn upload(
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
     let kind = parse_kind(&kind)?;
-    state.with_conn(move |c| db_pages::get(c, id)).await?.ok_or(ApiError::NotFound)?;
+    state
+        .with_conn(move |c| db_pages::get(c, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let result = match read_file(mp).await.and_then(extras::validate_image) {
         Ok(asset) => {
-            state.with_conn(move |c| extras::set_asset(c, id, kind, &asset)).await?;
+            state
+                .with_conn(move |c| extras::set_asset(c, id, kind, &asset))
+                .await?;
             Ok(saved_message(kind, false))
         }
         Err(e) => Err(e.message().to_string()),
@@ -314,7 +369,12 @@ async fn remove(
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
     let kind = parse_kind(&kind)?;
-    state.with_conn(move |c| db_pages::get(c, id)).await?.ok_or(ApiError::NotFound)?;
-    state.with_conn(move |c| extras::delete_asset(c, id, kind)).await?;
+    state
+        .with_conn(move |c| db_pages::get(c, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    state
+        .with_conn(move |c| extras::delete_asset(c, id, kind))
+        .await?;
     respond(&state, jar, &headers, id, Ok(saved_message(kind, true))).await
 }

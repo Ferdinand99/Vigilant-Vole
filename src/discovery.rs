@@ -29,9 +29,9 @@ use tokio::sync::Notify;
 
 use crate::agent::protocol::{now_db, parse_db};
 use crate::api::AppState;
+use crate::db::events as db_events;
 use crate::db::models::{Monitor, MonitorType, NewMonitor};
 use crate::db::monitors::{self as db_monitors, MONITOR_COLUMNS, row_to_monitor};
-use crate::db::events as db_events;
 
 /// Label namespace.
 pub const LABEL_PREFIX: &str = "vigilant.";
@@ -54,8 +54,16 @@ const TAG_COLORS: [&str; 10] = [
 
 /// `(label, example, meaning)` for the settings page cheat-sheet.
 pub const LABEL_REFERENCE: [(&str, &str, &str); 12] = [
-    ("vigilant.enable", "true", "Required. Monitor this container."),
-    ("vigilant.name", "Payments API", "Display name. Defaults to the container name."),
+    (
+        "vigilant.enable",
+        "true",
+        "Required. Monitor this container.",
+    ),
+    (
+        "vigilant.name",
+        "Payments API",
+        "Display name. Defaults to the container name.",
+    ),
     (
         "vigilant.type",
         "http",
@@ -66,14 +74,46 @@ pub const LABEL_REFERENCE: [(&str, &str, &str); 12] = [
         "http://payments:8080/health",
         "URL or host:port to check. Required for every type except docker.",
     ),
-    ("vigilant.interval", "60", "Seconds between checks (20 to 86400)."),
-    ("vigilant.retries", "2", "Failed checks before the monitor goes down (0 to 10)."),
-    ("vigilant.timeout", "10", "Seconds before a check gives up (1 to 300)."),
-    ("vigilant.keyword", "OK", "Text the response must contain (keyword type)."),
-    ("vigilant.group", "Production", "Put the monitor in this group. The group is created if needed."),
-    ("vigilant.tags", "prod,team:payments", "Comma-separated tags; name:value sets a tag value."),
-    ("vigilant.notify", "Ops Discord,Pager", "Comma-separated notification channel names to link."),
-    ("vigilant.description", "Customer checkout", "Description shown on the monitor page."),
+    (
+        "vigilant.interval",
+        "60",
+        "Seconds between checks (20 to 86400).",
+    ),
+    (
+        "vigilant.retries",
+        "2",
+        "Failed checks before the monitor goes down (0 to 10).",
+    ),
+    (
+        "vigilant.timeout",
+        "10",
+        "Seconds before a check gives up (1 to 300).",
+    ),
+    (
+        "vigilant.keyword",
+        "OK",
+        "Text the response must contain (keyword type).",
+    ),
+    (
+        "vigilant.group",
+        "Production",
+        "Put the monitor in this group. The group is created if needed.",
+    ),
+    (
+        "vigilant.tags",
+        "prod,team:payments",
+        "Comma-separated tags; name:value sets a tag value.",
+    ),
+    (
+        "vigilant.notify",
+        "Ops Discord,Pager",
+        "Comma-separated notification channel names to link.",
+    ),
+    (
+        "vigilant.description",
+        "Customer checkout",
+        "Description shown on the monitor page.",
+    ),
 ];
 
 /// Example for the settings page.
@@ -116,7 +156,8 @@ pub struct DiscoveryStatus {
     pub events_connected: bool,
 }
 
-static STATUS: LazyLock<Mutex<DiscoveryStatus>> = LazyLock::new(|| Mutex::new(DiscoveryStatus::default()));
+static STATUS: LazyLock<Mutex<DiscoveryStatus>> =
+    LazyLock::new(|| Mutex::new(DiscoveryStatus::default()));
 static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
 static RECONFIGURE: LazyLock<Notify> = LazyLock::new(Notify::new);
 /// One sync at a time (periodic, event-driven and "Sync now").
@@ -129,7 +170,10 @@ fn update_status(f: impl FnOnce(&mut DiscoveryStatus)) {
 
 /// Snapshot of the discovery job's state.
 pub fn status() -> DiscoveryStatus {
-    STATUS.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    STATUS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
 }
 
 /// Ask the background job to re-read settings and sync soon.
@@ -206,7 +250,10 @@ impl Spec {
 }
 
 fn truthy(v: &str) -> bool {
-    matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on")
+    matches!(
+        v.trim().to_ascii_lowercase().as_str(),
+        "true" | "1" | "yes" | "on"
+    )
 }
 
 fn label<'a>(c: &'a Container, key: &str) -> Option<&'a str> {
@@ -217,10 +264,14 @@ fn label<'a>(c: &'a Container, key: &str) -> Option<&'a str> {
 }
 
 fn int_label(c: &Container, key: &str, min: i64, max: i64) -> Result<Option<i64>, String> {
-    let Some(raw) = label(c, key) else { return Ok(None) };
+    let Some(raw) = label(c, key) else {
+        return Ok(None);
+    };
     match raw.parse::<i64>() {
         Ok(n) if (min..=max).contains(&n) => Ok(Some(n)),
-        _ => Err(format!("{LABEL_PREFIX}{key} must be a whole number from {min} to {max}, got “{raw}”")),
+        _ => Err(format!(
+            "{LABEL_PREFIX}{key} must be a whole number from {min} to {max}, got “{raw}”"
+        )),
     }
 }
 
@@ -252,7 +303,12 @@ pub fn parse_labels(c: &Container, docker_host: Option<&str>) -> Result<Option<S
             };
             match MonitorType::parse(&norm) {
                 Some(t) if t.is_active_check() => t,
-                Some(t) => return Err(format!("{LABEL_PREFIX}type “{}” can’t be discovered", t.as_str())),
+                Some(t) => {
+                    return Err(format!(
+                        "{LABEL_PREFIX}type “{}” can’t be discovered",
+                        t.as_str()
+                    ));
+                }
                 None => return Err(format!("unknown {LABEL_PREFIX}type “{raw}”")),
             }
         }
@@ -268,7 +324,8 @@ pub fn parse_labels(c: &Container, docker_host: Option<&str>) -> Result<Option<S
         }
     };
     let defaults = NewMonitor::default();
-    let interval_seconds = int_label(c, "interval", MIN_INTERVAL, MAX_INTERVAL)?.unwrap_or(defaults.interval_seconds);
+    let interval_seconds =
+        int_label(c, "interval", MIN_INTERVAL, MAX_INTERVAL)?.unwrap_or(defaults.interval_seconds);
     let retries = int_label(c, "retries", 0, MAX_RETRIES)?.unwrap_or(defaults.retries);
     let timeout_seconds = int_label(c, "timeout", 1, MAX_TIMEOUT)?;
     let tags = split_list(label(c, "tags"))
@@ -279,7 +336,11 @@ pub fn parse_labels(c: &Container, docker_host: Option<&str>) -> Result<Option<S
         })
         .filter(|(n, _)| !n.is_empty())
         .collect();
-    let name = label(c, "name").unwrap_or(&c.name).chars().take(120).collect();
+    let name = label(c, "name")
+        .unwrap_or(&c.name)
+        .chars()
+        .take(120)
+        .collect();
     let description = label(c, "description")
         .map(str::to_string)
         .unwrap_or_else(|| format!("Discovered from Docker container “{}”.", c.name));
@@ -294,7 +355,10 @@ pub fn parse_labels(c: &Container, docker_host: Option<&str>) -> Result<Option<S
         timeout_seconds,
         keyword: label(c, "keyword").map(str::to_string),
         docker_host: if monitor_type == MonitorType::Docker {
-            docker_host.map(str::trim).filter(|h| !h.is_empty()).map(str::to_string)
+            docker_host
+                .map(str::trim)
+                .filter(|h| !h.is_empty())
+                .map(str::to_string)
         } else {
             None
         },
@@ -332,7 +396,11 @@ impl Plan {
     pub fn summary(&self, containers: usize) -> String {
         format!(
             "{containers} labelled {} · {} created · {} updated · {} paused · {} resumed",
-            if containers == 1 { "container" } else { "containers" },
+            if containers == 1 {
+                "container"
+            } else {
+                "containers"
+            },
             self.create.len(),
             self.update.len(),
             self.pause.len(),
@@ -367,7 +435,9 @@ pub fn plan(existing: &[Existing], containers: &[Container], docker_host: Option
         present.insert(c.name.as_str());
         match by_external.get(c.name.as_str()) {
             None => out.create.push(spec),
-            Some(e) if e.paused_by_discovery && !e.monitor.active => out.resume.push((e.monitor.id, spec)),
+            Some(e) if e.paused_by_discovery && !e.monitor.active => {
+                out.resume.push((e.monitor.id, spec))
+            }
             Some(e) if spec.differs_from(&e.monitor) => out.update.push((e.monitor.id, spec)),
             Some(e) => out.keep.push((e.monitor.id, spec)),
         }
@@ -450,12 +520,19 @@ fn ensure_group(conn: &Connection, name: &str, created: &mut Vec<i64>) -> rusqli
 }
 
 fn tag_color(name: &str) -> &'static str {
-    let sum = name.bytes().fold(0usize, |acc, b| acc.wrapping_mul(31).wrapping_add(usize::from(b)));
+    let sum = name.bytes().fold(0usize, |acc, b| {
+        acc.wrapping_mul(31).wrapping_add(usize::from(b))
+    });
     TAG_COLORS[sum % TAG_COLORS.len()]
 }
 
 /// Ensure tags and notification links (additive: never removes links).
-fn ensure_links(conn: &Connection, monitor_id: i64, spec: &Spec, warnings: &mut Vec<String>) -> rusqlite::Result<()> {
+fn ensure_links(
+    conn: &Connection,
+    monitor_id: i64,
+    spec: &Spec,
+    warnings: &mut Vec<String>,
+) -> rusqlite::Result<()> {
     for (name, value) in &spec.tags {
         conn.execute(
             "INSERT INTO tags (name, color) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING",
@@ -493,8 +570,15 @@ fn ensure_links(conn: &Connection, monitor_id: i64, spec: &Spec, warnings: &mut 
     Ok(())
 }
 
-fn desired_parent(conn: &Connection, spec: &Spec, created: &mut Vec<i64>) -> rusqlite::Result<Option<i64>> {
-    spec.group.as_deref().map(|g| ensure_group(conn, g, created)).transpose()
+fn desired_parent(
+    conn: &Connection,
+    spec: &Spec,
+    created: &mut Vec<i64>,
+) -> rusqlite::Result<Option<i64>> {
+    spec.group
+        .as_deref()
+        .map(|g| ensure_group(conn, g, created))
+        .transpose()
 }
 
 fn apply_plan(conn: &mut Connection, plan: &Plan) -> rusqlite::Result<Applied> {
@@ -514,7 +598,9 @@ fn apply_plan(conn: &mut Connection, plan: &Plan) -> rusqlite::Result<Applied> {
     let resumes = plan.resume.iter().map(|(id, s)| (id, s, true));
     let updates = plan.update.iter().map(|(id, s)| (id, s, false));
     for (&id, spec, resume) in resumes.chain(updates) {
-        let Some(existing) = db_monitors::get_monitor(&tx, id)? else { continue };
+        let Some(existing) = db_monitors::get_monitor(&tx, id)? else {
+            continue;
+        };
         let mut m = existing.to_new();
         spec.apply_to(&mut m);
         if spec.group.is_some() {
@@ -522,7 +608,10 @@ fn apply_plan(conn: &mut Connection, plan: &Plan) -> rusqlite::Result<Applied> {
         }
         if resume {
             m.active = true;
-            tx.execute("DELETE FROM discovery_paused WHERE monitor_id = ?1", params![id])?;
+            tx.execute(
+                "DELETE FROM discovery_paused WHERE monitor_id = ?1",
+                params![id],
+            )?;
             db_events::log_resumed(&tx, id)?;
         }
         db_monitors::update_monitor(&tx, id, &m)?;
@@ -533,8 +622,11 @@ fn apply_plan(conn: &mut Connection, plan: &Plan) -> rusqlite::Result<Applied> {
     for (id, spec) in &plan.keep {
         let parent = desired_parent(&tx, spec, &mut groups_created)?;
         if spec.group.is_some() {
-            let current: Option<i64> =
-                tx.query_row("SELECT parent_id FROM monitors WHERE id = ?1", params![id], |r| r.get(0))?;
+            let current: Option<i64> = tx.query_row(
+                "SELECT parent_id FROM monitors WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )?;
             if current != parent {
                 tx.execute(
                     "UPDATE monitors SET parent_id = ?2, updated_at = datetime('now') WHERE id = ?1",
@@ -547,11 +639,14 @@ fn apply_plan(conn: &mut Connection, plan: &Plan) -> rusqlite::Result<Applied> {
     }
 
     for &id in &plan.pause {
-        let Some(existing) = db_monitors::get_monitor(&tx, id)? else { continue };
+        let Some(existing) = db_monitors::get_monitor(&tx, id)? else {
+            continue;
+        };
         let mut m = existing.to_new();
         m.active = false;
         let container = existing.external_id.clone().unwrap_or_default();
-        m.description = format!("Paused by Docker discovery: container “{container}” no longer exists.");
+        m.description =
+            format!("Paused by Docker discovery: container “{container}” no longer exists.");
         db_events::log_paused(&tx, id)?;
         db_monitors::update_monitor(&tx, id, &m)?;
         tx.execute(
@@ -615,7 +710,8 @@ fn connect(host: &str) -> Result<Docker, String> {
     if host.starts_with("npipe://") {
         #[cfg(windows)]
         {
-            return Docker::connect_with_named_pipe(host, timeout, API_DEFAULT_VERSION).map_err(fail);
+            return Docker::connect_with_named_pipe(host, timeout, API_DEFAULT_VERSION)
+                .map_err(fail);
         }
         #[cfg(not(windows))]
         {
@@ -649,7 +745,12 @@ async fn list_containers(docker: &Docker) -> Result<Vec<Container>, String> {
     Ok(list
         .into_iter()
         .filter_map(|c| {
-            let name = c.names?.into_iter().next()?.trim_start_matches('/').to_string();
+            let name = c
+                .names?
+                .into_iter()
+                .next()?
+                .trim_start_matches('/')
+                .to_string();
             Some(Container {
                 name,
                 labels: c.labels.unwrap_or_default(),
@@ -687,7 +788,9 @@ pub async fn sync_once(state: &AppState) -> Result<String, String> {
 async fn sync_inner(state: &AppState, host: &str) -> Result<(String, Vec<String>), String> {
     let docker = connect(host)?;
     let containers = list_containers(&docker).await?;
-    let host_opt = Some(host).filter(|h| !h.trim().is_empty()).map(str::to_string);
+    let host_opt = Some(host)
+        .filter(|h| !h.trim().is_empty())
+        .map(str::to_string);
     let containers_for_plan = containers.clone();
     let (plan, applied) = state
         .with_conn(move |c| {
@@ -707,12 +810,24 @@ async fn sync_inner(state: &AppState, host: &str) -> Result<(String, Vec<String>
     }
     let labelled = containers
         .iter()
-        .filter(|c| c.labels.get(&format!("{LABEL_PREFIX}enable")).is_some_and(|v| truthy(v)))
+        .filter(|c| {
+            c.labels
+                .get(&format!("{LABEL_PREFIX}enable"))
+                .is_some_and(|v| truthy(v))
+        })
         .count();
     let summary = plan.summary(labelled);
-    let mut warnings: Vec<String> = plan.errors.iter().map(|(c, e)| format!("{c}: {e}")).collect();
+    let mut warnings: Vec<String> = plan
+        .errors
+        .iter()
+        .map(|(c, e)| format!("{c}: {e}"))
+        .collect();
     warnings.extend(applied.warnings);
-    if !plan.create.is_empty() || !plan.update.is_empty() || !plan.pause.is_empty() || !plan.resume.is_empty() {
+    if !plan.create.is_empty()
+        || !plan.update.is_empty()
+        || !plan.pause.is_empty()
+        || !plan.resume.is_empty()
+    {
         tracing::info!(
             created = plan.create.len(),
             updated = plan.update.len(),
@@ -842,7 +957,10 @@ mod tests {
     fn container(name: &str, labels: &[(&str, &str)]) -> Container {
         Container {
             name: name.into(),
-            labels: labels.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect(),
+            labels: labels
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect(),
         }
     }
 
@@ -920,14 +1038,20 @@ mod tests {
     #[test]
     fn disabled_or_unlabelled_containers_are_ignored() {
         assert_eq!(parse_labels(&container("a", &[]), None), Ok(None));
-        assert_eq!(parse_labels(&container("a", &[("vigilant.enable", "false")]), None), Ok(None));
+        assert_eq!(
+            parse_labels(&container("a", &[("vigilant.enable", "false")]), None),
+            Ok(None)
+        );
     }
 
     #[test]
     fn defaults_to_docker_type_on_container_name() {
-        let spec = parse_labels(&container("redis", &[("vigilant.enable", "TRUE")]), Some("tcp://proxy:2375"))
-            .unwrap()
-            .unwrap();
+        let spec = parse_labels(
+            &container("redis", &[("vigilant.enable", "TRUE")]),
+            Some("tcp://proxy:2375"),
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(spec.monitor_type, MonitorType::Docker);
         assert_eq!(spec.target, "redis");
         assert_eq!(spec.name, "redis");
@@ -957,15 +1081,27 @@ mod tests {
         assert_eq!(spec.name, "Web");
         assert_eq!(spec.monitor_type, MonitorType::Keyword);
         assert_eq!(spec.target, "http://web:80/");
-        assert_eq!((spec.interval_seconds, spec.retries, spec.timeout_seconds), (30, 2, Some(5)));
+        assert_eq!(
+            (spec.interval_seconds, spec.retries, spec.timeout_seconds),
+            (30, 2, Some(5))
+        );
         assert_eq!(spec.keyword.as_deref(), Some("OK"));
         assert_eq!(spec.group.as_deref(), Some("Production"));
         assert_eq!(
             spec.tags,
-            vec![("prod".into(), String::new()), ("team".into(), "payments".into())]
+            vec![
+                ("prod".into(), String::new()),
+                ("team".into(), "payments".into())
+            ]
         );
-        assert_eq!(spec.notify, vec!["Ops Discord".to_string(), "Pager".to_string()]);
-        assert_eq!(spec.docker_host, None, "docker host only applies to docker monitors");
+        assert_eq!(
+            spec.notify,
+            vec!["Ops Discord".to_string(), "Pager".to_string()]
+        );
+        assert_eq!(
+            spec.docker_host, None,
+            "docker host only applies to docker monitors"
+        );
     }
 
     #[test]
@@ -986,7 +1122,14 @@ mod tests {
     fn type_aliases_are_accepted() {
         let spec = |t: &str| {
             parse_labels(
-                &container("c", &[("vigilant.enable", "1"), ("vigilant.type", t), ("vigilant.target", "x:1")]),
+                &container(
+                    "c",
+                    &[
+                        ("vigilant.enable", "1"),
+                        ("vigilant.type", t),
+                        ("vigilant.target", "x:1"),
+                    ],
+                ),
                 None,
             )
             .unwrap()
@@ -1000,7 +1143,14 @@ mod tests {
 
     #[test]
     fn plan_creates_new_containers() {
-        let p = plan(&[], &[container("a", &[("vigilant.enable", "true")]), container("b", &[])], None);
+        let p = plan(
+            &[],
+            &[
+                container("a", &[("vigilant.enable", "true")]),
+                container("b", &[]),
+            ],
+            None,
+        );
         assert_eq!(p.create.len(), 1);
         assert_eq!(p.create[0].external_id, "a");
         assert!(p.update.is_empty() && p.pause.is_empty() && p.resume.is_empty());
@@ -1015,7 +1165,10 @@ mod tests {
         assert_eq!(p.keep.len(), 1);
         assert!(p.update.is_empty());
 
-        let changed = container("a", &[("vigilant.enable", "true"), ("vigilant.interval", "120")]);
+        let changed = container(
+            "a",
+            &[("vigilant.enable", "true"), ("vigilant.interval", "120")],
+        );
         let p = plan(&existing, &[changed], None);
         assert_eq!(p.update.len(), 1);
         assert_eq!(p.update[0].0, 5);
@@ -1035,7 +1188,11 @@ mod tests {
         assert!(p.pause.is_empty());
 
         // Back again: resume.
-        let p = plan(&[existing_from(&spec, 5, false, true)], std::slice::from_ref(&c), None);
+        let p = plan(
+            &[existing_from(&spec, 5, false, true)],
+            std::slice::from_ref(&c),
+            None,
+        );
         assert_eq!(p.resume.len(), 1);
 
         // Paused by a user (not by discovery): leave it paused.
@@ -1056,10 +1213,14 @@ mod tests {
         let p = plan(&[manual, group], &[], None);
         assert!(p.pause.is_empty());
         // The manual monitor with the same name doesn't count as discovered.
-        let p = plan(&[existing_from(&spec, 1, true, false)].map(|mut e| {
-            e.monitor.source = "manual".into();
-            e
-        }), &[c], None);
+        let p = plan(
+            &[existing_from(&spec, 1, true, false)].map(|mut e| {
+                e.monitor.source = "manual".into();
+                e
+            }),
+            &[c],
+            None,
+        );
         assert_eq!(p.create.len(), 1);
     }
 
@@ -1067,7 +1228,10 @@ mod tests {
     fn broken_labels_report_errors_without_pausing() {
         let good = container("a", &[("vigilant.enable", "true")]);
         let spec = parse_labels(&good, None).unwrap().unwrap();
-        let broken = container("a", &[("vigilant.enable", "true"), ("vigilant.type", "http")]);
+        let broken = container(
+            "a",
+            &[("vigilant.enable", "true"), ("vigilant.type", "http")],
+        );
         let p = plan(&[existing_from(&spec, 5, true, false)], &[broken], None);
         assert_eq!(p.errors.len(), 1);
         assert!(p.pause.is_empty());
@@ -1090,16 +1254,30 @@ mod tests {
                 ("vigilant.notify", "Ops,Missing"),
             ],
         );
-        let p = plan(&load_existing(&conn).unwrap(), std::slice::from_ref(&c), None);
+        let p = plan(
+            &load_existing(&conn).unwrap(),
+            std::slice::from_ref(&c),
+            None,
+        );
         let applied = apply_plan(&mut conn, &p).unwrap();
         assert_eq!(applied.reload.len(), 2, "monitor + group");
         assert_eq!(applied.warnings.len(), 1);
         let existing = load_existing(&conn).unwrap();
-        let api = existing.iter().find(|e| e.monitor.external_id.as_deref() == Some("api")).unwrap();
-        let group = existing.iter().find(|e| e.monitor.monitor_type == MonitorType::Group).unwrap();
+        let api = existing
+            .iter()
+            .find(|e| e.monitor.external_id.as_deref() == Some("api"))
+            .unwrap();
+        let group = existing
+            .iter()
+            .find(|e| e.monitor.monitor_type == MonitorType::Group)
+            .unwrap();
         assert_eq!(api.monitor.parent_id, Some(group.monitor.id));
         let tags: i64 = conn
-            .query_row("SELECT COUNT(*) FROM monitor_tags WHERE monitor_id = ?1", params![api.monitor.id], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM monitor_tags WHERE monitor_id = ?1",
+                params![api.monitor.id],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(tags, 2);
         let links: i64 = conn
@@ -1121,7 +1299,10 @@ mod tests {
         assert_eq!(p.pause, vec![api.monitor.id]);
         apply_plan(&mut conn, &p).unwrap();
         let after = load_existing(&conn).unwrap();
-        let api2 = after.iter().find(|e| e.monitor.id == api.monitor.id).unwrap();
+        let api2 = after
+            .iter()
+            .find(|e| e.monitor.id == api.monitor.id)
+            .unwrap();
         assert!(!api2.monitor.active && api2.paused_by_discovery);
         assert!(api2.monitor.description.contains("no longer exists"));
 
@@ -1129,7 +1310,10 @@ mod tests {
         assert_eq!(p.resume.len(), 1);
         apply_plan(&mut conn, &p).unwrap();
         let back = load_existing(&conn).unwrap();
-        let api3 = back.iter().find(|e| e.monitor.id == api.monitor.id).unwrap();
+        let api3 = back
+            .iter()
+            .find(|e| e.monitor.id == api.monitor.id)
+            .unwrap();
         assert!(api3.monitor.active && !api3.paused_by_discovery);
         assert_eq!(count_managed(&conn).unwrap(), 1);
     }

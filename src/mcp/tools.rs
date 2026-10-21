@@ -19,7 +19,12 @@ const MAX_TEXT: usize = 100_000;
 const MASK: &str = "••••••";
 
 /// Headers passed on to the REST API (language, and the host for absolute URLs).
-const FORWARDED: &[&str] = &["host", "x-forwarded-host", "x-forwarded-proto", "accept-language"];
+const FORWARDED: &[&str] = &[
+    "host",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "accept-language",
+];
 
 pub(crate) struct Ctx {
     state: AppState,
@@ -35,7 +40,11 @@ impl Ctx {
                 forwarded.insert(HeaderName::from_static(name), value.clone());
             }
         }
-        Ctx { state, caller, forwarded }
+        Ctx {
+            state,
+            caller,
+            forwarded,
+        }
     }
 
     pub fn can_write(&self) -> bool {
@@ -48,11 +57,18 @@ impl Ctx {
             LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
         let key = std::sync::Arc::as_ptr(&self.state.config) as usize;
         let mut map = ROUTERS.lock().unwrap_or_else(|e| e.into_inner());
-        map.entry(key).or_insert_with(|| crate::api::build_router(self.state.clone())).clone()
+        map.entry(key)
+            .or_insert_with(|| crate::api::build_router(self.state.clone()))
+            .clone()
     }
 
     /// Calls the REST API as the caller. `Ok(Null)` for empty answers.
-    async fn api(&self, method: Method, path: &str, body: Option<Value>) -> Result<Value, ToolError> {
+    async fn api(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Value, ToolError> {
         let mut builder = Request::builder()
             .method(method)
             .uri(path)
@@ -77,12 +93,20 @@ impl Ctx {
         let bytes = to_bytes(response.into_body(), 8 * 1024 * 1024)
             .await
             .map_err(|e| ToolError::Internal(e.to_string()))?;
-        let value: Value = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::Null) };
+        let value: Value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
         if status.is_success() {
             return Ok(value);
         }
         let error = value.get("error").cloned().unwrap_or(Value::Null);
-        let mut message = error.get("message").and_then(Value::as_str).unwrap_or("the request failed").to_string();
+        let mut message = error
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("the request failed")
+            .to_string();
         if let Some(fields) = error.get("fields").and_then(Value::as_object) {
             for (field, why) in fields {
                 if let Some(why) = why.as_str() {
@@ -116,7 +140,9 @@ impl ToolError {
     fn text(&self) -> String {
         match self {
             ToolError::Invalid(m) => format!("Invalid arguments: {m}"),
-            ToolError::Denied(m) => format!("Not allowed: {m}. This token (or the user it belongs to) can't do that."),
+            ToolError::Denied(m) => {
+                format!("Not allowed: {m}. This token (or the user it belongs to) can't do that.")
+            }
             ToolError::Api(code, m) => format!("Vigilant Vole answered {code}: {m}"),
             ToolError::Internal(m) => format!("Internal error: {m}"),
         }
@@ -146,7 +172,12 @@ fn id_prop(what: &str) -> Value {
 }
 
 static TOOLS: LazyLock<Vec<Tool>> = LazyLock::new(|| {
-    let monitor_id = || object(json!({"id": id_prop("The monitor's id (from list_monitors).")}), &["id"]);
+    let monitor_id = || {
+        object(
+            json!({"id": id_prop("The monitor's id (from list_monitors).")}),
+            &["id"],
+        )
+    };
     vec![
         Tool {
             name: "instance_summary",
@@ -386,7 +417,10 @@ static TOOLS: LazyLock<Vec<Tool>> = LazyLock::new(|| {
             description: "Turn a maintenance window off (a manual window ends; a scheduled one is paused until you enable it again).",
             write: true,
             heavy: false,
-            schema: object(json!({"id": id_prop("The maintenance window's id (from list_maintenance).")}), &["id"]),
+            schema: object(
+                json!({"id": id_prop("The maintenance window's id (from list_maintenance).")}),
+                &["id"],
+            ),
         },
     ]
 });
@@ -443,7 +477,9 @@ fn opt_int(args: &Args, key: &str, min: i64, max: i64) -> Result<Option<i64>, To
         None | Some(Value::Null) => Ok(None),
         Some(v) => match v.as_i64() {
             Some(n) if (min..=max).contains(&n) => Ok(Some(n)),
-            _ => Err(ToolError::Invalid(format!("`{key}` must be an integer from {min} to {max}"))),
+            _ => Err(ToolError::Invalid(format!(
+                "`{key}` must be an integer from {min} to {max}"
+            ))),
         },
     }
 }
@@ -464,12 +500,21 @@ fn query(pairs: &[(&str, Option<String>)]) -> String {
         }
     }
     let q = ser.finish();
-    if q.is_empty() { String::new() } else { format!("?{q}") }
+    if q.is_empty() {
+        String::new()
+    } else {
+        format!("?{q}")
+    }
 }
 
 /// Arguments minus some keys, as a JSON body.
 fn body_without(args: &Args, drop: &[&str]) -> Value {
-    Value::Object(args.iter().filter(|(k, _)| !drop.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect())
+    Value::Object(
+        args.iter()
+            .filter(|(k, _)| !drop.contains(&k.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -478,9 +523,21 @@ fn body_without(args: &Args, drop: &[&str]) -> Value {
 
 fn is_secret_key(key: &str) -> bool {
     let k = key.to_ascii_lowercase();
-    ["password", "passwd", "secret", "token", "api_key", "apikey", "private_key", "community", "authorization", "cookie", "webhook"]
-        .iter()
-        .any(|needle| k.contains(needle))
+    [
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "private_key",
+        "community",
+        "authorization",
+        "cookie",
+        "webhook",
+    ]
+    .iter()
+    .any(|needle| k.contains(needle))
         || k == "pass"
         || k.ends_with("_pass")
         || k.ends_with("_key") && k != "monitor_key"
@@ -574,17 +631,24 @@ async fn run(ctx: &Ctx, name: &str, args: &Args) -> Result<Value, ToolError> {
                 ("type", opt_str(args, "type")?.map(str::to_string)),
                 ("tag", opt_str(args, "tag")?.map(str::to_string)),
                 ("q", opt_str(args, "q")?.map(str::to_string)),
-                ("limit", Some(opt_int(args, "limit", 1, 200)?.unwrap_or(50).to_string())),
+                (
+                    "limit",
+                    Some(opt_int(args, "limit", 1, 200)?.unwrap_or(50).to_string()),
+                ),
                 ("cursor", opt_str(args, "cursor")?.map(str::to_string)),
             ]);
             ctx.get(&format!("/api/v1/monitors{q}")).await
         }
-        "get_monitor" => ctx.get(&format!("/api/v1/monitors/{}", id_arg(args, "id")?)).await,
+        "get_monitor" => {
+            ctx.get(&format!("/api/v1/monitors/{}", id_arg(args, "id")?))
+                .await
+        }
         "monitor_history" => monitor_history(ctx, args).await,
         "list_events" => {
             let id = id_arg(args, "id")?;
             let limit = opt_int(args, "limit", 1, 200)?.unwrap_or(20);
-            ctx.get(&format!("/api/v1/monitors/{id}/events?limit={limit}")).await
+            ctx.get(&format!("/api/v1/monitors/{id}/events?limit={limit}"))
+                .await
         }
         "why_is_it_down" => why_is_it_down(ctx, id_arg(args, "id")?).await,
         "list_status_pages" => ctx.get("/api/v1/status-pages").await,
@@ -596,19 +660,48 @@ async fn run(ctx: &Ctx, name: &str, args: &Args) -> Result<Value, ToolError> {
                     return Err(ToolError::Invalid(format!("`{key}` is required")));
                 }
             }
-            ctx.api(Method::POST, "/api/v1/monitors", Some(Value::Object(args.clone()))).await
+            ctx.api(
+                Method::POST,
+                "/api/v1/monitors",
+                Some(Value::Object(args.clone())),
+            )
+            .await
         }
         "update_monitor" => {
             let id = id_arg(args, "id")?;
             let body = body_without(args, &["id"]);
             if body.as_object().is_some_and(Map::is_empty) {
-                return Err(ToolError::Invalid("give at least one field to change".into()));
+                return Err(ToolError::Invalid(
+                    "give at least one field to change".into(),
+                ));
             }
-            ctx.api(Method::PATCH, &format!("/api/v1/monitors/{id}"), Some(body)).await
+            ctx.api(Method::PATCH, &format!("/api/v1/monitors/{id}"), Some(body))
+                .await
         }
-        "pause_monitor" => ctx.api(Method::POST, &format!("/api/v1/monitors/{}/pause", id_arg(args, "id")?), None).await,
-        "resume_monitor" => ctx.api(Method::POST, &format!("/api/v1/monitors/{}/resume", id_arg(args, "id")?), None).await,
-        "check_now" => ctx.api(Method::POST, &format!("/api/v1/monitors/{}/check", id_arg(args, "id")?), None).await,
+        "pause_monitor" => {
+            ctx.api(
+                Method::POST,
+                &format!("/api/v1/monitors/{}/pause", id_arg(args, "id")?),
+                None,
+            )
+            .await
+        }
+        "resume_monitor" => {
+            ctx.api(
+                Method::POST,
+                &format!("/api/v1/monitors/{}/resume", id_arg(args, "id")?),
+                None,
+            )
+            .await
+        }
+        "check_now" => {
+            ctx.api(
+                Method::POST,
+                &format!("/api/v1/monitors/{}/check", id_arg(args, "id")?),
+                None,
+            )
+            .await
+        }
         "bulk_edit" => {
             if !args.get("set").is_some_and(Value::is_object) {
                 return Err(ToolError::Invalid("`set` must be an object".into()));
@@ -616,7 +709,12 @@ async fn run(ctx: &Ctx, name: &str, args: &Args) -> Result<Value, ToolError> {
             if !args.contains_key("ids") && !args.contains_key("filter") {
                 return Err(ToolError::Invalid("give `ids` or a `filter`".into()));
             }
-            ctx.api(Method::POST, "/api/v1/monitors/bulk", Some(Value::Object(args.clone()))).await
+            ctx.api(
+                Method::POST,
+                "/api/v1/monitors/bulk",
+                Some(Value::Object(args.clone())),
+            )
+            .await
         }
         "create_incident" => {
             let page = id_arg(args, "status_page_id")?;
@@ -624,27 +722,44 @@ async fn run(ctx: &Ctx, name: &str, args: &Args) -> Result<Value, ToolError> {
                 return Err(ToolError::Invalid("`title` is required".into()));
             }
             opt_bool(args, "pinned")?;
-            ctx.api(Method::POST, &format!("/api/v1/status-pages/{page}/incidents"), Some(body_without(args, &["status_page_id"])))
-                .await
+            ctx.api(
+                Method::POST,
+                &format!("/api/v1/status-pages/{page}/incidents"),
+                Some(body_without(args, &["status_page_id"])),
+            )
+            .await
         }
         "update_incident" => update_incident(ctx, args).await,
         "start_maintenance" => {
             if opt_str(args, "title")?.is_none_or(|s| s.trim().is_empty()) {
                 return Err(ToolError::Invalid("`title` is required".into()));
             }
-            let monitors = args.get("monitor_ids").and_then(Value::as_array).filter(|a| !a.is_empty());
+            let monitors = args
+                .get("monitor_ids")
+                .and_then(Value::as_array)
+                .filter(|a| !a.is_empty());
             if monitors.is_none() {
-                return Err(ToolError::Invalid("`monitor_ids` must list at least one monitor".into()));
+                return Err(ToolError::Invalid(
+                    "`monitor_ids` must list at least one monitor".into(),
+                ));
             }
             let mut body = body_without(args, &[]);
             body["strategy"] = json!("manual");
             body["active"] = json!(true);
-            ctx.api(Method::POST, "/api/v1/maintenance", Some(body)).await
+            ctx.api(Method::POST, "/api/v1/maintenance", Some(body))
+                .await
         }
         "end_maintenance" => {
-            ctx.api(Method::PATCH, &format!("/api/v1/maintenance/{}", id_arg(args, "id")?), Some(json!({"active": false}))).await
+            ctx.api(
+                Method::PATCH,
+                &format!("/api/v1/maintenance/{}", id_arg(args, "id")?),
+                Some(json!({"active": false})),
+            )
+            .await
         }
-        other => Err(ToolError::Internal(format!("tool {other} has no implementation"))),
+        other => Err(ToolError::Internal(format!(
+            "tool {other} has no implementation"
+        ))),
     }
 }
 
@@ -684,13 +799,20 @@ async fn monitor_history(ctx: &Ctx, args: &Args) -> Result<Value, ToolError> {
     let id = id_arg(args, "id")?;
     let days = opt_int(args, "days", 1, 365)?.unwrap_or(7);
     let checks = opt_int(args, "checks", 0, 100)?.unwrap_or(20);
-    let uptime = ctx.get(&format!("/api/v1/monitors/{id}/uptime?days={days}")).await?;
+    let uptime = ctx
+        .get(&format!("/api/v1/monitors/{id}/uptime?days={days}"))
+        .await?;
     let mut out = json!({"monitor_id": id, "days": days, "uptime": uptime});
     if checks > 0 {
-        let since = crate::maintenance::fmt_db_ts(jiff::Timestamp::now() - jiff::SignedDuration::from_hours(24 * days));
+        let since = crate::maintenance::fmt_db_ts(
+            jiff::Timestamp::now() - jiff::SignedDuration::from_hours(24 * days),
+        );
         let q = query(&[("since", Some(since)), ("limit", Some(checks.to_string()))]);
         // Push, group and agent-only monitors have no local checks.
-        match ctx.get(&format!("/api/v1/monitors/{id}/heartbeats{q}")).await {
+        match ctx
+            .get(&format!("/api/v1/monitors/{id}/heartbeats{q}"))
+            .await
+        {
             Ok(h) => out["recent_checks"] = h["data"].clone(),
             Err(ToolError::Api(code, _)) if code == 404 || code == 409 => {}
             Err(e) => return Err(e),
@@ -701,14 +823,19 @@ async fn monitor_history(ctx: &Ctx, args: &Args) -> Result<Value, ToolError> {
 
 async fn why_is_it_down(ctx: &Ctx, id: i64) -> Result<Value, ToolError> {
     let monitor = ctx.get(&format!("/api/v1/monitors/{id}")).await?;
-    let events = ctx.get(&format!("/api/v1/monitors/{id}/events?limit=5")).await?;
+    let events = ctx
+        .get(&format!("/api/v1/monitors/{id}/events?limit=5"))
+        .await?;
     let checks = ctx
         .get(&format!("/api/v1/monitors/{id}/heartbeats?limit=5"))
         .await
         .map(|h| h["data"].clone())
         .unwrap_or(Value::Null);
     let event_list = events["data"].as_array().cloned().unwrap_or_default();
-    let ongoing = event_list.iter().find(|e| e["ended_at"].is_null() && e["kind"] == "down").cloned();
+    let ongoing = event_list
+        .iter()
+        .find(|e| e["ended_at"].is_null() && e["kind"] == "down")
+        .cloned();
     let expiry = ctx
         .state
         .with_conn(move |c| {
@@ -753,12 +880,24 @@ async fn list_incidents(ctx: &Ctx, args: &Args) -> Result<Value, ToolError> {
         let list = ctx.get("/api/v1/status-pages").await?;
         list["data"]
             .as_array()
-            .map(|a| a.iter().filter_map(|p| Some((p["id"].as_i64()?, p["slug"].as_str().unwrap_or("").to_string()))).take(25).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|p| {
+                        Some((
+                            p["id"].as_i64()?,
+                            p["slug"].as_str().unwrap_or("").to_string(),
+                        ))
+                    })
+                    .take(25)
+                    .collect()
+            })
             .unwrap_or_default()
     };
     let mut incidents = Vec::new();
     for (page, slug) in pages {
-        let list = ctx.get(&format!("/api/v1/status-pages/{page}/incidents")).await?;
+        let list = ctx
+            .get(&format!("/api/v1/status-pages/{page}/incidents"))
+            .await?;
         for mut inc in list["data"].as_array().cloned().unwrap_or_default() {
             if open_only && !inc["resolved_at"].is_null() {
                 continue;
@@ -777,21 +916,37 @@ async fn update_incident(ctx: &Ctx, args: &Args) -> Result<Value, ToolError> {
     let update = match args.get("update") {
         None | Some(Value::Null) => None,
         Some(u @ Value::Object(_)) => Some(u.clone()),
-        Some(_) => return Err(ToolError::Invalid("`update` must be an object with status and body".into())),
+        Some(_) => {
+            return Err(ToolError::Invalid(
+                "`update` must be an object with status and body".into(),
+            ));
+        }
     };
     if patch.as_object().is_some_and(Map::is_empty) && update.is_none() {
-        return Err(ToolError::Invalid("give fields to change, an `update`, or both".into()));
+        return Err(ToolError::Invalid(
+            "give fields to change, an `update`, or both".into(),
+        ));
     }
     let base = format!("/api/v1/status-pages/{page}/incidents/{incident}");
     let mut out = Map::new();
     if update.is_some() && patch.as_object().is_some_and(|p| !p.is_empty()) {
         // Fields first, then the timeline entry (a resolving entry decides the final state).
-        out.insert("incident".into(), ctx.api(Method::PATCH, &base, Some(patch.clone())).await?);
+        out.insert(
+            "incident".into(),
+            ctx.api(Method::PATCH, &base, Some(patch.clone())).await?,
+        );
     } else if !patch.as_object().is_some_and(Map::is_empty) {
-        out.insert("incident".into(), ctx.api(Method::PATCH, &base, Some(patch.clone())).await?);
+        out.insert(
+            "incident".into(),
+            ctx.api(Method::PATCH, &base, Some(patch.clone())).await?,
+        );
     }
     if let Some(u) = update {
-        out.insert("update".into(), ctx.api(Method::POST, &format!("{base}/updates"), Some(u)).await?);
+        out.insert(
+            "update".into(),
+            ctx.api(Method::POST, &format!("{base}/updates"), Some(u))
+                .await?,
+        );
         out.insert("incident".into(), ctx.get(&base).await?);
     }
     Ok(Value::Object(out))
@@ -840,7 +995,11 @@ pub fn resource_templates() -> Value {
 
 pub async fn read_resource(ctx: &Ctx, uri: &str) -> RpcResult {
     if uri == API_REFERENCE {
-        let settings = ctx.state.settings().await.map_err(|_| (-32603, "Could not read the settings.".to_string()))?;
+        let settings = ctx
+            .state
+            .settings()
+            .await
+            .map_err(|_| (-32603, "Could not read the settings.".to_string()))?;
         let mut headers = HeaderMap::new();
         for (k, v) in &ctx.forwarded {
             headers.insert(k.clone(), v.clone());
@@ -851,12 +1010,18 @@ pub async fn read_resource(ctx: &Ctx, uri: &str) -> RpcResult {
         text.push_str(&format!("\n\n## MCP\n\nAI assistants can also use `POST {base}/mcp` (Model Context Protocol over Streamable HTTP, same API tokens). See docs/mcp.md.\n"));
         return Ok(json!({"contents": [{"uri": uri, "mimeType": "text/markdown", "text": text}]}));
     }
-    if let Some(id) = uri.strip_prefix(MONITOR_PREFIX).and_then(|s| s.parse::<i64>().ok()).filter(|n| *n >= 1) {
+    if let Some(id) = uri
+        .strip_prefix(MONITOR_PREFIX)
+        .and_then(|s| s.parse::<i64>().ok())
+        .filter(|n| *n >= 1)
+    {
         return match ctx.get(&format!("/api/v1/monitors/{id}")).await {
             Ok(mut monitor) => {
                 mask(&mut monitor);
                 let text = serde_json::to_string_pretty(&monitor).unwrap_or_default();
-                Ok(json!({"contents": [{"uri": uri, "mimeType": "application/json", "text": text}]}))
+                Ok(
+                    json!({"contents": [{"uri": uri, "mimeType": "application/json", "text": text}]}),
+                )
             }
             Err(ToolError::Api(404, _)) => Err((-32002, format!("Resource not found: {uri}"))),
             Err(e) => Err((-32603, e.text())),

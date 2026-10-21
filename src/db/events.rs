@@ -119,7 +119,8 @@ pub struct MonitorEventWithName {
     pub monitor_name: String,
 }
 
-const EVENT_COLUMNS: &str = "e.id, e.monitor_id, e.kind, e.message, e.started_at, e.ended_at, e.duration_seconds";
+const EVENT_COLUMNS: &str =
+    "e.id, e.monitor_id, e.kind, e.message, e.started_at, e.ended_at, e.duration_seconds";
 
 /// Kinds closed when a monitor is paused (it is no longer observed).
 const CLOSED_ON_PAUSE: [MonitorEventKind; 3] = [
@@ -200,7 +201,11 @@ pub fn log_point(
 }
 
 /// The newest open event of `kind` for a monitor, if any.
-pub fn find_open(conn: &Connection, monitor_id: i64, kind: MonitorEventKind) -> rusqlite::Result<Option<MonitorEvent>> {
+pub fn find_open(
+    conn: &Connection,
+    monitor_id: i64,
+    kind: MonitorEventKind,
+) -> rusqlite::Result<Option<MonitorEvent>> {
     conn.query_row(
         &format!(
             "SELECT {EVENT_COLUMNS} FROM monitor_events e
@@ -237,7 +242,11 @@ pub fn log_resumed(conn: &Connection, monitor_id: i64) -> rusqlite::Result<()> {
 }
 
 /// A monitor's events, newest first.
-pub fn list_for_monitor(conn: &Connection, monitor_id: i64, limit: i64) -> rusqlite::Result<Vec<MonitorEvent>> {
+pub fn list_for_monitor(
+    conn: &Connection,
+    monitor_id: i64,
+    limit: i64,
+) -> rusqlite::Result<Vec<MonitorEvent>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {EVENT_COLUMNS} FROM monitor_events e
          WHERE e.monitor_id = ?1
@@ -325,12 +334,22 @@ mod tests {
             Some("2026-01-01 10:00:00"),
         )
         .unwrap();
-        let closed = close_open(&conn, id, MonitorEventKind::Down, Some("2026-01-01 10:05:30")).unwrap();
+        let closed = close_open(
+            &conn,
+            id,
+            MonitorEventKind::Down,
+            Some("2026-01-01 10:05:30"),
+        )
+        .unwrap();
         assert_eq!(closed, 1);
         let events = list_for_monitor(&conn, id, 10).unwrap();
         assert_eq!(events[0].ended_at.as_deref(), Some("2026-01-01 10:05:30"));
         assert_eq!(events[0].duration_seconds, Some(330));
-        assert!(find_open(&conn, id, MonitorEventKind::Down).unwrap().is_none());
+        assert!(
+            find_open(&conn, id, MonitorEventKind::Down)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -340,7 +359,11 @@ mod tests {
         open(&conn, id, MonitorEventKind::Down, None, None).unwrap();
         open(&conn, id, MonitorEventKind::Flapping, None, None).unwrap();
         close_open(&conn, id, MonitorEventKind::Flapping, None).unwrap();
-        assert!(find_open(&conn, id, MonitorEventKind::Down).unwrap().is_some());
+        assert!(
+            find_open(&conn, id, MonitorEventKind::Down)
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
@@ -350,7 +373,11 @@ mod tests {
         open(&conn, id, MonitorEventKind::Down, None, None).unwrap();
         log_paused(&conn, id).unwrap();
         log_paused(&conn, id).unwrap();
-        assert!(find_open(&conn, id, MonitorEventKind::Down).unwrap().is_none());
+        assert!(
+            find_open(&conn, id, MonitorEventKind::Down)
+                .unwrap()
+                .is_none()
+        );
         let open_paused: Vec<_> = list_for_monitor(&conn, id, 10)
             .unwrap()
             .into_iter()
@@ -429,10 +456,34 @@ mod tests {
     fn prune_keeps_open_events() {
         let conn = test_conn();
         let id = monitor(&conn, "a");
-        open(&conn, id, MonitorEventKind::Down, None, Some("2020-01-01 00:00:00")).unwrap();
-        log_point(&conn, id, MonitorEventKind::Resumed, None, Some("2020-01-01 00:00:00")).unwrap();
-        log_point(&conn, id, MonitorEventKind::Resumed, None, Some("2026-01-01 00:00:00")).unwrap();
-        assert_eq!(prune_closed_before(&conn, "2025-01-01 00:00:00").unwrap(), 1);
+        open(
+            &conn,
+            id,
+            MonitorEventKind::Down,
+            None,
+            Some("2020-01-01 00:00:00"),
+        )
+        .unwrap();
+        log_point(
+            &conn,
+            id,
+            MonitorEventKind::Resumed,
+            None,
+            Some("2020-01-01 00:00:00"),
+        )
+        .unwrap();
+        log_point(
+            &conn,
+            id,
+            MonitorEventKind::Resumed,
+            None,
+            Some("2026-01-01 00:00:00"),
+        )
+        .unwrap();
+        assert_eq!(
+            prune_closed_before(&conn, "2025-01-01 00:00:00").unwrap(),
+            1
+        );
         assert_eq!(list_for_monitor(&conn, id, 10).unwrap().len(), 2);
     }
 }

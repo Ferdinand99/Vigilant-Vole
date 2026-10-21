@@ -41,7 +41,9 @@ const COLUMNS: &str = "id, name, url, created_at, updated_at";
 
 /// Every remote browser, oldest first (the first one is the default).
 pub fn list(conn: &Connection) -> rusqlite::Result<Vec<RemoteBrowser>> {
-    let mut stmt = conn.prepare(&format!("SELECT {COLUMNS} FROM remote_browsers ORDER BY id"))?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM remote_browsers ORDER BY id"
+    ))?;
     let rows = stmt.query_map([], row_to_browser)?;
     rows.collect()
 }
@@ -54,31 +56,49 @@ pub fn ids(conn: &Connection) -> rusqlite::Result<Vec<i64>> {
 }
 
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<RemoteBrowser>> {
-    conn.query_row(&format!("SELECT {COLUMNS} FROM remote_browsers WHERE id = ?1"), params![id], row_to_browser)
-        .optional()
+    conn.query_row(
+        &format!("SELECT {COLUMNS} FROM remote_browsers WHERE id = ?1"),
+        params![id],
+        row_to_browser,
+    )
+    .optional()
 }
 
 /// By name, case-insensitively.
 pub fn get_by_name(conn: &Connection, name: &str) -> rusqlite::Result<Option<RemoteBrowser>> {
-    conn.query_row(&format!("SELECT {COLUMNS} FROM remote_browsers WHERE name = ?1"), params![name.trim()], row_to_browser)
-        .optional()
+    conn.query_row(
+        &format!("SELECT {COLUMNS} FROM remote_browsers WHERE name = ?1"),
+        params![name.trim()],
+        row_to_browser,
+    )
+    .optional()
 }
 
 /// The browser a monitor uses: its own, or the first configured one when it
 /// has none (`None` when there is no remote browser at all, or its own was
 /// deleted and none is left).
-pub fn for_monitor(conn: &Connection, remote_browser_id: Option<i64>) -> rusqlite::Result<Option<RemoteBrowser>> {
+pub fn for_monitor(
+    conn: &Connection,
+    remote_browser_id: Option<i64>,
+) -> rusqlite::Result<Option<RemoteBrowser>> {
     if let Some(id) = remote_browser_id
         && let Some(b) = get(conn, id)?
     {
         return Ok(Some(b));
     }
-    conn.query_row(&format!("SELECT {COLUMNS} FROM remote_browsers ORDER BY id LIMIT 1"), [], row_to_browser)
-        .optional()
+    conn.query_row(
+        &format!("SELECT {COLUMNS} FROM remote_browsers ORDER BY id LIMIT 1"),
+        [],
+        row_to_browser,
+    )
+    .optional()
 }
 
 pub fn insert(conn: &Connection, name: &str, url: &str) -> rusqlite::Result<i64> {
-    conn.execute("INSERT INTO remote_browsers (name, url) VALUES (?1, ?2)", params![name.trim(), url.trim()])?;
+    conn.execute(
+        "INSERT INTO remote_browsers (name, url) VALUES (?1, ?2)",
+        params![name.trim(), url.trim()],
+    )?;
     Ok(conn.last_insert_rowid())
 }
 
@@ -109,11 +129,14 @@ pub fn name_taken(conn: &Connection, name: &str, except: Option<i64>) -> rusqlit
 /// Real-browser monitors per remote browser id. Monitors without one count
 /// for the first (default) browser.
 pub fn usage(conn: &Connection) -> rusqlite::Result<HashMap<i64, i64>> {
-    let first: Option<i64> = conn.query_row("SELECT MIN(id) FROM remote_browsers", [], |r| r.get(0))?;
+    let first: Option<i64> =
+        conn.query_row("SELECT MIN(id) FROM remote_browsers", [], |r| r.get(0))?;
     let mut stmt = conn.prepare(
         "SELECT remote_browser_id, COUNT(*) FROM monitors WHERE monitor_type = 'real_browser' GROUP BY remote_browser_id",
     )?;
-    let rows = stmt.query_map([], |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?)))?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?))
+    })?;
     let mut out = HashMap::new();
     for row in rows {
         let (id, n) = row?;
@@ -149,7 +172,13 @@ pub struct ScreenshotInfo {
 
 /// Stores (overwrites) the monitor's screenshot. Returns `false` (and keeps
 /// the previous one) when the image is empty or over [`MAX_SCREENSHOT_BYTES`].
-pub fn save_screenshot(conn: &Connection, monitor_id: i64, image: &[u8], mime: &str, message: Option<&str>) -> rusqlite::Result<bool> {
+pub fn save_screenshot(
+    conn: &Connection,
+    monitor_id: i64,
+    image: &[u8],
+    mime: &str,
+    message: Option<&str>,
+) -> rusqlite::Result<bool> {
     if image.is_empty() || image.len() > MAX_SCREENSHOT_BYTES {
         return Ok(false);
     }
@@ -169,22 +198,41 @@ pub fn get_screenshot(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Op
     conn.query_row(
         "SELECT image, mime, message, taken_at FROM monitor_screenshots WHERE monitor_id = ?1",
         params![monitor_id],
-        |r| Ok(Screenshot { image: r.get(0)?, mime: r.get(1)?, message: r.get(2)?, taken_at: r.get(3)? }),
+        |r| {
+            Ok(Screenshot {
+                image: r.get(0)?,
+                mime: r.get(1)?,
+                message: r.get(2)?,
+                taken_at: r.get(3)?,
+            })
+        },
     )
     .optional()
 }
 
-pub fn screenshot_info(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Option<ScreenshotInfo>> {
+pub fn screenshot_info(
+    conn: &Connection,
+    monitor_id: i64,
+) -> rusqlite::Result<Option<ScreenshotInfo>> {
     conn.query_row(
         "SELECT message, taken_at, length(image) FROM monitor_screenshots WHERE monitor_id = ?1",
         params![monitor_id],
-        |r| Ok(ScreenshotInfo { message: r.get(0)?, taken_at: r.get(1)?, bytes: r.get(2)? }),
+        |r| {
+            Ok(ScreenshotInfo {
+                message: r.get(0)?,
+                taken_at: r.get(1)?,
+                bytes: r.get(2)?,
+            })
+        },
     )
     .optional()
 }
 
 pub fn delete_screenshot(conn: &Connection, monitor_id: i64) -> rusqlite::Result<bool> {
-    Ok(conn.execute("DELETE FROM monitor_screenshots WHERE monitor_id = ?1", params![monitor_id])? > 0)
+    Ok(conn.execute(
+        "DELETE FROM monitor_screenshots WHERE monitor_id = ?1",
+        params![monitor_id],
+    )? > 0)
 }
 
 #[cfg(test)]
@@ -214,13 +262,23 @@ mod tests {
         let conn = test_conn();
         let m = browser_monitor(&conn, "fresh", None);
         let fresh = crate::db::monitors::get_monitor(&conn, m).unwrap().unwrap();
-        assert_eq!((fresh.browser_wait.as_str(), fresh.browser_viewport.as_str(), fresh.browser_js_errors), ("load", "desktop", false));
+        assert_eq!(
+            (
+                fresh.browser_wait.as_str(),
+                fresh.browser_viewport.as_str(),
+                fresh.browser_js_errors
+            ),
+            ("load", "desktop", false)
+        );
 
         // Upgrade: a database from before 0099 keeps its monitors and gets the defaults.
         let mut old = rusqlite::Connection::open_in_memory().unwrap();
         old.execute_batch(crate::db::CONNECTION_PRAGMAS).unwrap();
         crate::db::prepare_tracking(&old).unwrap();
-        for (name, sql) in crate::db::embedded_migrations().into_iter().filter(|(n, _)| n.as_str() < "0099") {
+        for (name, sql) in crate::db::embedded_migrations()
+            .into_iter()
+            .filter(|(n, _)| n.as_str() < "0099")
+        {
             crate::db::apply_one(&mut old, &name, &sql).unwrap();
         }
         old.execute_batch(
@@ -232,19 +290,49 @@ mod tests {
         let ran = crate::db::apply_migrations(&mut old).unwrap();
         assert!(ran.iter().any(|n| n.starts_with("0099")), "{ran:?}");
         let web = crate::db::monitors::get_monitor(&old, 1).unwrap().unwrap();
-        assert_eq!((web.keyword.as_deref(), web.remote_browser_id, web.browser_selector.as_deref()), (Some("OK"), None, None));
+        assert_eq!(
+            (
+                web.keyword.as_deref(),
+                web.remote_browser_id,
+                web.browser_selector.as_deref()
+            ),
+            (Some("OK"), None, None)
+        );
         let shop = crate::db::monitors::get_monitor(&old, 2).unwrap().unwrap();
-        assert_eq!((shop.browser_wait.as_str(), shop.browser_viewport.as_str()), ("load", "desktop"));
-        let beats: i64 = old.query_row("SELECT COUNT(*) FROM heartbeats", [], |r| r.get(0)).unwrap();
+        assert_eq!(
+            (shop.browser_wait.as_str(), shop.browser_viewport.as_str()),
+            ("load", "desktop")
+        );
+        let beats: i64 = old
+            .query_row("SELECT COUNT(*) FROM heartbeats", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(beats, 1);
         // The new foreign keys work on the upgraded schema.
         let b = insert(&old, "Chrome", "ws://chrome:9222").unwrap();
-        old.execute("UPDATE monitors SET remote_browser_id = ?1 WHERE id = 2", params![b]).unwrap();
-        assert!(old.execute("UPDATE monitors SET remote_browser_id = 999 WHERE id = 2", []).is_err(), "unknown browsers are refused");
+        old.execute(
+            "UPDATE monitors SET remote_browser_id = ?1 WHERE id = 2",
+            params![b],
+        )
+        .unwrap();
+        assert!(
+            old.execute(
+                "UPDATE monitors SET remote_browser_id = 999 WHERE id = 2",
+                []
+            )
+            .is_err(),
+            "unknown browsers are refused"
+        );
         assert!(save_screenshot(&old, 2, b"jpeg", "image/jpeg", None).unwrap());
         delete(&old, b).unwrap();
-        assert_eq!(crate::db::monitors::get_monitor(&old, 2).unwrap().unwrap().remote_browser_id, None);
-        old.execute("DELETE FROM monitors WHERE id = 2", []).unwrap();
+        assert_eq!(
+            crate::db::monitors::get_monitor(&old, 2)
+                .unwrap()
+                .unwrap()
+                .remote_browser_id,
+            None
+        );
+        old.execute("DELETE FROM monitors WHERE id = 2", [])
+            .unwrap();
         assert!(get_screenshot(&old, 2).unwrap().is_none());
     }
 
@@ -255,11 +343,18 @@ mod tests {
         let a = insert(&conn, " Chrome A ", "ws://a:3000").unwrap();
         let b = insert(&conn, "Chrome B", "http://b:9222").unwrap();
         assert_eq!(get(&conn, a).unwrap().unwrap().name, "Chrome A");
-        assert!(insert(&conn, "chrome a", "ws://dup").is_err(), "names are unique, case-insensitively");
+        assert!(
+            insert(&conn, "chrome a", "ws://dup").is_err(),
+            "names are unique, case-insensitively"
+        );
         assert!(name_taken(&conn, "CHROME B", None).unwrap());
         assert!(!name_taken(&conn, "Chrome B", Some(b)).unwrap());
         assert_eq!(get_by_name(&conn, "chrome b").unwrap().unwrap().id, b);
-        assert_eq!(for_monitor(&conn, None).unwrap().unwrap().id, a, "the first browser is the default");
+        assert_eq!(
+            for_monitor(&conn, None).unwrap().unwrap().id,
+            a,
+            "the first browser is the default"
+        );
         assert_eq!(for_monitor(&conn, Some(b)).unwrap().unwrap().id, b);
         assert_eq!(for_monitor(&conn, Some(999)).unwrap().unwrap().id, a);
         assert!(update(&conn, b, "Chrome B2", "ws://b2:3000").unwrap());
@@ -281,7 +376,10 @@ mod tests {
         assert!(delete(&conn, b).unwrap());
         assert!(!delete(&conn, b).unwrap());
         let monitor = crate::db::monitors::get_monitor(&conn, m).unwrap().unwrap();
-        assert_eq!(monitor.remote_browser_id, None, "falls back to the default browser");
+        assert_eq!(
+            monitor.remote_browser_id, None,
+            "falls back to the default browser"
+        );
         assert_eq!(usage(&conn).unwrap().get(&a), Some(&3));
     }
 
@@ -290,19 +388,47 @@ mod tests {
         let conn = test_conn();
         let m = browser_monitor(&conn, "shot", None);
         assert!(save_screenshot(&conn, m, b"first", "image/jpeg", Some("HTTP 500")).unwrap());
-        assert!(save_screenshot(&conn, m, b"second", "image/jpeg", Some("Selector #app not found")).unwrap());
+        assert!(
+            save_screenshot(
+                &conn,
+                m,
+                b"second",
+                "image/jpeg",
+                Some("Selector #app not found")
+            )
+            .unwrap()
+        );
         let shot = get_screenshot(&conn, m).unwrap().unwrap();
-        assert_eq!((shot.image.as_slice(), shot.message.as_deref()), (&b"second"[..], Some("Selector #app not found")));
+        assert_eq!(
+            (shot.image.as_slice(), shot.message.as_deref()),
+            (&b"second"[..], Some("Selector #app not found"))
+        );
         // Too big or empty: refused, the previous one stays.
         let huge = vec![0u8; MAX_SCREENSHOT_BYTES + 1];
         assert!(!save_screenshot(&conn, m, &huge, "image/jpeg", None).unwrap());
         assert!(!save_screenshot(&conn, m, b"", "image/jpeg", None).unwrap());
-        assert!(save_screenshot(&conn, m, &vec![1u8; MAX_SCREENSHOT_BYTES], "image/jpeg", None).unwrap());
-        assert_eq!(screenshot_info(&conn, m).unwrap().unwrap().bytes, MAX_SCREENSHOT_BYTES as i64);
+        assert!(
+            save_screenshot(
+                &conn,
+                m,
+                &vec![1u8; MAX_SCREENSHOT_BYTES],
+                "image/jpeg",
+                None
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            screenshot_info(&conn, m).unwrap().unwrap().bytes,
+            MAX_SCREENSHOT_BYTES as i64
+        );
         // Unknown monitor: nothing stored.
         assert!(!save_screenshot(&conn, 9999, b"x", "image/jpeg", None).unwrap());
-        conn.execute("DELETE FROM monitors WHERE id = ?1", params![m]).unwrap();
-        assert!(get_screenshot(&conn, m).unwrap().is_none(), "cascades with the monitor");
+        conn.execute("DELETE FROM monitors WHERE id = ?1", params![m])
+            .unwrap();
+        assert!(
+            get_screenshot(&conn, m).unwrap().is_none(),
+            "cascades with the monitor"
+        );
         assert!(!delete_screenshot(&conn, m).unwrap());
     }
 }

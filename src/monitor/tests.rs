@@ -37,7 +37,10 @@ async fn test_db() -> TestDb {
 fn scheduler(db: &TestDb) -> (Scheduler, broadcast::Receiver<()>) {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let (tx, rx) = broadcast::channel(64);
-    (Scheduler::new(db.pool.clone(), tx, reqwest::Client::new()), rx)
+    (
+        Scheduler::new(db.pool.clone(), tx, reqwest::Client::new()),
+        rx,
+    )
 }
 
 async fn insert(db: &TestDb, new: NewMonitor) -> i64 {
@@ -58,8 +61,9 @@ fn push_monitor(name: &str) -> NewMonitor {
 /// Local heartbeats of a monitor, oldest first.
 async fn statuses(db: &TestDb, id: i64) -> Vec<String> {
     db::interact(&db.pool, move |c| {
-        let mut stmt =
-            c.prepare("SELECT status FROM heartbeats WHERE monitor_id = ?1 AND agent_id IS NULL ORDER BY id")?;
+        let mut stmt = c.prepare(
+            "SELECT status FROM heartbeats WHERE monitor_id = ?1 AND agent_id IS NULL ORDER BY id",
+        )?;
         let rows = stmt.query_map([id], |r| r.get(0))?;
         rows.collect()
     })
@@ -80,7 +84,8 @@ async fn push_results_drive_state_and_outage_events() {
     let id = insert(&db, push_monitor("p")).await;
 
     s.ingest_external(id, CheckOutcome::up(5), None).await;
-    s.ingest_external(id, CheckOutcome::down("boom"), None).await;
+    s.ingest_external(id, CheckOutcome::down("boom"), None)
+        .await;
     let open = monitor_events(&db, id).await;
     assert_eq!(open.len(), 1);
     assert!(open[0].is_open() && open[0].kind == MonitorEventKind::Down);
@@ -138,7 +143,8 @@ async fn agent_results_are_recorded_but_do_not_drive_state() {
     s.ingest_external(id, CheckOutcome::up(3), Some(7)).await;
 
     let rows: Vec<(Option<i64>, String)> = db::interact(&db.pool, move |c| {
-        let mut stmt = c.prepare("SELECT agent_id, status FROM heartbeats WHERE monitor_id = ?1")?;
+        let mut stmt =
+            c.prepare("SELECT agent_id, status FROM heartbeats WHERE monitor_id = ?1")?;
         let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?;
         rows.collect()
     })
@@ -221,23 +227,35 @@ async fn reloading_a_group_recomputes_it_without_a_false_cycle() {
     )
     .await;
     for name in ["a", "b"] {
-        insert(&db, NewMonitor { parent_id: Some(group), ..push_monitor(name) }).await;
+        insert(
+            &db,
+            NewMonitor {
+                parent_id: Some(group),
+                ..push_monitor(name)
+            },
+        )
+        .await;
     }
     // Children report while the group is paused: nothing recorded for it.
-    db::interact(&db.pool, move |c| db_monitors::set_active(c, group, false)).await.unwrap();
+    db::interact(&db.pool, move |c| db_monitors::set_active(c, group, false))
+        .await
+        .unwrap();
     let kids: Vec<i64> = db::interact(&db.pool, move |c| db_monitors::children(c, group))
         .await
         .unwrap()
         .into_iter()
         .map(|m| m.id)
         .collect();
-    s.ingest_external(kids[0], CheckOutcome::down("dead"), None).await;
+    s.ingest_external(kids[0], CheckOutcome::down("dead"), None)
+        .await;
     s.ingest_external(kids[1], CheckOutcome::up(1), None).await;
     assert!(statuses(&db, group).await.is_empty());
 
     // Resuming the group reloads it; it must aggregate its two children
     // (previously this tripped the cycle guard and recorded nothing).
-    db::interact(&db.pool, move |c| db_monitors::set_active(c, group, true)).await.unwrap();
+    db::interact(&db.pool, move |c| db_monitors::set_active(c, group, true))
+        .await
+        .unwrap();
     s.reload(group).await;
     assert_eq!(statuses(&db, group).await, ["down"]);
 }
@@ -276,7 +294,9 @@ async fn expiry_is_stored_and_warned_once_per_step() {
         kind: ExpiryKind::Cert,
         subject: Some("example.com".into()),
         issuer: Some("R3".into()),
-        expires_at: fmt_db_time(OffsetDateTime::now_utc() + time::Duration::days(days) + time::Duration::hours(1)),
+        expires_at: fmt_db_time(
+            OffsetDateTime::now_utc() + time::Duration::days(days) + time::Duration::hours(1),
+        ),
     };
     let expiring = expiry(5);
     s.ingest_external(id, CheckOutcome::up(1).with_expiry(expiring.clone()), None)

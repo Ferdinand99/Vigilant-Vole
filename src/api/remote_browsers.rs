@@ -56,13 +56,21 @@ pub type Errors = BTreeMap<&'static str, String>;
 
 /// Checks a submitted name and URL (`editing`: the stored browser, whose
 /// masked secret may be kept). Returns the name and the full URL to store.
-pub fn validate(conn: &Connection, editing: Option<&db_rb::RemoteBrowser>, name: &str, url: &str) -> rusqlite::Result<Result<(String, String), Errors>> {
+pub fn validate(
+    conn: &Connection,
+    editing: Option<&db_rb::RemoteBrowser>,
+    name: &str,
+    url: &str,
+) -> rusqlite::Result<Result<(String, String), Errors>> {
     let mut e = Errors::new();
     let name = name.trim();
     if name.is_empty() {
         e.insert("name", crate::i18n::t("rb.err_name").into());
     } else if name.chars().count() > MAX_NAME_LEN {
-        e.insert("name", crate::i18n::tf("rb.err_name_long", &[("max", &MAX_NAME_LEN.to_string())]));
+        e.insert(
+            "name",
+            crate::i18n::tf("rb.err_name_long", &[("max", &MAX_NAME_LEN.to_string())]),
+        );
     } else if db_rb::name_taken(conn, name, editing.map(|b| b.id))? {
         e.insert("name", crate::i18n::t("rb.err_name_taken").into());
     }
@@ -88,7 +96,11 @@ pub fn validate(conn: &Connection, editing: Option<&db_rb::RemoteBrowser>, name:
             }
         }
     }
-    Ok(if e.is_empty() { Ok((name.to_string(), full.trim().to_string())) } else { Err(e) })
+    Ok(if e.is_empty() {
+        Ok((name.to_string(), full.trim().to_string()))
+    } else {
+        Err(e)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -120,11 +132,19 @@ impl BrowserForm {
     }
 
     pub fn title(&self) -> &'static str {
-        crate::i18n::t(if self.id.is_some() { "rb.edit" } else { "rb.add" })
+        crate::i18n::t(if self.id.is_some() {
+            "rb.edit"
+        } else {
+            "rb.add"
+        })
     }
 
     pub fn submit_label(&self) -> &'static str {
-        crate::i18n::t(if self.id.is_some() { "rb.save" } else { "rb.add" })
+        crate::i18n::t(if self.id.is_some() {
+            "rb.save"
+        } else {
+            "rb.add"
+        })
     }
 }
 
@@ -161,29 +181,78 @@ fn rows(conn: &Connection) -> rusqlite::Result<Vec<BrowserRow>> {
     Ok(db_rb::list(conn)?
         .into_iter()
         .enumerate()
-        .map(|(i, b)| BrowserRow { id: b.id, url: endpoint::masked(&b.url), monitors: used.get(&b.id).copied().unwrap_or(0), name: b.name, is_default: i == 0 })
+        .map(|(i, b)| BrowserRow {
+            id: b.id,
+            url: endpoint::masked(&b.url),
+            monitors: used.get(&b.id).copied().unwrap_or(0),
+            name: b.name,
+            is_default: i == 0,
+        })
         .collect())
 }
 
-async fn render(state: &AppState, user: &CurrentUser, jar: &SignedCookieJar, form: Option<BrowserForm>) -> ApiResult<(SignedCookieJar, Response)> {
+async fn render(
+    state: &AppState,
+    user: &CurrentUser,
+    jar: &SignedCookieJar,
+    form: Option<BrowserForm>,
+) -> ApiResult<(SignedCookieJar, Response)> {
     let browsers = state.with_conn(|c| rows(c)).await?;
-    let (ctx, jar) = PageCtx::build(state, Some(user), jar, crate::i18n::t("nav.browsers"), "settings", "browsers").await;
-    Ok((jar, HtmlTemplate(BrowsersTemplate { ctx, browsers, form }).into_response()))
+    let (ctx, jar) = PageCtx::build(
+        state,
+        Some(user),
+        jar,
+        crate::i18n::t("nav.browsers"),
+        "settings",
+        "browsers",
+    )
+    .await;
+    Ok((
+        jar,
+        HtmlTemplate(BrowsersTemplate {
+            ctx,
+            browsers,
+            form,
+        })
+        .into_response(),
+    ))
 }
 
-async fn page(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar) -> ApiResult<(SignedCookieJar, Response)> {
+async fn page(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+) -> ApiResult<(SignedCookieJar, Response)> {
     user.require(Role::Admin)?;
     render(&state, &user, &jar, None).await
 }
 
-async fn edit_page(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, Path(id): Path<i64>) -> ApiResult<(SignedCookieJar, Response)> {
+async fn edit_page(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+) -> ApiResult<(SignedCookieJar, Response)> {
     user.require(Role::Admin)?;
-    let b = state.with_conn(move |c| db_rb::get(c, id)).await?.ok_or(ApiError::NotFound)?;
-    let form = BrowserForm { id: Some(b.id), name: b.name, url: endpoint::masked(&b.url), errors: Errors::new() };
+    let b = state
+        .with_conn(move |c| db_rb::get(c, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let form = BrowserForm {
+        id: Some(b.id),
+        name: b.name,
+        url: endpoint::masked(&b.url),
+        errors: Errors::new(),
+    };
     render(&state, &user, &jar, Some(form)).await
 }
 
-async fn create(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, Form(input): Form<FormIn>) -> ApiResult<(SignedCookieJar, Response)> {
+async fn create(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Form(input): Form<FormIn>,
+) -> ApiResult<(SignedCookieJar, Response)> {
     user.require(Role::Admin)?;
     let (name, url) = (input.name.clone(), input.url.clone());
     let saved = state
@@ -201,7 +270,12 @@ async fn create(State(state): State<AppState>, user: CurrentUser, jar: SignedCoo
             Ok((jar, Redirect::to("/settings/browsers").into_response()))
         }
         Err(errors) => {
-            let form = BrowserForm { id: None, name: input.name, url: input.url, errors };
+            let form = BrowserForm {
+                id: None,
+                name: input.name,
+                url: input.url,
+                errors,
+            };
             render(&state, &user, &jar, Some(form)).await
         }
     }
@@ -218,7 +292,9 @@ async fn update(
     let (name, url) = (input.name.clone(), input.url.clone());
     let saved = state
         .with_conn(move |c| {
-            let Some(current) = db_rb::get(c, id)? else { return Ok(None) };
+            let Some(current) = db_rb::get(c, id)? else {
+                return Ok(None);
+            };
             Ok(Some(match validate(c, Some(&current), &name, &url)? {
                 Ok((name, url)) => {
                     db_rb::update(c, id, &name, &url)?;
@@ -236,20 +312,32 @@ async fn update(
             Ok((jar, Redirect::to("/settings/browsers").into_response()))
         }
         Err(errors) => {
-            let form = BrowserForm { id: Some(id), name: input.name, url: input.url, errors };
+            let form = BrowserForm {
+                id: Some(id),
+                name: input.name,
+                url: input.url,
+                errors,
+            };
             render(&state, &user, &jar, Some(form)).await
         }
     }
 }
 
-async fn remove(State(state): State<AppState>, user: CurrentUser, Path(id): Path<i64>) -> ApiResult<Response> {
+async fn remove(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
     user.require(Role::Admin)?;
     if !state.with_conn(move |c| db_rb::delete(c, id)).await? {
         return Err(ApiError::NotFound);
     }
     tracing::info!(remote_browser_id = id, user = %user.username, "remote browser removed");
     let mut response = StatusCode::OK.into_response();
-    response.headers_mut().insert("hx-trigger", super::agents::toast_trigger(crate::i18n::t("rb.removed"), "success"));
+    response.headers_mut().insert(
+        "hx-trigger",
+        super::agents::toast_trigger(crate::i18n::t("rb.removed"), "success"),
+    );
     Ok(response)
 }
 
@@ -259,18 +347,39 @@ async fn run_test(url: String) -> Response {
         Ok(v) => TestTemplate {
             ok: true,
             title: crate::i18n::t("rb.test_ok").into(),
-            text: if v.product.is_empty() { v.user_agent } else { crate::i18n::tf("rb.test_ok_text", &[("product", &v.product), ("protocol", &v.protocol)]) },
+            text: if v.product.is_empty() {
+                v.user_agent
+            } else {
+                crate::i18n::tf(
+                    "rb.test_ok_text",
+                    &[("product", &v.product), ("protocol", &v.protocol)],
+                )
+            },
         },
-        Err(err) => TestTemplate { ok: false, title: crate::i18n::t("rb.test_failed").into(), text: err },
+        Err(err) => TestTemplate {
+            ok: false,
+            title: crate::i18n::t("rb.test_failed").into(),
+            text: err,
+        },
     };
     HtmlTemplate(page).into_response()
 }
 
-async fn test_form(State(state): State<AppState>, user: CurrentUser, Form(input): Form<FormIn>) -> ApiResult<Response> {
+async fn test_form(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Form(input): Form<FormIn>,
+) -> ApiResult<Response> {
     user.require(Role::Admin)?;
-    let id = input.id.as_deref().and_then(|s| s.trim().parse::<i64>().ok());
+    let id = input
+        .id
+        .as_deref()
+        .and_then(|s| s.trim().parse::<i64>().ok());
     let stored = match id {
-        Some(id) => state.with_conn(move |c| db_rb::get(c, id)).await?.map(|b| b.url),
+        Some(id) => state
+            .with_conn(move |c| db_rb::get(c, id))
+            .await?
+            .map(|b| b.url),
         None => None,
     };
     match endpoint::unmask(&input.url, stored.as_deref()) {
@@ -284,9 +393,16 @@ async fn test_form(State(state): State<AppState>, user: CurrentUser, Form(input)
     }
 }
 
-async fn test_saved(State(state): State<AppState>, user: CurrentUser, Path(id): Path<i64>) -> ApiResult<Response> {
+async fn test_saved(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
     user.require(Role::Admin)?;
-    let b = state.with_conn(move |c| db_rb::get(c, id)).await?.ok_or(ApiError::NotFound)?;
+    let b = state
+        .with_conn(move |c| db_rb::get(c, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok(run_test(b.url).await)
 }
 
@@ -325,29 +441,68 @@ pub fn detail_panel(conn: &Connection, m: &Monitor) -> rusqlite::Result<Option<B
         message: s.message.unwrap_or_default(),
     });
     let expect = match (&m.browser_selector, &m.keyword) {
-        (Some(s), _) => crate::i18n::tf(if m.keyword_invert { "rb.expect_selector_absent" } else { "rb.expect_selector" }, &[("selector", s)]),
-        (None, Some(k)) if !k.is_empty() => crate::i18n::tf(if m.keyword_invert { "rb.expect_keyword_absent" } else { "rb.expect_keyword" }, &[("keyword", k)]),
+        (Some(s), _) => crate::i18n::tf(
+            if m.keyword_invert {
+                "rb.expect_selector_absent"
+            } else {
+                "rb.expect_selector"
+            },
+            &[("selector", s)],
+        ),
+        (None, Some(k)) if !k.is_empty() => crate::i18n::tf(
+            if m.keyword_invert {
+                "rb.expect_keyword_absent"
+            } else {
+                "rb.expect_keyword"
+            },
+            &[("keyword", k)],
+        ),
         _ => String::new(),
     };
     Ok(Some(BrowserPanel {
         monitor_id: m.id,
         browser,
-        wait: crate::i18n::t(if m.browser_wait == "network_idle" { "browser.wait_network_idle" } else { "browser.wait_load" }),
-        viewport: crate::i18n::t(if m.browser_viewport == "mobile" { "browser.viewport_mobile" } else { "browser.viewport_desktop" }),
+        wait: crate::i18n::t(if m.browser_wait == "network_idle" {
+            "browser.wait_network_idle"
+        } else {
+            "browser.wait_load"
+        }),
+        viewport: crate::i18n::t(if m.browser_viewport == "mobile" {
+            "browser.viewport_mobile"
+        } else {
+            "browser.viewport_desktop"
+        }),
         expect,
         js_errors: m.browser_js_errors,
         shot,
     }))
 }
 
-async fn screenshot(State(state): State<AppState>, _user: CurrentUser, Path(id): Path<i64>) -> ApiResult<Response> {
-    let shot = state.with_conn(move |c| db_rb::get_screenshot(c, id)).await?.ok_or(ApiError::NotFound)?;
-    let mime = if shot.mime == "image/png" { "image/png" } else { "image/jpeg" };
+async fn screenshot(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
+    let shot = state
+        .with_conn(move |c| db_rb::get_screenshot(c, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let mime = if shot.mime == "image/png" {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
     let mut response = shot.image.into_response();
     let h = response.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
-    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    h.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    h.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
     Ok(response)
 }
 
@@ -364,19 +519,55 @@ mod tests {
     fn names_and_urls_are_validated_and_masked_tokens_kept() {
         let conn = crate::db::test_conn();
         let errs = validate(&conn, None, "", "ftp://x").unwrap().unwrap_err();
-        assert!(errs.contains_key("name") && errs.contains_key("url"), "{errs:?}");
-        assert!(validate(&conn, None, "B", "").unwrap().unwrap_err().contains_key("url"));
-        assert!(validate(&conn, None, "B", "chrome:9222").unwrap().unwrap_err().contains_key("url"));
-        let (name, url) = validate(&conn, None, " Chrome ", " wss://b.example?token=s3cret ").unwrap().unwrap();
-        assert_eq!((name.as_str(), url.as_str()), ("Chrome", "wss://b.example?token=s3cret"));
+        assert!(
+            errs.contains_key("name") && errs.contains_key("url"),
+            "{errs:?}"
+        );
+        assert!(
+            validate(&conn, None, "B", "")
+                .unwrap()
+                .unwrap_err()
+                .contains_key("url")
+        );
+        assert!(
+            validate(&conn, None, "B", "chrome:9222")
+                .unwrap()
+                .unwrap_err()
+                .contains_key("url")
+        );
+        let (name, url) = validate(&conn, None, " Chrome ", " wss://b.example?token=s3cret ")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (name.as_str(), url.as_str()),
+            ("Chrome", "wss://b.example?token=s3cret")
+        );
         let id = db_rb::insert(&conn, &name, &url).unwrap();
-        assert!(validate(&conn, None, "chrome", "ws://x:1").unwrap().unwrap_err().contains_key("name"), "names are unique");
+        assert!(
+            validate(&conn, None, "chrome", "ws://x:1")
+                .unwrap()
+                .unwrap_err()
+                .contains_key("name"),
+            "names are unique"
+        );
         let stored = db_rb::get(&conn, id).unwrap().unwrap();
         let masked = endpoint::masked(&stored.url);
-        let (_, kept) = validate(&conn, Some(&stored), "Chrome", &masked).unwrap().unwrap();
+        let (_, kept) = validate(&conn, Some(&stored), "Chrome", &masked)
+            .unwrap()
+            .unwrap();
         assert!(kept.contains("token=s3cret"), "{kept}");
-        let errs = validate(&conn, Some(&stored), "Chrome", &masked.replace("b.example", "evil.example")).unwrap().unwrap_err();
-        assert!(errs.contains_key("url"), "a moved URL needs its token again");
+        let errs = validate(
+            &conn,
+            Some(&stored),
+            "Chrome",
+            &masked.replace("b.example", "evil.example"),
+        )
+        .unwrap()
+        .unwrap_err();
+        assert!(
+            errs.contains_key("url"),
+            "a moved URL needs its token again"
+        );
     }
 
     #[test]
@@ -391,17 +582,35 @@ mod tests {
             ..NewMonitor::default()
         };
         let id = crate::db::monitors::insert_monitor(&conn, &new).unwrap();
-        let m = crate::db::monitors::get_monitor(&conn, id).unwrap().unwrap();
+        let m = crate::db::monitors::get_monitor(&conn, id)
+            .unwrap()
+            .unwrap();
         let p = detail_panel(&conn, &m).unwrap().unwrap();
         assert!(p.browser.is_none() && p.shot.is_none());
         assert!(p.expect.contains("#app"));
         db_rb::insert(&conn, "Chrome", "ws://chrome:9222").unwrap();
-        db_rb::save_screenshot(&conn, id, b"jpeg", "image/jpeg", Some("Selector #app not found")).unwrap();
+        db_rb::save_screenshot(
+            &conn,
+            id,
+            b"jpeg",
+            "image/jpeg",
+            Some("Selector #app not found"),
+        )
+        .unwrap();
         let p = detail_panel(&conn, &m).unwrap().unwrap();
         assert_eq!(p.browser.as_deref(), Some("Chrome"));
         assert_eq!(p.shot.unwrap().message, "Selector #app not found");
-        let http = crate::db::monitors::insert_monitor(&conn, &NewMonitor { name: "x".into(), ..NewMonitor::default() }).unwrap();
-        let http = crate::db::monitors::get_monitor(&conn, http).unwrap().unwrap();
+        let http = crate::db::monitors::insert_monitor(
+            &conn,
+            &NewMonitor {
+                name: "x".into(),
+                ..NewMonitor::default()
+            },
+        )
+        .unwrap();
+        let http = crate::db::monitors::get_monitor(&conn, http)
+            .unwrap()
+            .unwrap();
         assert!(detail_panel(&conn, &http).unwrap().is_none());
     }
 
@@ -416,13 +625,30 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        let claims = crate::auth::session::SessionClaims::new(user.id, user.session_version, crate::auth::session::now_unix());
-        let jar = SignedCookieJar::new(state.session_key.clone()).add(Cookie::new(crate::auth::SESSION_COOKIE, claims.encode()));
+        let claims = crate::auth::session::SessionClaims::new(
+            user.id,
+            user.session_version,
+            crate::auth::session::now_unix(),
+        );
+        let jar = SignedCookieJar::new(state.session_key.clone())
+            .add(Cookie::new(crate::auth::SESSION_COOKIE, claims.encode()));
         let resp = (jar, ()).into_response();
-        resp.headers()[header::SET_COOKIE].to_str().unwrap().split(';').next().unwrap().to_string()
+        resp.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_string()
     }
 
-    async fn send(app: &axum::Router, method: &str, uri: &str, cookie: &str, body: &str) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    async fn send(
+        app: &axum::Router,
+        method: &str,
+        uri: &str,
+        cookie: &str,
+        body: &str,
+    ) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
         let req = Request::builder()
             .method(method)
             .uri(uri)
@@ -434,7 +660,11 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         let (status, headers) = (resp.status(), resp.headers().clone());
-        (status, headers, to_bytes(resp.into_body(), 1 << 20).await.unwrap().to_vec())
+        (
+            status,
+            headers,
+            to_bytes(resp.into_body(), 1 << 20).await.unwrap().to_vec(),
+        )
     }
 
     #[tokio::test]
@@ -444,7 +674,12 @@ mod tests {
             .with_conn(|c| {
                 let id = crate::db::monitors::insert_monitor(
                     c,
-                    &NewMonitor { name: "Shop".into(), monitor_type: MonitorType::RealBrowser, target: "https://s.example".into(), ..NewMonitor::default() },
+                    &NewMonitor {
+                        name: "Shop".into(),
+                        monitor_type: MonitorType::RealBrowser,
+                        target: "https://s.example".into(),
+                        ..NewMonitor::default()
+                    },
                 )?;
                 db_rb::save_screenshot(c, id, b"\xff\xd8jpeg", "image/jpeg", Some("HTTP 500"))?;
                 Ok(id)
@@ -454,7 +689,10 @@ mod tests {
         let app = crate::api::build_router(state.clone());
         let shot = format!("/monitors/{id}/screenshot");
         let (status, _, _) = send(&app, "GET", &shot, "", "").await;
-        assert!(status.is_redirection() || status == StatusCode::UNAUTHORIZED, "{status}");
+        assert!(
+            status.is_redirection() || status == StatusCode::UNAUTHORIZED,
+            "{status}"
+        );
 
         let viewer = session(&state, "viewer", Role::Viewer).await;
         let (status, headers, body) = send(&app, "GET", &shot, &viewer, "").await;
@@ -466,19 +704,53 @@ mod tests {
         assert_eq!(status, StatusCode::FORBIDDEN);
 
         let admin = session(&state, "admin", Role::Admin).await;
-        let (status, _, body) = send(&app, "POST", "/settings/browsers", &admin, "name=Chrome&url=wss%3A%2F%2Fb.example%3Ftoken%3Ds3cret").await;
-        assert!(status.is_redirection(), "{status} {}", String::from_utf8_lossy(&body));
+        let (status, _, body) = send(
+            &app,
+            "POST",
+            "/settings/browsers",
+            &admin,
+            "name=Chrome&url=wss%3A%2F%2Fb.example%3Ftoken%3Ds3cret",
+        )
+        .await;
+        assert!(
+            status.is_redirection(),
+            "{status} {}",
+            String::from_utf8_lossy(&body)
+        );
         let (status, _, body) = send(&app, "GET", "/settings/browsers", &admin, "").await;
         let html = String::from_utf8_lossy(&body);
         assert_eq!(status, StatusCode::OK);
-        assert!(html.contains("Chrome") && html.contains("b.example") && !html.contains("s3cret"), "the token is masked");
-        let (status, _, body) = send(&app, "POST", "/settings/browsers", &admin, "name=chrome&url=nope").await;
+        assert!(
+            html.contains("Chrome") && html.contains("b.example") && !html.contains("s3cret"),
+            "the token is masked"
+        );
+        let (status, _, body) = send(
+            &app,
+            "POST",
+            "/settings/browsers",
+            &admin,
+            "name=chrome&url=nope",
+        )
+        .await;
         let html = String::from_utf8_lossy(&body);
         assert_eq!(status, StatusCode::OK);
         assert!(html.contains("field-error"), "errors are shown on the form");
         let bid = state.with_conn(|c| db_rb::ids(c)).await.unwrap()[0];
-        let (status, _, _) = send(&app, "DELETE", &format!("/settings/browsers/{bid}"), &admin, "").await;
+        let (status, _, _) = send(
+            &app,
+            "DELETE",
+            &format!("/settings/browsers/{bid}"),
+            &admin,
+            "",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
-        assert!(state.with_conn(|c| db_rb::list(c)).await.unwrap().is_empty());
+        assert!(
+            state
+                .with_conn(|c| db_rb::list(c))
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

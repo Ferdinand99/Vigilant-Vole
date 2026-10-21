@@ -26,7 +26,12 @@ pub struct V1Error {
 
 impl V1Error {
     pub fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
-        V1Error { status, code, message: message.into(), fields: BTreeMap::new() }
+        V1Error {
+            status,
+            code,
+            message: message.into(),
+            fields: BTreeMap::new(),
+        }
     }
 
     pub fn not_found() -> Self {
@@ -53,14 +58,28 @@ impl V1Error {
     pub fn validation(message: impl Into<String>, fields: BTreeMap<String, String>) -> Self {
         let mut message = message.into();
         if message.is_empty() {
-            message = fields.values().next().cloned().unwrap_or_else(|| "Invalid request.".into());
+            message = fields
+                .values()
+                .next()
+                .cloned()
+                .unwrap_or_else(|| "Invalid request.".into());
         }
-        V1Error { status: StatusCode::UNPROCESSABLE_ENTITY, code: "validation_failed", message, fields }
+        V1Error {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            code: "validation_failed",
+            message,
+            fields,
+        }
     }
 
     /// Validation error from `(field, message)` pairs.
-    pub fn fields<K: Into<String>, V: Into<String>>(pairs: impl IntoIterator<Item = (K, V)>) -> Self {
-        let fields: BTreeMap<String, String> = pairs.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
+    pub fn fields<K: Into<String>, V: Into<String>>(
+        pairs: impl IntoIterator<Item = (K, V)>,
+    ) -> Self {
+        let fields: BTreeMap<String, String> = pairs
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
         Self::validation("", fields)
     }
 
@@ -70,7 +89,11 @@ impl V1Error {
 
     pub fn internal(err: impl fmt::Display) -> Self {
         tracing::error!(error = %err, "api request failed");
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", "Something went wrong on our side. Please try again.")
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            "Something went wrong on our side. Please try again.",
+        )
     }
 }
 
@@ -98,7 +121,11 @@ impl From<ApiError> for V1Error {
             ApiError::NotFound => Self::not_found(),
             ApiError::Forbidden => Self::forbidden(),
             ApiError::BadRequest(msg) => Self::bad_request(msg),
-            ApiError::Unauthorized => Self::new(StatusCode::UNAUTHORIZED, "unauthorized", "Sign in or send an API token."),
+            ApiError::Unauthorized => Self::new(
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+                "Sign in or send an API token.",
+            ),
             ApiError::Internal(detail) => Self::internal(detail),
         }
     }

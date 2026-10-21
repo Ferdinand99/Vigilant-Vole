@@ -53,7 +53,10 @@ impl<S: Send + Sync> FromRequestParts<S> for PeerAddr {
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         Ok(PeerAddr(
-            parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|ci| ci.0),
+            parts
+                .extensions
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ci| ci.0),
         ))
     }
 }
@@ -85,7 +88,12 @@ async fn site_name(state: &AppState) -> String {
 }
 
 /// Adds a fresh session cookie for `user` (and drops any pending-2FA cookie).
-pub fn login_jar(jar: SignedCookieJar, user_id: i64, session_version: i64, secure: bool) -> SignedCookieJar {
+pub fn login_jar(
+    jar: SignedCookieJar,
+    user_id: i64,
+    session_version: i64,
+    secure: bool,
+) -> SignedCookieJar {
     let claims = SessionClaims::new(user_id, session_version, session::now_unix());
     jar.add(session::session_cookie(&claims, secure))
         .remove(session::removal_cookie(PENDING_2FA_COOKIE))
@@ -96,7 +104,10 @@ fn wait_message(wait: std::time::Duration) -> String {
     if secs < 90 {
         crate::i18n::tf("sec.too_many_secs", &[("n", &secs.to_string())])
     } else {
-        crate::i18n::tf("sec.too_many_mins", &[("n", &secs.div_ceil(60).to_string())])
+        crate::i18n::tf(
+            "sec.too_many_mins",
+            &[("n", &secs.div_ceil(60).to_string())],
+        )
     }
 }
 
@@ -141,9 +152,14 @@ impl SetupTemplate {
     }
 
     fn has_errors(&self) -> bool {
-        [&self.username_error, &self.password_error, &self.confirm_error, &self.site_name_error]
-            .iter()
-            .any(|e| !e.is_empty())
+        [
+            &self.username_error,
+            &self.password_error,
+            &self.confirm_error,
+            &self.site_name_error,
+        ]
+        .iter()
+        .any(|e| !e.is_empty())
     }
 }
 
@@ -182,7 +198,10 @@ fn setup_unlocked(token: Option<&str>) -> bool {
     session::setup_token_matches(session::SETUP_TOKEN.as_deref(), token)
 }
 
-async fn setup_form(State(state): State<AppState>, Query(query): Query<SetupQuery>) -> ApiResult<Response> {
+async fn setup_form(
+    State(state): State<AppState>,
+    Query(query): Query<SetupQuery>,
+) -> ApiResult<Response> {
     if has_users(&state).await? {
         return Ok(Redirect::to("/login").into_response());
     }
@@ -217,7 +236,11 @@ async fn setup_submit(
     let mut page = SetupTemplate {
         username: username.clone(),
         site_name: site.clone(),
-        timezone: if super::settings::valid_timezone(&timezone) { timezone.clone() } else { "UTC".into() },
+        timezone: if super::settings::valid_timezone(&timezone) {
+            timezone.clone()
+        } else {
+            "UTC".into()
+        },
         token: form.token.trim().to_string(),
         ..SetupTemplate::blank()
     };
@@ -237,7 +260,11 @@ async fn setup_submit(
     }
 
     let password_hash = auth::hash_password_async(form.password).await?;
-    let site_name = if site.is_empty() { db_settings::Settings::default().site_name } else { site };
+    let site_name = if site.is_empty() {
+        db_settings::Settings::default().site_name
+    } else {
+        site
+    };
     let tz = page.timezone.clone();
     let created = state
         .with_conn(move |c| {
@@ -259,7 +286,9 @@ async fn setup_submit(
         .with_conn(move |c| db_users::get_user(c, user_id))
         .await?
         .ok_or(ApiError::NotFound)?;
-    state.with_conn(move |c| db_users::touch_last_login(c, user_id)).await?;
+    state
+        .with_conn(move |c| db_users::touch_last_login(c, user_id))
+        .await?;
 
     tracing::info!(user = %user.username, "setup complete; first admin created");
     let jar = login_jar(jar, user.id, user.session_version, secure_cookies(&headers));
@@ -297,7 +326,12 @@ pub struct LoginForm {
     next: Option<String>,
 }
 
-fn login_page(status: StatusCode, error: Option<String>, username: String, next: String) -> Response {
+fn login_page(
+    status: StatusCode,
+    error: Option<String>,
+    username: String,
+    next: String,
+) -> Response {
     let page = LoginTemplate {
         title: crate::i18n::t("login.title").into(),
         error,
@@ -321,7 +355,8 @@ async fn login_form(
         return Ok(Redirect::to(&next).into_response());
     }
     // Messages from the previous step (timed-out 2FA, password changed, …).
-    let (ctx, jar) = super::PageCtx::build(&state, None, &jar, crate::i18n::t("login.title"), "", "").await;
+    let (ctx, jar) =
+        super::PageCtx::build(&state, None, &jar, crate::i18n::t("login.title"), "", "").await;
     let (error, notice) = match ctx.flash {
         Some(f) if f.kind == "error" => (Some(f.message), None),
         Some(f) => (None, Some(f.message)),
@@ -337,7 +372,6 @@ async fn login_form(
     Ok((jar, HtmlTemplate(page)).into_response())
 }
 
-
 async fn login_submit(
     State(state): State<AppState>,
     jar: SignedCookieJar,
@@ -347,7 +381,8 @@ async fn login_submit(
 ) -> ApiResult<Response> {
     let username = form.username.trim().to_string();
     let next = session::sanitize_next(form.next.as_deref());
-    let ip_key = session::client_ip(&headers, peer, session::trust_proxy()).map(|ip| format!("ip:{ip}"));
+    let ip_key =
+        session::client_ip(&headers, peer, session::trust_proxy()).map(|ip| format!("ip:{ip}"));
     let user_key = format!("user:{}", username.to_lowercase());
     let now = Instant::now();
 
@@ -365,14 +400,21 @@ async fn login_submit(
     };
     if let Some(wait) = blocked {
         tracing::warn!(user = %username, ip = ?ip_key, "login throttled");
-        return Ok(login_page(StatusCode::TOO_MANY_REQUESTS, Some(wait_message(wait)), username, next));
+        return Ok(login_page(
+            StatusCode::TOO_MANY_REQUESTS,
+            Some(wait_message(wait)),
+            username,
+            next,
+        ));
     }
 
     let lookup = username.clone();
     let user = if username.is_empty() || form.password.len() > auth::MAX_PASSWORD_LEN {
         None
     } else {
-        state.with_conn(move |c| db_users::get_user_by_username(c, &lookup)).await?
+        state
+            .with_conn(move |c| db_users::get_user_by_username(c, &lookup))
+            .await?
     };
     // Always run one Argon2 verification, against a dummy hash when there is
     // no usable account, so timing doesn't reveal which usernames exist.
@@ -384,7 +426,12 @@ async fn login_submit(
     let Some(user) = candidate.filter(|_| password_ok) else {
         // Already counted by `reserve`.
         tracing::info!(user = %username, ip = ?ip_key, "failed login");
-        return Ok(login_page(StatusCode::UNAUTHORIZED, Some(crate::i18n::t("auth.login_failed").into()), username, next));
+        return Ok(login_page(
+            StatusCode::UNAUTHORIZED,
+            Some(crate::i18n::t("auth.login_failed").into()),
+            username,
+            next,
+        ));
     };
 
     rate_limit::ACCOUNT.clear(&user_key);
@@ -413,7 +460,9 @@ async fn finish_login(
     secure: bool,
 ) -> ApiResult<Response> {
     let id = user.id;
-    state.with_conn(move |c| db_users::touch_last_login(c, id)).await?;
+    state
+        .with_conn(move |c| db_users::touch_last_login(c, id))
+        .await?;
     tracing::info!(user = %user.username, "login");
     let jar = login_jar(jar, user.id, user.session_version, secure);
     Ok((jar, Redirect::to(next)).into_response())
@@ -445,7 +494,10 @@ fn two_factor_page(status: StatusCode, error: Option<String>) -> Response {
 }
 
 /// The pending login, if its cookie is valid, fresh and still matches the user.
-async fn pending_login(state: &AppState, jar: &SignedCookieJar) -> ApiResult<Option<(PendingLogin, User)>> {
+async fn pending_login(
+    state: &AppState,
+    jar: &SignedCookieJar,
+) -> ApiResult<Option<(PendingLogin, User)>> {
     let Some(pending) = jar
         .get(PENDING_2FA_COOKIE)
         .and_then(|c| PendingLogin::decode(c.value()))
@@ -466,7 +518,10 @@ fn back_to_login(jar: SignedCookieJar, message: &str) -> Response {
     (jar, Redirect::to("/login")).into_response()
 }
 
-async fn two_factor_form(State(state): State<AppState>, jar: SignedCookieJar) -> ApiResult<Response> {
+async fn two_factor_form(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+) -> ApiResult<Response> {
     if pending_login(&state, &jar).await?.is_none() {
         return Ok(back_to_login(jar, crate::i18n::t("auth.timed_out")));
     }
@@ -481,12 +536,28 @@ enum SecondFactor {
 }
 
 /// Verifies a TOTP or recovery code for `user_id` and consumes it (single use).
-pub async fn verify_second_factor(state: &AppState, user_id: i64, account: &str, code: &str) -> ApiResult<bool> {
-    Ok(!matches!(check_second_factor(state, user_id, account, code).await?, SecondFactor::Invalid))
+pub async fn verify_second_factor(
+    state: &AppState,
+    user_id: i64,
+    account: &str,
+    code: &str,
+) -> ApiResult<bool> {
+    Ok(!matches!(
+        check_second_factor(state, user_id, account, code).await?,
+        SecondFactor::Invalid
+    ))
 }
 
-async fn check_second_factor(state: &AppState, user_id: i64, account: &str, code: &str) -> ApiResult<SecondFactor> {
-    let Some(tf) = state.with_conn(move |c| db_users::get_totp(c, user_id)).await? else {
+async fn check_second_factor(
+    state: &AppState,
+    user_id: i64,
+    account: &str,
+    code: &str,
+) -> ApiResult<SecondFactor> {
+    let Some(tf) = state
+        .with_conn(move |c| db_users::get_totp(c, user_id))
+        .await?
+    else {
         return Ok(SecondFactor::Invalid);
     };
     let Some(secret) = tf.secret.filter(|_| tf.enabled) else {
@@ -504,7 +575,11 @@ async fn check_second_factor(state: &AppState, user_id: i64, account: &str, code
         let fresh = state
             .with_conn(move |c| db_users::consume_totp_step(c, user_id, step))
             .await?;
-        return Ok(if fresh { SecondFactor::Totp } else { SecondFactor::Invalid });
+        return Ok(if fresh {
+            SecondFactor::Totp
+        } else {
+            SecondFactor::Invalid
+        });
     }
 
     if totp::looks_like_recovery_code(code) {
@@ -521,7 +596,11 @@ async fn check_second_factor(state: &AppState, user_id: i64, account: &str, code
         let consumed = state
             .with_conn(move |c| db_users::consume_recovery_code(c, user_id, &before, &used))
             .await?;
-        return Ok(if consumed { SecondFactor::Recovery { remaining } } else { SecondFactor::Invalid });
+        return Ok(if consumed {
+            SecondFactor::Recovery { remaining }
+        } else {
+            SecondFactor::Invalid
+        });
     }
     Ok(SecondFactor::Invalid)
 }
@@ -539,7 +618,10 @@ async fn two_factor_submit(
     let now = Instant::now();
     // Counted up front, like the password step.
     if let Err(wait) = rate_limit::ACCOUNT.reserve(&key, now) {
-        return Ok(two_factor_page(StatusCode::TOO_MANY_REQUESTS, Some(wait_message(wait))));
+        return Ok(two_factor_page(
+            StatusCode::TOO_MANY_REQUESTS,
+            Some(wait_message(wait)),
+        ));
     }
 
     match check_second_factor(&state, user.id, &user.username, form.code.trim()).await? {
@@ -582,8 +664,13 @@ async fn logout(jar: SignedCookieJar) -> impl IntoResponse {
 
 /// Resolves the session cookie: claims must be well-formed, not idle-expired,
 /// and match the user's current `session_version`; the user must be active.
-async fn resolve_session(state: &AppState, jar: &SignedCookieJar) -> ApiResult<Option<(CurrentUser, SessionClaims)>> {
-    Ok(resolve_session_lang(state, jar).await?.map(|(user, claims, _)| (user, claims)))
+async fn resolve_session(
+    state: &AppState,
+    jar: &SignedCookieJar,
+) -> ApiResult<Option<(CurrentUser, SessionClaims)>> {
+    Ok(resolve_session_lang(state, jar)
+        .await?
+        .map(|(user, claims, _)| (user, claims)))
 }
 
 /// Like [`resolve_session`], plus the user's own interface language.
@@ -601,20 +688,28 @@ async fn resolve_session_lang(
     };
     let id = claims.user_id;
     let user = state.with_conn(move |c| db_users::get_user(c, id)).await?;
-    Ok(user.filter(|u| u.active && u.session_version == claims.version).map(|u| {
-        let lang = u.language.as_deref().and_then(crate::i18n::Lang::from_code);
-        (current_user_from(&u), claims, lang)
-    }))
+    Ok(user
+        .filter(|u| u.active && u.session_version == claims.version)
+        .map(|u| {
+            let lang = u.language.as_deref().and_then(crate::i18n::Lang::from_code);
+            (current_user_from(&u), claims, lang)
+        }))
 }
 
 /// Resolves the session cookie to an active user, if any. Protected routes get
 /// this via the `CurrentUser` extractor; public pages (e.g. a status page that
 /// shows an "Edit" link to logged-in editors) can call it directly.
-pub async fn session_user(state: &AppState, jar: &SignedCookieJar) -> ApiResult<Option<CurrentUser>> {
+pub async fn session_user(
+    state: &AppState,
+    jar: &SignedCookieJar,
+) -> ApiResult<Option<CurrentUser>> {
     Ok(resolve_session(state, jar).await?.map(|(user, _)| user))
 }
 
-pub async fn authenticate_token_detailed(state: &AppState, token: &str) -> ApiResult<Option<(CurrentUser, AuthMethod)>> {
+pub async fn authenticate_token_detailed(
+    state: &AppState,
+    token: &str,
+) -> ApiResult<Option<(CurrentUser, AuthMethod)>> {
     if !tokens::is_well_formed(token) {
         return Ok(None);
     }
@@ -656,13 +751,18 @@ pub async fn authenticate_token_detailed(state: &AppState, token: &str) -> ApiRe
 /// unknown, malformed, expired or revoked tokens and disabled users. Records
 /// `last_used_at` (at most once a minute).
 pub async fn authenticate_token(state: &AppState, token: &str) -> ApiResult<Option<CurrentUser>> {
-    Ok(authenticate_token_detailed(state, token).await?.map(|(user, _)| user))
+    Ok(authenticate_token_detailed(state, token)
+        .await?
+        .map(|(user, _)| user))
 }
 
 /// [`authenticate_token`] for `Authorization: Bearer <token>` or
 /// `Authorization: Basic base64(any:<token>)` (Prometheus `basic_auth`).
 /// `None` when the header is missing or the token is invalid.
-pub async fn authenticate_headers(state: &AppState, headers: &HeaderMap) -> ApiResult<Option<CurrentUser>> {
+pub async fn authenticate_headers(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> ApiResult<Option<CurrentUser>> {
     match tokens::token_from_headers(headers) {
         Some(token) => authenticate_token(state, &token).await,
         None => Ok(None),
@@ -683,7 +783,10 @@ fn unauthorized(method: &Method, uri: &axum::http::Uri, headers: &HeaderMap) -> 
         let target = if next == "/" {
             "/login".to_string()
         } else {
-            format!("/login?next={}", url::form_urlencoded::byte_serialize(next.as_bytes()).collect::<String>())
+            format!(
+                "/login?next={}",
+                url::form_urlencoded::byte_serialize(next.as_bytes()).collect::<String>()
+            )
         };
         return Redirect::to(&target).into_response();
     }
@@ -706,7 +809,12 @@ fn sets_session_cookie(response: &Response) -> bool {
 ///   with an API token, and only with it (no fallback to the cookie).
 /// - Otherwise the session cookie; its idle timer slides forward hourly.
 /// - A brand new install (no users) bootstraps to `/setup`.
-pub async fn require_auth(State(state): State<AppState>, jar: SignedCookieJar, mut request: Request, next: Next) -> Response {
+pub async fn require_auth(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+    mut request: Request,
+    next: Next,
+) -> Response {
     let is_api = request.uri().path().starts_with("/api/");
 
     if is_api && tokens::has_authorization(request.headers()) {
@@ -739,7 +847,8 @@ pub async fn require_auth(State(state): State<AppState>, jar: SignedCookieJar, m
             // session cookie itself (e.g. after a password change).
             if claims.needs_refresh(now) && !sets_session_cookie(&response) {
                 let refreshed = claims.refreshed(now);
-                let jar = SignedCookieJar::new(state.session_key.clone()).add(session::session_cookie(&refreshed, secure));
+                let jar = SignedCookieJar::new(state.session_key.clone())
+                    .add(session::session_cookie(&refreshed, secure));
                 return (jar, response).into_response();
             }
             response
@@ -755,7 +864,11 @@ pub async fn require_auth(State(state): State<AppState>, jar: SignedCookieJar, m
             let response = unauthorized(request.method(), request.uri(), request.headers());
             if jar.get(SESSION_COOKIE).is_some() {
                 // Stale cookie (expired, signed out elsewhere, user disabled): drop it.
-                return (jar.remove(session::removal_cookie(SESSION_COOKIE)), response).into_response();
+                return (
+                    jar.remove(session::removal_cookie(SESSION_COOKIE)),
+                    response,
+                )
+                    .into_response();
             }
             response
         }
@@ -766,7 +879,11 @@ pub async fn require_auth(State(state): State<AppState>, jar: SignedCookieJar, m
 /// CSRF guard (runs on every route): state-changing requests must carry
 /// `HX-Request: true` or a same-origin `Origin`/`Referer` — see
 /// [`crate::auth::csrf`]. Token/public machine endpoints are exempt.
-pub async fn csrf_guard(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+pub async fn csrf_guard(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     // This layer wraps every route, so it is also where duplicate session cookies are
     // collapsed before any extractor reads them.
     dedupe_session_cookie(request.headers_mut(), &state.session_key);
@@ -819,10 +936,15 @@ fn dedupe_session_cookie(headers: &mut HeaderMap, key: &axum_extra::extract::coo
             };
             let mut single = HeaderMap::new();
             single.insert(header::COOKIE, value);
-            SignedCookieJar::from_headers(&single, key.clone()).get(SESSION_COOKIE).is_some()
+            SignedCookieJar::from_headers(&single, key.clone())
+                .get(SESSION_COOKIE)
+                .is_some()
         })
         .cloned();
-    let merged: Vec<String> = valid.into_iter().chain(pairs.into_iter().filter(|p| !p.starts_with(&prefix))).collect();
+    let merged: Vec<String> = valid
+        .into_iter()
+        .chain(pairs.into_iter().filter(|p| !p.starts_with(&prefix)))
+        .collect();
     headers.remove(header::COOKIE);
     if let Ok(value) = axum::http::HeaderValue::from_str(&merged.join("; ")) {
         headers.insert(header::COOKIE, value);
@@ -841,7 +963,10 @@ mod dedupe_tests {
         let response = SignedCookieJar::new(key.clone())
             .add(Cookie::new(SESSION_COOKIE, value.to_string()))
             .into_response();
-        let set = response.headers()[header::SET_COOKIE].to_str().unwrap().to_string();
+        let set = response.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .to_string();
         set.split(';').next().unwrap().to_string()
     }
 
@@ -857,8 +982,18 @@ mod dedupe_tests {
         dedupe_session_cookie(&mut headers, &key);
 
         let jar = SignedCookieJar::from_headers(&headers, key);
-        assert_eq!(jar.get(SESSION_COOKIE).map(|c| c.value().to_string()).as_deref(), Some("fresh"));
-        assert!(headers[header::COOKIE].to_str().unwrap().contains("vv_flash=x"));
+        assert_eq!(
+            jar.get(SESSION_COOKIE)
+                .map(|c| c.value().to_string())
+                .as_deref(),
+            Some("fresh")
+        );
+        assert!(
+            headers[header::COOKIE]
+                .to_str()
+                .unwrap()
+                .contains("vv_flash=x")
+        );
     }
 
     #[test]

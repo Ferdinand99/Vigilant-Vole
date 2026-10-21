@@ -429,8 +429,16 @@ fn public_target_drops_credentials_query_and_fragment() {
         public_target("https://bot:hunter2@api.example/health?token=abc#x"),
         "https://api.example/health"
     );
-    assert_eq!(public_target("wss://u:p@ws.example/feed?k=1"), "wss://ws.example/feed");
-    for unchanged in ["db.example:5432", "my-container", "192.0.2.1", "example.com"] {
+    assert_eq!(
+        public_target("wss://u:p@ws.example/feed?k=1"),
+        "wss://ws.example/feed"
+    );
+    for unchanged in [
+        "db.example:5432",
+        "my-container",
+        "192.0.2.1",
+        "example.com",
+    ] {
         assert_eq!(public_target(unchanged), unchanged);
     }
 }
@@ -444,29 +452,44 @@ async fn webhook_never_sends_target_credentials() {
         json!({"url": format!("{base}/hook")}),
         json!({"url": format!("{base}/hook"), "body_template": "{\"t\": \"{{target}}\", \"s\": \"{{summary}}\"}"}),
     ] {
-        send(&client(), &channel("webhook", config), &e).await.unwrap();
+        send(&client(), &channel("webhook", config), &e)
+            .await
+            .unwrap();
     }
     let reqs = captured.lock().unwrap().clone();
     assert_eq!(reqs.len(), 2);
     for r in &reqs {
         let body = String::from_utf8_lossy(&r.body);
         assert!(body.contains("https://pay.example/health"), "{body}");
-        assert!(!body.contains("hunter2") && !body.contains("K3Y") && !body.contains("bot:"), "{body}");
+        assert!(
+            !body.contains("hunter2") && !body.contains("K3Y") && !body.contains("bot:"),
+            "{body}"
+        );
     }
 }
 
 #[test]
 fn every_required_field_has_its_own_message() {
     for p in PROVIDERS {
-        for f in p.fields.iter().filter(|f| f.required && !matches!(f.kind, FieldKind::Bool | FieldKind::Select(_))) {
+        for f in p
+            .fields
+            .iter()
+            .filter(|f| f.required && !matches!(f.kind, FieldKind::Bool | FieldKind::Select(_)))
+        {
             let key = format!("notif.{}.{}.required", p.kind, f.key);
             assert!(!crate::i18n::t_or(&key, "").is_empty(), "missing {key}");
         }
     }
     let errors = schema::validate(&email::SCHEMA, &json!({})).unwrap_err();
-    let host = errors.iter().find(|(k, _)| k == "host").map(|(_, m)| m.as_str());
+    let host = errors
+        .iter()
+        .find(|(k, _)| k == "host")
+        .map(|(_, m)| m.as_str());
     assert_eq!(host, Some("Enter the SMTP server"));
-    let from = errors.iter().find(|(k, _)| k == "from").map(|(_, m)| m.as_str());
+    let from = errors
+        .iter()
+        .find(|(k, _)| k == "from")
+        .map(|(_, m)| m.as_str());
     assert_eq!(from, Some("Enter a sender address"));
 }
 
@@ -494,7 +517,11 @@ fn print_missing_provider_locale_blocks() {
                 }
             }
             if f.required && !matches!(f.kind, FieldKind::Bool | FieldKind::Select(_)) {
-                required.push(format!("{}.required = {:?}", f.key, format!("Enter the {}", f.label.to_lowercase())));
+                required.push(format!(
+                    "{}.required = {:?}",
+                    f.key,
+                    format!("Enter the {}", f.label.to_lowercase())
+                ));
             }
         }
         for line in required {
@@ -515,38 +542,102 @@ async fn zulip_nextcloud_waha_and_evolution_end_to_end() {
     send(&client(), &channel("zulip", json!({"site": base, "bot_email": "bot@org.example", "api_key": "ZKEY", "stream": "ops", "topic": "Alerts"})), &e)
         .await
         .unwrap();
-    send(&client(), &channel("nextcloudtalk", json!({"host": base, "conversation_token": "room1", "bot_secret": "b".repeat(40)})), &e)
-        .await
-        .unwrap();
-    send(&client(), &channel("waha", json!({"server": base, "chat_id": "4712345678", "api_key": "WKEY"})), &e).await.unwrap();
-    send(&client(), &channel("evolution", json!({"server": base, "instance": "vole", "api_key": "EKEY", "number": "4712345678"})), &e)
-        .await
-        .unwrap();
+    send(
+        &client(),
+        &channel(
+            "nextcloudtalk",
+            json!({"host": base, "conversation_token": "room1", "bot_secret": "b".repeat(40)}),
+        ),
+        &e,
+    )
+    .await
+    .unwrap();
+    send(
+        &client(),
+        &channel(
+            "waha",
+            json!({"server": base, "chat_id": "4712345678", "api_key": "WKEY"}),
+        ),
+        &e,
+    )
+    .await
+    .unwrap();
+    send(
+        &client(),
+        &channel(
+            "evolution",
+            json!({"server": base, "instance": "vole", "api_key": "EKEY", "number": "4712345678"}),
+        ),
+        &e,
+    )
+    .await
+    .unwrap();
     let reqs = captured.lock().unwrap().clone();
     assert_eq!(reqs.len(), 4);
 
-    assert_eq!((reqs[0].method.clone(), reqs[0].uri.path()), (Method::POST, "/api/v1/messages"));
-    assert!(reqs[0].headers["authorization"].to_str().unwrap().starts_with("Basic "));
+    assert_eq!(
+        (reqs[0].method.clone(), reqs[0].uri.path()),
+        (Method::POST, "/api/v1/messages")
+    );
+    assert!(
+        reqs[0].headers["authorization"]
+            .to_str()
+            .unwrap()
+            .starts_with("Basic ")
+    );
     let form = String::from_utf8_lossy(&reqs[0].body).to_string();
-    assert!(form.contains("type=stream") && form.contains("to=ops") && form.contains("topic=Alerts"), "{form}");
+    assert!(
+        form.contains("type=stream") && form.contains("to=ops") && form.contains("topic=Alerts"),
+        "{form}"
+    );
 
-    assert_eq!(reqs[1].uri.path(), "/ocs/v2.php/apps/spreed/api/v1/bot/room1/message");
+    assert_eq!(
+        reqs[1].uri.path(),
+        "/ocs/v2.php/apps/spreed/api/v1/bot/room1/message"
+    );
     let message = reqs[1].json()["message"].as_str().unwrap().to_string();
-    let random = reqs[1].headers["x-nextcloud-talk-bot-random"].to_str().unwrap().to_string();
-    let expected: String = http::hmac_sha256("b".repeat(40).as_bytes(), format!("{random}{message}").as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
-    assert_eq!(reqs[1].headers["x-nextcloud-talk-bot-signature"], expected.as_str());
+    let random = reqs[1].headers["x-nextcloud-talk-bot-random"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    let expected: String = http::hmac_sha256(
+        "b".repeat(40).as_bytes(),
+        format!("{random}{message}").as_bytes(),
+    )
+    .iter()
+    .map(|b| format!("{b:02x}"))
+    .collect();
+    assert_eq!(
+        reqs[1].headers["x-nextcloud-talk-bot-signature"],
+        expected.as_str()
+    );
 
     assert_eq!(reqs[2].uri.path(), "/api/sendText");
-    assert_eq!((reqs[2].headers["x-api-key"].to_str().unwrap(), reqs[2].json()["chatId"].as_str()), ("WKEY", Some("4712345678@c.us")));
+    assert_eq!(
+        (
+            reqs[2].headers["x-api-key"].to_str().unwrap(),
+            reqs[2].json()["chatId"].as_str()
+        ),
+        ("WKEY", Some("4712345678@c.us"))
+    );
     assert_eq!(reqs[3].uri.path(), "/message/sendText/vole");
     assert_eq!(reqs[3].headers["apikey"], "EKEY");
 }
 
 #[tokio::test]
 async fn a_failing_zulip_server_cannot_leak_the_bot_key() {
-    let (base, _) = capture_server(StatusCode::UNAUTHORIZED, "{\"msg\":\"bad key ZKEY-SECRET\"}").await;
-    let ch = channel("zulip", json!({"site": base, "bot_email": "bot@org.example", "api_key": "ZKEY-SECRET", "stream": "ops"}));
-    let err = send(&client(), &ch, &event(EventKind::Down)).await.unwrap_err();
+    let (base, _) = capture_server(
+        StatusCode::UNAUTHORIZED,
+        "{\"msg\":\"bad key ZKEY-SECRET\"}",
+    )
+    .await;
+    let ch = channel(
+        "zulip",
+        json!({"site": base, "bot_email": "bot@org.example", "api_key": "ZKEY-SECRET", "stream": "ops"}),
+    );
+    let err = send(&client(), &ch, &event(EventKind::Down))
+        .await
+        .unwrap_err();
     assert!(err.contains("401") && !err.contains("ZKEY-SECRET"), "{err}");
 }
 
@@ -555,26 +646,85 @@ async fn incident_webhooks_end_to_end() {
     let (base, captured) = capture_server(StatusCode::OK, "{}").await;
     let down = event(EventKind::Down);
     let up = event(EventKind::Up);
-    send(&client(), &channel("squadcast", json!({"url": format!("{base}/v3/incidents/api/abc")})), &down).await.unwrap();
-    send(&client(), &channel("squadcast", json!({"url": format!("{base}/v3/incidents/api/abc")})), &up).await.unwrap();
-    send(&client(), &channel("goalert", json!({"server": base, "token": "GKEY"})), &down).await.unwrap();
-    send(&client(), &channel("keep", json!({"server": base, "api_key": "KKEY"})), &down).await.unwrap();
+    send(
+        &client(),
+        &channel(
+            "squadcast",
+            json!({"url": format!("{base}/v3/incidents/api/abc")}),
+        ),
+        &down,
+    )
+    .await
+    .unwrap();
+    send(
+        &client(),
+        &channel(
+            "squadcast",
+            json!({"url": format!("{base}/v3/incidents/api/abc")}),
+        ),
+        &up,
+    )
+    .await
+    .unwrap();
+    send(
+        &client(),
+        &channel("goalert", json!({"server": base, "token": "GKEY"})),
+        &down,
+    )
+    .await
+    .unwrap();
+    send(
+        &client(),
+        &channel("keep", json!({"server": base, "api_key": "KKEY"})),
+        &down,
+    )
+    .await
+    .unwrap();
     // Maintenance never reaches an on-call tool.
-    send(&client(), &channel("keep", json!({"server": base, "api_key": "KKEY"})), &event(EventKind::MaintenanceStart)).await.unwrap();
+    send(
+        &client(),
+        &channel("keep", json!({"server": base, "api_key": "KKEY"})),
+        &event(EventKind::MaintenanceStart),
+    )
+    .await
+    .unwrap();
     let reqs = captured.lock().unwrap().clone();
     assert_eq!(reqs.len(), 4, "{reqs:?}");
-    assert_eq!((reqs[0].json()["status"].as_str(), reqs[1].json()["status"].as_str()), (Some("trigger"), Some("resolve")));
-    assert_eq!(reqs[0].json()["event_id"], reqs[1].json()["event_id"], "the same alert is opened and closed");
+    assert_eq!(
+        (
+            reqs[0].json()["status"].as_str(),
+            reqs[1].json()["status"].as_str()
+        ),
+        (Some("trigger"), Some("resolve"))
+    );
+    assert_eq!(
+        reqs[0].json()["event_id"],
+        reqs[1].json()["event_id"],
+        "the same alert is opened and closed"
+    );
     assert_eq!(reqs[2].uri.path(), "/api/v2/generic/incoming");
     assert!(reqs[2].uri.query().is_none(), "the key is not in the URL");
     assert!(String::from_utf8_lossy(&reqs[2].body).contains("token=GKEY"));
-    assert_eq!((reqs[3].uri.path(), reqs[3].headers["x-api-key"].to_str().unwrap()), ("/alerts/event", "KKEY"));
+    assert_eq!(
+        (
+            reqs[3].uri.path(),
+            reqs[3].headers["x-api-key"].to_str().unwrap()
+        ),
+        ("/alerts/event", "KKEY")
+    );
 }
 
 #[tokio::test]
 async fn a_failing_on_call_tool_cannot_leak_its_key() {
-    let (base, _) = capture_server(StatusCode::FORBIDDEN, "{\"error\":\"bad key GKEY-1234\"}").await;
-    let err = send(&client(), &channel("goalert", json!({"server": base, "token": "GKEY-1234"})), &event(EventKind::Down)).await.unwrap_err();
+    let (base, _) =
+        capture_server(StatusCode::FORBIDDEN, "{\"error\":\"bad key GKEY-1234\"}").await;
+    let err = send(
+        &client(),
+        &channel("goalert", json!({"server": base, "token": "GKEY-1234"})),
+        &event(EventKind::Down),
+    )
+    .await
+    .unwrap_err();
     assert!(err.contains("403") && !err.contains("GKEY-1234"), "{err}");
 }
 
@@ -582,23 +732,50 @@ async fn a_failing_on_call_tool_cannot_leak_its_key() {
 async fn email_sms_and_push_apis_end_to_end_with_their_hosts_overridden() {
     // Gorush is self-hosted, so it can be tested for real.
     let (base, captured) = capture_server(StatusCode::OK, "{}").await;
-    send(&client(), &channel("gorush", json!({"server": base, "platform": "android", "tokens": "t1,t2"})), &event(EventKind::Down))
-        .await
-        .unwrap();
+    send(
+        &client(),
+        &channel(
+            "gorush",
+            json!({"server": base, "platform": "android", "tokens": "t1,t2"}),
+        ),
+        &event(EventKind::Down),
+    )
+    .await
+    .unwrap();
     let reqs = captured.lock().unwrap().clone();
     assert_eq!(reqs[0].uri.path(), "/api/push");
-    assert_eq!(reqs[0].json()["notifications"][0]["tokens"], json!(["t1", "t2"]));
+    assert_eq!(
+        reqs[0].json()["notifications"][0]["tokens"],
+        json!(["t1", "t2"])
+    );
     // The hosted APIs are fixed; checking the requests they build is enough.
     for (kind, config) in [
-        ("sendgrid", json!({"api_key": "K", "from": "a@b.example", "to": "c@d.example"})),
-        ("brevo", json!({"api_key": "K", "from": "a@b.example", "to": "c@d.example"})),
-        ("clicksend", json!({"username": "u", "api_key": "K", "to": "+4711111111"})),
-        ("elks", json!({"username": "u", "password": "p", "from": "Vole", "to": "+46701111111"})),
+        (
+            "sendgrid",
+            json!({"api_key": "K", "from": "a@b.example", "to": "c@d.example"}),
+        ),
+        (
+            "brevo",
+            json!({"api_key": "K", "from": "a@b.example", "to": "c@d.example"}),
+        ),
+        (
+            "clicksend",
+            json!({"username": "u", "api_key": "K", "to": "+4711111111"}),
+        ),
+        (
+            "elks",
+            json!({"username": "u", "password": "p", "from": "Vole", "to": "+46701111111"}),
+        ),
     ] {
         let p = provider(kind).unwrap();
-        let schema::Transport::Http(build) = p.transport else { panic!("{kind} is HTTP") };
+        let schema::Transport::Http(build) = p.transport else {
+            panic!("{kind} is HTTP")
+        };
         let requests = build(&config, &event(EventKind::Down)).unwrap();
-        assert!(!requests.is_empty() && requests[0].url.starts_with("https://"), "{kind}");
+        assert!(
+            !requests.is_empty() && requests[0].url.starts_with("https://"),
+            "{kind}"
+        );
         assert!(schema::validate(p, &config).is_ok(), "{kind}");
     }
 }

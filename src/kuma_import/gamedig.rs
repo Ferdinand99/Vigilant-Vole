@@ -44,28 +44,46 @@ pub struct Game {
 /// The game for a GameDig 5.x or 4.x id (case-insensitive).
 pub fn lookup(id: &str) -> Option<&'static Game> {
     let id = id.trim().to_ascii_lowercase();
-    let find = |id: &str| games::GAMES.binary_search_by(|g| g.id.cmp(id)).ok().map(|n| &games::GAMES[n]);
+    let find = |id: &str| {
+        games::GAMES
+            .binary_search_by(|g| g.id.cmp(id))
+            .ok()
+            .map(|n| &games::GAMES[n])
+    };
     find(&id).or_else(|| {
-        let n = games::ALIASES.binary_search_by(|(old, _)| old.cmp(&id.as_str())).ok()?;
+        let n = games::ALIASES
+            .binary_search_by(|(old, _)| old.cmp(&id.as_str()))
+            .ok()?;
         find(games::ALIASES[n].1)
     })
 }
 
 fn port_plus(port: u16, offset: i32) -> Option<u16> {
-    u16::try_from(i32::from(port) + offset).ok().filter(|p| *p != 0)
+    u16::try_from(i32::from(port) + offset)
+        .ok()
+        .filter(|p| *p != 0)
 }
 
 /// The port a Steam monitor should query for `game`. GameDig queries the
 /// given port alone when `given_only` is set (Kuma's default); otherwise it
 /// tries the game's query port first, which is what the import keeps
 /// (with a warning, since the Steam type queries one port only).
-pub fn steam_port(game: &Game, port: Option<u16>, given_only: bool, warnings: &mut Vec<String>) -> u16 {
+pub fn steam_port(
+    game: &Game,
+    port: Option<u16>,
+    given_only: bool,
+    warnings: &mut Vec<String>,
+) -> u16 {
     let offset = game.query_offset.first().copied().unwrap_or(0);
     let Some(port) = port else {
         // No port: GameDig's own default.
         return [game.query_port]
             .into_iter()
-            .chain((game.port != 0).then(|| port_plus(game.port, offset)).flatten())
+            .chain(
+                (game.port != 0)
+                    .then(|| port_plus(game.port, offset))
+                    .flatten(),
+            )
             .find(|p| *p != 0)
             .unwrap_or(27015);
     };
@@ -73,8 +91,18 @@ pub fn steam_port(game: &Game, port: Option<u16>, given_only: bool, warnings: &m
         return port;
     }
     let others = |skip: usize| -> String {
-        let rest: Vec<String> = game.query_offset.iter().skip(skip).filter_map(|o| port_plus(port, *o)).map(|p| p.to_string()).collect();
-        if rest.is_empty() { String::new() } else { format!(" (GameDig would also try {})", rest.join(", ")) }
+        let rest: Vec<String> = game
+            .query_offset
+            .iter()
+            .skip(skip)
+            .filter_map(|o| port_plus(port, *o))
+            .map(|p| p.to_string())
+            .collect();
+        if rest.is_empty() {
+            String::new()
+        } else {
+            format!(" (GameDig would also try {})", rest.join(", "))
+        }
     };
     if offset != 0
         && let Some(query) = port_plus(port, offset)
@@ -97,7 +125,13 @@ pub fn steam_port(game: &Game, port: Option<u16>, given_only: bool, warnings: &m
 }
 
 /// Maps a Kuma `gamedig` row to our type and target. `Err` = why it's skipped.
-pub(super) fn map(row: &Row, hostname: &str, port: Option<i64>, opts: &mut Map<String, Value>, warnings: &mut Vec<String>) -> Result<(&'static str, String), String> {
+pub(super) fn map(
+    row: &Row,
+    hostname: &str,
+    port: Option<i64>,
+    opts: &mut Map<String, Value>,
+    warnings: &mut Vec<String>,
+) -> Result<(&'static str, String), String> {
     let id = s(row, &["game"]).ok_or("It has no game set.")?;
     let game = lookup(&id).ok_or_else(|| format!("GameDig game “{id}” isn’t known."))?;
     let host = hostname.trim();
@@ -113,9 +147,15 @@ pub(super) fn map(row: &Row, hostname: &str, port: Option<i64>, opts: &mut Map<S
         p => host_port(host, p.map(i64::from)),
     };
     let (kind, target) = match game.protocol {
-        Protocol::Valve => ("steam", with_port(Some(steam_port(game, port, given_only, warnings)))),
+        Protocol::Valve => (
+            "steam",
+            with_port(Some(steam_port(game, port, given_only, warnings))),
+        ),
         // Without a port (or with the default one) a name gets the game's SRV lookup, as in GameDig.
-        Protocol::Minecraft => ("game_server", format!("minecraft://{}", with_port(port.filter(|p| *p != 25565)))),
+        Protocol::Minecraft => (
+            "game_server",
+            format!("minecraft://{}", with_port(port.filter(|p| *p != 25565))),
+        ),
         Protocol::Bedrock => ("game_server", format!("bedrock://{}", with_port(port))),
         Protocol::Satisfactory => ("game_server", format!("satisfactory://{}", with_port(port))),
         Protocol::FiveM => ("game_server", format!("fivem://{}", with_port(port))),
@@ -135,11 +175,17 @@ pub(super) fn map(row: &Row, hostname: &str, port: Option<i64>, opts: &mut Map<S
         Some(token) if game.protocol == Protocol::Satisfactory => {
             opts.insert("secret".into(), json!(token));
         }
-        Some(_) => warnings.push(format!("its GameDig token isn’t used by the {} check.", game.name)),
+        Some(_) => warnings.push(format!(
+            "its GameDig token isn’t used by the {} check.",
+            game.name
+        )),
         None => {}
     }
     if port.is_none() {
-        warnings.push(format!("it has no port, so {}’s usual port is used.", game.name));
+        warnings.push(format!(
+            "it has no port, so {}’s usual port is used.",
+            game.name
+        ));
     }
     Ok((kind, target))
 }
@@ -152,13 +198,31 @@ mod tests {
     fn tables_are_sorted_for_binary_search() {
         assert!(games::GAMES.windows(2).all(|w| w[0].id < w[1].id));
         assert!(games::ALIASES.windows(2).all(|w| w[0].0 < w[1].0));
-        assert!(games::ALIASES.iter().all(|(old, new)| lookup(old).is_some_and(|g| g.id == *new) && lookup(new).is_some()));
-        assert_eq!(games::GAMES.iter().filter(|g| g.protocol == Protocol::Valve).count(), 137);
+        assert!(
+            games::ALIASES.iter().all(
+                |(old, new)| lookup(old).is_some_and(|g| g.id == *new) && lookup(new).is_some()
+            )
+        );
+        assert_eq!(
+            games::GAMES
+                .iter()
+                .filter(|g| g.protocol == Protocol::Valve)
+                .count(),
+            137
+        );
     }
 
     #[test]
     fn v4_and_v5_ids_find_the_same_game() {
-        for (v4, v5) in [("tf2", "teamfortress2"), ("7d2d", "sdtd"), ("arkse", "ase"), ("minecraftbe", "mbe"), ("fivem", "gta5f"), ("redm", "rdr2r"), ("cs2", "counterstrike2")] {
+        for (v4, v5) in [
+            ("tf2", "teamfortress2"),
+            ("7d2d", "sdtd"),
+            ("arkse", "ase"),
+            ("minecraftbe", "mbe"),
+            ("fivem", "gta5f"),
+            ("redm", "rdr2r"),
+            ("cs2", "counterstrike2"),
+        ] {
             assert_eq!(lookup(v4).map(|g| g.id), Some(v5), "{v4}");
             assert_eq!(lookup(v5).map(|g| g.id), Some(v5), "{v5}");
         }
@@ -176,9 +240,19 @@ mod tests {
         assert_eq!(steam_port(game("rust"), Some(28015), true, &mut w), 28015);
         assert!(w.is_empty());
         // Otherwise the first query offset.
-        assert_eq!(steam_port(game("rust"), Some(28015), false, &mut w), 28015, "Rust has no offset");
-        assert_eq!(steam_port(game("forrest"), Some(27015), false, &mut w), 27016);
-        assert!(w[0].contains("The Forest on port 27016 (game port +1)"), "{w:?}");
+        assert_eq!(
+            steam_port(game("rust"), Some(28015), false, &mut w),
+            28015,
+            "Rust has no offset"
+        );
+        assert_eq!(
+            steam_port(game("forrest"), Some(27015), false, &mut w),
+            27016
+        );
+        assert!(
+            w[0].contains("The Forest on port 27016 (game port +1)"),
+            "{w:?}"
+        );
         // V Rising lists two offsets.
         assert_eq!(steam_port(game("vrising"), Some(9876), false, &mut w), 9877);
         assert!(w[1].contains("also try 9891"), "{w:?}");
@@ -193,7 +267,10 @@ mod tests {
         assert_eq!(steam_port(game("rust"), None, true, &mut w), 28015);
         assert_eq!(steam_port(game("theforest"), None, false, &mut w), 27016);
         assert_eq!(steam_port(game("brink"), None, true, &mut w), 27015);
-        assert_eq!(steam_port(game("teamfortress2"), None, false, &mut w), 27015);
+        assert_eq!(
+            steam_port(game("teamfortress2"), None, false, &mut w),
+            27015
+        );
         assert_eq!(w.len(), 4);
     }
 
@@ -223,14 +300,22 @@ mod tests {
         }"##;
         let import = crate::kuma_import::read_json(json).unwrap();
         let docs = import.doc.monitors.as_ref().unwrap();
-        let doc = |name: &str| docs.iter().find(|m| m.name == name).unwrap_or_else(|| panic!("no monitor {name}: {:?}", import.skipped));
+        let doc = |name: &str| {
+            docs.iter()
+                .find(|m| m.name == name)
+                .unwrap_or_else(|| panic!("no monitor {name}: {:?}", import.skipped))
+        };
         for (name, kind, target) in [
             ("CS2", "steam", "cs.example.com:27015"),
             ("TF2 v4", "steam", "tf.example.com:27016"),
             ("Forest", "steam", "10.0.0.2:27016"),
             ("ARK", "steam", "ark.lan:27015"),
             ("MC", "game_server", "minecraft://mc.example.com"),
-            ("MC custom", "game_server", "minecraft://mc.example.com:25570"),
+            (
+                "MC custom",
+                "game_server",
+                "minecraft://mc.example.com:25570",
+            ),
             ("Bedrock", "game_server", "bedrock://be.example.com:19132"),
             ("FiveM", "game_server", "fivem://rp.example.com:30120"),
             ("RedM v4", "game_server", "fivem://[2001:db8::9]:30120"),
@@ -240,22 +325,64 @@ mod tests {
             ("GT", "game_server", "mumble://voice.lan"),
         ] {
             let d = doc(name);
-            assert_eq!((d.monitor_type.as_str(), d.target.as_str()), (kind, target), "{name}");
+            assert_eq!(
+                (d.monitor_type.as_str(), d.target.as_str()),
+                (kind, target),
+                "{name}"
+            );
             let parsed = crate::db::models::MonitorType::parse(kind).unwrap();
-            assert!(crate::api::monitors::form::validate_target(parsed, target).is_ok(), "{name}: {target}");
+            assert!(
+                crate::api::monitors::form::validate_target(parsed, target).is_ok(),
+                "{name}: {target}"
+            );
         }
         assert_eq!(doc("Factory").options["secret"], " tok ");
         assert!(!doc("FiveM").options.contains_key("secret"));
 
-        let warned = |name: &str, text: &str| import.warnings.iter().any(|w| w.starts_with(&format!("“{name}”")) && w.contains(text));
-        assert!(warned("Forest", "queries The Forest on port 27016"), "{:?}", import.warnings);
-        assert!(warned("ARK", "usual query port 27015"), "{:?}", import.warnings);
+        let warned = |name: &str, text: &str| {
+            import
+                .warnings
+                .iter()
+                .any(|w| w.starts_with(&format!("“{name}”")) && w.contains(text))
+        };
+        assert!(
+            warned("Forest", "queries The Forest on port 27016"),
+            "{:?}",
+            import.warnings
+        );
+        assert!(
+            warned("ARK", "usual query port 27015"),
+            "{:?}",
+            import.warnings
+        );
         assert!(warned("FiveM", "token isn’t used"), "{:?}", import.warnings);
-        assert!(warned("GT", "GTmurmur") && warned("GT", "no port"), "{:?}", import.warnings);
-        assert!(!import.warnings.iter().any(|w| w.starts_with("“CS2”") || w.starts_with("“TF2 v4”") || w.starts_with("“MC”")), "{:?}", import.warnings);
+        assert!(
+            warned("GT", "GTmurmur") && warned("GT", "no port"),
+            "{:?}",
+            import.warnings
+        );
+        assert!(
+            !import.warnings.iter().any(|w| w.starts_with("“CS2”")
+                || w.starts_with("“TF2 v4”")
+                || w.starts_with("“MC”")),
+            "{:?}",
+            import.warnings
+        );
 
-        let reason = |name: &str| import.skipped.iter().find(|s| s.name == name).map(|s| s.reason.clone()).unwrap_or_default();
-        assert!(reason("BF4").contains("“Battlefield 4” (battlefield4)") && reason("BF4").contains("battlefield protocol"), "{}", reason("BF4"));
+        let reason = |name: &str| {
+            import
+                .skipped
+                .iter()
+                .find(|s| s.name == name)
+                .map(|s| s.reason.clone())
+                .unwrap_or_default()
+        };
+        assert!(
+            reason("BF4").contains("“Battlefield 4” (battlefield4)")
+                && reason("BF4").contains("battlefield protocol"),
+            "{}",
+            reason("BF4")
+        );
         assert!(reason("Mystery").contains("“zzz” isn’t known"));
         assert!(reason("No game").contains("no game"));
         assert!(reason("No host").contains("no host"));

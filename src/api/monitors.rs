@@ -33,8 +33,8 @@ use crate::db::models::{Heartbeat, HeartbeatStatus, Monitor, MonitorType, NewMon
 use crate::db::monitors::{self as db_monitors, ExpiryRecord};
 use crate::db::tags::{self as db_tags, MonitorTag, Tag};
 use crate::db::{notifications as db_notifications, rollups, settings as db_settings};
-use crate::monitor::checkers::{BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METHODS, JSON_OPERATORS};
 use crate::monitor::checkers::{AUTH_METHODS, OAUTH_CLIENT_AUTHS};
+use crate::monitor::checkers::{BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METHODS, JSON_OPERATORS};
 
 /// Heartbeats per page in the detail page's table.
 const HEARTBEAT_PAGE: i64 = 25;
@@ -90,7 +90,11 @@ fn is_htmx(headers: &HeaderMap) -> bool {
 /// (the login `?next=` rules); anything else falls back to `fallback`.
 fn safe_return(to: &str, fallback: &str) -> String {
     let next = crate::auth::session::sanitize_next(Some(to));
-    if next == "/" && to.trim() != "/" { fallback.to_string() } else { next }
+    if next == "/" && to.trim() != "/" {
+        fallback.to_string()
+    } else {
+        next
+    }
 }
 
 /// `{base}/api/push/{token}?status=up&msg=OK&ping=`. The base is the
@@ -102,7 +106,11 @@ fn push_url(base_url: Option<&str>, headers: &HeaderMap, token: &str) -> String 
             let host = headers
                 .get(header::HOST)
                 .and_then(|v| v.to_str().ok())
-                .filter(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_alphanumeric() || ".-:[]".contains(c)))
+                .filter(|h| {
+                    !h.is_empty()
+                        && h.chars()
+                            .all(|c| c.is_ascii_alphanumeric() || ".-:[]".contains(c))
+                })
                 .unwrap_or("localhost:3001");
             let scheme = headers
                 .get("x-forwarded-proto")
@@ -137,15 +145,21 @@ fn type_choices() -> Vec<TypeChoice> {
                 MonitorType::JsonQuery => (crate::i18n::t("monitor_type.sub_json_query"), "code"),
                 MonitorType::Tcp => (crate::i18n::t("monitor_type.sub_tcp"), "plug"),
                 MonitorType::Ping => (crate::i18n::t("monitor_type.sub_ping"), "pulse"),
-                MonitorType::TailscalePing => (crate::i18n::t("monitor_type.sub_tailscale_ping"), "link"),
+                MonitorType::TailscalePing => {
+                    (crate::i18n::t("monitor_type.sub_tailscale_ping"), "link")
+                }
                 MonitorType::Dns => (crate::i18n::t("monitor_type.sub_dns"), "dns"),
                 MonitorType::Push => (crate::i18n::t("monitor_type.sub_push"), "bolt"),
                 MonitorType::Docker => (crate::i18n::t("monitor_type.sub_docker"), "box"),
                 MonitorType::Websocket => (crate::i18n::t("monitor_type.sub_websocket"), "link"),
-                MonitorType::DomainExpiry => (crate::i18n::t("monitor_type.sub_domain_expiry"), "calendar"),
+                MonitorType::DomainExpiry => {
+                    (crate::i18n::t("monitor_type.sub_domain_expiry"), "calendar")
+                }
                 MonitorType::Ntp => (crate::i18n::t("monitor_type.sub_ntp"), "clock"),
                 MonitorType::Steam => (crate::i18n::t("monitor_type.sub_steam"), "server"),
-                MonitorType::GameServer => (crate::i18n::t("monitor_type.sub_game_server"), "gamepad"),
+                MonitorType::GameServer => {
+                    (crate::i18n::t("monitor_type.sub_game_server"), "gamepad")
+                }
                 MonitorType::Tls => (crate::i18n::t("monitor_type.sub_tls"), "lock"),
                 MonitorType::Smtp => (crate::i18n::t("monitor_type.sub_smtp"), "mail"),
                 MonitorType::Redis => (crate::i18n::t("monitor_type.sub_redis"), "database"),
@@ -155,12 +169,18 @@ fn type_choices() -> Vec<TypeChoice> {
                 MonitorType::Kafka => (crate::i18n::t("monitor_type.sub_kafka"), "queue"),
                 MonitorType::Rabbitmq => (crate::i18n::t("monitor_type.sub_rabbitmq"), "queue"),
                 MonitorType::Grpc => (crate::i18n::t("monitor_type.sub_grpc"), "bolt"),
-                MonitorType::GrpcKeyword => (crate::i18n::t("monitor_type.sub_grpc_keyword"), "search"),
+                MonitorType::GrpcKeyword => {
+                    (crate::i18n::t("monitor_type.sub_grpc_keyword"), "search")
+                }
                 MonitorType::Radius => (crate::i18n::t("monitor_type.sub_radius"), "key"),
                 MonitorType::Snmp => (crate::i18n::t("monitor_type.sub_snmp"), "chart"),
-                MonitorType::SqlServer => (crate::i18n::t("monitor_type.sub_sqlserver"), "database"),
+                MonitorType::SqlServer => {
+                    (crate::i18n::t("monitor_type.sub_sqlserver"), "database")
+                }
                 MonitorType::Mongodb => (crate::i18n::t("monitor_type.sub_mongodb"), "database"),
-                MonitorType::RealBrowser => (crate::i18n::t("monitor_type.sub_real_browser"), "browser"),
+                MonitorType::RealBrowser => {
+                    (crate::i18n::t("monitor_type.sub_real_browser"), "browser")
+                }
                 MonitorType::Group => (crate::i18n::t("monitor_type.sub_group"), "dashboard"),
             };
             TypeChoice {
@@ -193,7 +213,10 @@ impl TargetSpec {
         crate::i18n::t_or(&format!("target.{}.help", self.field), self.help)
     }
     pub fn tr_placeholder(&self) -> &'static str {
-        crate::i18n::t_or(&format!("target.{}.placeholder", self.field), self.placeholder)
+        crate::i18n::t_or(
+            &format!("target.{}.placeholder", self.field),
+            self.placeholder,
+        )
     }
 }
 
@@ -417,7 +440,10 @@ pub fn palette_options() -> Vec<(&'static str, String)> {
             if let Some(first) = fallback.get_mut(..1) {
                 first.make_ascii_uppercase();
             }
-            (*c, crate::i18n::t_or(&format!("color.{c}"), &fallback).to_string())
+            (
+                *c,
+                crate::i18n::t_or(&format!("color.{c}"), &fallback).to_string(),
+            )
         })
         .collect()
 }
@@ -515,8 +541,17 @@ impl FormData {
     /// port, selected), the target's game selected.
     pub fn game_presets(&self) -> Vec<(&'static str, &'static str, u16, bool)> {
         use crate::monitor::checkers::game_server::Game;
-        let current = self.v.target.trim().split_once("://").and_then(|(scheme, _)| Game::from_scheme(scheme)).unwrap_or(Game::Minecraft);
-        Game::ALL.iter().map(|g| (g.scheme(), g.label(), g.default_port(), *g == current)).collect()
+        let current = self
+            .v
+            .target
+            .trim()
+            .split_once("://")
+            .and_then(|(scheme, _)| Game::from_scheme(scheme))
+            .unwrap_or(Game::Minecraft);
+        Game::ALL
+            .iter()
+            .map(|g| (g.scheme(), g.label(), g.default_port(), *g == current))
+            .collect()
     }
 
     pub fn tag_checked(&self, id: &i64) -> bool {
@@ -568,7 +603,8 @@ fn channel_options(conn: &Connection) -> rusqlite::Result<Vec<ChannelOption>> {
         .map(|c| ChannelOption {
             id: c.id,
             name: c.name,
-            kind_label: crate::notification::provider(&c.kind).map_or_else(|| c.kind.clone(), |p| p.tr_label().to_string()),
+            kind_label: crate::notification::provider(&c.kind)
+                .map_or_else(|| c.kind.clone(), |p| p.tr_label().to_string()),
             kind: c.kind,
             active: c.active,
         })
@@ -591,13 +627,17 @@ fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<Fo
         .collect();
     let channels = channel_options(conn)?;
     let tags = db_tags::list_tags(conn)?;
-    let has_agents: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM agents)", [], |r| r.get(0))?;
+    let has_agents: bool =
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM agents)", [], |r| r.get(0))?;
     let child_count = match editing {
         Some(m) => db_monitors::children(conn, m.id)?.len(),
         None => 0,
     };
     let settings = db_settings::load(conn)?;
-    let remote_browsers: Vec<(i64, String)> = crate::db::remote_browsers::list(conn)?.into_iter().map(|b| (b.id, b.name)).collect();
+    let remote_browsers: Vec<(i64, String)> = crate::db::remote_browsers::list(conn)?
+        .into_iter()
+        .map(|b| (b.id, b.name))
+        .collect();
     Ok(FormEnv {
         cx: FormContext {
             editing_id: editing.map(|m| m.id),
@@ -627,7 +667,13 @@ struct FormMeta {
     push_token: Option<String>,
 }
 
-fn form_data(env: FormEnv, meta: FormMeta, v: FormValues, errors: Errors, headers: &HeaderMap) -> FormData {
+fn form_data(
+    env: FormEnv,
+    meta: FormMeta,
+    v: FormValues,
+    errors: Errors,
+    headers: &HeaderMap,
+) -> FormData {
     let v = v.without_typed_secrets();
     let header_rows = v.header_rows();
     let summary = match errors.len() {
@@ -686,20 +732,44 @@ fn form_data(env: FormEnv, meta: FormMeta, v: FormValues, errors: Errors, header
         has_agents: env.has_agents,
         auth_methods: AUTH_METHODS
             .iter()
-            .map(|m| (*m, crate::i18n::t_or(&format!("httpauth.{m}"), m).to_string()))
+            .map(|m| {
+                (
+                    *m,
+                    crate::i18n::t_or(&format!("httpauth.{m}"), m).to_string(),
+                )
+            })
             .collect(),
         oauth_client_auths: OAUTH_CLIENT_AUTHS
             .iter()
-            .map(|m| (*m, crate::i18n::t_or(&format!("httpauth.{m}"), m).to_string()))
+            .map(|m| {
+                (
+                    *m,
+                    crate::i18n::t_or(&format!("httpauth.{m}"), m).to_string(),
+                )
+            })
             .collect(),
-        remote_browsers: env.remote_browsers.iter().map(|(id, name)| (id.to_string(), name.clone())).collect(),
+        remote_browsers: env
+            .remote_browsers
+            .iter()
+            .map(|(id, name)| (id.to_string(), name.clone()))
+            .collect(),
         browser_waits: crate::monitor::checkers::real_browser::WAITS
             .iter()
-            .map(|w| (*w, crate::i18n::t_or(&format!("browser.wait_{w}"), w).to_string()))
+            .map(|w| {
+                (
+                    *w,
+                    crate::i18n::t_or(&format!("browser.wait_{w}"), w).to_string(),
+                )
+            })
             .collect(),
         browser_viewports: crate::monitor::checkers::real_browser::VIEWPORTS
             .iter()
-            .map(|w| (*w, crate::i18n::t_or(&format!("browser.viewport_{w}"), w).to_string()))
+            .map(|w| {
+                (
+                    *w,
+                    crate::i18n::t_or(&format!("browser.viewport_{w}"), w).to_string(),
+                )
+            })
             .collect(),
         v,
     }
@@ -766,8 +836,15 @@ async fn new_form(
         push_token: None,
     };
     let f = form_data(env, meta, v, Errors::new(), &headers);
-    let (ctx, jar) =
-        PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("dashboard.new_monitor"), "dashboard", "").await;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("dashboard.new_monitor"),
+        "dashboard",
+        "",
+    )
+    .await;
     Ok((jar, HtmlTemplate(MonitorFormTemplate { ctx, f })))
 }
 
@@ -807,7 +884,10 @@ async fn edit_form(
         cancel_href: format!("/monitors/{id}"),
         submit_label: crate::i18n::t("monitor_form.save_changes"),
         is_edit: true,
-        push_token: m.push_token.clone().filter(|_| m.monitor_type == MonitorType::Push),
+        push_token: m
+            .push_token
+            .clone()
+            .filter(|_| m.monitor_type == MonitorType::Push),
     };
     let f = form_data(env, meta, v, Errors::new(), &headers);
     let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, heading, "dashboard", "").await;
@@ -909,9 +989,20 @@ fn persist(conn: &mut Connection, id: Option<i64>, valid: &Validated) -> rusqlit
 }
 
 /// Re-renders the form with inline errors (422).
-async fn render_invalid(state: &AppState, user: &CurrentUser, jar: SignedCookieJar, f: FormData) -> Response {
-    let (ctx, jar) = PageCtx::build(state, Some(user), &jar, f.heading.clone(), "dashboard", "").await;
-    (StatusCode::UNPROCESSABLE_ENTITY, jar, HtmlTemplate(MonitorFormTemplate { ctx, f })).into_response()
+async fn render_invalid(
+    state: &AppState,
+    user: &CurrentUser,
+    jar: SignedCookieJar,
+    f: FormData,
+) -> Response {
+    let (ctx, jar) =
+        PageCtx::build(state, Some(user), &jar, f.heading.clone(), "dashboard", "").await;
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        jar,
+        HtmlTemplate(MonitorFormTemplate { ctx, f }),
+    )
+        .into_response()
 }
 
 async fn create(
@@ -948,7 +1039,11 @@ async fn create(
     crate::maintenance::invalidate();
     state.scheduler.reload(id).await;
     state.notify_update();
-    let jar = flash(jar, "success", crate::i18n::tf("monitor_form.created", &[("name", &name)]));
+    let jar = flash(
+        jar,
+        "success",
+        crate::i18n::tf("monitor_form.created", &[("name", &name)]),
+    );
     Ok((jar, Redirect::to(&format!("/monitors/{id}"))).into_response())
 }
 
@@ -986,11 +1081,17 @@ async fn update(
         valid.monitor.push_token = Some(super::push::generate_push_token());
     }
     let name = valid.monitor.name.clone();
-    state.with_conn(move |c| persist(c, Some(id), &valid)).await?;
+    state
+        .with_conn(move |c| persist(c, Some(id), &valid))
+        .await?;
     crate::maintenance::invalidate();
     state.scheduler.reload(id).await;
     state.notify_update();
-    let jar = flash(jar, "success", crate::i18n::tf("monitor_form.saved", &[("name", &name)]));
+    let jar = flash(
+        jar,
+        "success",
+        crate::i18n::tf("monitor_form.saved", &[("name", &name)]),
+    );
     Ok((jar, Redirect::to(&format!("/monitors/{id}"))).into_response())
 }
 
@@ -1019,10 +1120,15 @@ async fn delete(
     crate::maintenance::invalidate();
     state.scheduler.reload(id).await;
     state.notify_update();
-    let jar = flash(jar, "success", crate::i18n::tf("monitor_form.deleted", &[("name", &name)]));
+    let jar = flash(
+        jar,
+        "success",
+        crate::i18n::tf("monitor_form.deleted", &[("name", &name)]),
+    );
     if is_htmx(&headers) {
         let mut res = (jar, StatusCode::OK).into_response();
-        res.headers_mut().insert("hx-redirect", HeaderValue::from_static("/"));
+        res.headers_mut()
+            .insert("hx-redirect", HeaderValue::from_static("/"));
         Ok(res)
     } else {
         Ok((jar, Redirect::to("/")).into_response())
@@ -1067,8 +1173,15 @@ async fn pause(
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
     let name = set_paused(&state, id, true).await?;
-    let jar = flash(jar, "info", crate::i18n::tf("monitor_form.paused", &[("name", &name)]));
-    Ok((jar, Redirect::to(&safe_return(&form.return_to, &format!("/monitors/{id}")))))
+    let jar = flash(
+        jar,
+        "info",
+        crate::i18n::tf("monitor_form.paused", &[("name", &name)]),
+    );
+    Ok((
+        jar,
+        Redirect::to(&safe_return(&form.return_to, &format!("/monitors/{id}"))),
+    ))
 }
 
 async fn resume(
@@ -1080,8 +1193,15 @@ async fn resume(
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
     let name = set_paused(&state, id, false).await?;
-    let jar = flash(jar, "success", crate::i18n::tf("monitor_form.resumed", &[("name", &name)]));
-    Ok((jar, Redirect::to(&safe_return(&form.return_to, &format!("/monitors/{id}")))))
+    let jar = flash(
+        jar,
+        "success",
+        crate::i18n::tf("monitor_form.resumed", &[("name", &name)]),
+    );
+    Ok((
+        jar,
+        Redirect::to(&safe_return(&form.return_to, &format!("/monitors/{id}"))),
+    ))
 }
 
 async fn check_now(
@@ -1091,7 +1211,10 @@ async fn check_now(
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
-    let exists = state.with_conn(move |c| db_monitors::get_monitor(c, id)).await?.is_some();
+    let exists = state
+        .with_conn(move |c| db_monitors::get_monitor(c, id))
+        .await?
+        .is_some();
     if !exists {
         return Err(ApiError::NotFound);
     }
@@ -1103,7 +1226,11 @@ async fn check_now(
                 _ => "info",
             };
             let status = status.label().to_lowercase();
-            flash(jar, kind, crate::i18n::tf("monitor_form.checked_now", &[("status", &status)]))
+            flash(
+                jar,
+                kind,
+                crate::i18n::tf("monitor_form.checked_now", &[("status", &status)]),
+            )
         }
         None => flash(jar, "info", crate::i18n::t("monitor_form.cant_check")),
     };
@@ -1191,12 +1318,23 @@ async fn bulk(
         }
     };
     if !matches!(form.action.as_str(), "pause" | "resume" | "delete") {
-        return Err(ApiError::bad_request(crate::i18n::t("monitor_form.bulk_bad_action")));
+        return Err(ApiError::bad_request(crate::i18n::t(
+            "monitor_form.bulk_bad_action",
+        )));
     }
 
-    let ids = selected_ids(&state, form.all.as_deref() == Some("true"), &form.filter, &form.ids).await?;
+    let ids = selected_ids(
+        &state,
+        form.all.as_deref() == Some("true"),
+        &form.filter,
+        &form.ids,
+    )
+    .await?;
     if ids.is_empty() {
-        return Ok(respond(flash(jar, "info", crate::i18n::t("monitor_form.bulk_none")), &back));
+        return Ok(respond(
+            flash(jar, "info", crate::i18n::t("monitor_form.bulk_none")),
+            &back,
+        ));
     }
 
     let action = form.action.clone();
@@ -1248,13 +1386,31 @@ async fn bulk(
 
 /// The monitors a bulk action targets: the ticked `ids` (first occurrence
 /// order), or with `all` every monitor the dashboard shows for `filter`.
-async fn selected_ids(state: &AppState, all: bool, filter: &str, ids: &[i64]) -> ApiResult<Vec<i64>> {
+async fn selected_ids(
+    state: &AppState,
+    all: bool,
+    filter: &str,
+    ids: &[i64],
+) -> ApiResult<Vec<i64>> {
     if all {
         let query = DashQuery::parse(Some(filter));
         let (monitors, tags) = state
-            .with_conn(|c| Ok((db_monitors::list_monitors_with_status(c)?, db_tags::tags_by_monitor(c)?)))
+            .with_conn(|c| {
+                Ok((
+                    db_monitors::list_monitors_with_status(c)?,
+                    db_tags::tags_by_monitor(c)?,
+                ))
+            })
             .await?;
-        let data = build_dashboard(&monitors, tags, &DashQuery { select: true, ..query }, true);
+        let data = build_dashboard(
+            &monitors,
+            tags,
+            &DashQuery {
+                select: true,
+                ..query
+            },
+            true,
+        );
         return Ok(data.rows.iter().map(|r| r.id).collect());
     }
     let mut out: Vec<i64> = Vec::with_capacity(ids.len());
@@ -1337,7 +1493,11 @@ struct BulkSelection {
 impl BulkSelection {
     fn from_pairs(p: &Pairs) -> Self {
         BulkSelection {
-            ids: p.all("ids").iter().filter_map(|v| v.trim().parse().ok()).collect(),
+            ids: p
+                .all("ids")
+                .iter()
+                .filter_map(|v| v.trim().parse().ok())
+                .collect(),
             all: p.flag("all"),
             filter: p.text("filter"),
             return_to: p.raw("return_to").unwrap_or_default().to_string(),
@@ -1361,7 +1521,8 @@ fn toast_only(message: &str, kind: &str) -> Response {
     if let Some(v) = toast_header(message, kind) {
         res.headers_mut().insert("hx-trigger", v);
     }
-    res.headers_mut().insert("hx-reswap", HeaderValue::from_static("none"));
+    res.headers_mut()
+        .insert("hx-reswap", HeaderValue::from_static("none"));
     res
 }
 
@@ -1378,7 +1539,11 @@ async fn bulk_edit(
     let back = sel.back_query();
     let htmx = is_htmx(&headers);
     // Plain form posts (no JavaScript) come back to select mode on problems.
-    let retry_href = DashQuery { select: true, ..back.clone() }.href();
+    let retry_href = DashQuery {
+        select: true,
+        ..back.clone()
+    }
+    .href();
     let notice = |jar: SignedCookieJar, message: &str, kind: &str| -> Response {
         if htmx {
             toast_only(message, kind)
@@ -1389,7 +1554,11 @@ async fn bulk_edit(
 
     let ids = selected_ids(&state, sel.all, &sel.filter, &sel.ids).await?;
     if ids.is_empty() {
-        return Ok(notice(jar, crate::i18n::t("monitor_form.bulk_none"), "info"));
+        return Ok(notice(
+            jar,
+            crate::i18n::t("monitor_form.bulk_none"),
+            "info",
+        ));
     }
     let mut sheet = state.with_conn(|c| load_bulk_sheet(c)).await?;
     sheet.v = bulk_edit::BulkValues::from_pairs(&p, &sheet.channel_ids(), &sheet.tag_ids());
@@ -1409,7 +1578,9 @@ async fn bulk_edit(
         }
     };
 
-    let outcome = state.with_conn(move |c| bulk_edit::apply(c, &ids, &edit)).await?;
+    let outcome = state
+        .with_conn(move |c| bulk_edit::apply(c, &ids, &edit))
+        .await?;
     crate::maintenance::invalidate();
     for id in &outcome.updated {
         state.scheduler.reload(*id).await;
@@ -1423,7 +1594,11 @@ async fn bulk_edit(
     );
 
     let message = outcome.message();
-    let kind = if outcome.updated.is_empty() { "info" } else { "success" };
+    let kind = if outcome.updated.is_empty() {
+        "info"
+    } else {
+        "success"
+    };
     let back_href = back.href();
     if !htmx {
         return Ok((flash(jar, kind, message), Redirect::to(&back_href)).into_response());
@@ -1454,11 +1629,19 @@ async fn bulk_edit_summary(
     user.require(Role::Editor)?;
     let p = Pairs(pairs);
     let sel = BulkSelection::from_pairs(&p);
-    let monitors = selected_ids(&state, sel.all, &sel.filter, &sel.ids).await?.len();
+    let monitors = selected_ids(&state, sel.all, &sel.filter, &sel.ids)
+        .await?
+        .len();
     let (channel_ids, tag_ids) = state
         .with_conn(|c| {
-            let channels = db_notifications::list_channels(c)?.into_iter().map(|ch| ch.id).collect::<Vec<_>>();
-            let tags = db_tags::list_tags(c)?.into_iter().map(|t| t.id).collect::<Vec<_>>();
+            let channels = db_notifications::list_channels(c)?
+                .into_iter()
+                .map(|ch| ch.id)
+                .collect::<Vec<_>>();
+            let tags = db_tags::list_tags(c)?
+                .into_iter()
+                .map(|t| t.id)
+                .collect::<Vec<_>>();
             Ok((channels, tags))
         })
         .await?;
@@ -1487,19 +1670,25 @@ fn event_view(e: &MonitorEvent) -> EventView {
         MonitorEventKind::Maintenance => "status-maintenance",
         MonitorEventKind::Paused => "status-paused",
         MonitorEventKind::Resumed => "status-info",
-        MonitorEventKind::CertExpiring | MonitorEventKind::DomainExpiring | MonitorEventKind::Flapping => {
-            "status-warning"
-        }
+        MonitorEventKind::CertExpiring
+        | MonitorEventKind::DomainExpiring
+        | MonitorEventKind::Flapping => "status-warning",
     };
     let duration = match (e.is_open(), e.duration_seconds) {
-        (true, _) if matches!(
-            e.kind,
-            MonitorEventKind::Down | MonitorEventKind::Maintenance | MonitorEventKind::Paused | MonitorEventKind::Flapping
-        ) =>
+        (true, _)
+            if matches!(
+                e.kind,
+                MonitorEventKind::Down
+                    | MonitorEventKind::Maintenance
+                    | MonitorEventKind::Paused
+                    | MonitorEventKind::Flapping
+            ) =>
         {
             crate::i18n::t("detail.ongoing").to_string()
         }
-        (false, Some(s)) if s > 0 => crate::i18n::tf("detail.lasted", &[("duration", &view::format_duration(s))]),
+        (false, Some(s)) if s > 0 => {
+            crate::i18n::tf("detail.lasted", &[("duration", &view::format_duration(s))])
+        }
         _ => String::new(),
     };
     EventView {
@@ -1672,9 +1861,15 @@ fn load_chart(conn: &Connection, m: &Monitor, range: Range) -> rusqlite::Result<
     } else {
         let now: i64 = conn.query_row("SELECT unixepoch('now')", [], |r| r.get(0))?;
         // The newest bucket (index n-1) ends at `now`.
-        db_heartbeats::chart_buckets(conn, m.id, now - range.seconds() + 1, range.bucket_seconds())?
+        db_heartbeats::chart_buckets(
+            conn,
+            m.id,
+            now - range.seconds() + 1,
+            range.bucket_seconds(),
+        )?
     };
-    let gap = (m.interval_seconds.max(1) + range.bucket_seconds() - 1) / range.bucket_seconds().max(1);
+    let gap =
+        (m.interval_seconds.max(1) + range.bucket_seconds() - 1) / range.bucket_seconds().max(1);
     Ok(view::build_chart(range, &buckets, gap))
 }
 
@@ -1701,7 +1896,10 @@ fn load_detail(conn: &Connection, id: i64, range: Range) -> rusqlite::Result<Opt
         return Ok(None);
     };
     let parent = match monitor.parent_id {
-        Some(p) => db_monitors::get_monitor(conn, p)?.map(|g| ParentLink { id: g.id, name: g.name }),
+        Some(p) => db_monitors::get_monitor(conn, p)?.map(|g| ParentLink {
+            id: g.id,
+            name: g.name,
+        }),
         None => None,
     };
     let mut uptime = [None; 5];
@@ -1736,7 +1934,11 @@ fn load_detail(conn: &Connection, id: i64, range: Range) -> rusqlite::Result<Opt
         .into_iter()
         .filter_map(|c| {
             links.iter().find(|(cid, _)| *cid == c.id).map(|(_, esc)| {
-                if *esc { format!("{} (escalation)", c.name) } else { c.name }
+                if *esc {
+                    format!("{} (escalation)", c.name)
+                } else {
+                    c.name
+                }
             })
         })
         .collect();
@@ -1798,7 +2000,12 @@ async fn detail(
 
     let m = &b.monitor;
     let (status, since, last_check, flapping) = if !m.active {
-        ("paused", None, b.latest.as_ref().map(|h| h.checked_at.clone()), false)
+        (
+            "paused",
+            None,
+            b.latest.as_ref().map(|h| h.checked_at.clone()),
+            false,
+        )
     } else {
         match &snapshot {
             Some(s) if s.status.is_some() => (
@@ -1808,24 +2015,37 @@ async fn detail(
                 s.flapping,
             ),
             _ => (
-                b.latest.as_ref().map(|h| h.status.as_str()).unwrap_or("pending"),
+                b.latest
+                    .as_ref()
+                    .map(|h| h.status.as_str())
+                    .unwrap_or("pending"),
                 None,
                 b.latest.as_ref().map(|h| h.checked_at.clone()),
                 false,
             ),
         }
     };
-    let last_message = b.latest.as_ref().and_then(|h| h.message.clone()).unwrap_or_default();
-    let uptime = ["detail.tile_24h", "detail.tile_7d", "detail.tile_30d", "detail.tile_90d", "detail.tile_1y"]
-        .into_iter()
-        .map(crate::i18n::t)
-        .zip(b.uptime)
-        .map(|(label, p)| UptimeTile {
-            label,
-            value: p.map(view::format_pct).unwrap_or_else(|| "—".into()),
-            status: uptime_status(p),
-        })
-        .collect();
+    let last_message = b
+        .latest
+        .as_ref()
+        .and_then(|h| h.message.clone())
+        .unwrap_or_default();
+    let uptime = [
+        "detail.tile_24h",
+        "detail.tile_7d",
+        "detail.tile_30d",
+        "detail.tile_90d",
+        "detail.tile_1y",
+    ]
+    .into_iter()
+    .map(crate::i18n::t)
+    .zip(b.uptime)
+    .map(|(label, p)| UptimeTile {
+        label,
+        value: p.map(view::format_pct).unwrap_or_else(|| "—".into()),
+        status: uptime_status(p),
+    })
+    .collect();
     let push = m
         .push_token
         .as_deref()
@@ -1847,11 +2067,16 @@ async fn detail(
     let interval_label = view::format_duration(m.interval_seconds);
     let retry_label = view::format_duration(m.effective_retry_interval());
     let timeout_label = view::format_duration(m.timeout_seconds);
-    let expiry = b.expiry.iter().map(|r| expiry_view(r, m.expiry_days)).collect();
+    let expiry = b
+        .expiry
+        .iter()
+        .map(|r| expiry_view(r, m.expiry_days))
+        .collect();
     let events = b.events.iter().map(event_view).collect();
     let heartbeats = heartbeats_template(id, &b.heartbeats);
 
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, m.name.clone(), "dashboard", "").await;
+    let (ctx, jar) =
+        PageCtx::build(&state, Some(&user), &jar, m.name.clone(), "dashboard", "").await;
     Ok((
         jar,
         HtmlTemplate(DetailTemplate {

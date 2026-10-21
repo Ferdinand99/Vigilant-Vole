@@ -66,10 +66,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     if let Some(from) = opt(config, "from")
         && from.parse::<Mailbox>().is_err()
     {
-        errors.push(field_error(
-            "from",
-            crate::i18n::t("notif.err_email_from"),
-        ));
+        errors.push(field_error("from", crate::i18n::t("notif.err_email_from")));
     }
     for key in ["to", "cc", "bcc"] {
         if let Some(bad) = list(config, key)
@@ -217,7 +214,9 @@ pub async fn deliver(config: &Value, message: Message) -> Result<(), String> {
         // on its own; give it the bundled roots.
         if !crate::tls_roots::system_store_available() {
             for der in webpki_root_certs::TLS_SERVER_ROOT_CERTS {
-                if let Ok(cert) = lettre::transport::smtp::client::Certificate::from_der(der.to_vec()) {
+                if let Ok(cert) =
+                    lettre::transport::smtp::client::Certificate::from_der(der.to_vec())
+                {
                     params = params.add_root_certificate(cert);
                 }
             }

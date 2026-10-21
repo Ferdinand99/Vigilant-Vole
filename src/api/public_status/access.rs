@@ -51,13 +51,22 @@ fn cookie_value(page: &StatusPage, now: i64) -> String {
 /// Whether `value` (already signature-checked) unlocks `page` at `now`.
 pub fn value_unlocks(value: &str, page: &StatusPage, now: i64) -> bool {
     let mut parts = value.split('.');
-    let (Some(id), Some(version), Some(issued), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
+    let (Some(id), Some(version), Some(issued), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
         return false;
     };
-    let (Ok(id), Ok(version), Ok(issued)) = (id.parse::<i64>(), version.parse::<i64>(), issued.parse::<i64>()) else {
+    let (Ok(id), Ok(version), Ok(issued)) = (
+        id.parse::<i64>(),
+        version.parse::<i64>(),
+        issued.parse::<i64>(),
+    ) else {
         return false;
     };
-    id == page.id && version == page.password_version && issued <= now + 60 && now - issued < UNLOCK_TTL_SECS
+    id == page.id
+        && version == page.password_version
+        && issued <= now + 60
+        && now - issued < UNLOCK_TTL_SECS
 }
 
 /// Whether the visitor holds a valid unlock cookie for `page`.
@@ -107,7 +116,11 @@ pub fn on_custom_domain(headers: &HeaderMap, page: &StatusPage) -> bool {
 
 /// Where the page lives for this request (and the unlock cookie's path).
 fn page_path(headers: &HeaderMap, page: &StatusPage) -> String {
-    if on_custom_domain(headers, page) { "/".into() } else { format!("/status/{}", page.slug) }
+    if on_custom_domain(headers, page) {
+        "/".into()
+    } else {
+        format!("/status/{}", page.slug)
+    }
 }
 
 pub fn unlock_cookie(page: &StatusPage, path: String, secure: bool, now: i64) -> Cookie<'static> {
@@ -152,7 +165,10 @@ fn wait_message(wait: Duration) -> String {
     if secs < 90 {
         crate::i18n::tf("sec.too_many_secs", &[("n", &secs.to_string())])
     } else {
-        crate::i18n::tf("sec.too_many_mins", &[("n", &secs.div_ceil(60).to_string())])
+        crate::i18n::tf(
+            "sec.too_many_mins",
+            &[("n", &secs.div_ceil(60).to_string())],
+        )
     }
 }
 
@@ -186,15 +202,28 @@ pub async fn unlock(
     let key = format!("sp:{}:{ip}", page.id);
     if let Err(wait) = UNLOCK_LIMITER.reserve(&key, Instant::now()) {
         tracing::warn!(page = page.id, "status page unlock throttled");
-        return Ok(locked_response(&page, Some(wait_message(wait)), StatusCode::TOO_MANY_REQUESTS));
+        return Ok(locked_response(
+            &page,
+            Some(wait_message(wait)),
+            StatusCode::TOO_MANY_REQUESTS,
+        ));
     }
     let ok = form.password.len() <= crate::auth::MAX_PASSWORD_LEN
         && crate::auth::verify_password_async(hash, form.password).await?;
     if !ok {
-        return Ok(locked_response(&page, Some(crate::i18n::t("spx.wrong_password").into()), StatusCode::UNAUTHORIZED));
+        return Ok(locked_response(
+            &page,
+            Some(crate::i18n::t("spx.wrong_password").into()),
+            StatusCode::UNAUTHORIZED,
+        ));
     }
     UNLOCK_LIMITER.clear(&key);
-    let cookie = unlock_cookie(&page, target.clone(), secure_cookies(&headers), session::now_unix());
+    let cookie = unlock_cookie(
+        &page,
+        target.clone(),
+        secure_cookies(&headers),
+        session::now_unix(),
+    );
     Ok((jar.add(cookie), Redirect::to(&target)).into_response())
 }
 
@@ -234,9 +263,17 @@ mod tests {
         let p = page(3);
         assert!(value_unlocks(&cookie_value(&p, now), &p, now));
         // Another page, a newer password, expired or from the future: no.
-        assert!(!value_unlocks(&cookie_value(&p, now), &StatusPage { id: 8, ..page(3) }, now));
+        assert!(!value_unlocks(
+            &cookie_value(&p, now),
+            &StatusPage { id: 8, ..page(3) },
+            now
+        ));
         assert!(!value_unlocks(&cookie_value(&p, now), &page(4), now));
-        assert!(!value_unlocks(&cookie_value(&p, now - UNLOCK_TTL_SECS), &p, now));
+        assert!(!value_unlocks(
+            &cookie_value(&p, now - UNLOCK_TTL_SECS),
+            &p,
+            now
+        ));
         assert!(!value_unlocks(&cookie_value(&p, now + 3600), &p, now));
         for junk in ["", "7.3", "7.3.x", "7.3.1.1", "a.b.c"] {
             assert!(!value_unlocks(junk, &p, now), "{junk}");
@@ -256,7 +293,10 @@ mod tests {
     #[test]
     fn custom_domain_requests_get_the_root_path() {
         let mut h = HeaderMap::new();
-        h.insert(header::HOST, HeaderValue::from_static("Status.Acme.Test:443"));
+        h.insert(
+            header::HOST,
+            HeaderValue::from_static("Status.Acme.Test:443"),
+        );
         assert_eq!(page_path(&h, &page(1)), "/");
         h.insert(header::HOST, HeaderValue::from_static("vole.example.com"));
         assert_eq!(page_path(&h, &page(1)), "/status/acme");

@@ -22,7 +22,10 @@ use crate::monitor::checkers::real_browser::{self, endpoint};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/remote-browsers", get(list).post(create))
-        .route("/remote-browsers/{id}", get(show).put(update).patch(update).delete(remove))
+        .route(
+            "/remote-browsers/{id}",
+            get(show).put(update).patch(update).delete(remove),
+        )
         .route("/remote-browsers/{id}/test", post(test))
 }
 
@@ -51,13 +54,28 @@ fn load_one(conn: &rusqlite::Connection, id: i64) -> rusqlite::Result<Option<Val
     Ok(load_all(conn)?.into_iter().find(|v| v["id"] == json!(id)))
 }
 
-async fn list(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> V1Result<Response> {
+async fn list(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+) -> V1Result<Response> {
     let data = state.with_conn(|c| load_all(c)).await?;
-    Ok(json_ok(&headers, &json!({ "data": data, "next_cursor": null })))
+    Ok(json_ok(
+        &headers,
+        &json!({ "data": data, "next_cursor": null }),
+    ))
 }
 
-async fn show(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id(id): Id<i64>) -> V1Result<Response> {
-    let v = state.with_conn(move |c| load_one(c, id)).await?.ok_or_else(V1Error::not_found)?;
+async fn show(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
+    let v = state
+        .with_conn(move |c| load_one(c, id))
+        .await?
+        .ok_or_else(V1Error::not_found)?;
     Ok(json_ok(&headers, &v))
 }
 
@@ -68,21 +86,36 @@ struct BrowserIn {
 }
 
 fn invalid(errors: crate::api::remote_browsers::Errors) -> V1Error {
-    V1Error::validation("", errors.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+    V1Error::validation(
+        "",
+        errors
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+    )
 }
 
-async fn create(State(state): State<AppState>, user: CurrentUser, Body(input): Body<BrowserIn>) -> V1Result<Response> {
+async fn create(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Body(input): Body<BrowserIn>,
+) -> V1Result<Response> {
     user.require(Role::Admin)?;
-    let (name, url) = (input.name.unwrap_or_default(), input.url.unwrap_or_default());
+    let (name, url) = (
+        input.name.unwrap_or_default(),
+        input.url.unwrap_or_default(),
+    );
     let saved = state
         .with_conn(move |c| {
-            Ok(match crate::api::remote_browsers::validate(c, None, &name, &url)? {
-                Ok((name, url)) => {
-                    let id = db_rb::insert(c, &name, &url)?;
-                    Ok(load_one(c, id)?.unwrap_or(Value::Null))
-                }
-                Err(e) => Err(e),
-            })
+            Ok(
+                match crate::api::remote_browsers::validate(c, None, &name, &url)? {
+                    Ok((name, url)) => {
+                        let id = db_rb::insert(c, &name, &url)?;
+                        Ok(load_one(c, id)?.unwrap_or(Value::Null))
+                    }
+                    Err(e) => Err(e),
+                },
+            )
         })
         .await?
         .map_err(invalid)?;
@@ -90,21 +123,30 @@ async fn create(State(state): State<AppState>, user: CurrentUser, Body(input): B
     Ok(created(format!("/api/v1/remote-browsers/{id}"), &saved))
 }
 
-async fn update(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>, Body(input): Body<BrowserIn>) -> V1Result<Response> {
+async fn update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+    Body(input): Body<BrowserIn>,
+) -> V1Result<Response> {
     user.require(Role::Admin)?;
     let saved = state
         .with_conn(move |c| {
-            let Some(current) = db_rb::get(c, id)? else { return Ok(None) };
+            let Some(current) = db_rb::get(c, id)? else {
+                return Ok(None);
+            };
             let name = input.name.unwrap_or_else(|| current.name.clone());
             // Leaving the URL out keeps it (secret included).
             let url = input.url.unwrap_or_else(|| current.url.clone());
-            Ok(Some(match crate::api::remote_browsers::validate(c, Some(&current), &name, &url)? {
-                Ok((name, url)) => {
-                    db_rb::update(c, id, &name, &url)?;
-                    Ok(load_one(c, id)?.unwrap_or(Value::Null))
-                }
-                Err(e) => Err(e),
-            }))
+            Ok(Some(
+                match crate::api::remote_browsers::validate(c, Some(&current), &name, &url)? {
+                    Ok((name, url)) => {
+                        db_rb::update(c, id, &name, &url)?;
+                        Ok(load_one(c, id)?.unwrap_or(Value::Null))
+                    }
+                    Err(e) => Err(e),
+                },
+            ))
         })
         .await?
         .ok_or_else(V1Error::not_found)?
@@ -112,7 +154,11 @@ async fn update(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64
     Ok(json_ok(&HeaderMap::new(), &saved))
 }
 
-async fn remove(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>) -> V1Result<Response> {
+async fn remove(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
     user.require(Role::Admin)?;
     if !state.with_conn(move |c| db_rb::delete(c, id)).await? {
         return Err(V1Error::not_found());
@@ -120,11 +166,20 @@ async fn remove(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64
     Ok(no_content())
 }
 
-async fn test(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>) -> V1Result<Response> {
+async fn test(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
     user.require(Role::Admin)?;
-    let b = state.with_conn(move |c| db_rb::get(c, id)).await?.ok_or_else(V1Error::not_found)?;
+    let b = state
+        .with_conn(move |c| db_rb::get(c, id))
+        .await?
+        .ok_or_else(V1Error::not_found)?;
     let body = match real_browser::test_connection(&b.url, Duration::from_secs(10)).await {
-        Ok(v) => json!({"ok": true, "product": v.product, "protocol_version": v.protocol, "user_agent": v.user_agent}),
+        Ok(v) => {
+            json!({"ok": true, "product": v.product, "protocol_version": v.protocol, "user_agent": v.user_agent})
+        }
         Err(err) => json!({"ok": false, "error": err}),
     };
     Ok(json_ok(&HeaderMap::new(), &body))

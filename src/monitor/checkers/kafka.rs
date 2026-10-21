@@ -44,7 +44,8 @@ impl<'a> Reader<'a> {
         self.take(2).map(|b| i16::from_be_bytes([b[0], b[1]]))
     }
     fn i32(&mut self) -> Option<i32> {
-        self.take(4).map(|b| i32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+        self.take(4)
+            .map(|b| i32::from_be_bytes([b[0], b[1], b[2], b[3]]))
     }
     /// A non-negative array length, bounded by the bytes left (each element is at least `min` bytes).
     fn count(&mut self, min: usize) -> Option<usize> {
@@ -78,10 +79,21 @@ fn request(api_key: i16, version: i16, correlation: i32, body: &[u8]) -> Vec<u8>
 }
 
 /// Send a request and return the response body after the correlation id.
-async fn call(s: &mut Stream, api_key: i16, version: i16, correlation: i32, body: &[u8]) -> Result<Vec<u8>, String> {
-    s.write_all(&request(api_key, version, correlation, body)).await.map_err(io_err)?;
+async fn call(
+    s: &mut Stream,
+    api_key: i16,
+    version: i16,
+    correlation: i32,
+    body: &[u8],
+) -> Result<Vec<u8>, String> {
+    s.write_all(&request(api_key, version, correlation, body))
+        .await
+        .map_err(io_err)?;
     let len = s.read_i32().await.map_err(io_err)?;
-    let len = usize::try_from(len).ok().filter(|l| (4..=MAX_RESPONSE).contains(l)).ok_or("Not a Kafka broker (bad response)")?;
+    let len = usize::try_from(len)
+        .ok()
+        .filter(|l| (4..=MAX_RESPONSE).contains(l))
+        .ok_or("Not a Kafka broker (bad response)")?;
     let mut buf = vec![0u8; len];
     s.read_exact(&mut buf).await.map_err(io_err)?;
     if i32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) != correlation {
@@ -97,10 +109,15 @@ fn parse_api_versions(body: &[u8]) -> Result<Vec<(i16, i16, i16)>, String> {
     let mut r = Reader(body);
     let error = r.i16().ok_or_else(bad)?;
     let n = r.count(6).ok_or_else(bad)?;
-    let apis = (0..n).map(|_| Some((r.i16()?, r.i16()?, r.i16()?))).collect::<Option<Vec<_>>>().ok_or_else(bad)?;
+    let apis = (0..n)
+        .map(|_| Some((r.i16()?, r.i16()?, r.i16()?)))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(bad)?;
     // 35 = UNSUPPORTED_VERSION: the reply still lists what the broker speaks.
     if error != 0 && error != 35 {
-        return Err(format!("The broker refused the ApiVersions request (error {error})"));
+        return Err(format!(
+            "The broker refused the ApiVersions request (error {error})"
+        ));
     }
     Ok(apis)
 }
@@ -172,10 +189,15 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         let connected = conn::connect(&ep, monitor.ignore_tls, timeout).await?;
         let mut s: Stream = connected.io;
         let fail = CheckOutcome::down;
-        let apis = parse_api_versions(&call(&mut s, API_VERSIONS, 0, 1, &[]).await.map_err(fail)?).map_err(fail)?;
-        let metadata_ok = apis.iter().any(|(k, min, max)| *k == API_METADATA && (*min..=*max).contains(&METADATA_VERSION));
+        let apis = parse_api_versions(&call(&mut s, API_VERSIONS, 0, 1, &[]).await.map_err(fail)?)
+            .map_err(fail)?;
+        let metadata_ok = apis
+            .iter()
+            .any(|(k, min, max)| *k == API_METADATA && (*min..=*max).contains(&METADATA_VERSION));
         if !metadata_ok {
-            return Err(fail(format!("The broker doesn't support Metadata v{METADATA_VERSION}")));
+            return Err(fail(format!(
+                "The broker doesn't support Metadata v{METADATA_VERSION}"
+            )));
         }
         let mut body = Vec::new();
         match topic {
@@ -187,23 +209,37 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
             None => body.extend_from_slice(&0i32.to_be_bytes()),
         }
         body.push(0); // allow_auto_topic_creation = false
-        let reply = call(&mut s, API_METADATA, METADATA_VERSION, 2, &body).await.map_err(fail)?;
-        let cluster = parse_metadata(&reply, topic.is_some()).ok_or_else(|| fail("Not a Kafka broker (bad Metadata reply)".into()))?;
+        let reply = call(&mut s, API_METADATA, METADATA_VERSION, 2, &body)
+            .await
+            .map_err(fail)?;
+        let cluster = parse_metadata(&reply, topic.is_some())
+            .ok_or_else(|| fail("Not a Kafka broker (bad Metadata reply)".into()))?;
         let ms = util::elapsed_ms(start);
         let brokers = match cluster.brokers {
             1 => "1 broker".to_string(),
             n => format!("{n} brokers"),
         };
         let message = match (topic, cluster.topic) {
-            (Some(t), Some((0, partitions, 0))) => format!("{brokers} · topic {} · {partitions} partitions", util::truncate(t, 60)),
+            (Some(t), Some((0, partitions, 0))) => format!(
+                "{brokers} · topic {} · {partitions} partitions",
+                util::truncate(t, 60)
+            ),
             (Some(t), Some((0, _, no_leader))) => {
-                return Err(fail(format!("The topic \"{}\" has {no_leader} partition(s) without a leader", util::truncate(t, 60))));
+                return Err(fail(format!(
+                    "The topic \"{}\" has {no_leader} partition(s) without a leader",
+                    util::truncate(t, 60)
+                )));
             }
             (Some(t), Some((code, _, _))) => return Err(fail(topic_error(code, t))),
             (Some(t), None) => return Err(fail(topic_error(3, t))),
             (None, _) => brokers,
         };
-        Ok(conn::up(ms, message, connected.cert.as_ref(), connected.tls_version))
+        Ok(conn::up(
+            ms,
+            message,
+            connected.cert.as_ref(),
+            connected.tls_version,
+        ))
     };
     match tokio::time::timeout(timeout, probe).await {
         Ok(Ok(outcome)) | Ok(Err(outcome)) => outcome,
@@ -258,7 +294,11 @@ mod tests {
                     string(&mut reply, "cluster-1");
                     reply.extend_from_slice(&1i32.to_be_bytes()); // controller
                     let n = i32::from_be_bytes(body[..4].try_into().unwrap());
-                    assert_eq!(*body.last().unwrap(), 0, "auto topic creation must stay off");
+                    assert_eq!(
+                        *body.last().unwrap(),
+                        0,
+                        "auto topic creation must stay off"
+                    );
                     let names: Vec<String> = if n == 0 {
                         vec![]
                     } else {
@@ -271,7 +311,13 @@ mod tests {
                         reply.extend_from_slice(&(if known { 0i16 } else { 3 }).to_be_bytes());
                         string(&mut reply, &name);
                         reply.push(0);
-                        let partitions: i32 = if name == "orders" { 3 } else if name == "stuck" { 2 } else { 0 };
+                        let partitions: i32 = if name == "orders" {
+                            3
+                        } else if name == "stuck" {
+                            2
+                        } else {
+                            0
+                        };
                         reply.extend_from_slice(&partitions.to_be_bytes());
                         for p in 0..partitions {
                             reply.extend_from_slice(&0i16.to_be_bytes());
@@ -331,18 +377,30 @@ mod tests {
         let addr = serve(false, 4).await;
         let out = check(&kafka(&format!("kafka://{addr}/orders"))).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        assert_eq!(out.message.as_deref(), Some("2 brokers · topic orders · 3 partitions"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("2 brokers · topic orders · 3 partitions")
+        );
         let out = check(&kafka(&format!("kafka://{addr}/missing"))).await;
-        assert_eq!(out.message.as_deref(), Some("The topic \"missing\" does not exist"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The topic \"missing\" does not exist")
+        );
         let out = check(&kafka(&format!("kafka://{addr}/stuck"))).await;
-        assert_eq!(out.message.as_deref(), Some("The topic \"stuck\" has 1 partition(s) without a leader"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The topic \"stuck\" has 1 partition(s) without a leader")
+        );
     }
 
     #[tokio::test]
     async fn brokers_without_metadata_v4_are_refused() {
         let addr = serve(false, 5).await;
         let out = check(&kafka(&addr.to_string())).await;
-        assert_eq!(out.message.as_deref(), Some("The broker doesn't support Metadata v4"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The broker doesn't support Metadata v4")
+        );
     }
 
     #[tokio::test]
@@ -350,7 +408,11 @@ mod tests {
         let addr = serve(true, 0).await;
         let target = format!("kafkas://localhost:{}", addr.port());
         let out = check(&kafka(&target)).await;
-        assert!(out.message.as_deref().unwrap().contains("not trusted"), "{:?}", out.message);
+        assert!(
+            out.message.as_deref().unwrap().contains("not trusted"),
+            "{:?}",
+            out.message
+        );
         let mut m = kafka(&target);
         m.ignore_tls = true;
         let out = check(&m).await;
@@ -360,7 +422,10 @@ mod tests {
 
     #[tokio::test]
     async fn other_servers_are_down() {
-        let addr = crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+        let addr = crate::monitor::checkers::test_support::foreign_server(
+            b"HTTP/1.1 400 Bad Request\r\n\r\n",
+        )
+        .await;
         let out = check(&kafka(&addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not a Kafka broker"), "");

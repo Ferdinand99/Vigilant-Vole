@@ -67,10 +67,13 @@ pub async fn run(config: Config) {
         .expect("failed to bind listener");
     tracing::info!("vigilant-vole listening on {bind_addr}");
     // Connect info lets the login rate limiter key on the peer address.
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("server error");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .expect("server error");
     scheduler.shutdown().await;
 }
 

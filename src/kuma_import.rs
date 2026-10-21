@@ -19,7 +19,8 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::config_io::{
-    self, ChannelDoc, ChannelRef, Document, MaintenanceDoc, Mode, MonitorDoc, Plan, SectionDoc, StatusPageDoc, TagDoc, TagRef,
+    self, ChannelDoc, ChannelRef, Document, MaintenanceDoc, Mode, MonitorDoc, Plan, SectionDoc,
+    StatusPageDoc, TagDoc, TagRef,
 };
 use crate::db::tags as db_tags;
 
@@ -44,7 +45,11 @@ pub struct KumaImport {
 
 impl KumaImport {
     fn skip(&mut self, kind: &str, name: &str, reason: impl Into<String>) {
-        self.skipped.push(Skipped { kind: kind.into(), name: name.into(), reason: reason.into() });
+        self.skipped.push(Skipped {
+            kind: kind.into(),
+            name: name.into(),
+            reason: reason.into(),
+        });
     }
 }
 
@@ -55,12 +60,17 @@ type Row = Map<String, Value>;
 // ===========================================================================
 
 fn get<'a>(row: &'a Row, keys: &[&str]) -> Option<&'a Value> {
-    keys.iter().filter_map(|k| row.get(*k)).find(|v| !v.is_null())
+    keys.iter()
+        .filter_map(|k| row.get(*k))
+        .find(|v| !v.is_null())
 }
 
 /// Like [`s`] but keeps the text as stored (secrets and PEM blocks).
 fn raw(row: &Row, keys: &[&str]) -> Option<String> {
-    get(row, keys).and_then(Value::as_str).filter(|v| !v.trim().is_empty()).map(str::to_string)
+    get(row, keys)
+        .and_then(Value::as_str)
+        .filter(|v| !v.trim().is_empty())
+        .map(str::to_string)
 }
 
 /// Kuma's `authMethod` and its fields. Basic, OAuth2 client credentials and
@@ -73,7 +83,9 @@ fn import_auth(row: &Row, opts: &mut Map<String, Value>, warnings: &mut Vec<Stri
         Some("oauth2-cc") => "oauth2",
         Some("mtls") => "mtls",
         Some("ntlm") => {
-            warnings.push("NTLM authentication isn’t supported; set up its authentication again.".into());
+            warnings.push(
+                "NTLM authentication isn’t supported; set up its authentication again.".into(),
+            );
             return;
         }
         Some(other) => {
@@ -117,7 +129,10 @@ fn import_auth(row: &Row, opts: &mut Map<String, Value>, warnings: &mut Vec<Stri
             opts.insert("oauth_client_auth".into(), json!(style));
         }
         _ => {
-            for (ours, kuma) in [("tls_client_cert", ["tls_cert", "tlsCert"]), ("tls_ca_cert", ["tls_ca", "tlsCa"])] {
+            for (ours, kuma) in [
+                ("tls_client_cert", ["tls_cert", "tlsCert"]),
+                ("tls_ca_cert", ["tls_ca", "tlsCa"]),
+            ] {
                 if let Some(v) = raw(row, &kuma) {
                     opts.insert(ours.into(), json!(v));
                 }
@@ -159,7 +174,10 @@ fn b(row: &Row, keys: &[&str]) -> Option<bool> {
     match get(row, keys)? {
         Value::Bool(v) => Some(*v),
         Value::Number(n) => Some(n.as_f64().is_some_and(|f| f != 0.0)),
-        Value::String(v) => Some(matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes")),
+        Value::String(v) => Some(matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "on" | "yes"
+        )),
         _ => None,
     }
 }
@@ -232,12 +250,19 @@ fn read_table(conn: &Connection, table: &str) -> rusqlite::Result<Vec<Row>> {
 
 /// Reads a Kuma SQLite database (opened read-only).
 pub fn read_sqlite(path: &Path) -> Result<KumaImport, String> {
-    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
-        .map_err(|e| format!("Can’t open the database: {e}"))?;
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Can’t open the database: {e}"))?;
     let load = |t: &str| read_table(&conn, t).map_err(|e| format!("Can’t read the {t} table: {e}"));
     let monitors = load("monitor")?;
     let has_monitor_table: bool = conn
-        .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'monitor')", [], |r| r.get(0))
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'monitor')",
+            [],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
     if !has_monitor_table {
         return Err("This doesn’t look like an Uptime Kuma database (no monitor table).".into());
@@ -264,8 +289,11 @@ pub fn read_sqlite(path: &Path) -> Result<KumaImport, String> {
 
 /// Reads Kuma's legacy JSON backup (`Settings → Backup → Export`, 1.x).
 pub fn read_json(text: &str) -> Result<KumaImport, String> {
-    let root: Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("This isn’t valid JSON: {e}"))?;
-    let obj = root.as_object().ok_or("This isn’t an Uptime Kuma backup.")?;
+    let root: Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("This isn’t valid JSON: {e}"))?;
+    let obj = root
+        .as_object()
+        .ok_or("This isn’t an Uptime Kuma backup.")?;
     let list = |key: &str| -> Vec<Row> {
         obj.get(key)
             .and_then(Value::as_array)
@@ -290,13 +318,19 @@ pub fn read_json(text: &str) -> Result<KumaImport, String> {
                     let mut row = Map::new();
                     row.insert("id".into(), Value::from(tid));
                     row.insert("name".into(), t.get("name").cloned().unwrap_or(Value::Null));
-                    row.insert("color".into(), t.get("color").cloned().unwrap_or(Value::Null));
+                    row.insert(
+                        "color".into(),
+                        t.get("color").cloned().unwrap_or(Value::Null),
+                    );
                     row
                 });
                 let mut link = Map::new();
                 link.insert("monitor_id".into(), Value::from(mid));
                 link.insert("tag_id".into(), Value::from(tid));
-                link.insert("value".into(), t.get("value").cloned().unwrap_or(Value::Null));
+                link.insert(
+                    "value".into(),
+                    t.get("value").cloned().unwrap_or(Value::Null),
+                );
                 monitor_tags.push(link);
             }
         }
@@ -305,7 +339,10 @@ pub fn read_json(text: &str) -> Result<KumaImport, String> {
                 if on.as_bool().unwrap_or(false) || on.as_i64() == Some(1) {
                     let mut link = Map::new();
                     link.insert("monitor_id".into(), Value::from(mid));
-                    link.insert("notification_id".into(), Value::from(nid.parse::<i64>().unwrap_or_default()));
+                    link.insert(
+                        "notification_id".into(),
+                        Value::from(nid.parse::<i64>().unwrap_or_default()),
+                    );
                     monitor_notifications.push(link);
                 }
             }
@@ -340,13 +377,16 @@ pub fn read_file(path: &Path) -> Result<KumaImport, String> {
     let mut head = [0u8; 16];
     let n = {
         use std::io::Read;
-        let mut file = std::fs::File::open(path).map_err(|e| format!("Can’t read the upload: {e}"))?;
-        file.read(&mut head).map_err(|e| format!("Can’t read the upload: {e}"))?
+        let mut file =
+            std::fs::File::open(path).map_err(|e| format!("Can’t read the upload: {e}"))?;
+        file.read(&mut head)
+            .map_err(|e| format!("Can’t read the upload: {e}"))?
     };
     if is_sqlite(&head[..n]) {
         read_sqlite(path)
     } else {
-        let text = std::fs::read_to_string(path).map_err(|_| "This is neither an SQLite database nor a JSON backup.".to_string())?;
+        let text = std::fs::read_to_string(path)
+            .map_err(|_| "This is neither an SQLite database nor a JSON backup.".to_string())?;
         read_json(&text)
     }
 }
@@ -375,22 +415,45 @@ fn insert_credentials(opts: &mut Map<String, Value>, user: Option<String>, pass:
 
 /// A database monitor's connection string as our target plus its login:
 /// `postgres://user:pass@host:5432/db` becomes `postgres://host:5432/db`.
-fn connection_string(row: &Row, kind: &str, warnings: &mut Vec<String>) -> Result<(String, Option<String>, Option<String>), String> {
-    let raw = s(row, &["database_connection_string", "databaseConnectionString"]).ok_or("It has no connection string.")?;
-    let url = url::Url::parse(raw.trim()).map_err(|_| "Its connection string couldn’t be read.".to_string())?;
+fn connection_string(
+    row: &Row,
+    kind: &str,
+    warnings: &mut Vec<String>,
+) -> Result<(String, Option<String>, Option<String>), String> {
+    let raw = s(
+        row,
+        &["database_connection_string", "databaseConnectionString"],
+    )
+    .ok_or("It has no connection string.")?;
+    let url = url::Url::parse(raw.trim())
+        .map_err(|_| "Its connection string couldn’t be read.".to_string())?;
     let allowed: &[&str] = match kind {
         "postgres" => &["postgres", "postgresql"],
         "mysql" => &["mysql", "mariadb"],
         _ => &["redis", "rediss"],
     };
     if !allowed.contains(&url.scheme()) {
-        return Err(format!("Its connection string uses “{}://”, which this type can’t check.", url.scheme()));
+        return Err(format!(
+            "Its connection string uses “{}://”, which this type can’t check.",
+            url.scheme()
+        ));
     }
-    let host = url.host_str().filter(|h| !h.is_empty()).ok_or("Its connection string has no host.")?;
-    let user = Some(url.username()).filter(|u| !u.is_empty()).map(crate::monitor::checkers::endpoint::percent_decode);
-    let pass = url.password().map(crate::monitor::checkers::endpoint::percent_decode);
+    let host = url
+        .host_str()
+        .filter(|h| !h.is_empty())
+        .ok_or("Its connection string has no host.")?;
+    let user = Some(url.username())
+        .filter(|u| !u.is_empty())
+        .map(crate::monitor::checkers::endpoint::percent_decode);
+    let pass = url
+        .password()
+        .map(crate::monitor::checkers::endpoint::percent_decode);
     let path = url.path().trim_matches('/');
-    let mut target = format!("{}://{}", url.scheme(), host_port(host, url.port().map(i64::from)));
+    let mut target = format!(
+        "{}://{}",
+        url.scheme(),
+        host_port(host, url.port().map(i64::from))
+    );
     if !path.is_empty() {
         target.push('/');
         target.push_str(path);
@@ -399,8 +462,13 @@ fn connection_string(row: &Row, kind: &str, warnings: &mut Vec<String>) -> Resul
         target.push('?');
         target.push_str(q);
     }
-    if let Some(query) = s(row, &["database_query", "databaseQuery"]).filter(|q| !q.trim().is_empty() && !q.trim().eq_ignore_ascii_case("select 1")) {
-        warnings.push(format!("its query “{}” isn’t run; the check is a login and SELECT 1 (or PING).", query.chars().take(60).collect::<String>()));
+    if let Some(query) = s(row, &["database_query", "databaseQuery"])
+        .filter(|q| !q.trim().is_empty() && !q.trim().eq_ignore_ascii_case("select 1"))
+    {
+        warnings.push(format!(
+            "its query “{}” isn’t run; the check is a login and SELECT 1 (or PING).",
+            query.chars().take(60).collect::<String>()
+        ));
     }
     Ok((target, user, pass))
 }
@@ -417,8 +485,13 @@ fn host_port(host: &str, port: Option<i64>) -> String {
 
 /// Warn that a database monitor's own query isn't run.
 fn warn_query(row: &Row, warnings: &mut Vec<String>, check: &str) {
-    if let Some(query) = s(row, &["database_query", "databaseQuery"]).filter(|q| !q.trim().is_empty() && !q.trim().eq_ignore_ascii_case("select 1")) {
-        warnings.push(format!("its query “{}” isn’t run; the check is {check}.", query.chars().take(60).collect::<String>()));
+    if let Some(query) = s(row, &["database_query", "databaseQuery"])
+        .filter(|q| !q.trim().is_empty() && !q.trim().eq_ignore_ascii_case("select 1"))
+    {
+        warnings.push(format!(
+            "its query “{}” isn’t run; the check is {check}.",
+            query.chars().take(60).collect::<String>()
+        ));
     }
 }
 
@@ -429,8 +502,14 @@ fn ado_pairs(raw: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut rest = raw;
     while !rest.trim().is_empty() {
-        let Some((key, after)) = rest.split_once('=') else { break };
-        let key: String = key.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+        let Some((key, after)) = rest.split_once('=') else {
+            break;
+        };
+        let key: String = key
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
         let after = after.trim_start();
         let (value, tail) = match after.chars().next() {
             Some(q @ ('\'' | '"' | '{')) => {
@@ -468,18 +547,47 @@ fn ado_pairs(raw: &str) -> Vec<(String, String)> {
 /// Kuma's SQL Server connection string
 /// (`Server=host,1433;Database=app;User Id=sa;Password=…;Encrypt=true;TrustServerCertificate=Yes`)
 /// as our target plus its login.
-fn sqlserver_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String, Option<String>, Option<String>), String> {
-    let raw = raw(row, &["database_connection_string", "databaseConnectionString"]).ok_or("It has no connection string.")?;
+fn sqlserver_connection(
+    row: &Row,
+    warnings: &mut Vec<String>,
+) -> Result<(String, Option<String>, Option<String>), String> {
+    let raw = raw(
+        row,
+        &["database_connection_string", "databaseConnectionString"],
+    )
+    .ok_or("It has no connection string.")?;
     let pairs = ado_pairs(&raw);
-    let get = |keys: &[&str]| pairs.iter().rev().find(|(k, _)| keys.contains(&k.as_str())).map(|(_, v)| v.clone());
-    let yes = |v: &str| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "yes" | "sspi" | "1");
+    let get = |keys: &[&str]| {
+        pairs
+            .iter()
+            .rev()
+            .find(|(k, _)| keys.contains(&k.as_str()))
+            .map(|(_, v)| v.clone())
+    };
+    let yes = |v: &str| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "true" | "yes" | "sspi" | "1"
+        )
+    };
     if get(&["integratedsecurity", "trusted_connection"]).is_some_and(|v| yes(&v)) {
-        return Err("It uses Windows authentication, which isn’t supported; use a SQL Server login.".into());
+        return Err(
+            "It uses Windows authentication, which isn’t supported; use a SQL Server login.".into(),
+        );
     }
-    let server = get(&["server", "datasource", "address", "addr", "networkaddress"]).filter(|s| !s.is_empty()).ok_or("Its connection string has no server.")?;
+    let server = get(&["server", "datasource", "address", "addr", "networkaddress"])
+        .filter(|s| !s.is_empty())
+        .ok_or("Its connection string has no server.")?;
     let server = server.strip_prefix("tcp:").unwrap_or(&server);
     let (host, port) = match server.rsplit_once(',') {
-        Some((h, p)) => (h.trim(), Some(p.trim().parse::<i64>().map_err(|_| format!("Its server port “{p}” isn’t a number."))?)),
+        Some((h, p)) => (
+            h.trim(),
+            Some(
+                p.trim()
+                    .parse::<i64>()
+                    .map_err(|_| format!("Its server port “{p}” isn’t a number."))?,
+            ),
+        ),
         None => (server.trim(), None),
     };
     let host = match host.split_once('\\') {
@@ -491,7 +599,11 @@ fn sqlserver_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String
         }
         None => host,
     };
-    let host = if matches!(host, "." | "(local)" | "(localdb)") { "localhost" } else { host };
+    let host = if matches!(host, "." | "(local)" | "(localdb)") {
+        "localhost"
+    } else {
+        host
+    };
     let mut target = format!("sqlserver://{}", host_port(host, port));
     if let Some(db) = get(&["database", "initialcatalog"]).filter(|d| !d.is_empty()) {
         target.push('/');
@@ -505,11 +617,14 @@ fn sqlserver_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String
     let mut query = Vec::new();
     if let Some(encrypt) = get(&["encrypt"]) {
         let e = encrypt.trim().to_ascii_lowercase();
-        query.push(format!("encrypt={}", match e.as_str() {
-            "true" | "yes" | "mandatory" => "true",
-            "strict" => "strict",
-            _ => "false",
-        }));
+        query.push(format!(
+            "encrypt={}",
+            match e.as_str() {
+                "true" | "yes" | "mandatory" => "true",
+                "strict" => "strict",
+                _ => "false",
+            }
+        ));
     }
     if let Some(trust) = get(&["trustservercertificate"]) {
         query.push(format!("trustServerCertificate={}", yes(&trust)));
@@ -519,20 +634,33 @@ fn sqlserver_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String
         target.push_str(&query.join("&"));
     }
     warn_query(row, warnings, "a login and SELECT 1");
-    let user = get(&["userid", "uid", "user", "username"]).filter(|u| !u.trim().is_empty()).map(|u| u.trim().to_string());
+    let user = get(&["userid", "uid", "user", "username"])
+        .filter(|u| !u.trim().is_empty())
+        .map(|u| u.trim().to_string());
     let pass = get(&["password", "pwd"]).filter(|p| !p.is_empty());
     Ok((target, user, pass))
 }
 
 /// Kuma's MongoDB connection string (`mongodb://user:pass@h1,h2/db?…` or
 /// `mongodb+srv://…`) as our target plus its login.
-fn mongodb_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String, Option<String>, Option<String>), String> {
-    let raw = raw(row, &["database_connection_string", "databaseConnectionString"]).ok_or("It has no connection string.")?;
+fn mongodb_connection(
+    row: &Row,
+    warnings: &mut Vec<String>,
+) -> Result<(String, Option<String>, Option<String>), String> {
+    let raw = raw(
+        row,
+        &["database_connection_string", "databaseConnectionString"],
+    )
+    .ok_or("It has no connection string.")?;
     let raw = raw.trim();
-    let (scheme, rest) = raw.split_once("://").ok_or("Its connection string couldn’t be read.")?;
+    let (scheme, rest) = raw
+        .split_once("://")
+        .ok_or("Its connection string couldn’t be read.")?;
     let scheme = scheme.to_ascii_lowercase();
     if !matches!(scheme.as_str(), "mongodb" | "mongodb+srv") {
-        return Err(format!("Its connection string uses “{scheme}://”, which this type can’t check."));
+        return Err(format!(
+            "Its connection string uses “{scheme}://”, which this type can’t check."
+        ));
     }
     let split = rest.find(['/', '?']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(split);
@@ -552,8 +680,16 @@ fn mongodb_connection(row: &Row, warnings: &mut Vec<String>) -> Result<(String, 
         return Err("Its connection string has no host.".into());
     }
     let target = format!("{scheme}://{hosts}{tail}");
-    warn_query(row, warnings, "hello and ping (with a login when it has credentials)");
-    Ok((target, user.filter(|u| !u.is_empty()), pass.filter(|p| !p.is_empty())))
+    warn_query(
+        row,
+        warnings,
+        "hello and ping (with a login when it has credentials)",
+    );
+    Ok((
+        target,
+        user.filter(|u| !u.is_empty()),
+        pass.filter(|p| !p.is_empty()),
+    ))
 }
 
 /// Unique keys for Kuma objects by name (later duplicates get `#<kuma id>`).
@@ -563,14 +699,21 @@ fn keyed_names(rows: &[Row]) -> HashMap<i64, String> {
     for r in rows {
         let id = i(r, &["id"]).unwrap_or_default();
         let name = s(r, &["name", "title"]).unwrap_or_else(|| format!("Kuma #{id}"));
-        let key = if seen.insert(name.to_lowercase()) { name } else { format!("{name} #{id}") };
+        let key = if seen.insert(name.to_lowercase()) {
+            name
+        } else {
+            format!("{name} #{id}")
+        };
         out.insert(id, key);
     }
     out
 }
 
 fn convert(t: Tables, source: &str) -> KumaImport {
-    let mut out = KumaImport { source: source.into(), ..KumaImport::default() };
+    let mut out = KumaImport {
+        source: source.into(),
+        ..KumaImport::default()
+    };
 
     // -- tags -----------------------------------------------------------------
     let mut tag_names: HashMap<i64, String> = HashMap::new();
@@ -578,11 +721,14 @@ fn convert(t: Tables, source: &str) -> KumaImport {
     let mut seen_tags = HashSet::new();
     for row in &t.tags {
         let id = i(row, &["id"]).unwrap_or_default();
-        let Some(name) = s(row, &["name"]) else { continue };
+        let Some(name) = s(row, &["name"]) else {
+            continue;
+        };
         let name: String = name.chars().take(db_tags::MAX_NAME_LEN).collect();
         tag_names.insert(id, name.clone());
         if seen_tags.insert(name.to_lowercase()) {
-            let color = db_tags::normalize_color(&s(row, &["color"]).unwrap_or_default()).to_string();
+            let color =
+                db_tags::normalize_color(&s(row, &["color"]).unwrap_or_default()).to_string();
             tag_docs.push(TagDoc { name, color });
         }
     }
@@ -645,26 +791,50 @@ fn convert(t: Tables, source: &str) -> KumaImport {
             } else {
                 String::new()
             };
-            Some((i(r, &["id"])?, format!("{protocol}://{auth}{}", host_port(&host, port))))
+            Some((
+                i(r, &["id"])?,
+                format!("{protocol}://{auth}{}", host_port(&host, port)),
+            ))
         })
         .collect();
     let (browser_docs, browser_names) = remote_browsers(&t.remote_browsers, &mut out.warnings);
     let mut tags_of: HashMap<i64, Vec<TagRef>> = HashMap::new();
     for link in &t.monitor_tags {
-        let (Some(mid), Some(tid)) = (i(link, &["monitor_id"]), i(link, &["tag_id"])) else { continue };
-        let Some(name) = tag_names.get(&tid) else { continue };
-        let value: String = s(link, &["value"]).unwrap_or_default().chars().take(db_tags::MAX_VALUE_LEN).collect();
+        let (Some(mid), Some(tid)) = (i(link, &["monitor_id"]), i(link, &["tag_id"])) else {
+            continue;
+        };
+        let Some(name) = tag_names.get(&tid) else {
+            continue;
+        };
+        let value: String = s(link, &["value"])
+            .unwrap_or_default()
+            .chars()
+            .take(db_tags::MAX_VALUE_LEN)
+            .collect();
         let list = tags_of.entry(mid).or_default();
         if list.iter().any(|t| t.name().eq_ignore_ascii_case(name)) {
             continue;
         }
-        list.push(if value.is_empty() { TagRef::Name(name.clone()) } else { TagRef::Full { name: name.clone(), value } });
+        list.push(if value.is_empty() {
+            TagRef::Name(name.clone())
+        } else {
+            TagRef::Full {
+                name: name.clone(),
+                value,
+            }
+        });
     }
     let mut channels_of: HashMap<i64, Vec<ChannelRef>> = HashMap::new();
     for link in &t.monitor_notifications {
-        let (Some(mid), Some(nid)) = (i(link, &["monitor_id"]), i(link, &["notification_id"])) else { continue };
+        let (Some(mid), Some(nid)) = (i(link, &["monitor_id"]), i(link, &["notification_id"]))
+        else {
+            continue;
+        };
         if let Some(name) = channel_names.get(&nid) {
-            channels_of.entry(mid).or_default().push(ChannelRef::Name(name.clone()));
+            channels_of
+                .entry(mid)
+                .or_default()
+                .push(ChannelRef::Name(name.clone()));
         }
     }
 
@@ -694,7 +864,10 @@ fn convert(t: Tables, source: &str) -> KumaImport {
         if let Some(pid) = parent {
             match imported_monitors.get(pid) {
                 Some(pkey) => doc.parent = Some(pkey.clone()),
-                None => out.warnings.push(format!("“{}”: its group wasn’t imported, so it’s placed at the top level.", doc.name)),
+                None => out.warnings.push(format!(
+                    "“{}”: its group wasn’t imported, so it’s placed at the top level.",
+                    doc.name
+                )),
             }
         }
     }
@@ -707,17 +880,42 @@ fn convert(t: Tables, source: &str) -> KumaImport {
         let raw_slug = s(row, &["slug"]).unwrap_or_default();
         let slug = raw_slug.to_lowercase();
         let title = s(row, &["title"]).unwrap_or_else(|| raw_slug.clone());
-        let mut groups: Vec<&Row> = t.groups.iter().filter(|g| i(g, &["status_page_id"]) == Some(id)).collect();
-        groups.sort_by_key(|g| (i(g, &["weight"]).unwrap_or_default(), i(g, &["id"]).unwrap_or_default()));
+        let mut groups: Vec<&Row> = t
+            .groups
+            .iter()
+            .filter(|g| i(g, &["status_page_id"]) == Some(id))
+            .collect();
+        groups.sort_by_key(|g| {
+            (
+                i(g, &["weight"]).unwrap_or_default(),
+                i(g, &["id"]).unwrap_or_default(),
+            )
+        });
         let sections = groups
             .iter()
             .map(|g| {
                 let gid = i(g, &["id"]).unwrap_or_default();
-                let mut links: Vec<&Row> = t.monitor_groups.iter().filter(|l| i(l, &["group_id"]) == Some(gid)).collect();
-                links.sort_by_key(|l| (i(l, &["weight"]).unwrap_or_default(), i(l, &["id"]).unwrap_or_default()));
+                let mut links: Vec<&Row> = t
+                    .monitor_groups
+                    .iter()
+                    .filter(|l| i(l, &["group_id"]) == Some(gid))
+                    .collect();
+                links.sort_by_key(|l| {
+                    (
+                        i(l, &["weight"]).unwrap_or_default(),
+                        i(l, &["id"]).unwrap_or_default(),
+                    )
+                });
                 SectionDoc {
-                    name: s(g, &["name"]).unwrap_or_else(|| "Services".into()).chars().take(80).collect(),
-                    monitors: links.iter().filter_map(|l| imported_monitors.get(&i(l, &["monitor_id"])?).cloned()).collect(),
+                    name: s(g, &["name"])
+                        .unwrap_or_else(|| "Services".into())
+                        .chars()
+                        .take(80)
+                        .collect(),
+                    monitors: links
+                        .iter()
+                        .filter_map(|l| imported_monitors.get(&i(l, &["monitor_id"])?).cloned())
+                        .collect(),
                 }
             })
             .collect::<Vec<_>>();
@@ -756,7 +954,9 @@ fn convert(t: Tables, source: &str) -> KumaImport {
             show_powered_by: b(row, &["show_powered_by"]).unwrap_or(true),
             footer_text: s(row, &["footer_text"]),
             custom_css: s(row, &["custom_css"]),
-            refresh_seconds: i(row, &["auto_refresh_interval"]).unwrap_or(60).clamp(10, 3600),
+            refresh_seconds: i(row, &["auto_refresh_interval"])
+                .unwrap_or(60)
+                .clamp(10, 3600),
             sections: Some(sections),
             password: None,
             password_hash: None,
@@ -809,7 +1009,11 @@ fn convert(t: Tables, source: &str) -> KumaImport {
 /// Kuma's status page `icon`: a data URL is imported as logo and favicon
 /// (Kuma uses one image for both); an uploaded file (`/upload/logo1.png`)
 /// isn't in the database, so the plan asks for a re-upload.
-fn kuma_page_icon(row: &Row, title: &str, warnings: &mut Vec<String>) -> (Option<String>, Option<String>) {
+fn kuma_page_icon(
+    row: &Row,
+    title: &str,
+    warnings: &mut Vec<String>,
+) -> (Option<String>, Option<String>) {
     let Some(icon) = s(row, &["icon"]) else {
         return (None, None);
     };
@@ -820,7 +1024,10 @@ fn kuma_page_icon(row: &Row, title: &str, warnings: &mut Vec<String>) -> (Option
         return match crate::db::status_pages::extras::parse_data_url(&icon) {
             Ok(_) => (Some(icon.clone()), Some(icon)),
             Err(e) => {
-                warnings.push(format!("Status page “{title}”: its logo wasn’t imported ({}) Upload it again.", e.message()));
+                warnings.push(format!(
+                    "Status page “{title}”: its logo wasn’t imported ({}) Upload it again.",
+                    e.message()
+                ));
                 (None, None)
             }
         };
@@ -834,17 +1041,32 @@ fn kuma_page_icon(row: &Row, title: &str, warnings: &mut Vec<String>) -> (Option
 /// Kuma 1.x `google_analytics_tag_id`, or 2.x `analytics_type` +
 /// `analytics_id` + `analytics_script_url`. Settings that don't validate are
 /// dropped with a warning instead of skipping the page.
-fn kuma_page_analytics(row: &Row, title: &str, warnings: &mut Vec<String>) -> Option<crate::db::status_pages::extras::AnalyticsDoc> {
+fn kuma_page_analytics(
+    row: &Row,
+    title: &str,
+    warnings: &mut Vec<String>,
+) -> Option<crate::db::status_pages::extras::AnalyticsDoc> {
     use crate::db::status_pages::extras::AnalyticsDoc;
-    let id = s(row, &["analytics_id", "google_analytics_tag_id", "googleAnalyticsId"])?;
-    let kind = s(row, &["analytics_type", "analyticsType"]).unwrap_or_else(|| "google".into()).to_ascii_lowercase();
+    let id = s(
+        row,
+        &[
+            "analytics_id",
+            "google_analytics_tag_id",
+            "googleAnalyticsId",
+        ],
+    )?;
+    let kind = s(row, &["analytics_type", "analyticsType"])
+        .unwrap_or_else(|| "google".into())
+        .to_ascii_lowercase();
     let mut url = s(row, &["analytics_script_url", "analyticsScriptUrl"]).unwrap_or_default();
     if kind == "matomo" && !url.is_empty() && !url.contains("://") {
         // Kuma stores Matomo's host without a scheme.
         url = format!("https://{}", url.trim_start_matches('/'));
     }
     if !matches!(kind.as_str(), "google" | "plausible" | "umami" | "matomo") {
-        warnings.push(format!("Status page “{title}”: {kind} analytics isn’t supported, so it wasn’t imported."));
+        warnings.push(format!(
+            "Status page “{title}”: {kind} analytics isn’t supported, so it wasn’t imported."
+        ));
         return None;
     }
     let doc = AnalyticsDoc {
@@ -857,8 +1079,14 @@ fn kuma_page_analytics(row: &Row, title: &str, warnings: &mut Vec<String>) -> Op
     match doc.to_settings() {
         Ok(a) => Some(AnalyticsDoc::from_settings(&a)),
         Err(errors) => {
-            let why = errors.into_iter().map(|(_, m)| m).collect::<Vec<_>>().join(" ");
-            warnings.push(format!("Status page “{title}”: its analytics settings weren’t imported. {why}"));
+            let why = errors
+                .into_iter()
+                .map(|(_, m)| m)
+                .collect::<Vec<_>>()
+                .join(" ");
+            warnings.push(format!(
+                "Status page “{title}”: its analytics settings weren’t imported. {why}"
+            ));
             None
         }
     }
@@ -868,14 +1096,25 @@ fn kuma_page_analytics(row: &Row, title: &str, warnings: &mut Vec<String>) -> Op
 /// Kuma's `remote_browser` rows as our remote browsers, and their names by
 /// Kuma id. Kuma connects with Playwright; browserless's Playwright path is
 /// turned into its CDP endpoint (same host and token).
-fn remote_browsers(rows: &[Row], warnings: &mut Vec<String>) -> (Vec<config_io::RemoteBrowserDoc>, HashMap<i64, String>) {
+fn remote_browsers(
+    rows: &[Row],
+    warnings: &mut Vec<String>,
+) -> (Vec<config_io::RemoteBrowserDoc>, HashMap<i64, String>) {
     let keys = keyed_names(rows);
     let mut docs = Vec::new();
     let mut names = HashMap::new();
     for row in rows {
         let id = i(row, &["id"]).unwrap_or_default();
-        let Some(raw) = s(row, &["url"]) else { continue };
-        let name: String = keys.get(&id).cloned().unwrap_or_default().chars().take(crate::db::remote_browsers::MAX_NAME_LEN).collect();
+        let Some(raw) = s(row, &["url"]) else {
+            continue;
+        };
+        let name: String = keys
+            .get(&id)
+            .cloned()
+            .unwrap_or_default()
+            .chars()
+            .take(crate::db::remote_browsers::MAX_NAME_LEN)
+            .collect();
         let mut url = raw.trim().to_string();
         if let Ok(mut parsed) = url::Url::parse(&url) {
             let path = parsed.path().trim_end_matches('/').to_string();
@@ -920,7 +1159,10 @@ fn map_monitor(
         // `tailscale ping --c 1 <hostname>`: the same disco ping, through the socket.
         "tailscale-ping" => ("tailscale_ping", hostname),
         "dns" => ("dns", hostname),
-        "docker" => ("docker", s(row, &["docker_container", "dockerContainer"]).unwrap_or_default()),
+        "docker" => (
+            "docker",
+            s(row, &["docker_container", "dockerContainer"]).unwrap_or_default(),
+        ),
         "push" => ("push", String::new()),
         "steam" => ("steam", host_port(&hostname, port)),
         "gamedig" => gamedig::map(row, &hostname, port, &mut opts, &mut warnings)?,
@@ -930,7 +1172,14 @@ fn map_monitor(
         "postgres" | "mysql" | "redis" => {
             let (target, user, pass) = connection_string(row, &kuma_type, &mut warnings)?;
             insert_credentials(&mut opts, user, pass);
-            (if kuma_type == "mysql" { "mysql" } else { &kuma_type }, target)
+            (
+                if kuma_type == "mysql" {
+                    "mysql"
+                } else {
+                    &kuma_type
+                },
+                target,
+            )
         }
         "sqlserver" => {
             let (target, user, pass) = sqlserver_connection(row, &mut warnings)?;
@@ -951,36 +1200,68 @@ fn map_monitor(
             let topic = s(row, &["mqtt_topic", "mqttTopic"]).unwrap_or_default();
             // The topic goes in as written (`mqtt::topic` reads it back
             // raw); only `%` is escaped, since the path is percent-decoded.
-            let path = if topic.is_empty() { String::new() } else { format!("/{}", topic.replace('%', "%25")) };
+            let path = if topic.is_empty() {
+                String::new()
+            } else {
+                format!("/{}", topic.replace('%', "%25"))
+            };
             if let Some(msg) = s(row, &["mqtt_success_message", "mqttSuccessMessage"]) {
                 opts.insert("keyword".into(), json!(msg));
             }
-            insert_credentials(&mut opts, s(row, &["mqtt_username", "mqttUsername"]), raw(row, &["mqtt_password", "mqttPassword"]));
-            ("mqtt", format!("{scheme}://{}{path}", host_port(&host, port)))
+            insert_credentials(
+                &mut opts,
+                s(row, &["mqtt_username", "mqttUsername"]),
+                raw(row, &["mqtt_password", "mqttPassword"]),
+            );
+            (
+                "mqtt",
+                format!("{scheme}://{}{path}", host_port(&host, port)),
+            )
         }
         "kafka-producer" => {
-            let brokers: Vec<String> = match json_field(row, &["kafka_producer_brokers", "kafkaProducerBrokers"]) {
-                Some(Value::Array(list)) => list.iter().filter_map(|b| b.as_str().map(str::to_string)).collect(),
-                _ => Vec::new(),
-            };
+            let brokers: Vec<String> =
+                match json_field(row, &["kafka_producer_brokers", "kafkaProducerBrokers"]) {
+                    Some(Value::Array(list)) => list
+                        .iter()
+                        .filter_map(|b| b.as_str().map(str::to_string))
+                        .collect(),
+                    _ => Vec::new(),
+                };
             let first = brokers.first().ok_or("It lists no Kafka brokers.")?;
             if brokers.len() > 1 {
                 warnings.push("only its first broker is checked.".into());
             }
             warnings.push("no message is produced; the monitor checks that the broker answers and the topic exists.".into());
             let topic = s(row, &["kafka_producer_topic", "kafkaProducerTopic"]).unwrap_or_default();
-            let scheme = if b(row, &["kafka_producer_ssl", "kafkaProducerSsl"]).unwrap_or(false) { "kafkas" } else { "kafka" };
-            let sasl = json_field(row, &["kafka_producer_sasl_options", "kafkaProducerSaslOptions"]);
+            let scheme = if b(row, &["kafka_producer_ssl", "kafkaProducerSsl"]).unwrap_or(false) {
+                "kafkas"
+            } else {
+                "kafka"
+            };
+            let sasl = json_field(
+                row,
+                &["kafka_producer_sasl_options", "kafkaProducerSaslOptions"],
+            );
             if let Some(Value::Object(o)) = sasl
-                && o.get("mechanism").and_then(Value::as_str).is_some_and(|m| !m.eq_ignore_ascii_case("none"))
+                && o.get("mechanism")
+                    .and_then(Value::as_str)
+                    .is_some_and(|m| !m.eq_ignore_ascii_case("none"))
             {
                 warnings.push("its SASL login isn’t supported, so brokers that require SASL will fail the check.".into());
             }
-            let path = if topic.is_empty() { String::new() } else { format!("/{topic}") };
+            let path = if topic.is_empty() {
+                String::new()
+            } else {
+                format!("/{topic}")
+            };
             ("kafka", format!("{scheme}://{first}{path}"))
         }
         "radius" => {
-            insert_credentials(&mut opts, s(row, &["radius_username", "radiusUsername"]), raw(row, &["radius_password", "radiusPassword"]));
+            insert_credentials(
+                &mut opts,
+                s(row, &["radius_username", "radiusUsername"]),
+                raw(row, &["radius_password", "radiusPassword"]),
+            );
             if let Some(secret) = raw(row, &["radius_secret", "radiusSecret"]) {
                 opts.insert("secret".into(), json!(secret));
             }
@@ -991,7 +1272,8 @@ fn map_monitor(
             let oid = s(row, &["snmp_oid", "snmpOid"]).unwrap_or_default();
             if version.trim() == "3" {
                 // Kuma's SNMPv3 is noAuthNoPriv: a user name, no passwords.
-                let user = s(row, &["snmp_v3_username", "snmpV3Username"]).ok_or("It uses SNMPv3 but has no user name.")?;
+                let user = s(row, &["snmp_v3_username", "snmpV3Username"])
+                    .ok_or("It uses SNMPv3 but has no user name.")?;
                 opts.insert("basic_auth_user".into(), json!(user));
             } else if let Some(community) = raw(row, &["radius_password", "radiusPassword"]) {
                 // Kuma keeps the community string in the RADIUS password column.
@@ -999,10 +1281,22 @@ fn map_monitor(
             }
             if let Some(expected) = s(row, &["expected_value", "expectedValue"]) {
                 opts.insert("keyword".into(), json!(expected));
-                warnings.push("its expected value is matched as text contained in the answer.".into());
+                warnings
+                    .push("its expected value is matched as text contained in the answer.".into());
             }
-            let path = if oid.is_empty() { String::new() } else { format!("/{}", oid.trim_start_matches('.')) };
-            ("snmp", format!("snmp://{}{path}?version={}", host_port(&hostname, port), version.trim()))
+            let path = if oid.is_empty() {
+                String::new()
+            } else {
+                format!("/{}", oid.trim_start_matches('.'))
+            };
+            (
+                "snmp",
+                format!(
+                    "snmp://{}{path}?version={}",
+                    host_port(&hostname, port),
+                    version.trim()
+                ),
+            )
         }
         "smtp" => {
             let security = s(row, &["smtp_security", "smtpSecurity"]).unwrap_or_default();
@@ -1018,17 +1312,30 @@ fn map_monitor(
         }
         "rabbitmq" => {
             let nodes: Vec<String> = match json_field(row, &["rabbitmq_nodes", "rabbitmqNodes"]) {
-                Some(Value::Array(list)) => list.iter().filter_map(|n| n.as_str().map(str::to_string)).collect(),
+                Some(Value::Array(list)) => list
+                    .iter()
+                    .filter_map(|n| n.as_str().map(str::to_string))
+                    .collect(),
                 _ => Vec::new(),
             };
             let node = nodes.first().ok_or("It lists no RabbitMQ nodes.")?;
             if nodes.len() > 1 {
                 warnings.push("only its first node is checked.".into());
             }
-            warnings.push("it checks the management API's alarms endpoint over HTTP, like Uptime Kuma does.".into());
-            insert_credentials(&mut opts, s(row, &["rabbitmq_username", "rabbitmqUsername"]), raw(row, &["rabbitmq_password", "rabbitmqPassword"]));
+            warnings.push(
+                "it checks the management API's alarms endpoint over HTTP, like Uptime Kuma does."
+                    .into(),
+            );
+            insert_credentials(
+                &mut opts,
+                s(row, &["rabbitmq_username", "rabbitmqUsername"]),
+                raw(row, &["rabbitmq_password", "rabbitmqPassword"]),
+            );
             opts.insert("auth_method".into(), json!("basic"));
-            ("http", format!("{}/api/health/checks/alarms/", node.trim_end_matches('/')))
+            (
+                "http",
+                format!("{}/api/health/checks/alarms/", node.trim_end_matches('/')),
+            )
         }
         other => return Err(format!("The “{other}” monitor type isn’t supported.")),
     };
@@ -1036,13 +1343,33 @@ fn map_monitor(
     // Timing.
     let interval = i(row, &["interval"]).unwrap_or(60).clamp(10, 86_400);
     opts.insert("interval_seconds".into(), json!(interval));
-    if let Some(retry) = i(row, &["retry_interval", "retryInterval"]).filter(|r| *r > 0 && *r != interval) {
-        opts.insert("retry_interval_seconds".into(), json!(retry.clamp(10, 86_400)));
+    if let Some(retry) =
+        i(row, &["retry_interval", "retryInterval"]).filter(|r| *r > 0 && *r != interval)
+    {
+        opts.insert(
+            "retry_interval_seconds".into(),
+            json!(retry.clamp(10, 86_400)),
+        );
     }
-    let timeout = f(row, &["timeout"]).filter(|t| *t > 0.0).map(|t| t.round() as i64).unwrap_or(interval * 4 / 5);
-    opts.insert("timeout_seconds".into(), json!(timeout.clamp(1, 300).min(interval)));
-    opts.insert("retries".into(), json!(i(row, &["maxretries", "maxRetries"]).unwrap_or(0).clamp(0, 20)));
-    let resend = i(row, &["resend_interval", "resendInterval"]).unwrap_or(0).clamp(0, 10_000);
+    let timeout = f(row, &["timeout"])
+        .filter(|t| *t > 0.0)
+        .map(|t| t.round() as i64)
+        .unwrap_or(interval * 4 / 5);
+    opts.insert(
+        "timeout_seconds".into(),
+        json!(timeout.clamp(1, 300).min(interval)),
+    );
+    opts.insert(
+        "retries".into(),
+        json!(
+            i(row, &["maxretries", "maxRetries"])
+                .unwrap_or(0)
+                .clamp(0, 20)
+        ),
+    );
+    let resend = i(row, &["resend_interval", "resendInterval"])
+        .unwrap_or(0)
+        .clamp(0, 10_000);
     if resend > 0 {
         opts.insert("resend_interval".into(), json!(resend));
     }
@@ -1053,7 +1380,10 @@ fn map_monitor(
         opts.insert("active".into(), json!(false));
     }
     if let Some(d) = s(row, &["description"]) {
-        opts.insert("description".into(), json!(d.chars().take(2_000).collect::<String>()));
+        opts.insert(
+            "description".into(),
+            json!(d.chars().take(2_000).collect::<String>()),
+        );
     }
 
     // HTTP family.
@@ -1061,13 +1391,29 @@ fn map_monitor(
         if let Some(m) = s(row, &["method"]) {
             opts.insert("http_method".into(), json!(m.to_ascii_uppercase()));
         }
-        if let Some(Value::Array(codes)) = json_field(row, &["accepted_statuscodes_json", "accepted_statuscodes"]) {
-            let codes: Vec<String> = codes.iter().filter_map(|c| c.as_str().map(str::to_string).or_else(|| c.as_i64().map(|n| n.to_string()))).collect();
+        if let Some(Value::Array(codes)) =
+            json_field(row, &["accepted_statuscodes_json", "accepted_statuscodes"])
+        {
+            let codes: Vec<String> = codes
+                .iter()
+                .filter_map(|c| {
+                    c.as_str()
+                        .map(str::to_string)
+                        .or_else(|| c.as_i64().map(|n| n.to_string()))
+                })
+                .collect();
             if !codes.is_empty() {
                 opts.insert("accepted_status_codes".into(), json!(codes.join(",")));
             }
         }
-        opts.insert("max_redirects".into(), json!(i(row, &["maxredirects", "maxRedirects"]).unwrap_or(10).clamp(0, 30)));
+        opts.insert(
+            "max_redirects".into(),
+            json!(
+                i(row, &["maxredirects", "maxRedirects"])
+                    .unwrap_or(10)
+                    .clamp(0, 30)
+            ),
+        );
         if b(row, &["ignore_tls", "ignoreTls"]).unwrap_or(false) {
             opts.insert("ignore_tls".into(), json!(true));
         }
@@ -1080,12 +1426,19 @@ fn map_monitor(
                 _ => warnings.push("its headers aren’t a JSON object and were left out.".into()),
             }
         }
-        if let Some(body) = get(row, &["body"]).and_then(Value::as_str).filter(|b| !b.trim().is_empty()) {
+        if let Some(body) = get(row, &["body"])
+            .and_then(Value::as_str)
+            .filter(|b| !b.trim().is_empty())
+        {
             opts.insert("http_body".into(), json!(body));
             let encoding = match s(row, &["http_body_encoding", "httpBodyEncoding"]).as_deref() {
                 Some("form") => "form",
                 Some("json") | None => {
-                    if serde_json::from_str::<Value>(body).is_ok() { "json" } else { "raw" }
+                    if serde_json::from_str::<Value>(body).is_ok() {
+                        "json"
+                    } else {
+                        "raw"
+                    }
                 }
                 Some(_) => "raw",
             };
@@ -1097,10 +1450,20 @@ fn map_monitor(
         {
             opts.insert("proxy_url".into(), json!(proxy));
         }
-        opts.insert("expiry_notify".into(), json!(b(row, &["expiry_notification", "expiryNotification"]).unwrap_or(false)));
+        opts.insert(
+            "expiry_notify".into(),
+            json!(b(row, &["expiry_notification", "expiryNotification"]).unwrap_or(false)),
+        );
     }
     if our_type == "keyword" {
-        opts.insert("keyword".into(), json!(get(row, &["keyword"]).and_then(Value::as_str).unwrap_or_default()));
+        opts.insert(
+            "keyword".into(),
+            json!(
+                get(row, &["keyword"])
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            ),
+        );
         if b(row, &["invert_keyword", "invertKeyword"]).unwrap_or(false) {
             opts.insert("keyword_invert".into(), json!(true));
         }
@@ -1111,7 +1474,9 @@ fn map_monitor(
             path = format!("$.{path}");
         }
         if serde_json_path::JsonPath::parse(&path).is_err() {
-            return Err(format!("Its JSONata query “{path}” has no JSONPath equivalent."));
+            return Err(format!(
+                "Its JSONata query “{path}” has no JSONPath equivalent."
+            ));
         }
         opts.insert("json_path".into(), json!(path));
         let op = s(row, &["json_path_operator", "jsonPathOperator"]).unwrap_or_else(|| "==".into());
@@ -1120,14 +1485,22 @@ fn map_monitor(
             other => other.to_string(),
         };
         opts.insert("json_operator".into(), json!(op));
-        opts.insert("json_expected".into(), json!(s(row, &["expected_value", "expectedValue"]).unwrap_or_default()));
+        opts.insert(
+            "json_expected".into(),
+            json!(s(row, &["expected_value", "expectedValue"]).unwrap_or_default()),
+        );
     }
     if our_type == "dns" {
         if let Some(rt) = s(row, &["dns_resolve_type", "dnsResolveType"]) {
             opts.insert("dns_record_type".into(), json!(rt.to_ascii_uppercase()));
         }
         if let Some(server) = s(row, &["dns_resolve_server", "dnsResolveServer"]) {
-            let server = server.split(',').next().unwrap_or_default().trim().to_string();
+            let server = server
+                .split(',')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string();
             let resolver = match port.filter(|p| *p != 53) {
                 Some(p) => host_port(&server, Some(p)),
                 None => server,
@@ -1157,7 +1530,9 @@ fn map_monitor(
     {
         opts.insert("docker_host".into(), json!(host));
     }
-    let push_token = (our_type == "push").then(|| s(row, &["push_token", "pushToken"])).flatten();
+    let push_token = (our_type == "push")
+        .then(|| s(row, &["push_token", "pushToken"]))
+        .flatten();
 
     Ok((
         MonitorDoc {
@@ -1207,18 +1582,31 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             if let Some(t) = i(c, &["telegramMessageThreadID"]) {
                 out.insert("message_thread_id".into(), json!(t));
             }
-            out.insert("silent".into(), json!(b(c, &["telegramSendSilently"]).unwrap_or(false)));
+            out.insert(
+                "silent".into(),
+                json!(b(c, &["telegramSendSilently"]).unwrap_or(false)),
+            );
             "telegram"
         }
         "webhook" => {
             put(&mut out, "url", s(c, &["webhookURL"]));
             let content = s(c, &["webhookContentType"]).unwrap_or_else(|| "json".into());
-            out.insert("content_type".into(), json!(if content == "form-data" { "form" } else { "json" }));
+            out.insert(
+                "content_type".into(),
+                json!(if content == "form-data" {
+                    "form"
+                } else {
+                    "json"
+                }),
+            );
             if content == "custom" {
                 put(&mut out, "body_template", s(c, &["webhookCustomBody"]));
-                warning = Some("its custom body uses Kuma’s template variables; check it.".to_string());
+                warning =
+                    Some("its custom body uses Kuma’s template variables; check it.".to_string());
             }
-            if let Some(Value::Object(h)) = s(c, &["webhookAdditionalHeaders"]).and_then(|h| serde_json::from_str(&h).ok()) {
+            if let Some(Value::Object(h)) =
+                s(c, &["webhookAdditionalHeaders"]).and_then(|h| serde_json::from_str(&h).ok())
+            {
                 out.insert("headers".into(), Value::Object(h));
             }
             "webhook"
@@ -1229,8 +1617,14 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
                 out.insert("port".into(), json!(p));
             }
             let secure = b(c, &["smtpSecure"]).unwrap_or(false);
-            out.insert("security".into(), json!(if secure { "tls" } else { "starttls" }));
-            out.insert("ignore_tls".into(), json!(b(c, &["smtpIgnoreTLSError"]).unwrap_or(false)));
+            out.insert(
+                "security".into(),
+                json!(if secure { "tls" } else { "starttls" }),
+            );
+            out.insert(
+                "ignore_tls".into(),
+                json!(b(c, &["smtpIgnoreTLSError"]).unwrap_or(false)),
+            );
             put(&mut out, "username", s(c, &["smtpUsername"]));
             put(&mut out, "password", raw(c, &["smtpPassword"]));
             put(&mut out, "from", s(c, &["smtpFrom"]));
@@ -1242,8 +1636,13 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         "ntfy" => {
             put(&mut out, "server", s(c, &["ntfyserverurl"]));
             put(&mut out, "topic", s(c, &["ntfytopic"]));
-            let priority = i(c, &["ntfyPriority"]).filter(|p| (1..=5).contains(p)).map(|p| p.to_string());
-            out.insert("priority".into(), json!(priority.unwrap_or_else(|| "auto".into())));
+            let priority = i(c, &["ntfyPriority"])
+                .filter(|p| (1..=5).contains(p))
+                .map(|p| p.to_string());
+            out.insert(
+                "priority".into(),
+                json!(priority.unwrap_or_else(|| "auto".into())),
+            );
             put(&mut out, "access_token", raw(c, &["ntfyaccesstoken"]));
             put(&mut out, "username", s(c, &["ntfyusername"]));
             put(&mut out, "password", raw(c, &["ntfypassword"]));
@@ -1270,7 +1669,10 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         }
         "teams" => {
             put(&mut out, "url", s(c, &["webhookUrl"]));
-            warning = Some("Teams now needs a Workflows webhook URL; old connector URLs stop working.".to_string());
+            warning = Some(
+                "Teams now needs a Workflows webhook URL; old connector URLs stop working."
+                    .to_string(),
+            );
             "teams"
         }
         "matrix" => {
@@ -1298,16 +1700,31 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             "googlechat"
         }
         "pagerduty" => {
-            put(&mut out, "routing_key", raw(c, &["pagerdutyIntegrationKey"]));
-            let severity = s(c, &["pagerdutyPriority"]).filter(|p| ["critical", "error", "warning", "info"].contains(&p.as_str()));
-            out.insert("severity".into(), json!(severity.unwrap_or_else(|| "critical".into())));
+            put(
+                &mut out,
+                "routing_key",
+                raw(c, &["pagerdutyIntegrationKey"]),
+            );
+            let severity = s(c, &["pagerdutyPriority"])
+                .filter(|p| ["critical", "error", "warning", "info"].contains(&p.as_str()));
+            out.insert(
+                "severity".into(),
+                json!(severity.unwrap_or_else(|| "critical".into())),
+            );
             let eu = s(c, &["pagerdutyIntegrationUrl"]).is_some_and(|u| u.contains(".eu."));
             out.insert("region".into(), json!(if eu { "eu" } else { "us" }));
             "pagerduty"
         }
         "opsgenie" => {
             put(&mut out, "api_key", raw(c, &["opsgenieApiKey"]));
-            out.insert("region".into(), json!(if s(c, &["opsgenieRegion"]).as_deref() == Some("eu") { "eu" } else { "us" }));
+            out.insert(
+                "region".into(),
+                json!(if s(c, &["opsgenieRegion"]).as_deref() == Some("eu") {
+                    "eu"
+                } else {
+                    "us"
+                }),
+            );
             let p = i(c, &["opsgeniePriority"]).unwrap_or(1).clamp(1, 5);
             out.insert("priority".into(), json!(format!("P{p}")));
             "opsgenie"
@@ -1324,13 +1741,21 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         }
         "apprise" => {
             put(&mut out, "urls", s(c, &["appriseURL"]));
-            warning = Some("Apprise here talks to an Apprise API server; add its URL to the channel.".to_string());
+            warning = Some(
+                "Apprise here talks to an Apprise API server; add its URL to the channel."
+                    .to_string(),
+            );
             "apprise"
         }
         "homeassistant" => {
             put(&mut out, "url", s(c, &["homeAssistantUrl"]));
             put(&mut out, "token", raw(c, &["longLivedAccessToken"]));
-            put(&mut out, "service", s(c, &["notificationService"]).map(|svc| svc.trim_start_matches("notify.").to_string()));
+            put(
+                &mut out,
+                "service",
+                s(c, &["notificationService"])
+                    .map(|svc| svc.trim_start_matches("notify.").to_string()),
+            );
             "homeassistant"
         }
         "bark" => {
@@ -1366,8 +1791,12 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         "threema" => {
             put(&mut out, "gateway_id", s(c, &["threemaSenderIdentity"]));
             put(&mut out, "secret", raw(c, &["threemaSecret"]));
-            let kind = s(c, &["threemaRecipientType"]).filter(|k| ["identity", "phone", "email"].contains(&k.as_str()));
-            out.insert("recipient_type".into(), json!(kind.unwrap_or_else(|| "identity".into())));
+            let kind = s(c, &["threemaRecipientType"])
+                .filter(|k| ["identity", "phone", "email"].contains(&k.as_str()));
+            out.insert(
+                "recipient_type".into(),
+                json!(kind.unwrap_or_else(|| "identity".into())),
+            );
             put(&mut out, "recipient", s(c, &["threemaRecipient"]));
             "threema"
         }
@@ -1414,15 +1843,27 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         "splunk" => {
             // Kuma keeps the whole REST endpoint: …/alert/<api key>/<routing key>.
             let endpoint = s(c, &["splunkRestURL"]).unwrap_or_default();
-            let tail = endpoint.split_once("/alert/").map(|(_, t)| t.trim_matches('/')).unwrap_or_default();
+            let tail = endpoint
+                .split_once("/alert/")
+                .map(|(_, t)| t.trim_matches('/'))
+                .unwrap_or_default();
             match tail.split_once('/') {
-                Some((api_key, routing)) if !api_key.is_empty() && !routing.is_empty() && !routing.contains('/') => {
+                Some((api_key, routing))
+                    if !api_key.is_empty() && !routing.is_empty() && !routing.contains('/') =>
+                {
                     put(&mut out, "api_key", Some(api_key.to_string()));
                     put(&mut out, "routing_key", Some(routing.to_string()));
                 }
-                _ => return Err("Its REST endpoint isn’t the usual …/alert/<api key>/<routing key> address.".into()),
+                _ => return Err(
+                    "Its REST endpoint isn’t the usual …/alert/<api key>/<routing key> address."
+                        .into(),
+                ),
             }
-            let severity = if s(c, &["splunkSeverity"]).as_deref() == Some("CRITICAL") { "CRITICAL" } else { "WARNING" };
+            let severity = if s(c, &["splunkSeverity"]).as_deref() == Some("CRITICAL") {
+                "CRITICAL"
+            } else {
+                "WARNING"
+            };
             out.insert("severity".into(), json!(severity));
             "splunk_oncall"
         }
@@ -1466,14 +1907,22 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
         }
         "gorush" => {
             put(&mut out, "server", s(c, &["gorushServerURL"]));
-            let platform = s(c, &["gorushPlatform"]).filter(|p| ["ios", "android", "huawei"].contains(&p.as_str()));
-            out.insert("platform".into(), json!(platform.unwrap_or_else(|| "android".into())));
+            let platform = s(c, &["gorushPlatform"])
+                .filter(|p| ["ios", "android", "huawei"].contains(&p.as_str()));
+            out.insert(
+                "platform".into(),
+                json!(platform.unwrap_or_else(|| "android".into())),
+            );
             put(&mut out, "tokens", s(c, &["gorushDeviceToken"]));
             put(&mut out, "topic", s(c, &["gorushTopic"]));
             "gorush"
         }
         "" => return Err("It has no provider type.".into()),
-        other => return Err(format!("The “{other}” provider isn’t supported; Apprise or a webhook can usually reach it.")),
+        other => {
+            return Err(format!(
+                "The “{other}” provider isn’t supported; Apprise or a webhook can usually reach it."
+            ));
+        }
     };
     Ok((ours, out, warning))
 }
@@ -1486,7 +1935,9 @@ fn kuma_time(row: &Row, keys: &[&str]) -> Option<String> {
             let m = o.get("minutes").and_then(Value::as_i64).unwrap_or(0);
             Some(format!("{h:02}:{m:02}"))
         }
-        Value::String(t) => crate::maintenance::parse_hhmm(&t).map(|t| t.strftime("%H:%M").to_string()),
+        Value::String(t) => {
+            crate::maintenance::parse_hhmm(&t).map(|t| t.strftime("%H:%M").to_string())
+        }
         _ => None,
     }
 }
@@ -1499,7 +1950,9 @@ fn kuma_date_to_utc(text: &str, tz: &jiff::tz::TimeZone) -> Option<String> {
 
 fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
     let strategy_raw = s(row, &["strategy"]).unwrap_or_else(|| "manual".into());
-    let tz_name = s(row, &["timezone"]).filter(|t| t != "SAME_AS_SERVER" && jiff::tz::TimeZone::get(t).is_ok()).unwrap_or_else(|| "UTC".into());
+    let tz_name = s(row, &["timezone"])
+        .filter(|t| t != "SAME_AS_SERVER" && jiff::tz::TimeZone::get(t).is_ok())
+        .unwrap_or_else(|| "UTC".into());
     let tz = jiff::tz::TimeZone::get(&tz_name).unwrap_or(jiff::tz::TimeZone::UTC);
     let start = s(row, &["start_date"]).and_then(|d| kuma_date_to_utc(&d, &tz));
     let end = s(row, &["end_date"]).and_then(|d| kuma_date_to_utc(&d, &tz));
@@ -1533,7 +1986,10 @@ fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
         }
         "recurring-weekday" | "recurring-interval" | "recurring-day-of-month" => {
             let interval = i(row, &["interval_day"]).unwrap_or(1);
-            let (from, to) = (kuma_time(row, &["start_time"]), kuma_time(row, &["end_time"]));
+            let (from, to) = (
+                kuma_time(row, &["start_time"]),
+                kuma_time(row, &["end_time"]),
+            );
             let (Some(from), Some(to)) = (from, to) else {
                 return Err("Its start and end times couldn’t be read.".into());
             };
@@ -1580,7 +2036,9 @@ fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
                                     .and_then(|n| n.parse::<i64>().ok())
                                     .filter(|n| (1..=4).contains(n))
                                     .map(|n| -n)
-                                    .or_else(|| t.parse::<i64>().ok().filter(|n| (1..=31).contains(n))),
+                                    .or_else(|| {
+                                        t.parse::<i64>().ok().filter(|n| (1..=31).contains(n))
+                                    }),
                                 _ => None,
                             })
                             .map(|d| d.to_string())
@@ -1598,7 +2056,9 @@ fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
         "cron" => {
             let expression = s(row, &["cron"]).unwrap_or_default();
             if let Err(reason) = crate::maintenance::CronSpec::parse(&expression) {
-                return Err(format!("Its cron expression “{expression}” isn’t supported: {reason}"));
+                return Err(format!(
+                    "Its cron expression “{expression}” isn’t supported: {reason}"
+                ));
             }
             let minutes = i(row, &["duration"]).unwrap_or(60);
             if !(1..=crate::maintenance::MAX_DURATION_MINUTES).contains(&minutes) {
@@ -1631,9 +2091,15 @@ pub fn plan(conn: &Connection, import: &mut KumaImport) -> rusqlite::Result<Plan
         let mut removed = false;
         // Referenced objects first: dropping a bad channel or tag also drops the
         // references to it, which may be the only problem its monitors have.
-        let referenced = |k: &str| k == config_io::KIND_CHANNEL || k == config_io::KIND_TAG || k == config_io::KIND_BROWSER;
+        let referenced = |k: &str| {
+            k == config_io::KIND_CHANNEL || k == config_io::KIND_TAG || k == config_io::KIND_BROWSER
+        };
         let first_round = plan.errors.iter().any(|e| referenced(&e.kind));
-        for e in plan.errors.iter().filter(|e| !first_round || referenced(&e.kind)) {
+        for e in plan
+            .errors
+            .iter()
+            .filter(|e| !first_round || referenced(&e.kind))
+        {
             let reason = match &e.field {
                 Some(field) => format!("{} ({field})", e.message),
                 None => e.message.clone(),
@@ -1673,7 +2139,11 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
                 w.monitors.retain(|k| !eq(k));
             }
             if removed {
-                import.skipped.push(Skipped { kind: "monitor".into(), name: key.into(), reason: reason.into() });
+                import.skipped.push(Skipped {
+                    kind: "monitor".into(),
+                    name: key.into(),
+                    reason: reason.into(),
+                });
             }
         }
         config_io::KIND_CHANNEL => {
@@ -1688,7 +2158,11 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
                 }
             }
             if removed {
-                import.skipped.push(Skipped { kind: "notification".into(), name: key.into(), reason: reason.into() });
+                import.skipped.push(Skipped {
+                    kind: "notification".into(),
+                    name: key.into(),
+                    reason: reason.into(),
+                });
             }
         }
         config_io::KIND_BROWSER => {
@@ -1698,12 +2172,20 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
                 removed = list.len() != before;
             }
             for m in doc.monitors.iter_mut().flatten() {
-                if m.options.get("remote_browser").and_then(Value::as_str).is_some_and(eq) {
+                if m.options
+                    .get("remote_browser")
+                    .and_then(Value::as_str)
+                    .is_some_and(eq)
+                {
                     m.options.remove("remote_browser");
                 }
             }
             if removed {
-                import.skipped.push(Skipped { kind: "remote_browser".into(), name: key.into(), reason: reason.into() });
+                import.skipped.push(Skipped {
+                    kind: "remote_browser".into(),
+                    name: key.into(),
+                    reason: reason.into(),
+                });
             }
         }
         config_io::KIND_TAG => {
@@ -1718,7 +2200,11 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
                 }
             }
             if removed {
-                import.skipped.push(Skipped { kind: "tag".into(), name: key.into(), reason: reason.into() });
+                import.skipped.push(Skipped {
+                    kind: "tag".into(),
+                    name: key.into(),
+                    reason: reason.into(),
+                });
             }
         }
         config_io::KIND_PAGE => {
@@ -1731,7 +2217,11 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
                 w.status_pages.retain(|s| !eq(s));
             }
             if removed {
-                import.skipped.push(Skipped { kind: "status_page".into(), name: key.into(), reason: reason.into() });
+                import.skipped.push(Skipped {
+                    kind: "status_page".into(),
+                    name: key.into(),
+                    reason: reason.into(),
+                });
             }
         }
         config_io::KIND_MAINTENANCE => {
@@ -1741,7 +2231,11 @@ fn remove(import: &mut KumaImport, kind: &str, key: &str, reason: &str) -> bool 
                 removed = list.len() != before;
             }
             if removed {
-                import.skipped.push(Skipped { kind: "maintenance".into(), name: key.into(), reason: reason.into() });
+                import.skipped.push(Skipped {
+                    kind: "maintenance".into(),
+                    name: key.into(),
+                    reason: reason.into(),
+                });
             }
         }
         _ => {}
@@ -1753,10 +2247,10 @@ mod gamedig;
 mod grpc;
 
 #[cfg(test)]
-mod tests;
+mod browser_tests;
 #[cfg(test)]
 mod notification_tests;
 #[cfg(test)]
-mod browser_tests;
-#[cfg(test)]
 mod snmp_tailscale_tests;
+#[cfg(test)]
+mod tests;

@@ -24,7 +24,9 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
         Field::text("username", "Bot name")
             .placeholder("Vigilant Vole…")
             .help("Overrides the webhook’s name."),
-        Field::url("avatar_url", "Avatar URL").cosmetic().placeholder("https://example.com/avatar.png…"),
+        Field::url("avatar_url", "Avatar URL")
+            .cosmetic()
+            .placeholder("https://example.com/avatar.png…"),
         Field::text("thread_id", "Thread ID")
             .placeholder("123456789012345678…")
             .help("Post into a thread or forum post."),
@@ -36,10 +38,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 fn check(config: &Value) -> Vec<FieldError> {
     match opt(config, "url") {
         Some(u) if !u.contains("/api/webhooks/") => {
-            vec![field_error(
-                "url",
-                crate::i18n::t("notif.err_discord"),
-            )]
+            vec![field_error("url", crate::i18n::t("notif.err_discord"))]
         }
         _ => Vec::new(),
     }

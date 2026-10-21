@@ -68,7 +68,11 @@ fn rate_limited(instance: usize, token_id: i64, now: Instant) -> Option<Duration
         *entry = (now, 0);
     }
     entry.1 += 1;
-    (entry.1 > RATE_LIMIT).then(|| RATE_WINDOW.saturating_sub(now.duration_since(entry.0)).max(Duration::from_secs(1)))
+    (entry.1 > RATE_LIMIT).then(|| {
+        RATE_WINDOW
+            .saturating_sub(now.duration_since(entry.0))
+            .max(Duration::from_secs(1))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -86,13 +90,20 @@ async fn not_offered() -> Response {
 
 fn http_error(status: StatusCode, message: &str) -> Response {
     let body = json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32000, "message": message}});
-    (status, [(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
+    (
+        status,
+        [(header::CACHE_CONTROL, "no-store")],
+        axum::Json(body),
+    )
+        .into_response()
 }
 
 fn unauthorized(message: &str) -> Response {
     let mut resp = http_error(StatusCode::UNAUTHORIZED, message);
-    resp.headers_mut()
-        .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer realm=\"Vigilant Vole\""));
+    resp.headers_mut().insert(
+        header::WWW_AUTHENTICATE,
+        HeaderValue::from_static("Bearer realm=\"Vigilant Vole\""),
+    );
     resp
 }
 
@@ -109,7 +120,12 @@ async fn handle(State(state): State<AppState>, headers: HeaderMap, body: Bytes) 
     // DNS-rebinding protection: a browser page from another origin must not
     // be able to drive this endpoint. Non-browser clients send no Origin.
     let base_url = state.settings().await.ok().and_then(|s| s.base_url);
-    if csrf::source_is_ours(&headers, crate::auth::session::trust_proxy(), base_url.as_deref()) == Some(false) {
+    if csrf::source_is_ours(
+        &headers,
+        crate::auth::session::trust_proxy(),
+        base_url.as_deref(),
+    ) == Some(false)
+    {
         return http_error(StatusCode::FORBIDDEN, "This Origin is not allowed.");
     }
 
@@ -129,7 +145,12 @@ async fn handle(State(state): State<AppState>, headers: HeaderMap, body: Bytes) 
     let (user, method) = match crate::api::auth::authenticate_token_detailed(&state, &token).await {
         Ok(Some(found)) => found,
         Ok(None) => return unauthorized("The API token is not valid (wrong, expired or revoked)."),
-        Err(_) => return http_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not check the token."),
+        Err(_) => {
+            return http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Could not check the token.",
+            );
+        }
     };
     let (token_id, scope) = match method {
         AuthMethod::Token { token_id, scope } => (token_id, scope),
@@ -137,17 +158,25 @@ async fn handle(State(state): State<AppState>, headers: HeaderMap, body: Bytes) 
     };
     let instance = std::sync::Arc::as_ptr(&state.config) as usize;
     if let Some(wait) = rate_limited(instance, token_id, Instant::now()) {
-        let mut resp = http_error(StatusCode::TOO_MANY_REQUESTS, "Too many requests for this token; slow down.");
+        let mut resp = http_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many requests for this token; slow down.",
+        );
         if let Ok(v) = HeaderValue::from_str(&wait.as_secs().max(1).to_string()) {
             resp.headers_mut().insert(header::RETRY_AFTER, v);
         }
         return resp;
     }
 
-    if let Some(v) = headers.get("mcp-protocol-version").and_then(|v| v.to_str().ok())
+    if let Some(v) = headers
+        .get("mcp-protocol-version")
+        .and_then(|v| v.to_str().ok())
         && !PROTOCOL_VERSIONS.contains(&v)
     {
-        return http_error(StatusCode::BAD_REQUEST, &format!("Unsupported MCP-Protocol-Version {v}."));
+        return http_error(
+            StatusCode::BAD_REQUEST,
+            &format!("Unsupported MCP-Protocol-Version {v}."),
+        );
     }
 
     let caller = Caller {
@@ -159,7 +188,13 @@ async fn handle(State(state): State<AppState>, headers: HeaderMap, body: Bytes) 
 
     let message: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
-        Err(_) => return json_response(rpc_error(Value::Null, -32700, "Parse error: the body is not JSON.")),
+        Err(_) => {
+            return json_response(rpc_error(
+                Value::Null,
+                -32700,
+                "Parse error: the body is not JSON.",
+            ));
+        }
     };
     match message {
         Value::Array(items) => {
@@ -173,7 +208,11 @@ async fn handle(State(state): State<AppState>, headers: HeaderMap, body: Bytes) 
                     out.push(reply);
                 }
             }
-            if out.is_empty() { accepted() } else { json_response(Value::Array(out)) }
+            if out.is_empty() {
+                accepted()
+            } else {
+                json_response(Value::Array(out))
+            }
         }
         single => match process(&ctx, single).await {
             Some(reply) => json_response(reply),
@@ -187,7 +226,12 @@ fn accepted() -> Response {
 }
 
 fn json_response(value: Value) -> Response {
-    (StatusCode::OK, [(header::CACHE_CONTROL, "no-store")], axum::Json(value)).into_response()
+    (
+        StatusCode::OK,
+        [(header::CACHE_CONTROL, "no-store")],
+        axum::Json(value),
+    )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +249,11 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Value {
 /// Handles one message. `None` for notifications and client responses.
 async fn process(ctx: &tools::Ctx, message: Value) -> Option<Value> {
     let Value::Object(obj) = message else {
-        return Some(rpc_error(Value::Null, -32600, "Invalid request: expected a JSON object."));
+        return Some(rpc_error(
+            Value::Null,
+            -32600,
+            "Invalid request: expected a JSON object.",
+        ));
     };
     let id = obj.get("id").cloned();
     let method = obj.get("method").and_then(Value::as_str);
@@ -214,15 +262,25 @@ async fn process(ctx: &tools::Ctx, message: Value) -> Option<Value> {
         return None;
     }
     let Some(method) = method else {
-        return Some(rpc_error(id.unwrap_or(Value::Null), -32600, "Invalid request: no method."));
+        return Some(rpc_error(
+            id.unwrap_or(Value::Null),
+            -32600,
+            "Invalid request: no method.",
+        ));
     };
     if obj.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-        return Some(rpc_error(id.unwrap_or(Value::Null), -32600, "Invalid request: jsonrpc must be \"2.0\"."));
+        return Some(rpc_error(
+            id.unwrap_or(Value::Null),
+            -32600,
+            "Invalid request: jsonrpc must be \"2.0\".",
+        ));
     }
     let params = match obj.get("params") {
         None | Some(Value::Null) => Map::new(),
         Some(Value::Object(p)) => p.clone(),
-        Some(_) => return id.map(|id| rpc_error(id, -32602, "Invalid params: expected an object.")),
+        Some(_) => {
+            return id.map(|id| rpc_error(id, -32602, "Invalid params: expected an object."));
+        }
     };
     // Notifications carry no id and get no reply.
     let id = id.filter(|id| !id.is_null())?;
@@ -247,7 +305,12 @@ async fn dispatch(ctx: &tools::Ctx, method: &str, params: &Map<String, Value>) -
             let args = match params.get("arguments") {
                 None | Some(Value::Null) => Map::new(),
                 Some(Value::Object(a)) => a.clone(),
-                Some(_) => return Err((-32602, "Invalid params: `arguments` must be an object.".into())),
+                Some(_) => {
+                    return Err((
+                        -32602,
+                        "Invalid params: `arguments` must be an object.".into(),
+                    ));
+                }
             };
             tools::call(ctx, name, args).await
         }
@@ -265,8 +328,14 @@ async fn dispatch(ctx: &tools::Ctx, method: &str, params: &Map<String, Value>) -
 }
 
 fn initialize(ctx: &tools::Ctx, params: &Map<String, Value>) -> Value {
-    let wanted = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
-    let version = PROTOCOL_VERSIONS.iter().find(|v| **v == wanted).unwrap_or(&PROTOCOL_VERSIONS[0]);
+    let wanted = params
+        .get("protocolVersion")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let version = PROTOCOL_VERSIONS
+        .iter()
+        .find(|v| **v == wanted)
+        .unwrap_or(&PROTOCOL_VERSIONS[0]);
     let mode = if ctx.can_write() {
         "This token can also change things (pause monitors, post incidents, edit monitors); it acts with the rights of its owner."
     } else {

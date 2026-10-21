@@ -42,8 +42,23 @@ pub struct RouteDoc {
     pub response: &'static str,
 }
 
-const fn r(method: &'static str, path: &'static str, access: &'static str, group: &'static str, summary: &'static str) -> RouteDoc {
-    RouteDoc { method, path, access, group, summary, query: &[], request: "", response: "" }
+const fn r(
+    method: &'static str,
+    path: &'static str,
+    access: &'static str,
+    group: &'static str,
+    summary: &'static str,
+) -> RouteDoc {
+    RouteDoc {
+        method,
+        path,
+        access,
+        group,
+        summary,
+        query: &[],
+        request: "",
+        response: "",
+    }
 }
 
 impl RouteDoc {
@@ -87,7 +102,15 @@ impl RouteDoc {
     pub fn success_status(&self) -> u16 {
         match self.method {
             "DELETE" => 204,
-            "POST" if self.path.starts_with("/api/v1/") && !self.is_yaml() && ROUTES.iter().any(|r| r.method == "GET" && r.path == self.path) => 201,
+            "POST"
+                if self.path.starts_with("/api/v1/")
+                    && !self.is_yaml()
+                    && ROUTES
+                        .iter()
+                        .any(|r| r.method == "GET" && r.path == self.path) =>
+            {
+                201
+            }
             _ => 200,
         }
     }
@@ -354,15 +377,31 @@ struct DocsTemplate {
 /// This instance's address: the configured base URL, else the request's host.
 fn instance_url(base_url: Option<String>, headers: &HeaderMap) -> String {
     base_url.unwrap_or_else(|| {
-        let host = headers.get(axum::http::header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("localhost:3001");
+        let host = headers
+            .get(axum::http::header::HOST)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("localhost:3001");
         format!("http://{host}")
     })
 }
 
-async fn page(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, headers: HeaderMap) -> ApiResult<Response> {
+async fn page(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let settings = state.settings().await?;
     let base_url = instance_url(settings.base_url.clone(), &headers);
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("docs.title"), "", "").await;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("docs.title"),
+        "",
+        "",
+    )
+    .await;
     let groups = groups()
         .into_iter()
         .map(|g| GroupView {
@@ -372,17 +411,32 @@ async fn page(State(state): State<AppState>, user: CurrentUser, jar: SignedCooki
             routes: ROUTES.iter().filter(|r| r.group == g).copied().collect(),
         })
         .collect();
-    Ok((jar, HtmlTemplate(DocsTemplate { ctx, groups, base_url, error_example: ERROR_EXAMPLE })).into_response())
+    Ok((
+        jar,
+        HtmlTemplate(DocsTemplate {
+            ctx,
+            groups,
+            base_url,
+            error_example: ERROR_EXAMPLE,
+        }),
+    )
+        .into_response())
 }
 
 /// `{id}` style path parameters.
 fn path_params(path: &str) -> Vec<&str> {
-    path.split('/').filter_map(|seg| seg.strip_prefix('{').and_then(|s| s.strip_suffix('}'))).collect()
+    path.split('/')
+        .filter_map(|seg| seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')))
+        .collect()
 }
 
 /// JSON Schema type of a path parameter.
 fn path_param_type(name: &str) -> &'static str {
-    if matches!(name, "kind" | "token" | "slug") { "string" } else { "integer" }
+    if matches!(name, "kind" | "token" | "slug") {
+        "string"
+    } else {
+        "integer"
+    }
 }
 
 fn example(text: &str) -> Value {
@@ -417,25 +471,44 @@ pub fn openapi_document(server_url: &str) -> Value {
             } else {
                 json!({"application/json": {"schema": {}, "example": example(r.request)}})
             };
-            op.insert("requestBody".into(), json!({"required": true, "content": content}));
+            op.insert(
+                "requestBody".into(),
+                json!({"required": true, "content": content}),
+            );
         }
         let ok_code = r.success_status().to_string();
         let mut ok = json!({"description": "Success"});
         if !r.response.is_empty() {
-            let ct = if r.is_yaml() && r.method == "GET" { "application/yaml" } else { "application/json" };
+            let ct = if r.is_yaml() && r.method == "GET" {
+                "application/yaml"
+            } else {
+                "application/json"
+            };
             ok["content"] = json!({ ct: {"example": example(r.response)} });
         }
         let mut responses = Map::new();
         responses.insert(ok_code, ok);
         if !r.is_public() {
-            responses.insert("401".into(), json!({"$ref": "#/components/responses/Error"}));
-            responses.insert("403".into(), json!({"$ref": "#/components/responses/Error"}));
+            responses.insert(
+                "401".into(),
+                json!({"$ref": "#/components/responses/Error"}),
+            );
+            responses.insert(
+                "403".into(),
+                json!({"$ref": "#/components/responses/Error"}),
+            );
         }
         if r.path.contains('{') {
-            responses.insert("404".into(), json!({"$ref": "#/components/responses/Error"}));
+            responses.insert(
+                "404".into(),
+                json!({"$ref": "#/components/responses/Error"}),
+            );
         }
         if matches!(r.method, "POST" | "PUT" | "PATCH") {
-            responses.insert("422".into(), json!({"$ref": "#/components/responses/Error"}));
+            responses.insert(
+                "422".into(),
+                json!({"$ref": "#/components/responses/Error"}),
+            );
         }
         op.insert("responses".into(), Value::Object(responses));
         let security = match r.access {
@@ -476,8 +549,16 @@ pub fn openapi_document(server_url: &str) -> Value {
     })
 }
 
-async fn openapi(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> ApiResult<Response> {
-    let server = state.settings().await?.base_url.unwrap_or_else(|| "/".into());
+async fn openapi(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    let server = state
+        .settings()
+        .await?
+        .base_url
+        .unwrap_or_else(|| "/".into());
     Ok(json_ok(&headers, &openapi_document(&server)))
 }
 
@@ -487,13 +568,29 @@ pub fn reference_markdown(base_url: &str) -> String {
 }
 
 /// The reference as Markdown, for AI assistants.
-async fn markdown_doc(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> ApiResult<Response> {
+async fn markdown_doc(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let base_url = instance_url(state.settings().await?.base_url, &headers);
-    Ok(cached_ok(&headers, markdown::document(&base_url).into_bytes(), "text/markdown; charset=utf-8"))
+    Ok(cached_ok(
+        &headers,
+        markdown::document(&base_url).into_bytes(),
+        "text/markdown; charset=utf-8",
+    ))
 }
 
 /// The same document at the conventional `llms.txt` address.
-async fn llms_txt(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> ApiResult<Response> {
+async fn llms_txt(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let base_url = instance_url(state.settings().await?.base_url, &headers);
-    Ok(cached_ok(&headers, markdown::document(&base_url).into_bytes(), "text/plain; charset=utf-8"))
+    Ok(cached_ok(
+        &headers,
+        markdown::document(&base_url).into_bytes(),
+        "text/plain; charset=utf-8",
+    ))
 }

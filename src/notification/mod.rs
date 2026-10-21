@@ -11,7 +11,6 @@
 //! Errors returned by [`send`] are safe to log and show: they never contain
 //! the request URL or any secret from the channel config.
 
-
 pub mod apis;
 pub mod apprise;
 pub mod bark;
@@ -39,9 +38,9 @@ pub mod signal;
 pub mod slack;
 pub mod teams;
 pub mod telegram;
+pub mod threema;
 pub mod twilio;
 pub mod webex;
-pub mod threema;
 pub mod webhook;
 pub mod whatsapp;
 pub mod zulip;

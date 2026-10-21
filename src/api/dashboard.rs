@@ -50,7 +50,13 @@ pub enum Sort {
 }
 
 impl Sort {
-    pub const ALL: [Sort; 5] = [Sort::Status, Sort::Name, Sort::Uptime, Sort::Response, Sort::Newest];
+    pub const ALL: [Sort; 5] = [
+        Sort::Status,
+        Sort::Name,
+        Sort::Uptime,
+        Sort::Response,
+        Sort::Newest,
+    ];
 
     pub fn parse(s: &str) -> Self {
         match s {
@@ -138,7 +144,10 @@ impl DashQuery {
 
     /// Search or any filter active → flat result list instead of groups.
     pub fn is_filtered(&self) -> bool {
-        !self.q.trim().is_empty() || !self.status.is_empty() || !self.kind.is_empty() || self.tag.is_some()
+        !self.q.trim().is_empty()
+            || !self.status.is_empty()
+            || !self.kind.is_empty()
+            || self.tag.is_some()
     }
 
     /// Query string (without `?`) for this state; empty values are left out.
@@ -172,7 +181,11 @@ impl DashQuery {
     /// `/` plus the query string.
     pub fn href(&self) -> String {
         let qs = self.to_query_string();
-        if qs.is_empty() { "/".into() } else { format!("/?{qs}") }
+        if qs.is_empty() {
+            "/".into()
+        } else {
+            format!("/?{qs}")
+        }
     }
 
     fn with_toggled(&self, group_id: i64) -> Self {
@@ -331,10 +344,20 @@ pub const ROW_TAGS: usize = 3;
 
 fn make_row(m: &MonitorWithStatus, mut tags: Vec<MonitorTag>, group_name: String) -> Row {
     let tag_ids = tags.iter().map(|t| t.tag_id).collect();
-    let hidden: Vec<MonitorTag> = if tags.len() > ROW_TAGS { tags.split_off(ROW_TAGS) } else { Vec::new() };
+    let hidden: Vec<MonitorTag> = if tags.len() > ROW_TAGS {
+        tags.split_off(ROW_TAGS)
+    } else {
+        Vec::new()
+    };
     let more_tags_tip = hidden
         .iter()
-        .map(|t| if t.value.is_empty() { t.name.clone() } else { format!("{}: {}", t.name, t.value) })
+        .map(|t| {
+            if t.value.is_empty() {
+                t.name.clone()
+            } else {
+                format!("{}: {}", t.name, t.value)
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ");
     let status = status_key(m);
@@ -384,7 +407,11 @@ fn sort_rows(rows: &mut [Row], sort: Sort) {
                 .cmp(&a.response_ms.unwrap_or(-1))
                 .then_with(|| name(a).cmp(&name(b)))
         }),
-        Sort::Newest => rows.sort_by(|a, b| b.created_at.cmp(&a.created_at).then_with(|| b.id.cmp(&a.id))),
+        Sort::Newest => rows.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| b.id.cmp(&a.id))
+        }),
     }
 }
 
@@ -408,7 +435,8 @@ pub fn build_dashboard(
     query: &DashQuery,
     can_edit: bool,
 ) -> DashboardData {
-    let by_id: HashMap<i64, &MonitorWithStatus> = monitors.iter().map(|m| (m.monitor.id, m)).collect();
+    let by_id: HashMap<i64, &MonitorWithStatus> =
+        monitors.iter().map(|m| (m.monitor.id, m)).collect();
     let group_name = |id: Option<i64>| -> String {
         id.and_then(|id| by_id.get(&id))
             .filter(|g| g.monitor.monitor_type == MonitorType::Group)
@@ -417,7 +445,10 @@ pub fn build_dashboard(
     };
 
     let mut counts = Counts::default();
-    for m in monitors.iter().filter(|m| m.monitor.monitor_type != MonitorType::Group) {
+    for m in monitors
+        .iter()
+        .filter(|m| m.monitor.monitor_type != MonitorType::Group)
+    {
         counts.total += 1;
         match status_key(m) {
             "up" => counts.up += 1,
@@ -470,7 +501,10 @@ pub fn build_dashboard(
             .into_iter()
             .filter(|r| query.status.is_empty() || r.status == query.status)
             .filter(|r| {
-                query.kind.is_empty() || by_id.get(&r.id).is_some_and(|m| m.monitor.monitor_type.as_str() == query.kind)
+                query.kind.is_empty()
+                    || by_id
+                        .get(&r.id)
+                        .is_some_and(|m| m.monitor.monitor_type.as_str() == query.kind)
             })
             .filter(|r| query.tag.is_none_or(|tag| r.tag_ids.contains(&tag)))
             .filter(|r| matches_search(r, &needle))
@@ -494,7 +528,9 @@ pub fn build_dashboard(
     let mut children: HashMap<i64, Vec<Row>> = HashMap::new();
     let mut group_rows: Vec<Row> = Vec::new();
     for row in rows {
-        let Some(m) = by_id.get(&row.id) else { continue };
+        let Some(m) = by_id.get(&row.id) else {
+            continue;
+        };
         if !m.monitor.active {
             paused.push(row);
             continue;
@@ -538,7 +574,10 @@ pub fn build_dashboard(
             (n, 0) => crate::i18n::tn("count.monitors", n as i64),
             (n, p) => crate::i18n::tf(
                 "dashboard.group_down_summary",
-                &[("monitors", &crate::i18n::tn("count.monitors", n as i64)), ("n", &p.to_string())],
+                &[
+                    ("monitors", &crate::i18n::tn("count.monitors", n as i64)),
+                    ("n", &p.to_string()),
+                ],
             ),
         };
         let collapsed = data.query.collapsed.contains(&g.id);
@@ -565,9 +604,18 @@ pub fn build_dashboard(
 }
 
 /// Loads everything for the dashboard (also used by the SSE stream).
-pub async fn load_dashboard_data(state: &AppState, query: &DashQuery, can_edit: bool) -> ApiResult<DashboardData> {
+pub async fn load_dashboard_data(
+    state: &AppState,
+    query: &DashQuery,
+    can_edit: bool,
+) -> ApiResult<DashboardData> {
     let (monitors, tags) = state
-        .with_conn(|c| Ok((db_monitors::list_monitors_with_status(c)?, db_tags::tags_by_monitor(c)?)))
+        .with_conn(|c| {
+            Ok((
+                db_monitors::list_monitors_with_status(c)?,
+                db_tags::tags_by_monitor(c)?,
+            ))
+        })
         .await?;
     Ok(build_dashboard(&monitors, tags, query, can_edit))
 }
@@ -625,7 +673,11 @@ async fn dashboard(
     }
     let tags = state.with_conn(|c| db_tags::list_tags(c)).await?;
     let bulk = if data.select_mode {
-        Some(state.with_conn(|c| super::monitors::load_bulk_sheet(c)).await?)
+        Some(
+            state
+                .with_conn(|c| super::monitors::load_bulk_sheet(c))
+                .await?,
+        )
     } else {
         None
     };
@@ -646,7 +698,15 @@ async fn dashboard(
         types: present.iter().map(|t| (t.as_str(), t.label())).collect(),
         tags,
     };
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("dashboard.page_title"), "dashboard", "").await;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("dashboard.page_title"),
+        "dashboard",
+        "",
+    )
+    .await;
     Ok((
         jar,
         HtmlTemplate(DashboardTemplate {
@@ -666,7 +726,13 @@ mod tests {
     use super::*;
     use crate::db::models::{Monitor, NewMonitor};
 
-    fn monitor(id: i64, name: &str, kind: MonitorType, parent: Option<i64>, active: bool) -> Monitor {
+    fn monitor(
+        id: i64,
+        name: &str,
+        kind: MonitorType,
+        parent: Option<i64>,
+        active: bool,
+    ) -> Monitor {
         let n = NewMonitor {
             name: name.into(),
             monitor_type: kind,
@@ -695,21 +761,50 @@ mod tests {
     fn fixture() -> Vec<MonitorWithStatus> {
         use HeartbeatStatus::*;
         vec![
-            row(monitor(1, "Prod", MonitorType::Group, None, true), Some(Down), None),
-            row(monitor(2, "api", MonitorType::Http, Some(1), true), Some(Down), Some(50.0)),
-            row(monitor(3, "Web", MonitorType::Http, Some(1), true), Some(Up), Some(100.0)),
+            row(
+                monitor(1, "Prod", MonitorType::Group, None, true),
+                Some(Down),
+                None,
+            ),
+            row(
+                monitor(2, "api", MonitorType::Http, Some(1), true),
+                Some(Down),
+                Some(50.0),
+            ),
+            row(
+                monitor(3, "Web", MonitorType::Http, Some(1), true),
+                Some(Up),
+                Some(100.0),
+            ),
             row(monitor(4, "db", MonitorType::Tcp, None, true), None, None),
-            row(monitor(5, "Old", MonitorType::Ping, None, false), Some(Up), None),
-            row(monitor(6, "Sub", MonitorType::Group, Some(1), true), Some(Up), None),
-            row(monitor(7, "cache", MonitorType::Tcp, Some(6), true), Some(Maintenance), None),
+            row(
+                monitor(5, "Old", MonitorType::Ping, None, false),
+                Some(Up),
+                None,
+            ),
+            row(
+                monitor(6, "Sub", MonitorType::Group, Some(1), true),
+                Some(Up),
+                None,
+            ),
+            row(
+                monitor(7, "cache", MonitorType::Tcp, Some(6), true),
+                Some(Maintenance),
+                None,
+            ),
         ]
     }
 
     #[test]
     fn query_parses_and_round_trips() {
-        let q = DashQuery::parse(Some("q=+api+&status=down&type=http&tag=3&sort=uptime&collapsed=4,2&collapsed=4&select=1&junk=x"));
+        let q = DashQuery::parse(Some(
+            "q=+api+&status=down&type=http&tag=3&sort=uptime&collapsed=4,2&collapsed=4&select=1&junk=x",
+        ));
         assert_eq!(q.q, "api");
-        assert_eq!((q.status.as_str(), q.kind.as_str(), q.tag), ("down", "http", Some(3)));
+        assert_eq!(
+            (q.status.as_str(), q.kind.as_str(), q.tag),
+            ("down", "http", Some(3))
+        );
         assert_eq!(q.sort, Sort::Uptime);
         assert_eq!(q.collapsed, vec![2, 4]);
         assert!(q.select && q.is_filtered());
@@ -736,10 +831,16 @@ mod tests {
             }
         );
         assert_eq!(data.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![4]);
-        assert_eq!(data.paused.iter().map(|r| r.id).collect::<Vec<_>>(), vec![5]);
+        assert_eq!(
+            data.paused.iter().map(|r| r.id).collect::<Vec<_>>(),
+            vec![5]
+        );
         let prod = data.groups.iter().find(|g| g.id == 1).unwrap();
         // Problems first: api (down), then Sub/Web (up) by name.
-        assert_eq!(prod.children.iter().map(|r| r.id).collect::<Vec<_>>(), vec![2, 6, 3]);
+        assert_eq!(
+            prod.children.iter().map(|r| r.id).collect::<Vec<_>>(),
+            vec![2, 6, 3]
+        );
         assert_eq!(prod.summary, "3 monitors · 1 down");
         let sub = data.groups.iter().find(|g| g.id == 6).unwrap();
         assert_eq!(sub.title, "Prod › Sub");
@@ -753,7 +854,10 @@ mod tests {
         let data = build_dashboard(&fixture(), HashMap::new(), &q, true);
         let prod = data.groups.iter().find(|g| g.id == 1).unwrap();
         assert!(prod.collapsed);
-        assert_eq!(prod.toggle_href, "/", "unknown ids are dropped and toggling re-expands");
+        assert_eq!(
+            prod.toggle_href, "/",
+            "unknown ids are dropped and toggling re-expands"
+        );
         let sub = data.groups.iter().find(|g| g.id == 6).unwrap();
         assert!(!sub.collapsed);
         assert_eq!(sub.toggle_href, "/?collapsed=1%2C6");
@@ -770,7 +874,12 @@ mod tests {
                 value: "production".into(),
             }],
         )]);
-        let search = build_dashboard(&fixture(), tags.clone(), &DashQuery::parse(Some("q=PROD")), true);
+        let search = build_dashboard(
+            &fixture(),
+            tags.clone(),
+            &DashQuery::parse(Some("q=PROD")),
+            true,
+        );
         assert!(search.flat);
         // Group "Prod", its children (group name matches) and the tag value match.
         let mut ids: Vec<i64> = search.rows.iter().map(|r| r.id).collect();
@@ -778,16 +887,43 @@ mod tests {
         assert_eq!(ids, vec![1, 2, 3, 6]);
 
         let by_tag = build_dashboard(&fixture(), tags, &DashQuery::parse(Some("tag=9")), true);
-        assert_eq!(by_tag.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![3]);
+        assert_eq!(
+            by_tag.rows.iter().map(|r| r.id).collect::<Vec<_>>(),
+            vec![3]
+        );
 
-        let paused = build_dashboard(&fixture(), HashMap::new(), &DashQuery::parse(Some("status=paused")), true);
-        assert_eq!(paused.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![5]);
+        let paused = build_dashboard(
+            &fixture(),
+            HashMap::new(),
+            &DashQuery::parse(Some("status=paused")),
+            true,
+        );
+        assert_eq!(
+            paused.rows.iter().map(|r| r.id).collect::<Vec<_>>(),
+            vec![5]
+        );
 
-        let tcp = build_dashboard(&fixture(), HashMap::new(), &DashQuery::parse(Some("type=tcp&sort=name")), true);
-        assert_eq!(tcp.rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), vec!["cache", "db"]);
+        let tcp = build_dashboard(
+            &fixture(),
+            HashMap::new(),
+            &DashQuery::parse(Some("type=tcp&sort=name")),
+            true,
+        );
+        assert_eq!(
+            tcp.rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            vec!["cache", "db"]
+        );
 
-        let uptime = build_dashboard(&fixture(), HashMap::new(), &DashQuery::parse(Some("type=http&sort=uptime")), true);
-        assert_eq!(uptime.rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![2, 3]);
+        let uptime = build_dashboard(
+            &fixture(),
+            HashMap::new(),
+            &DashQuery::parse(Some("type=http&sort=uptime")),
+            true,
+        );
+        assert_eq!(
+            uptime.rows.iter().map(|r| r.id).collect::<Vec<_>>(),
+            vec![2, 3]
+        );
         assert_eq!(uptime.rows[0].uptime_label, "50.00%");
         assert_eq!(uptime.clear_href, "/?sort=uptime");
     }
@@ -799,7 +935,11 @@ mod tests {
                 tag_id: i,
                 name: format!("t{i}"),
                 color: "blue".into(),
-                value: if i == 5 { "needle".into() } else { String::new() },
+                value: if i == 5 {
+                    "needle".into()
+                } else {
+                    String::new()
+                },
             })
             .collect();
         let map = HashMap::from([(4, tags)]);
@@ -807,7 +947,12 @@ mod tests {
         let db = data.rows.iter().find(|r| r.id == 4).unwrap();
         assert_eq!((db.tags.len(), db.more_tags), (3, 2));
         assert_eq!(db.more_tags_tip, "t4, t5: needle");
-        let by_hidden_tag = build_dashboard(&fixture(), map.clone(), &DashQuery::parse(Some("tag=5")), true);
+        let by_hidden_tag = build_dashboard(
+            &fixture(),
+            map.clone(),
+            &DashQuery::parse(Some("tag=5")),
+            true,
+        );
         assert_eq!(by_hidden_tag.rows.len(), 1);
         let search = build_dashboard(&fixture(), map, &DashQuery::parse(Some("q=needle")), true);
         assert_eq!(search.rows.len(), 1);

@@ -85,7 +85,9 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized => Redirect::to("/login").into_response(),
             _ => (status, Html(error_page(status, &message))).into_response(),
         };
-        response.extensions_mut().insert(ErrorInfo { status, message });
+        response
+            .extensions_mut()
+            .insert(ErrorInfo { status, message });
         response
     }
 }
@@ -116,7 +118,11 @@ pub async fn negotiate(request: Request, next: Next) -> Response {
             StatusCode::NOT_FOUND => "not_found",
             _ => "internal",
         };
-        return (info.status, Json(json!({ "error": { "code": code, "message": info.message } }))).into_response();
+        return (
+            info.status,
+            Json(json!({ "error": { "code": code, "message": info.message } })),
+        )
+            .into_response();
     }
     if wants_json {
         return (info.status, Json(json!({ "error": info.message }))).into_response();
@@ -238,11 +244,20 @@ mod tests {
         if htmx {
             req = req.header("hx-request", "true");
         }
-        app().oneshot(req.body(Body::empty()).unwrap()).await.unwrap()
+        app()
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
     }
 
     async fn body(resp: Response) -> String {
-        String::from_utf8(to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap()
+        String::from_utf8(
+            to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap()
     }
 
     #[tokio::test]
@@ -259,7 +274,11 @@ mod tests {
         let html = body(resp).await;
         assert!(html.contains("<!doctype html>"));
         // Same chrome as the app: theme, color scheme and icon.
-        for part in ["name=\"color-scheme\"", "/static/favicon.svg", "/static/theme.js"] {
+        for part in [
+            "name=\"color-scheme\"",
+            "/static/favicon.svg",
+            "/static/theme.js",
+        ] {
             assert!(html.contains(part), "{part}");
         }
     }
@@ -285,6 +304,9 @@ mod tests {
 
     #[test]
     fn escape_html_escapes_markup() {
-        assert_eq!(escape_html("<a href=\"x\">&'"), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;");
+        assert_eq!(
+            escape_html("<a href=\"x\">&'"),
+            "&lt;a href=&quot;x&quot;&gt;&amp;&#39;"
+        );
     }
 }

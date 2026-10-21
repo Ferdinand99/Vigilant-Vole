@@ -5,7 +5,11 @@ use tracing_subscriber::EnvFilter;
 use vigilant_vole::{agent, config::Config, mcp_bridge, server};
 
 #[derive(Parser)]
-#[command(name = "vigilant-vole", version, about = "Self-hosted uptime monitoring")]
+#[command(
+    name = "vigilant-vole",
+    version,
+    about = "Self-hosted uptime monitoring"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,

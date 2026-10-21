@@ -46,7 +46,11 @@ impl AssetKind {
 
 /// Public, cache-busting path of an uploaded asset.
 pub fn asset_path(slug: &str, kind: AssetKind, sha: &str) -> String {
-    format!("/status/{slug}/{}?v={}", kind.as_str(), &sha[..sha.len().min(16)])
+    format!(
+        "/status/{slug}/{}?v={}",
+        kind.as_str(),
+        &sha[..sha.len().min(16)]
+    )
 }
 
 /// A validated image, ready to store.
@@ -97,7 +101,10 @@ pub fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
         return Some("image/webp");
     }
     // ICONDIR: reserved 0, type 1 (icon), at least one image.
-    if bytes.len() >= 6 && bytes[..4] == [0, 0, 1, 0] && u16::from_le_bytes([bytes[4], bytes[5]]) > 0 {
+    if bytes.len() >= 6
+        && bytes[..4] == [0, 0, 1, 0]
+        && u16::from_le_bytes([bytes[4], bytes[5]]) > 0
+    {
         return Some("image/x-icon");
     }
     None
@@ -123,7 +130,11 @@ pub fn validate_image(bytes: Vec<u8>) -> Result<Asset, AssetError> {
         return Err(AssetError::TooLarge);
     }
     let Some(mime) = sniff_image(&bytes) else {
-        return Err(if looks_like_svg(&bytes) { AssetError::Svg } else { AssetError::Unsupported });
+        return Err(if looks_like_svg(&bytes) {
+            AssetError::Svg
+        } else {
+            AssetError::Unsupported
+        });
     };
     Ok(Asset {
         mime,
@@ -135,7 +146,10 @@ pub fn validate_image(bytes: Vec<u8>) -> Result<Asset, AssetError> {
 /// `data:image/png;base64,…` → validated asset (the declared type is ignored;
 /// the bytes decide).
 pub fn parse_data_url(url: &str) -> Result<Asset, AssetError> {
-    let rest = url.trim().strip_prefix("data:").ok_or(AssetError::BadDataUrl)?;
+    let rest = url
+        .trim()
+        .strip_prefix("data:")
+        .ok_or(AssetError::BadDataUrl)?;
     let (meta, data) = rest.split_once(',').ok_or(AssetError::BadDataUrl)?;
     if !meta.to_ascii_lowercase().ends_with(";base64") {
         return Err(AssetError::BadDataUrl);
@@ -155,10 +169,18 @@ pub fn parse_data_url(url: &str) -> Result<Asset, AssetError> {
 }
 
 pub fn to_data_url(asset: &Asset) -> String {
-    format!("data:{};base64,{}", asset.mime, base64::engine::general_purpose::STANDARD.encode(&asset.bytes))
+    format!(
+        "data:{};base64,{}",
+        asset.mime,
+        base64::engine::general_purpose::STANDARD.encode(&asset.bytes)
+    )
 }
 
-pub fn get_asset(conn: &Connection, page_id: i64, kind: AssetKind) -> rusqlite::Result<Option<Asset>> {
+pub fn get_asset(
+    conn: &Connection,
+    page_id: i64,
+    kind: AssetKind,
+) -> rusqlite::Result<Option<Asset>> {
     conn.query_row(
         "SELECT mime, bytes, sha256 FROM status_page_assets WHERE page_id = ?1 AND kind = ?2",
         params![page_id, kind.as_str()],
@@ -166,7 +188,11 @@ pub fn get_asset(conn: &Connection, page_id: i64, kind: AssetKind) -> rusqlite::
             let mime: String = r.get(0)?;
             Ok(Asset {
                 // Only ever stored from `sniff_image`; anything else is served as a download.
-                mime: IMAGE_TYPES.iter().find(|t| **t == mime).copied().unwrap_or("application/octet-stream"),
+                mime: IMAGE_TYPES
+                    .iter()
+                    .find(|t| **t == mime)
+                    .copied()
+                    .unwrap_or("application/octet-stream"),
                 bytes: r.get(1)?,
                 sha256: r.get(2)?,
             })
@@ -175,7 +201,12 @@ pub fn get_asset(conn: &Connection, page_id: i64, kind: AssetKind) -> rusqlite::
     .optional()
 }
 
-pub fn set_asset(conn: &Connection, page_id: i64, kind: AssetKind, asset: &Asset) -> rusqlite::Result<()> {
+pub fn set_asset(
+    conn: &Connection,
+    page_id: i64,
+    kind: AssetKind,
+    asset: &Asset,
+) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO status_page_assets (page_id, kind, mime, bytes, sha256) VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT (page_id, kind) DO UPDATE SET mime = excluded.mime, bytes = excluded.bytes,
@@ -195,7 +226,10 @@ pub fn delete_asset(conn: &Connection, page_id: i64, kind: AssetKind) -> rusqlit
 }
 
 fn touch(conn: &Connection, page_id: i64) -> rusqlite::Result<()> {
-    conn.execute("UPDATE status_pages SET updated_at = datetime('now') WHERE id = ?1", params![page_id])?;
+    conn.execute(
+        "UPDATE status_pages SET updated_at = datetime('now') WHERE id = ?1",
+        params![page_id],
+    )?;
     Ok(())
 }
 
@@ -217,7 +251,11 @@ pub fn password_problem(password: &str) -> Option<&'static str> {
 
 /// Sets (`Some(hash)`) or removes (`None`) the page password. Either way the
 /// version moves on, so every unlock cookie issued so far stops working.
-pub fn set_password_hash(conn: &Connection, page_id: i64, hash: Option<&str>) -> rusqlite::Result<bool> {
+pub fn set_password_hash(
+    conn: &Connection,
+    page_id: i64,
+    hash: Option<&str>,
+) -> rusqlite::Result<bool> {
     Ok(conn.execute(
         "UPDATE status_pages SET password_hash = ?2, password_version = password_version + 1,
              updated_at = datetime('now') WHERE id = ?1",
@@ -247,7 +285,13 @@ pub enum Provider {
 }
 
 impl Provider {
-    pub const ALL: [Provider; 5] = [Provider::None, Provider::Plausible, Provider::Umami, Provider::Matomo, Provider::Google];
+    pub const ALL: [Provider; 5] = [
+        Provider::None,
+        Provider::Plausible,
+        Provider::Umami,
+        Provider::Matomo,
+        Provider::Google,
+    ];
 
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
@@ -282,7 +326,10 @@ impl Provider {
 
     /// Whether the provider needs a script/host URL besides the site ID.
     pub fn needs_url(self) -> bool {
-        matches!(self, Provider::Plausible | Provider::Umami | Provider::Matomo)
+        matches!(
+            self,
+            Provider::Plausible | Provider::Umami | Provider::Matomo
+        )
     }
 }
 
@@ -317,18 +364,29 @@ pub type FieldError = (&'static str, &'static str);
 
 /// Characters never allowed in an ID or URL that ends up in markup or a CSP.
 fn has_unsafe_chars(s: &str) -> bool {
-    s.chars()
-        .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '"' | '\'' | '<' | '>' | '\\' | '`' | ';' | ','))
+    s.chars().any(|c| {
+        c.is_whitespace()
+            || c.is_control()
+            || matches!(c, '"' | '\'' | '<' | '>' | '\\' | '`' | ';' | ',')
+    })
 }
 
 /// Strict https URL check: no user info, no fragment, no unsafe characters.
 pub fn validate_https_url(input: &str) -> Option<url::Url> {
     let s = input.trim();
-    if s.is_empty() || s.len() > ANALYTICS_MAX || has_unsafe_chars(s) || s.contains(['{', '}', '|', '^']) {
+    if s.is_empty()
+        || s.len() > ANALYTICS_MAX
+        || has_unsafe_chars(s)
+        || s.contains(['{', '}', '|', '^'])
+    {
         return None;
     }
     let url = url::Url::parse(s).ok()?;
-    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
         return None;
     }
     let host = url.host_str()?;
@@ -340,8 +398,12 @@ pub fn validate_https_url(input: &str) -> Option<url::Url> {
 
 fn valid_ga_id(id: &str) -> bool {
     let ga4 = |prefix: &str| {
-        id.strip_prefix(prefix)
-            .is_some_and(|rest| (4..=20).contains(&rest.len()) && rest.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()))
+        id.strip_prefix(prefix).is_some_and(|rest| {
+            (4..=20).contains(&rest.len())
+                && rest
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        })
     };
     let ua = || {
         let parts: Vec<&str> = id.split('-').collect();
@@ -349,7 +411,9 @@ fn valid_ga_id(id: &str) -> bool {
             && parts[0] == "UA"
             && (4..=10).contains(&parts[1].len())
             && (1..=4).contains(&parts[2].len())
-            && parts[1..].iter().all(|p| p.bytes().all(|b| b.is_ascii_digit()))
+            && parts[1..]
+                .iter()
+                .all(|p| p.bytes().all(|b| b.is_ascii_digit()))
     };
     ["G-", "GT-", "AW-", "DC-"].iter().any(|p| ga4(p)) || ua()
 }
@@ -363,14 +427,17 @@ fn valid_domain_list(ids: &str) -> bool {
                 && d.len() <= 253
                 && !d.starts_with(['.', '-'])
                 && !d.ends_with(['.', '-'])
-                && d.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+                && d.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
         })
 }
 
 fn valid_uuid(id: &str) -> bool {
     let groups: Vec<&str> = id.split('-').collect();
     groups.iter().map(|g| g.len()).collect::<Vec<_>>() == [8, 4, 4, 4, 12]
-        && groups.iter().all(|g| g.bytes().all(|b| b.is_ascii_hexdigit()))
+        && groups
+            .iter()
+            .all(|g| g.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 impl Analytics {
@@ -403,7 +470,10 @@ impl Analytics {
                         self.site_id = self.site_id.to_ascii_lowercase();
                         valid_uuid(&self.site_id)
                     }
-                    _ => (1..=10).contains(&self.site_id.len()) && self.site_id.bytes().all(|b| b.is_ascii_digit()),
+                    _ => {
+                        (1..=10).contains(&self.site_id.len())
+                            && self.site_id.bytes().all(|b| b.is_ascii_digit())
+                    }
                 };
                 if !id_ok {
                     errors.push((
@@ -416,7 +486,10 @@ impl Analytics {
                     ));
                 }
                 match validate_https_url(&self.url) {
-                    _ if self.url.is_empty() => errors.push(("analytics_url", crate::i18n::t("spx.err_analytics_url_required"))),
+                    _ if self.url.is_empty() => errors.push((
+                        "analytics_url",
+                        crate::i18n::t("spx.err_analytics_url_required"),
+                    )),
                     Some(mut u) => {
                         if self.provider == Provider::Matomo {
                             // A base URL: matomo.js and matomo.php are appended.
@@ -432,7 +505,11 @@ impl Analytics {
                 }
             }
         }
-        if errors.is_empty() { Ok(self) } else { Err(errors) }
+        if errors.is_empty() {
+            Ok(self)
+        } else {
+            Err(errors)
+        }
     }
 
     /// Origin (`https://host[:port]`) of the provider's script/tracker, for the CSP.
@@ -455,7 +532,10 @@ impl Analytics {
                     "https://*.google-analytics.com".into(),
                     "https://*.analytics.google.com".into(),
                 ],
-                vec!["https://www.googletagmanager.com".into(), "https://*.google-analytics.com".into()],
+                vec![
+                    "https://www.googletagmanager.com".into(),
+                    "https://*.google-analytics.com".into(),
+                ],
             )),
             Provider::Plausible | Provider::Umami | Provider::Matomo => {
                 let origin = self.origin()?;
@@ -464,7 +544,11 @@ impl Analytics {
                 if self.provider == Provider::Umami && origin == "https://cloud.umami.is" {
                     connect.push("https://api-gateway.umami.dev".into());
                 }
-                let img = if self.provider == Provider::Matomo { vec![origin.clone()] } else { Vec::new() };
+                let img = if self.provider == Provider::Matomo {
+                    vec![origin.clone()]
+                } else {
+                    Vec::new()
+                };
                 Some((vec![origin], connect, img))
             }
         }
@@ -530,7 +614,11 @@ pub struct ExtrasChange {
     pub favicon: AssetChange,
 }
 
-pub fn apply_extras(conn: &Connection, page_id: i64, change: &ExtrasChange) -> rusqlite::Result<()> {
+pub fn apply_extras(
+    conn: &Connection,
+    page_id: i64,
+    change: &ExtrasChange,
+) -> rusqlite::Result<()> {
     match &change.password {
         PasswordChange::Keep => {}
         PasswordChange::Remove => {
@@ -547,7 +635,10 @@ pub fn apply_extras(conn: &Connection, page_id: i64, change: &ExtrasChange) -> r
     if let Some(a) = &change.analytics {
         set_analytics(conn, page_id, a)?;
     }
-    for (kind, c) in [(AssetKind::Logo, &change.logo), (AssetKind::Favicon, &change.favicon)] {
+    for (kind, c) in [
+        (AssetKind::Logo, &change.logo),
+        (AssetKind::Favicon, &change.favicon),
+    ] {
         match c {
             AssetChange::Keep => {}
             AssetChange::Remove => {
@@ -603,7 +694,10 @@ impl AnalyticsDoc {
 
     pub fn to_settings(&self) -> Result<Analytics, Vec<(String, String)>> {
         let provider = Provider::parse(&self.provider).ok_or_else(|| {
-            vec![("analytics.provider".to_string(), crate::i18n::t("spx.err_analytics_provider").to_string())]
+            vec![(
+                "analytics.provider".to_string(),
+                crate::i18n::t("spx.err_analytics_provider").to_string(),
+            )]
         })?;
         Analytics {
             enabled: self.enabled,
@@ -617,7 +711,11 @@ impl AnalyticsDoc {
             errors
                 .into_iter()
                 .map(|(field, msg)| {
-                    let field = if field == "analytics_url" { "analytics.script_url" } else { "analytics.site_id" };
+                    let field = if field == "analytics_url" {
+                        "analytics.script_url"
+                    } else {
+                        "analytics.site_id"
+                    };
                     (field.to_string(), msg.to_string())
                 })
                 .collect()
@@ -645,20 +743,29 @@ pub type PlannedExtras = (ExtrasChange, Vec<&'static str>);
 /// page) and returns the change plus the names of the fields it touches.
 /// Plain passwords are only hashed when they differ from the stored one, so
 /// re-applying the same document is a no-op.
-pub fn plan_doc_extras(doc: DocExtras<'_>, current: Option<&super::StatusPage>) -> Result<PlannedExtras, Vec<(String, String)>> {
+pub fn plan_doc_extras(
+    doc: DocExtras<'_>,
+    current: Option<&super::StatusPage>,
+) -> Result<PlannedExtras, Vec<(String, String)>> {
     let mut errors: Vec<(String, String)> = Vec::new();
     let mut changed = Vec::new();
     let current_hash = current.and_then(|p| p.password_hash.as_deref());
     let mask = crate::notification::SECRET_MASK;
     let password = match (doc.password, doc.password_hash) {
         (Some(_), Some(_)) => {
-            errors.push(("password".into(), "Use either password or password_hash, not both.".into()));
+            errors.push((
+                "password".into(),
+                "Use either password or password_hash, not both.".into(),
+            ));
             PasswordChange::Keep
         }
         (None, Some(hash)) => {
             let hash = hash.trim();
             if !is_argon2_hash(hash) {
-                errors.push(("password_hash".into(), "Use an Argon2 hash from a full export.".into()));
+                errors.push((
+                    "password_hash".into(),
+                    "Use an Argon2 hash from a full export.".into(),
+                ));
                 PasswordChange::Keep
             } else if current_hash == Some(hash) {
                 PasswordChange::Keep
@@ -668,19 +775,28 @@ pub fn plan_doc_extras(doc: DocExtras<'_>, current: Option<&super::StatusPage>) 
         }
         (Some(p), None) if p == mask => {
             if current_hash.is_none() {
-                errors.push(("password".into(), "The password was exported without secrets; set it again.".into()));
+                errors.push((
+                    "password".into(),
+                    "The password was exported without secrets; set it again.".into(),
+                ));
             }
             PasswordChange::Keep
         }
         (Some(""), None) => {
-            if current_hash.is_some() { PasswordChange::Remove } else { PasswordChange::Keep }
+            if current_hash.is_some() {
+                PasswordChange::Remove
+            } else {
+                PasswordChange::Keep
+            }
         }
         (Some(p), None) => match password_problem(p) {
             Some(msg) => {
                 errors.push(("password".into(), msg.into()));
                 PasswordChange::Keep
             }
-            None if current_hash.is_some_and(|h| crate::auth::verify_password(h, p)) => PasswordChange::Keep,
+            None if current_hash.is_some_and(|h| crate::auth::verify_password(h, p)) => {
+                PasswordChange::Keep
+            }
             None => PasswordChange::Set(crate::auth::hash_password(p)),
         },
         (None, None) => PasswordChange::Keep,
@@ -701,24 +817,43 @@ pub fn plan_doc_extras(doc: DocExtras<'_>, current: Option<&super::StatusPage>) 
             None
         }
     };
-    let mut asset = |field: &'static str, value: Option<&str>, now: Option<&str>| match AssetChange::from_doc(value) {
-        Ok(c) => {
-            if c.differs(now) {
-                changed.push(field);
+    let mut asset =
+        |field: &'static str, value: Option<&str>, now: Option<&str>| match AssetChange::from_doc(
+            value,
+        ) {
+            Ok(c) => {
+                if c.differs(now) {
+                    changed.push(field);
+                }
+                c
             }
-            c
-        }
-        Err(e) => {
-            errors.push((field.into(), e.message().into()));
-            AssetChange::Keep
-        }
-    };
-    let logo = asset("logo", doc.logo, current.and_then(|p| p.logo_sha.as_deref()));
-    let favicon = asset("favicon", doc.favicon, current.and_then(|p| p.favicon_sha.as_deref()));
+            Err(e) => {
+                errors.push((field.into(), e.message().into()));
+                AssetChange::Keep
+            }
+        };
+    let logo = asset(
+        "logo",
+        doc.logo,
+        current.and_then(|p| p.logo_sha.as_deref()),
+    );
+    let favicon = asset(
+        "favicon",
+        doc.favicon,
+        current.and_then(|p| p.favicon_sha.as_deref()),
+    );
     if !errors.is_empty() {
         return Err(errors);
     }
-    Ok((ExtrasChange { password, analytics, logo, favicon }, changed))
+    Ok((
+        ExtrasChange {
+            password,
+            analytics,
+            logo,
+            favicon,
+        },
+        changed,
+    ))
 }
 
 /// What an export says about a page's extras:
@@ -730,16 +865,32 @@ pub fn export_doc_extras(
     conn: &Connection,
     page: &super::StatusPage,
     include_secrets: bool,
-) -> rusqlite::Result<(Option<String>, Option<String>, Option<AnalyticsDoc>, Option<String>, Option<String>)> {
+) -> rusqlite::Result<(
+    Option<String>,
+    Option<String>,
+    Option<AnalyticsDoc>,
+    Option<String>,
+    Option<String>,
+)> {
     let (password, hash) = match (&page.password_hash, include_secrets) {
         (None, _) => (None, None),
         (Some(h), true) => (None, Some(h.clone())),
         (Some(_), false) => (Some(crate::notification::SECRET_MASK.to_string()), None),
     };
     let image = |kind| -> rusqlite::Result<Option<String>> {
-        Ok(if include_secrets { get_asset(conn, page.id, kind)?.map(|a| to_data_url(&a)) } else { None })
+        Ok(if include_secrets {
+            get_asset(conn, page.id, kind)?.map(|a| to_data_url(&a))
+        } else {
+            None
+        })
     };
-    Ok((password, hash, AnalyticsDoc::exported(&page.analytics), image(AssetKind::Logo)?, image(AssetKind::Favicon)?))
+    Ok((
+        password,
+        hash,
+        AnalyticsDoc::exported(&page.analytics),
+        image(AssetKind::Logo)?,
+        image(AssetKind::Favicon)?,
+    ))
 }
 
 // ===========================================================================
@@ -748,7 +899,13 @@ pub fn export_doc_extras(
 
 /// Counts one page view on `day` (UTC `YYYY-MM-DD`). `new_visitor`: the
 /// first view of this visitor today. `referrer`: a foreign domain, if any.
-pub fn record_view(conn: &Connection, page_id: i64, day: &str, new_visitor: bool, referrer: Option<&str>) -> rusqlite::Result<()> {
+pub fn record_view(
+    conn: &Connection,
+    page_id: i64,
+    day: &str,
+    new_visitor: bool,
+    referrer: Option<&str>,
+) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO status_page_views (page_id, day, views, visitors) VALUES (?1, ?2, 1, ?3)
          ON CONFLICT (page_id, day) DO UPDATE SET views = views + 1, visitors = visitors + excluded.visitors",
@@ -772,16 +929,27 @@ pub struct DayViews {
 }
 
 /// The last `days` days up to and including `today`, oldest first, zero-filled.
-pub fn daily_views(conn: &Connection, page_id: i64, today: jiff::civil::Date, days: i64) -> rusqlite::Result<Vec<DayViews>> {
+pub fn daily_views(
+    conn: &Connection,
+    page_id: i64,
+    today: jiff::civil::Date,
+    days: i64,
+) -> rusqlite::Result<Vec<DayViews>> {
     let days = days.max(1);
     let first = today.saturating_sub(jiff::Span::new().days(days - 1));
     let mut stmt = conn.prepare(
         "SELECT day, views, visitors FROM status_page_views WHERE page_id = ?1 AND day >= ?2 AND day <= ?3",
     )?;
     let mut found = std::collections::HashMap::new();
-    let rows = stmt.query_map(params![page_id, first.to_string(), today.to_string()], |r| {
-        Ok((r.get::<_, String>(0)?, (r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))
-    })?;
+    let rows = stmt.query_map(
+        params![page_id, first.to_string(), today.to_string()],
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                (r.get::<_, i64>(1)?, r.get::<_, i64>(2)?),
+            ))
+        },
+    )?;
     for row in rows {
         let (day, counts) = row?;
         found.insert(day, counts);
@@ -791,26 +959,43 @@ pub fn daily_views(conn: &Connection, page_id: i64, today: jiff::civil::Date, da
     for _ in 0..days {
         let key = d.to_string();
         let (views, visitors) = found.get(&key).copied().unwrap_or_default();
-        out.push(DayViews { day: key, views, visitors });
+        out.push(DayViews {
+            day: key,
+            views,
+            visitors,
+        });
         d = d.tomorrow().unwrap_or(d);
     }
     Ok(out)
 }
 
 /// Referrer domains since `since_day`, most views first.
-pub fn top_referrers(conn: &Connection, page_id: i64, since_day: &str, limit: i64) -> rusqlite::Result<Vec<(String, i64)>> {
+pub fn top_referrers(
+    conn: &Connection,
+    page_id: i64,
+    since_day: &str,
+    limit: i64,
+) -> rusqlite::Result<Vec<(String, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT domain, SUM(views) AS n FROM status_page_referrers WHERE page_id = ?1 AND day >= ?2
          GROUP BY domain ORDER BY n DESC, domain LIMIT ?3",
     )?;
-    let rows = stmt.query_map(params![page_id, since_day, limit], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    let rows = stmt.query_map(params![page_id, since_day, limit], |r| {
+        Ok((r.get(0)?, r.get(1)?))
+    })?;
     rows.collect()
 }
 
 /// Deletes counters from days before `before_day`. Returns rows removed.
 pub fn prune_views(conn: &Connection, before_day: &str) -> rusqlite::Result<usize> {
-    let a = conn.execute("DELETE FROM status_page_views WHERE day < ?1", params![before_day])?;
-    let b = conn.execute("DELETE FROM status_page_referrers WHERE day < ?1", params![before_day])?;
+    let a = conn.execute(
+        "DELETE FROM status_page_views WHERE day < ?1",
+        params![before_day],
+    )?;
+    let b = conn.execute(
+        "DELETE FROM status_page_referrers WHERE day < ?1",
+        params![before_day],
+    )?;
     Ok(a + b)
 }
 
@@ -841,16 +1026,25 @@ mod tests {
     #[test]
     fn images_are_judged_by_magic_bytes() {
         assert_eq!(sniff_image(&png()), Some("image/png"));
-        assert_eq!(sniff_image(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]), Some("image/jpeg"));
+        assert_eq!(
+            sniff_image(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]),
+            Some("image/jpeg")
+        );
         assert_eq!(sniff_image(b"RIFF\x10\0\0\0WEBPVP8 "), Some("image/webp"));
-        assert_eq!(sniff_image(&[0, 0, 1, 0, 1, 0, 16, 16]), Some("image/x-icon"));
+        assert_eq!(
+            sniff_image(&[0, 0, 1, 0, 1, 0, 16, 16]),
+            Some("image/x-icon")
+        );
         // Zero images, cursor type, GIF and text are refused.
         assert_eq!(sniff_image(&[0, 0, 1, 0, 0, 0]), None);
         assert_eq!(sniff_image(&[0, 0, 2, 0, 1, 0]), None);
         assert_eq!(sniff_image(b"GIF89a......"), None);
         assert_eq!(sniff_image(b"<html>"), None);
         // An extension or a declared type changes nothing: a PNG name with HTML inside fails.
-        assert_eq!(validate_image(b"<html><script>alert(1)</script>".to_vec()), Err(AssetError::Unsupported));
+        assert_eq!(
+            validate_image(b"<html><script>alert(1)</script>".to_vec()),
+            Err(AssetError::Unsupported)
+        );
     }
 
     #[test]
@@ -867,7 +1061,11 @@ mod tests {
             "\u{feff}  <?xml version=\"1.0\"?><svg/>",
             "<!DOCTYPE svg><svg/>",
         ] {
-            assert_eq!(validate_image(svg.as_bytes().to_vec()), Err(AssetError::Svg), "{svg}");
+            assert_eq!(
+                validate_image(svg.as_bytes().to_vec()),
+                Err(AssetError::Svg),
+                "{svg}"
+            );
         }
         let a = validate_image(png()).unwrap();
         assert_eq!(a.mime, "image/png");
@@ -883,10 +1081,22 @@ mod tests {
         // Declared JPEG, actually PNG: the bytes win.
         let lie = url.replace("image/png", "image/jpeg");
         assert_eq!(parse_data_url(&lie).unwrap().mime, "image/png");
-        assert_eq!(parse_data_url("data:image/svg+xml;base64,PHN2Zz4="), Err(AssetError::Svg));
-        assert_eq!(parse_data_url("data:image/png,raw"), Err(AssetError::BadDataUrl));
-        assert_eq!(parse_data_url("/upload/logo1.png"), Err(AssetError::BadDataUrl));
-        assert_eq!(parse_data_url("data:image/png;base64,!!!"), Err(AssetError::BadDataUrl));
+        assert_eq!(
+            parse_data_url("data:image/svg+xml;base64,PHN2Zz4="),
+            Err(AssetError::Svg)
+        );
+        assert_eq!(
+            parse_data_url("data:image/png,raw"),
+            Err(AssetError::BadDataUrl)
+        );
+        assert_eq!(
+            parse_data_url("/upload/logo1.png"),
+            Err(AssetError::BadDataUrl)
+        );
+        assert_eq!(
+            parse_data_url("data:image/png;base64,!!!"),
+            Err(AssetError::BadDataUrl)
+        );
     }
 
     #[test]
@@ -895,11 +1105,17 @@ mod tests {
         let id = page(&mut conn);
         let a = validate_image(png()).unwrap();
         set_asset(&conn, id, AssetKind::Logo, &a).unwrap();
-        assert_eq!(get_asset(&conn, id, AssetKind::Logo).unwrap(), Some(a.clone()));
+        assert_eq!(
+            get_asset(&conn, id, AssetKind::Logo).unwrap(),
+            Some(a.clone())
+        );
         assert_eq!(get_asset(&conn, id, AssetKind::Favicon).unwrap(), None);
         let p = pages::get(&conn, id).unwrap().unwrap();
         assert_eq!(p.logo_sha.as_deref(), Some(a.sha256.as_str()));
-        assert_eq!(p.logo_url(), Some(format!("/status/acme/logo?v={}", &a.sha256[..16])));
+        assert_eq!(
+            p.logo_url(),
+            Some(format!("/status/acme/logo?v={}", &a.sha256[..16]))
+        );
         assert_eq!(p.favicon_url(), None);
         // The list query carries the hashes too.
         assert_eq!(pages::list(&conn).unwrap()[0].page.logo_sha, p.logo_sha);
@@ -907,7 +1123,9 @@ mod tests {
         assert!(!delete_asset(&conn, id, AssetKind::Logo).unwrap());
         set_asset(&conn, id, AssetKind::Favicon, &a).unwrap();
         pages::delete(&conn, id).unwrap();
-        let left: i64 = conn.query_row("SELECT COUNT(*) FROM status_page_assets", [], |r| r.get(0)).unwrap();
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM status_page_assets", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(left, 0);
     }
 
@@ -918,11 +1136,24 @@ mod tests {
         let p = pages::get(&conn, id).unwrap().unwrap();
         assert!(!p.is_protected());
         let v0 = p.password_version;
-        set_password_hash(&conn, id, Some("$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA")).unwrap();
+        set_password_hash(
+            &conn,
+            id,
+            Some("$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA"),
+        )
+        .unwrap();
         let p = pages::get(&conn, id).unwrap().unwrap();
         assert!(p.is_protected());
         assert_eq!(p.password_version, v0 + 1);
-        apply_extras(&conn, id, &ExtrasChange { password: PasswordChange::Remove, ..Default::default() }).unwrap();
+        apply_extras(
+            &conn,
+            id,
+            &ExtrasChange {
+                password: PasswordChange::Remove,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let p = pages::get(&conn, id).unwrap().unwrap();
         assert!(!p.is_protected());
         assert_eq!(p.password_version, v0 + 2);
@@ -946,14 +1177,34 @@ mod tests {
 
     #[test]
     fn analytics_ids_and_urls_are_strict() {
-        assert_eq!(analytics(Provider::Google, " g-abc123xyz ", "https://ignored.test").unwrap().site_id, "G-ABC123XYZ");
-        assert_eq!(analytics(Provider::Google, "UA-12345-1", "").unwrap().url, "");
+        assert_eq!(
+            analytics(Provider::Google, " g-abc123xyz ", "https://ignored.test")
+                .unwrap()
+                .site_id,
+            "G-ABC123XYZ"
+        );
+        assert_eq!(
+            analytics(Provider::Google, "UA-12345-1", "").unwrap().url,
+            ""
+        );
         assert!(analytics(Provider::Google, "G-ABC\"><script>", "").is_err());
         assert!(analytics(Provider::Google, "", "").is_err());
 
-        let p = analytics(Provider::Plausible, "Status.Example.com, example.org", "https://plausible.io/js/script.js").unwrap();
+        let p = analytics(
+            Provider::Plausible,
+            "Status.Example.com, example.org",
+            "https://plausible.io/js/script.js",
+        )
+        .unwrap();
         assert_eq!(p.site_id, "status.example.com,example.org");
-        assert!(analytics(Provider::Plausible, "exa mple.com", "https://plausible.io/js/script.js").is_err());
+        assert!(
+            analytics(
+                Provider::Plausible,
+                "exa mple.com",
+                "https://plausible.io/js/script.js"
+            )
+            .is_err()
+        );
         for bad in [
             "http://plausible.io/js/script.js",
             "https://plausible.io/js/script.js\"onload=\"x",
@@ -964,15 +1215,35 @@ mod tests {
             "//plausible.io/s.js",
             "https://a.test/x;script-src *",
         ] {
-            assert!(analytics(Provider::Plausible, "example.com", bad).is_err(), "{bad}");
+            assert!(
+                analytics(Provider::Plausible, "example.com", bad).is_err(),
+                "{bad}"
+            );
         }
         assert!(analytics(Provider::Plausible, "example.com", "").is_err());
 
-        let u = analytics(Provider::Umami, "4FB7FA4C-5B46-438D-94B3-3A8FB9BC2E8B", "https://cloud.umami.is/script.js").unwrap();
+        let u = analytics(
+            Provider::Umami,
+            "4FB7FA4C-5B46-438D-94B3-3A8FB9BC2E8B",
+            "https://cloud.umami.is/script.js",
+        )
+        .unwrap();
         assert_eq!(u.site_id, "4fb7fa4c-5b46-438d-94b3-3a8fb9bc2e8b");
-        assert!(analytics(Provider::Umami, "not-a-uuid", "https://cloud.umami.is/script.js").is_err());
+        assert!(
+            analytics(
+                Provider::Umami,
+                "not-a-uuid",
+                "https://cloud.umami.is/script.js"
+            )
+            .is_err()
+        );
 
-        let m = analytics(Provider::Matomo, "7", "https://stats.example.com/matomo?x=1").unwrap();
+        let m = analytics(
+            Provider::Matomo,
+            "7",
+            "https://stats.example.com/matomo?x=1",
+        )
+        .unwrap();
         assert_eq!(m.url, "https://stats.example.com/matomo/");
         assert!(analytics(Provider::Matomo, "seven", "https://stats.example.com/").is_err());
 
@@ -983,20 +1254,35 @@ mod tests {
     #[test]
     fn csp_sources_cover_exactly_the_provider() {
         assert_eq!(Analytics::default().csp_sources(), None);
-        let (script, connect, img) = analytics(Provider::Plausible, "example.com", "https://stats.example.com:8443/js/script.js")
-            .unwrap()
-            .csp_sources()
-            .unwrap();
+        let (script, connect, img) = analytics(
+            Provider::Plausible,
+            "example.com",
+            "https://stats.example.com:8443/js/script.js",
+        )
+        .unwrap()
+        .csp_sources()
+        .unwrap();
         assert_eq!(script, vec!["https://stats.example.com:8443"]);
         assert_eq!(connect, vec!["https://stats.example.com:8443"]);
         assert!(img.is_empty());
-        let (script, connect, _) = analytics(Provider::Google, "G-ABCDEF12", "").unwrap().csp_sources().unwrap();
-        assert_eq!(script, vec!["https://www.googletagmanager.com"]);
-        assert!(connect.iter().any(|c| c == "https://*.google-analytics.com"));
-        let (_, connect, _) = analytics(Provider::Umami, "4fb7fa4c-5b46-438d-94b3-3a8fb9bc2e8b", "https://cloud.umami.is/script.js")
+        let (script, connect, _) = analytics(Provider::Google, "G-ABCDEF12", "")
             .unwrap()
             .csp_sources()
             .unwrap();
+        assert_eq!(script, vec!["https://www.googletagmanager.com"]);
+        assert!(
+            connect
+                .iter()
+                .any(|c| c == "https://*.google-analytics.com")
+        );
+        let (_, connect, _) = analytics(
+            Provider::Umami,
+            "4fb7fa4c-5b46-438d-94b3-3a8fb9bc2e8b",
+            "https://cloud.umami.is/script.js",
+        )
+        .unwrap()
+        .csp_sources()
+        .unwrap();
         assert!(connect.contains(&"https://api-gateway.umami.dev".to_string()));
     }
 
@@ -1004,9 +1290,20 @@ mod tests {
     fn analytics_settings_persist() {
         let mut conn = test_conn();
         let id = page(&mut conn);
-        assert_eq!(pages::get(&conn, id).unwrap().unwrap().analytics, Analytics::default());
+        assert_eq!(
+            pages::get(&conn, id).unwrap().unwrap().analytics,
+            Analytics::default()
+        );
         let a = analytics(Provider::Matomo, "3", "https://m.example.com/").unwrap();
-        set_analytics(&conn, id, &Analytics { unique: false, ..a.clone() }).unwrap();
+        set_analytics(
+            &conn,
+            id,
+            &Analytics {
+                unique: false,
+                ..a.clone()
+            },
+        )
+        .unwrap();
         let stored = pages::get(&conn, id).unwrap().unwrap().analytics;
         assert_eq!(stored.provider, Provider::Matomo);
         assert!(!stored.unique);
@@ -1025,12 +1322,22 @@ mod tests {
         record_view(&conn, id, "2025-01-01", true, None).unwrap();
         let days = daily_views(&conn, id, today, 30).unwrap();
         assert_eq!(days.len(), 30);
-        assert_eq!(days[29], DayViews { day: "2026-10-20".into(), views: 3, visitors: 2 });
+        assert_eq!(
+            days[29],
+            DayViews {
+                day: "2026-10-20".into(),
+                views: 3,
+                visitors: 2
+            }
+        );
         assert_eq!(days[27].views, 1);
         assert_eq!(days[0].day, "2026-09-21");
         assert_eq!(
             top_referrers(&conn, id, "2026-09-21", 10).unwrap(),
-            vec![("news.example".to_string(), 2), ("other.example".to_string(), 1)]
+            vec![
+                ("news.example".to_string(), 2),
+                ("other.example".to_string(), 1)
+            ]
         );
         assert_eq!(prune_views(&conn, "2025-10-20").unwrap(), 1);
         assert_eq!(prune_views(&conn, "2025-10-20").unwrap(), 0);
@@ -1046,11 +1353,25 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::CONNECTION_PRAGMAS).unwrap();
         crate::db::prepare_tracking(&conn).unwrap();
-        for (name, sql) in crate::db::embedded_migrations().into_iter().filter(|(n, _)| n.as_str() < "0098_") {
+        for (name, sql) in crate::db::embedded_migrations()
+            .into_iter()
+            .filter(|(n, _)| n.as_str() < "0098_")
+        {
             crate::db::apply_one(&mut conn, &name, &sql).unwrap();
         }
-        conn.execute("INSERT INTO status_pages (slug, title) VALUES ('old', 'Old')", []).unwrap();
-        assert_eq!(crate::db::apply_migrations(&mut conn).unwrap().iter().filter(|m| m.starts_with("0098_")).count(), 1);
+        conn.execute(
+            "INSERT INTO status_pages (slug, title) VALUES ('old', 'Old')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            crate::db::apply_migrations(&mut conn)
+                .unwrap()
+                .iter()
+                .filter(|m| m.starts_with("0098_"))
+                .count(),
+            1
+        );
         let p = pages::get_by_slug(&conn, "old").unwrap().unwrap();
         assert!(!p.is_protected());
         assert_eq!(p.analytics, Analytics::default());

@@ -35,13 +35,19 @@ pub async fn layer(State(state): State<AppState>, request: Request, next: Next) 
 }
 
 fn is_machine_path(path: &str) -> bool {
-    path.starts_with("/static/") || path.starts_with("/api/") || path == "/metrics" || path == "/healthz"
+    path.starts_with("/static/")
+        || path.starts_with("/api/")
+        || path == "/metrics"
+        || path == "/healthz"
 }
 
 /// The admin-chosen language, if one was saved (also refreshes the cached
 /// [`super::site_default`]).
 pub async fn site_language(state: &AppState) -> Option<Lang> {
-    match state.with_conn(|c| settings::get(c, settings::LANGUAGE)).await {
+    match state
+        .with_conn(|c| settings::get(c, settings::LANGUAGE))
+        .await
+    {
         Ok(code) => {
             let lang = code.as_deref().and_then(Lang::from_code);
             super::set_site_default(lang.unwrap_or_default());
@@ -75,5 +81,7 @@ pub(super) fn parse_accept_language(value: &str) -> Option<Lang> {
         .collect();
     // Highest q first; ties keep header order.
     ranges.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
-    ranges.into_iter().find_map(|(_, _, tag)| Lang::from_code(tag))
+    ranges
+        .into_iter()
+        .find_map(|(_, _, tag)| Lang::from_code(tag))
 }

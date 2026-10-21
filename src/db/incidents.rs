@@ -66,7 +66,8 @@ pub struct NewIncident {
     pub pinned: bool,
 }
 
-const COLUMNS: &str = "id, status_page_id, title, body, severity, pinned, created_at, updated_at, resolved_at";
+const COLUMNS: &str =
+    "id, status_page_id, title, body, severity, pinned, created_at, updated_at, resolved_at";
 
 pub fn row_to_incident(row: &Row) -> rusqlite::Result<Incident> {
     Ok(Incident {
@@ -104,7 +105,11 @@ pub fn list_pinned_open(conn: &Connection, page_id: i64) -> rusqlite::Result<Vec
 
 /// Incidents for the history section: everything not pinned-and-open that
 /// was created or resolved at/after `since` (UTC text).
-pub fn list_history(conn: &Connection, page_id: i64, since: &str) -> rusqlite::Result<Vec<Incident>> {
+pub fn list_history(
+    conn: &Connection,
+    page_id: i64,
+    since: &str,
+) -> rusqlite::Result<Vec<Incident>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS} FROM incidents
          WHERE status_page_id = ?1 AND NOT (pinned = 1 AND resolved_at IS NULL)
@@ -141,7 +146,12 @@ pub fn update(conn: &Connection, page_id: i64, id: i64, i: &NewIncident) -> rusq
 }
 
 /// Resolve (`true`) or reopen (`false`).
-pub fn set_resolved(conn: &Connection, page_id: i64, id: i64, resolved: bool) -> rusqlite::Result<bool> {
+pub fn set_resolved(
+    conn: &Connection,
+    page_id: i64,
+    id: i64,
+    resolved: bool,
+) -> rusqlite::Result<bool> {
     let sql = if resolved {
         "UPDATE incidents SET resolved_at = datetime('now'), updated_at = datetime('now')
          WHERE id = ?1 AND status_page_id = ?2 AND resolved_at IS NULL"
@@ -216,7 +226,8 @@ pub fn updates_for(
     conn: &Connection,
     incident_ids: &[i64],
 ) -> rusqlite::Result<std::collections::HashMap<i64, Vec<IncidentUpdate>>> {
-    let mut map: std::collections::HashMap<i64, Vec<IncidentUpdate>> = std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<i64, Vec<IncidentUpdate>> =
+        std::collections::HashMap::new();
     if incident_ids.is_empty() {
         return Ok(map);
     }
@@ -234,11 +245,18 @@ pub fn updates_for(
 }
 
 /// The most recent incidents of a page (open first is not needed here), for feeds.
-pub fn list_recent(conn: &Connection, page_id: i64, limit: usize) -> rusqlite::Result<Vec<Incident>> {
+pub fn list_recent(
+    conn: &Connection,
+    page_id: i64,
+    limit: usize,
+) -> rusqlite::Result<Vec<Incident>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS} FROM incidents WHERE status_page_id = ?1 ORDER BY updated_at DESC, id DESC LIMIT ?2"
     ))?;
-    let rows = stmt.query_map(params![page_id, i64::try_from(limit).unwrap_or(50)], row_to_incident)?;
+    let rows = stmt.query_map(
+        params![page_id, i64::try_from(limit).unwrap_or(50)],
+        row_to_incident,
+    )?;
     rows.collect()
 }
 
@@ -274,7 +292,12 @@ pub fn add_update(
     Ok(Some(id))
 }
 
-pub fn delete_update(conn: &Connection, page_id: i64, incident_id: i64, update_id: i64) -> rusqlite::Result<bool> {
+pub fn delete_update(
+    conn: &Connection,
+    page_id: i64,
+    incident_id: i64,
+    update_id: i64,
+) -> rusqlite::Result<bool> {
     Ok(conn.execute(
         "DELETE FROM incident_updates WHERE id = ?3 AND incident_id = ?2
            AND incident_id IN (SELECT id FROM incidents WHERE id = ?2 AND status_page_id = ?1)",
@@ -317,7 +340,14 @@ mod tests {
         let id = insert(&conn, p, &incident("Slow API", true)).unwrap();
         let unpinned = insert(&conn, p, &incident("FYI", false)).unwrap();
 
-        assert_eq!(list_pinned_open(&conn, p).unwrap().iter().map(|i| i.id).collect::<Vec<_>>(), [id]);
+        assert_eq!(
+            list_pinned_open(&conn, p)
+                .unwrap()
+                .iter()
+                .map(|i| i.id)
+                .collect::<Vec<_>>(),
+            [id]
+        );
         let history = list_history(&conn, p, "2000-01-01 00:00:00").unwrap();
         assert_eq!(history.iter().map(|i| i.id).collect::<Vec<_>>(), [unpinned]);
 
@@ -332,9 +362,15 @@ mod tests {
         assert_eq!(get(&conn, p, id).unwrap().unwrap().severity, "success");
 
         assert!(set_resolved(&conn, p, id, true).unwrap());
-        assert!(!set_resolved(&conn, p, id, true).unwrap(), "already resolved");
+        assert!(
+            !set_resolved(&conn, p, id, true).unwrap(),
+            "already resolved"
+        );
         assert!(list_pinned_open(&conn, p).unwrap().is_empty());
-        assert_eq!(list_history(&conn, p, "2000-01-01 00:00:00").unwrap().len(), 2);
+        assert_eq!(
+            list_history(&conn, p, "2000-01-01 00:00:00").unwrap().len(),
+            2
+        );
         let all = list_for_page(&conn, p).unwrap();
         assert_eq!(all[0].id, unpinned, "open incidents come first");
 
@@ -353,7 +389,11 @@ mod tests {
         let resolved = insert(&conn, p, &incident("Resolved", true)).unwrap();
         set_resolved(&conn, p, resolved, true).unwrap();
         let pinned_new = insert(&conn, p, &incident("Pinned, newer", true)).unwrap();
-        let order: Vec<i64> = list_for_page(&conn, p).unwrap().iter().map(|i| i.id).collect();
+        let order: Vec<i64> = list_for_page(&conn, p)
+            .unwrap()
+            .iter()
+            .map(|i| i.id)
+            .collect();
         assert_eq!(order, [pinned_new, pinned_old, open, resolved]);
     }
 
@@ -381,24 +421,45 @@ mod tests {
         let other = page(&mut conn, "other");
         let id = insert(&conn, p, &incident("Slow API", true)).unwrap();
 
-        let first = add_update(&conn, p, id, "investigating", "Looking into it").unwrap().unwrap();
-        let second = add_update(&conn, p, id, "identified", "A bad deploy").unwrap().unwrap();
+        let first = add_update(&conn, p, id, "investigating", "Looking into it")
+            .unwrap()
+            .unwrap();
+        let second = add_update(&conn, p, id, "identified", "A bad deploy")
+            .unwrap()
+            .unwrap();
         let timeline = list_updates(&conn, id).unwrap();
-        assert_eq!(timeline.iter().map(|u| u.id).collect::<Vec<_>>(), [second, first], "newest first");
+        assert_eq!(
+            timeline.iter().map(|u| u.id).collect::<Vec<_>>(),
+            [second, first],
+            "newest first"
+        );
         assert_eq!(timeline[0].status_label(), "Identified");
         assert!(!get(&conn, p, id).unwrap().unwrap().is_resolved());
 
         // A resolving update resolves the incident; another status reopens it.
-        add_update(&conn, p, id, "resolved", "Fixed").unwrap().unwrap();
+        add_update(&conn, p, id, "resolved", "Fixed")
+            .unwrap()
+            .unwrap();
         let resolved_at = get(&conn, p, id).unwrap().unwrap().resolved_at;
         assert!(resolved_at.is_some());
-        add_update(&conn, p, id, "resolved", "Still fixed").unwrap().unwrap();
-        assert_eq!(get(&conn, p, id).unwrap().unwrap().resolved_at, resolved_at, "keeps the first resolution time");
-        add_update(&conn, p, id, "monitoring", "Watching").unwrap().unwrap();
+        add_update(&conn, p, id, "resolved", "Still fixed")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            get(&conn, p, id).unwrap().unwrap().resolved_at,
+            resolved_at,
+            "keeps the first resolution time"
+        );
+        add_update(&conn, p, id, "monitoring", "Watching")
+            .unwrap()
+            .unwrap();
         assert!(!get(&conn, p, id).unwrap().unwrap().is_resolved());
 
         // Scoped to the page; deleting the incident takes its updates along.
-        assert_eq!(add_update(&conn, other, id, "monitoring", "x").unwrap(), None);
+        assert_eq!(
+            add_update(&conn, other, id, "monitoring", "x").unwrap(),
+            None
+        );
         assert!(!delete_update(&conn, other, id, first).unwrap());
         assert!(delete_update(&conn, p, id, first).unwrap());
         assert_eq!(list_updates(&conn, id).unwrap().len(), 4);

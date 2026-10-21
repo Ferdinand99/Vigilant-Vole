@@ -117,7 +117,10 @@ pub fn build_router(state: AppState) -> Router {
         .merge(metrics::router())
         .merge(remote_browsers::router())
         .merge(v1::router())
-        .route_layer(middleware::from_fn_with_state(state.clone(), auth::require_auth));
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_auth,
+        ));
 
     let public = Router::new()
         .route("/healthz", get(healthz))
@@ -134,9 +137,18 @@ pub fn build_router(state: AppState) -> Router {
     protected
         .merge(public)
         .fallback(error::not_found)
-        .layer(middleware::from_fn_with_state(state.clone(), auth::csrf_guard))
-        .layer(middleware::from_fn_with_state(state.clone(), public_status::custom_domain))
-        .layer(middleware::from_fn_with_state(state.clone(), crate::i18n::layer))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::csrf_guard,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            public_status::custom_domain,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::i18n::layer,
+        ))
         .layer(middleware::from_fn(error::negotiate))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
@@ -157,19 +169,34 @@ const PUBLIC_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self
 /// Baseline hardening headers. Public status pages and the status-page JSON stay
 /// frameable so people can embed them, everything else (the admin UI) cannot be.
 async fn security_headers(req: axum::extract::Request, next: middleware::Next) -> Response {
-    let by_path = req.uri().path().starts_with("/status/") || req.uri().path().starts_with("/api/status-page/");
+    let by_path = req.uri().path().starts_with("/status/")
+        || req.uri().path().starts_with("/api/status-page/");
     let mut res = next.run(req).await;
     // Status pages served on a custom domain at `/` mark themselves.
-    let embeddable = by_path || res.extensions().get::<public_status::PublicPage>().is_some();
+    let embeddable = by_path
+        || res
+            .extensions()
+            .get::<public_status::PublicPage>()
+            .is_some();
     let headers = res.headers_mut();
-    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("same-origin"));
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("same-origin"),
+    );
     if !embeddable {
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
     headers
         .entry(header::CONTENT_SECURITY_POLICY)
-        .or_insert(HeaderValue::from_static(if embeddable { PUBLIC_CSP } else { APP_CSP }));
+        .or_insert(HeaderValue::from_static(if embeddable {
+            PUBLIC_CSP
+        } else {
+            APP_CSP
+        }));
     res
 }
 
@@ -208,10 +235,17 @@ async fn static_asset(AxumPath(path): AxumPath<String>, headers: HeaderMap) -> R
     let mut response = if not_modified {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
-        ([(header::CONTENT_TYPE, guess_content_type(&path))], file.data).into_response()
+        (
+            [(header::CONTENT_TYPE, guess_content_type(&path))],
+            file.data,
+        )
+            .into_response()
     };
     let h = response.headers_mut();
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_control));
+    h.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(cache_control),
+    );
     if let Ok(v) = HeaderValue::from_str(&etag) {
         h.insert(header::ETAG, v);
     }
@@ -219,7 +253,12 @@ async fn static_asset(AxumPath(path): AxumPath<String>, headers: HeaderMap) -> R
 }
 
 fn guess_content_type(path: &str) -> &'static str {
-    match path.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+    match path
+        .rsplit('.')
+        .next()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("js") | Some("mjs") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("json") => "application/json",
@@ -259,15 +298,28 @@ mod tests {
                 .unwrap_or_default()
                 .to_string()
         };
-        let res = app.clone().oneshot(Request::get("/login").body(Body::empty()).unwrap()).await.unwrap();
+        let res = app
+            .clone()
+            .oneshot(Request::get("/login").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         let app_csp = csp(&res);
-        assert!(app_csp.contains("script-src 'self';") && app_csp.contains("frame-ancestors 'none'"), "{app_csp}");
+        assert!(
+            app_csp.contains("script-src 'self';") && app_csp.contains("frame-ancestors 'none'"),
+            "{app_csp}"
+        );
         assert!(!app_csp.contains("unsafe-eval"));
         assert_eq!(res.headers()["x-frame-options"], "DENY");
 
-        let res = app.oneshot(Request::get("/status/nope").body(Body::empty()).unwrap()).await.unwrap();
+        let res = app
+            .oneshot(Request::get("/status/nope").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         let public = csp(&res);
-        assert!(public.contains("script-src 'self';") && !public.contains("frame-ancestors"), "{public}");
+        assert!(
+            public.contains("script-src 'self';") && !public.contains("frame-ancestors"),
+            "{public}"
+        );
         assert!(res.headers().get("x-frame-options").is_none());
     }
 
@@ -275,7 +327,13 @@ mod tests {
     fn content_types_cover_fonts_and_icons() {
         assert_eq!(guess_content_type("fonts/inter.woff2"), "font/woff2");
         assert_eq!(guess_content_type("favicon.ICO"), "image/x-icon");
-        assert_eq!(guess_content_type("site.webmanifest"), "application/manifest+json");
-        assert_eq!(guess_content_type("unknown.bin"), "application/octet-stream");
+        assert_eq!(
+            guess_content_type("site.webmanifest"),
+            "application/manifest+json"
+        );
+        assert_eq!(
+            guess_content_type("unknown.bin"),
+            "application/octet-stream"
+        );
     }
 }

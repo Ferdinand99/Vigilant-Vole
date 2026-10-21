@@ -10,7 +10,9 @@
 use std::net::SocketAddr;
 use std::time::Instant;
 
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
+};
 use tokio::net::TcpStream;
 
 use super::conn;
@@ -35,7 +37,9 @@ impl Reply {
     }
 
     fn offers(&self, keyword: &str) -> bool {
-        self.lines.iter().any(|l| l.trim().eq_ignore_ascii_case(keyword))
+        self.lines
+            .iter()
+            .any(|l| l.trim().eq_ignore_ascii_case(keyword))
     }
 }
 
@@ -73,7 +77,10 @@ fn garbled(line: &str) -> String {
     format!("Not an SMTP server (got \"{}\")", util::truncate(line, 60))
 }
 
-async fn command<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut BufReader<S>, line: &str) -> Result<Reply, String> {
+async fn command<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut BufReader<S>,
+    line: &str,
+) -> Result<Reply, String> {
     stream
         .get_mut()
         .write_all(format!("{line}\r\n").as_bytes())
@@ -83,19 +90,31 @@ async fn command<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut BufReader<S>, l
 }
 
 /// Greeting + EHLO on an open stream. Returns the greeting text and the EHLO reply.
-async fn converse<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut BufReader<S>) -> Result<(String, Reply), String> {
+async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut BufReader<S>,
+) -> Result<(String, Reply), String> {
     let greeting = read_reply(stream).await?;
     if greeting.code != 220 {
-        return Err(format!("Greeting refused: {} {}", greeting.code, util::truncate(greeting.first(), 80)));
+        return Err(format!(
+            "Greeting refused: {} {}",
+            greeting.code,
+            util::truncate(greeting.first(), 80)
+        ));
     }
     let ehlo = ehlo(stream).await?;
     Ok((greeting.first().to_string(), ehlo))
 }
 
-async fn ehlo<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut BufReader<S>) -> Result<Reply, String> {
+async fn ehlo<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut BufReader<S>,
+) -> Result<Reply, String> {
     let ehlo = command(stream, "EHLO vigilant-vole").await?;
     if ehlo.code != 250 {
-        return Err(format!("EHLO refused: {} {}", ehlo.code, util::truncate(ehlo.first(), 80)));
+        return Err(format!(
+            "EHLO refused: {} {}",
+            ehlo.code,
+            util::truncate(ehlo.first(), 80)
+        ));
     }
     Ok(ehlo)
 }
@@ -111,7 +130,12 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     };
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
-    match tokio::time::timeout(timeout, probe(&host, &addrs, port == 465, monitor.ignore_tls)).await {
+    match tokio::time::timeout(
+        timeout,
+        probe(&host, &addrs, port == 465, monitor.ignore_tls),
+    )
+    .await
+    {
         Ok(Ok(found)) => {
             let ms = util::elapsed_ms(start);
             let mut outcome = CheckOutcome::up(ms).with_message(found.message());
@@ -120,7 +144,10 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         }
         Ok(Err(Failure::Tls(err, addr))) => {
             let implicit = port == 465;
-            conn::tls_failure_with(&err, monitor.ignore_tls, timeout, || fetch_cert(&host, addr, implicit)).await
+            conn::tls_failure_with(&err, monitor.ignore_tls, timeout, || {
+                fetch_cert(&host, addr, implicit)
+            })
+            .await
         }
         Ok(Err(Failure::Smtp(msg))) => CheckOutcome::down(msg),
         Err(_) => CheckOutcome::down(format!(
@@ -140,7 +167,10 @@ async fn fetch_cert(host: &str, addr: SocketAddr, implicit_tls: bool) -> Option<
     }
     let mut reader = BufReader::new(tcp);
     let (_, ehlo) = converse(&mut reader).await.ok()?;
-    if !ehlo.offers("STARTTLS") || command(&mut reader, "STARTTLS").await.ok()?.code != 220 || !reader.buffer().is_empty() {
+    if !ehlo.offers("STARTTLS")
+        || command(&mut reader, "STARTTLS").await.ok()?.code != 220
+        || !reader.buffer().is_empty()
+    {
         return None;
     }
     tls::peer_cert(&tls::upgrade(reader.into_inner(), host, true).await.ok()?)
@@ -176,10 +206,15 @@ impl Found {
     }
 }
 
-async fn probe(host: &str, addrs: &[SocketAddr], implicit_tls: bool, ignore_tls: bool) -> Result<Found, Failure> {
-    let (tcp, addr) = util::connect_any(addrs)
-        .await
-        .map_err(|(_, e)| Failure::Smtp(format!("Connection failed: {}", util::tidy_io_error(&e))))?;
+async fn probe(
+    host: &str,
+    addrs: &[SocketAddr],
+    implicit_tls: bool,
+    ignore_tls: bool,
+) -> Result<Found, Failure> {
+    let (tcp, addr) = util::connect_any(addrs).await.map_err(|(_, e)| {
+        Failure::Smtp(format!("Connection failed: {}", util::tidy_io_error(&e)))
+    })?;
     let tls_err = |e| Failure::Tls(e, addr);
     if implicit_tls {
         let stream = tls::upgrade(tcp, host, ignore_tls).await.map_err(tls_err)?;
@@ -187,33 +222,59 @@ async fn probe(host: &str, addrs: &[SocketAddr], implicit_tls: bool, ignore_tls:
         let mut reader = BufReader::new(stream);
         let (greeting, ehlo) = converse(&mut reader).await?;
         let _ = command(&mut reader, "QUIT").await;
-        return Ok(Found { greeting, tls: Some(version), starttls_offered: ehlo.offers("STARTTLS"), cert });
+        return Ok(Found {
+            greeting,
+            tls: Some(version),
+            starttls_offered: ehlo.offers("STARTTLS"),
+            cert,
+        });
     }
     let mut reader = BufReader::new(tcp);
     let (greeting, ehlo) = converse(&mut reader).await?;
     if !ehlo.offers("STARTTLS") {
         let _ = command(&mut reader, "QUIT").await;
-        return Ok(Found { greeting, tls: None, starttls_offered: false, cert: None });
+        return Ok(Found {
+            greeting,
+            tls: None,
+            starttls_offered: false,
+            cert: None,
+        });
     }
     let reply = command(&mut reader, "STARTTLS").await?;
     if reply.code != 220 {
-        return Err(format!("STARTTLS refused: {} {}", reply.code, util::truncate(reply.first(), 80)).into());
+        return Err(format!(
+            "STARTTLS refused: {} {}",
+            reply.code,
+            util::truncate(reply.first(), 80)
+        )
+        .into());
     }
     // Bytes the server sent after its 220 would be read as part of the TLS
     // session (STARTTLS injection); there must be none.
     if !reader.buffer().is_empty() {
-        return Err("Server sent data before the TLS handshake".to_string().into());
+        return Err("Server sent data before the TLS handshake"
+            .to_string()
+            .into());
     }
-    let stream = tls::upgrade(reader.into_inner(), host, ignore_tls).await.map_err(tls_err)?;
+    let stream = tls::upgrade(reader.into_inner(), host, ignore_tls)
+        .await
+        .map_err(tls_err)?;
     let (version, cert) = (tls::version_label(&stream), tls::peer_cert(&stream));
     let mut reader = BufReader::new(stream);
     // The server forgets the session state after STARTTLS: say EHLO again.
     ehlo_again(&mut reader).await?;
     let _ = command(&mut reader, "QUIT").await;
-    Ok(Found { greeting, tls: Some(version), starttls_offered: true, cert })
+    Ok(Found {
+        greeting,
+        tls: Some(version),
+        starttls_offered: true,
+        cert,
+    })
 }
 
-async fn ehlo_again<S: AsyncRead + AsyncWrite + Unpin>(reader: &mut BufReader<S>) -> Result<(), String> {
+async fn ehlo_again<S: AsyncRead + AsyncWrite + Unpin>(
+    reader: &mut BufReader<S>,
+) -> Result<(), String> {
     ehlo(reader).await.map(|_| ())
 }
 
@@ -276,7 +337,10 @@ mod tests {
         let addr = serve("220 mail.test ESMTP ready\r\n", false).await;
         let out = check(&monitor(MonitorType::Smtp, &addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        assert_eq!(out.message.as_deref(), Some("mail.test ESMTP ready · no TLS offered"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("mail.test ESMTP ready · no TLS offered")
+        );
         assert!(out.expiry.is_none());
     }
 
@@ -308,7 +372,10 @@ mod tests {
         let addr = serve("554 No SMTP service here\r\n", false).await;
         let out = check(&monitor(MonitorType::Smtp, &addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
-        assert_eq!(out.message.as_deref(), Some("Greeting refused: 554 No SMTP service here"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Greeting refused: 554 No SMTP service here")
+        );
 
         let addr = serve("SSH-2.0-OpenSSH_9.6\r\n", false).await;
         let out = check(&monitor(MonitorType::Smtp, &addr.to_string())).await;

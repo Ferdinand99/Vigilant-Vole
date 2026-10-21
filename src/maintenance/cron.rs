@@ -19,11 +19,20 @@ pub struct CronSpec {
     weekdays_restricted: bool,
 }
 
-const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTHS: [&str; 12] = [
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
 const WEEKDAYS: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 /// One field: its bitmask plus whether it was a bare `*` (or `*/n`).
-fn parse_field(src: &str, min: u32, max: u32, names: &[&str], name_base: u32, label: &str) -> Result<(u64, bool), String> {
+fn parse_field(
+    src: &str,
+    min: u32,
+    max: u32,
+    names: &[&str],
+    name_base: u32,
+    label: &str,
+) -> Result<(u64, bool), String> {
     let value = |tok: &str| -> Result<u32, String> {
         if let Ok(n) = tok.parse::<u32>() {
             return Ok(n);
@@ -39,7 +48,9 @@ fn parse_field(src: &str, min: u32, max: u32, names: &[&str], name_base: u32, la
     for part in src.split(',') {
         let (range, step) = match part.split_once('/') {
             Some((r, s)) => {
-                let step: u32 = s.parse().map_err(|_| format!("“{s}” isn’t a valid step in the {label} field."))?;
+                let step: u32 = s
+                    .parse()
+                    .map_err(|_| format!("“{s}” isn’t a valid step in the {label} field."))?;
                 if step == 0 {
                     return Err(format!("A step of 0 isn’t valid in the {label} field."));
                 }
@@ -58,7 +69,9 @@ fn parse_field(src: &str, min: u32, max: u32, names: &[&str], name_base: u32, la
             (v, if step > 1 { max } else { v })
         };
         if lo < min || hi > max || lo > hi {
-            return Err(format!("{lo}-{hi} is outside {min}-{max} in the {label} field."));
+            return Err(format!(
+                "{lo}-{hi} is outside {min}-{max} in the {label} field."
+            ));
         }
         let mut v = lo;
         while v <= hi {
@@ -91,7 +104,8 @@ impl CronSpec {
         let (hours, _) = parse_field(fields[1], 0, 23, &[], 0, "hour")?;
         let (days, days_star) = parse_field(fields[2], 1, 31, &[], 0, "day-of-month")?;
         let (months, _) = parse_field(fields[3], 1, 12, &MONTHS, 1, "month")?;
-        let (mut weekdays, weekdays_star) = parse_field(fields[4], 0, 7, &WEEKDAYS, 0, "day-of-week")?;
+        let (mut weekdays, weekdays_star) =
+            parse_field(fields[4], 0, 7, &WEEKDAYS, 0, "day-of-week")?;
         if weekdays & (1 << 7) != 0 {
             weekdays = (weekdays & !(1 << 7)) | 1;
         }
@@ -125,7 +139,11 @@ impl CronSpec {
     pub fn times(&self) -> impl Iterator<Item = (i8, i8)> + '_ {
         (0..24i8)
             .filter(|h| self.hours & (1 << h) != 0)
-            .flat_map(move |h| (0..60i8).filter(move |m| self.minutes & (1 << m) != 0).map(move |m| (h, m)))
+            .flat_map(move |h| {
+                (0..60i8)
+                    .filter(move |m| self.minutes & (1 << m) != 0)
+                    .map(move |m| (h, m))
+            })
     }
 }
 
@@ -141,25 +159,62 @@ mod tests {
     #[test]
     fn parses_lists_ranges_steps_and_names() {
         let c = CronSpec::parse("0,30 2-4 * * mon-fri").unwrap();
-        assert_eq!(c.times().collect::<Vec<_>>(), vec![(2, 0), (2, 30), (3, 0), (3, 30), (4, 0), (4, 30)]);
-        assert_eq!(CronSpec::parse("*/20 0 * * *").unwrap().times().collect::<Vec<_>>(), vec![(0, 0), (0, 20), (0, 40)]);
-        assert_eq!(CronSpec::parse("5/25 1 * * *").unwrap().times().collect::<Vec<_>>(), vec![(1, 5), (1, 30), (1, 55)]);
-        assert_eq!(CronSpec::parse("0 8-18/5 * * *").unwrap().times().collect::<Vec<_>>(), vec![(8, 0), (13, 0), (18, 0)]);
-        assert_eq!(CronSpec::parse("0 0 1 JAN,jul *").unwrap().times().count(), 1);
+        assert_eq!(
+            c.times().collect::<Vec<_>>(),
+            vec![(2, 0), (2, 30), (3, 0), (3, 30), (4, 0), (4, 30)]
+        );
+        assert_eq!(
+            CronSpec::parse("*/20 0 * * *")
+                .unwrap()
+                .times()
+                .collect::<Vec<_>>(),
+            vec![(0, 0), (0, 20), (0, 40)]
+        );
+        assert_eq!(
+            CronSpec::parse("5/25 1 * * *")
+                .unwrap()
+                .times()
+                .collect::<Vec<_>>(),
+            vec![(1, 5), (1, 30), (1, 55)]
+        );
+        assert_eq!(
+            CronSpec::parse("0 8-18/5 * * *")
+                .unwrap()
+                .times()
+                .collect::<Vec<_>>(),
+            vec![(8, 0), (13, 0), (18, 0)]
+        );
+        assert_eq!(
+            CronSpec::parse("0 0 1 JAN,jul *").unwrap().times().count(),
+            1
+        );
     }
 
     #[test]
     fn macros_expand() {
-        assert_eq!(CronSpec::parse("@daily").unwrap(), CronSpec::parse("0 0 * * *").unwrap());
-        assert_eq!(CronSpec::parse("@weekly").unwrap(), CronSpec::parse("0 0 * * 0").unwrap());
-        assert_eq!(CronSpec::parse("@monthly").unwrap(), CronSpec::parse("0 0 1 * *").unwrap());
+        assert_eq!(
+            CronSpec::parse("@daily").unwrap(),
+            CronSpec::parse("0 0 * * *").unwrap()
+        );
+        assert_eq!(
+            CronSpec::parse("@weekly").unwrap(),
+            CronSpec::parse("0 0 * * 0").unwrap()
+        );
+        assert_eq!(
+            CronSpec::parse("@monthly").unwrap(),
+            CronSpec::parse("0 0 1 * *").unwrap()
+        );
         assert_eq!(CronSpec::parse("@hourly").unwrap().times().count(), 24);
     }
 
     #[test]
     fn sunday_is_zero_or_seven() {
         let sunday = date(2026, 10, 18);
-        assert!(fires("0 0 * * 0", sunday) && fires("0 0 * * 7", sunday) && fires("0 0 * * sun", sunday));
+        assert!(
+            fires("0 0 * * 0", sunday)
+                && fires("0 0 * * 7", sunday)
+                && fires("0 0 * * sun", sunday)
+        );
         assert!(!fires("0 0 * * 1-5", sunday));
         assert!(fires("0 0 * * 5-7", sunday));
     }
@@ -186,8 +241,22 @@ mod tests {
 
     #[test]
     fn rejects_malformed_expressions_with_a_reason() {
-        for bad in ["", "* * * *", "* * * * * *", "60 * * * *", "* 24 * * *", "* * 0 * *", "* * 32 * *", "* * * 13 *", "* * * * 8",
-                    "*/0 * * * *", "a * * * *", "5-1 * * * *", "* * * foo *", "1- * * * *"] {
+        for bad in [
+            "",
+            "* * * *",
+            "* * * * * *",
+            "60 * * * *",
+            "* 24 * * *",
+            "* * 0 * *",
+            "* * 32 * *",
+            "* * * 13 *",
+            "* * * * 8",
+            "*/0 * * * *",
+            "a * * * *",
+            "5-1 * * * *",
+            "* * * foo *",
+            "1- * * * *",
+        ] {
             assert!(CronSpec::parse(bad).is_err(), "{bad:?} should not parse");
         }
         assert!(CronSpec::parse("* * * * *").is_ok());

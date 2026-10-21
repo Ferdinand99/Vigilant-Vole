@@ -65,7 +65,11 @@ pub fn normalize_url(raw: &str) -> Result<String, String> {
     url.set_fragment(None);
     url.set_query(None);
     let path = url.path().trim_end_matches('/').to_string();
-    let path = if path.ends_with("/mcp") { path } else { format!("{path}/mcp") };
+    let path = if path.ends_with("/mcp") {
+        path
+    } else {
+        format!("{path}/mcp")
+    };
     url.set_path(&path);
     Ok(url.to_string())
 }
@@ -81,7 +85,9 @@ fn token_from_env() -> Option<String> {
 /// Entry point of the `mcp` subcommand. Exits with code 2 on a usage error.
 pub async fn run(args: McpArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
     let Some(token) = token_from_env() else {
-        eprintln!("vigilant-vole mcp: no token; set the VV_MCP_TOKEN environment variable (or VV_TOKEN) to an API token");
+        eprintln!(
+            "vigilant-vole mcp: no token; set the VV_MCP_TOKEN environment variable (or VV_TOKEN) to an API token"
+        );
         std::process::exit(2);
     };
     let endpoint = match normalize_url(&args.url) {
@@ -120,7 +126,12 @@ where
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(std::io::Error::other)?;
-    let mut bridge = Bridge { http, cfg, protocol_version: None, session_id: None };
+    let mut bridge = Bridge {
+        http,
+        cfg,
+        protocol_version: None,
+        session_id: None,
+    };
     let mut input = input;
     let mut buf = Vec::new();
     loop {
@@ -135,7 +146,11 @@ where
         }
         match serde_json::from_str::<Value>(line) {
             Err(e) => {
-                write_value(&mut output, &error_response(&Value::Null, CODE_PARSE_ERROR, &format!("parse error: {e}"))).await?;
+                write_value(
+                    &mut output,
+                    &error_response(&Value::Null, CODE_PARSE_ERROR, &format!("parse error: {e}")),
+                )
+                .await?;
             }
             Ok(msg) => bridge.handle(msg, &mut output).await?,
         }
@@ -161,7 +176,11 @@ async fn write_value<W: AsyncWrite + Unpin>(out: &mut W, v: &Value) -> std::io::
 }
 
 impl Bridge {
-    async fn handle<W: AsyncWrite + Unpin>(&mut self, msg: Value, out: &mut W) -> std::io::Result<()> {
+    async fn handle<W: AsyncWrite + Unpin>(
+        &mut self,
+        msg: Value,
+        out: &mut W,
+    ) -> std::io::Result<()> {
         let is_initialize = msg.get("method").and_then(Value::as_str) == Some("initialize");
         let Err((code, text)) = self.forward(&msg, is_initialize, out).await? else {
             return Ok(());
@@ -210,10 +229,19 @@ impl Bridge {
         }
         let resp = match req.send().await {
             Ok(r) => r,
-            Err(e) => return Ok(Err((CODE_CONNECT, format!("could not reach the server: {}", describe_error(&e))))),
+            Err(e) => {
+                return Ok(Err((
+                    CODE_CONNECT,
+                    format!("could not reach the server: {}", describe_error(&e)),
+                )));
+            }
         };
         let status = resp.status();
-        if let Some(s) = resp.headers().get("mcp-session-id").and_then(|v| v.to_str().ok()) {
+        if let Some(s) = resp
+            .headers()
+            .get("mcp-session-id")
+            .and_then(|v| v.to_str().ok())
+        {
             self.session_id = Some(s.to_string());
         }
         if !status.is_success() {
@@ -235,7 +263,12 @@ impl Bridge {
             while let Some(chunk) = stream.next().await {
                 let chunk = match chunk {
                     Ok(c) => c,
-                    Err(e) => return Ok(Err((CODE_CONNECT, format!("event stream broke: {}", describe_error(&e))))),
+                    Err(e) => {
+                        return Ok(Err((
+                            CODE_CONNECT,
+                            format!("event stream broke: {}", describe_error(&e)),
+                        )));
+                    }
                 };
                 pending.extend_from_slice(&chunk);
                 while let Some(pos) = pending.iter().position(|b| *b == b'\n') {
@@ -264,7 +297,12 @@ impl Bridge {
         }
         let body = match resp.text().await {
             Ok(b) => b,
-            Err(e) => return Ok(Err((CODE_CONNECT, format!("could not read the response: {}", describe_error(&e))))),
+            Err(e) => {
+                return Ok(Err((
+                    CODE_CONNECT,
+                    format!("could not read the response: {}", describe_error(&e)),
+                )));
+            }
         };
         if body.trim().is_empty() {
             return Ok(Ok(()));
@@ -281,10 +319,17 @@ impl Bridge {
     ) -> std::io::Result<Result<(), RpcError>> {
         let value: Value = match serde_json::from_str(payload) {
             Ok(v) => v,
-            Err(e) => return Ok(Err((CODE_HTTP, format!("the server sent a response that is not JSON: {e}")))),
+            Err(e) => {
+                return Ok(Err((
+                    CODE_HTTP,
+                    format!("the server sent a response that is not JSON: {e}"),
+                )));
+            }
         };
         if is_initialize
-            && let Some(v) = value.pointer("/result/protocolVersion").and_then(Value::as_str)
+            && let Some(v) = value
+                .pointer("/result/protocolVersion")
+                .and_then(Value::as_str)
         {
             self.protocol_version = Some(v.to_string());
         }
@@ -307,11 +352,18 @@ fn describe_error(e: &reqwest::Error) -> String {
 async fn http_error(resp: reqwest::Response) -> RpcError {
     let status = resp.status();
     let code = status.as_u16();
-    let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let header = |name: &str| {
+        resp.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
     if matches!(code, 401 | 403) {
         return (
             CODE_AUTH,
-            format!("the server refused the token (HTTP {code}); check VV_MCP_TOKEN and that the token has the required scope"),
+            format!(
+                "the server refused the token (HTTP {code}); check VV_MCP_TOKEN and that the token has the required scope"
+            ),
         );
     }
     if code == 429 {
@@ -323,7 +375,10 @@ async fn http_error(resp: reqwest::Response) -> RpcError {
     }
     if status.is_redirection() {
         let loc = header("location").unwrap_or_else(|| "(none)".into());
-        return (CODE_HTTP, format!("HTTP {code}: redirect to {loc} (redirects are not followed; check --url)"));
+        return (
+            CODE_HTTP,
+            format!("HTTP {code}: redirect to {loc} (redirects are not followed; check --url)"),
+        );
     }
     let body = resp.text().await.unwrap_or_default();
     let snippet: String = body.trim().chars().take(200).collect();
@@ -349,13 +404,33 @@ mod tests {
             return StatusCode::UNAUTHORIZED.into_response();
         }
         assert_eq!(headers.get("content-type").unwrap(), "application/json");
-        assert!(headers.get("accept").unwrap().to_str().unwrap().contains("text/event-stream"));
-        assert!(headers.get("user-agent").unwrap().to_str().unwrap().starts_with("VigilantVoleMcpBridge/"));
+        assert!(
+            headers
+                .get("accept")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("text/event-stream")
+        );
+        assert!(
+            headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("VigilantVoleMcpBridge/")
+        );
         let msg: Value = serde_json::from_str(&body).unwrap();
-        let proto = headers.get("mcp-protocol-version").map(|v| v.to_str().unwrap().to_string());
+        let proto = headers
+            .get("mcp-protocol-version")
+            .map(|v| v.to_str().unwrap().to_string());
         seen.lock().unwrap().push((msg.clone(), proto));
         if let Some(items) = msg.as_array() {
-            let res: Vec<Value> = items.iter().filter_map(|m| m.get("id")).map(|id| json!({"jsonrpc":"2.0","id":id,"result":{}})).collect();
+            let res: Vec<Value> = items
+                .iter()
+                .filter_map(|m| m.get("id"))
+                .map(|id| json!({"jsonrpc":"2.0","id":id,"result":{}}))
+                .collect();
             return axum::Json(res).into_response();
         }
         let Some(id) = msg.get("id").cloned() else {
@@ -377,7 +452,9 @@ mod tests {
 
     async fn server() -> (String, Seen) {
         let seen: Seen = Arc::default();
-        let app = Router::new().route("/mcp", post(handler)).with_state(seen.clone());
+        let app = Router::new()
+            .route("/mcp", post(handler))
+            .with_state(seen.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -385,10 +462,19 @@ mod tests {
     }
 
     async fn bridge(endpoint: &str, token: &str, input: &str) -> Vec<Value> {
-        let cfg = BridgeConfig { endpoint: endpoint.into(), token: token.into() };
+        let cfg = BridgeConfig {
+            endpoint: endpoint.into(),
+            token: token.into(),
+        };
         let mut out = Vec::new();
-        run_bridge(cfg, tokio::io::BufReader::new(input.as_bytes()), &mut out).await.unwrap();
-        String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+        run_bridge(cfg, tokio::io::BufReader::new(input.as_bytes()), &mut out)
+            .await
+            .unwrap();
+        String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
     }
 
     #[tokio::test]
@@ -437,7 +523,12 @@ mod tests {
         assert!(out[0]["error"]["message"].as_str().unwrap().contains('7'));
         assert_eq!(out[1]["id"], 2);
         assert_eq!(out[1]["error"]["code"], CODE_HTTP);
-        assert!(out[1]["error"]["message"].as_str().unwrap().contains("https://login.example/"));
+        assert!(
+            out[1]["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("https://login.example/")
+        );
         assert_eq!(out[2]["error"]["code"], CODE_HTTP);
         let m = out[2]["error"]["message"].as_str().unwrap();
         assert!(m.contains("500") && m.len() < 260);
@@ -446,7 +537,12 @@ mod tests {
     #[tokio::test]
     async fn sse_events_become_lines() {
         let (url, _) = server().await;
-        let out = bridge(&url, "good", "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"sse\"}\n").await;
+        let out = bridge(
+            &url,
+            "good",
+            "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"sse\"}\n",
+        )
+        .await;
         assert_eq!(out.len(), 2);
         assert_eq!(out[0]["id"], 5);
         assert_eq!(out[1]["method"], "n");
@@ -482,7 +578,12 @@ mod tests {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = l.local_addr().unwrap();
         drop(l);
-        let out = bridge(&format!("http://{addr}/mcp"), "good", "{\"id\":9,\"method\":\"ping\"}\n").await;
+        let out = bridge(
+            &format!("http://{addr}/mcp"),
+            "good",
+            "{\"id\":9,\"method\":\"ping\"}\n",
+        )
+        .await;
         assert_eq!(out[0]["id"], 9);
         assert_eq!(out[0]["error"]["code"], CODE_CONNECT);
     }
@@ -492,8 +593,14 @@ mod tests {
         assert_eq!(normalize_url("https://h").unwrap(), "https://h/mcp");
         assert_eq!(normalize_url("https://h/").unwrap(), "https://h/mcp");
         assert_eq!(normalize_url("https://h/mcp").unwrap(), "https://h/mcp");
-        assert_eq!(normalize_url("http://h:8080/sub/mcp").unwrap(), "http://h:8080/sub/mcp");
-        assert_eq!(normalize_url("http://h:8080/sub/").unwrap(), "http://h:8080/sub/mcp");
+        assert_eq!(
+            normalize_url("http://h:8080/sub/mcp").unwrap(),
+            "http://h:8080/sub/mcp"
+        );
+        assert_eq!(
+            normalize_url("http://h:8080/sub/").unwrap(),
+            "http://h:8080/sub/mcp"
+        );
         assert!(normalize_url("ftp://x").is_err());
         assert!(normalize_url("garbage").is_err());
         assert!(normalize_url("").is_err());

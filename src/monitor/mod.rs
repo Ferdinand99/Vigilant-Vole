@@ -49,10 +49,12 @@ use self::alerting::{Action, AlertConfig, Notice, Observation};
 use self::state::{MonitorState, fmt_db_time, parse_db_time};
 use crate::db::events::{self, MonitorEventKind};
 use crate::db::models::{
-    CheckOutcome, EventKind, ExpiryInfo, ExpiryKind, HeartbeatStatus, Monitor, MonitorType, NotificationEvent,
+    CheckOutcome, EventKind, ExpiryInfo, ExpiryKind, HeartbeatStatus, Monitor, MonitorType,
+    NotificationEvent,
 };
 use crate::db::{
-    self, heartbeats as db_heartbeats, monitors as db_monitors, notifications as db_notifications, settings,
+    self, heartbeats as db_heartbeats, monitors as db_monitors, notifications as db_notifications,
+    settings,
 };
 use crate::{maintenance, notification};
 
@@ -162,13 +164,14 @@ impl Scheduler {
     /// spread over min(interval, 30s) so a large fleet doesn't fire at once.
     pub async fn start_all(&self) {
         let _guard = self.inner.reload_lock.lock().await;
-        let monitors = match db::interact(&self.inner.pool, |c| db_monitors::list_active_monitors(c)).await {
-            Ok(monitors) => monitors,
-            Err(err) => {
-                tracing::error!(%err, "failed to load monitors; scheduler not started");
-                return;
-            }
-        };
+        let monitors =
+            match db::interact(&self.inner.pool, |c| db_monitors::list_active_monitors(c)).await {
+                Ok(monitors) => monitors,
+                Err(err) => {
+                    tracing::error!(%err, "failed to load monitors; scheduler not started");
+                    return;
+                }
+            };
         let count = monitors.len();
         for monitor in monitors {
             let delay = start_jitter(monitor.id, monitor.interval_seconds);
@@ -190,7 +193,11 @@ impl Scheduler {
         // not outlive them.
         checkers::http_auth::forget_token(monitor_id);
         checkers::grpc_keyword::forget(monitor_id);
-        let monitor = match db::interact(&self.inner.pool, move |c| db_monitors::get_monitor(c, monitor_id)).await {
+        let monitor = match db::interact(&self.inner.pool, move |c| {
+            db_monitors::get_monitor(c, monitor_id)
+        })
+        .await
+        {
             Ok(m) => m,
             Err(err) => {
                 tracing::error!(monitor_id, %err, "failed to reload monitor");
@@ -258,8 +265,17 @@ impl Scheduler {
     ///   confirm local failures, never drives the monitor's status.
     ///
     /// Results for unknown, paused or group monitors are ignored.
-    pub async fn ingest_external(&self, monitor_id: i64, outcome: CheckOutcome, agent_id: Option<i64>) {
-        let monitor = match db::interact(&self.inner.pool, move |c| db_monitors::get_monitor(c, monitor_id)).await {
+    pub async fn ingest_external(
+        &self,
+        monitor_id: i64,
+        outcome: CheckOutcome,
+        agent_id: Option<i64>,
+    ) {
+        let monitor = match db::interact(&self.inner.pool, move |c| {
+            db_monitors::get_monitor(c, monitor_id)
+        })
+        .await
+        {
             Ok(Some(m)) if m.active && m.monitor_type != MonitorType::Group => m,
             Ok(_) => {
                 tracing::debug!(
@@ -294,7 +310,11 @@ impl Scheduler {
     /// it recorded. `None` for unknown, paused, push and group monitors, or if
     /// the check couldn't be recorded. The regular schedule is unaffected.
     pub async fn check_now(&self, monitor_id: i64) -> Option<HeartbeatStatus> {
-        let monitor = match db::interact(&self.inner.pool, move |c| db_monitors::get_monitor(c, monitor_id)).await {
+        let monitor = match db::interact(&self.inner.pool, move |c| {
+            db_monitors::get_monitor(c, monitor_id)
+        })
+        .await
+        {
             Ok(Some(m)) if m.active && m.monitor_type.is_active_check() => m,
             Ok(_) => return None,
             Err(err) => {
@@ -335,7 +355,11 @@ impl Scheduler {
         let id = monitor.id;
         let parent_id = monitor.parent_id;
         let wake = Arc::new(Notify::new());
-        let span = tracing::info_span!("monitor", monitor_id = id, monitor_type = monitor.monitor_type.as_str());
+        let span = tracing::info_span!(
+            "monitor",
+            monitor_id = id,
+            monitor_type = monitor.monitor_type.as_str()
+        );
         let abort = match monitor.monitor_type {
             MonitorType::Group => None,
             MonitorType::Push => {
@@ -343,11 +367,20 @@ impl Scheduler {
                 Some(tokio::spawn(fut.instrument(span)).abort_handle())
             }
             _ => {
-                let fut = self.clone().check_loop(Arc::new(monitor), wake.clone(), delay);
+                let fut = self
+                    .clone()
+                    .check_loop(Arc::new(monitor), wake.clone(), delay);
                 Some(tokio::spawn(fut.instrument(span)).abort_handle())
             }
         };
-        tasks.insert(id, TaskEntry { abort, wake, parent_id });
+        tasks.insert(
+            id,
+            TaskEntry {
+                abort,
+                wake,
+                parent_id,
+            },
+        );
         metrics::set_running_tasks(tasks.values().filter(|t| t.abort.is_some()).count());
     }
 
@@ -368,7 +401,10 @@ impl Scheduler {
     }
 
     fn runtime(&self, monitor_id: i64) -> Arc<AsyncMutex<Runtime>> {
-        lock(&self.inner.runtimes).entry(monitor_id).or_default().clone()
+        lock(&self.inner.runtimes)
+            .entry(monitor_id)
+            .or_default()
+            .clone()
     }
 
     // -- loops ------------------------------------------------------------------
@@ -387,7 +423,9 @@ impl Scheduler {
                 return;
             }
             let secs = match status {
-                Some(HeartbeatStatus::Down | HeartbeatStatus::Pending) => monitor.effective_retry_interval(),
+                Some(HeartbeatStatus::Down | HeartbeatStatus::Pending) => {
+                    monitor.effective_retry_interval()
+                }
                 _ => monitor.interval_seconds,
             };
             let next = started + Duration::from_secs(secs.max(1).unsigned_abs());
@@ -399,7 +437,8 @@ impl Scheduler {
     }
 
     async fn push_loop(self, monitor: Arc<Monitor>, wake: Arc<Notify>) {
-        let grace = Duration::from_secs_f64(monitor.interval_seconds.max(1) as f64 * PUSH_GRACE_FACTOR);
+        let grace =
+            Duration::from_secs_f64(monitor.interval_seconds.max(1) as f64 * PUSH_GRACE_FACTOR);
         let retry = Duration::from_secs(monitor.effective_retry_interval().max(1).unsigned_abs());
         // Every (re)start gets a full grace window: pushes that were refused
         // while the server was down aren't the client's fault.
@@ -419,8 +458,13 @@ impl Scheduler {
             {
                 continue;
             }
-            let outcome = CheckOutcome::down(format!("No push received in the last {}s", grace.as_secs()));
-            if self.record(&monitor, outcome, Source::PushMissed).await.is_none() {
+            let outcome =
+                CheckOutcome::down(format!("No push received in the last {}s", grace.as_secs()));
+            if self
+                .record(&monitor, outcome, Source::PushMissed)
+                .await
+                .is_none()
+            {
                 // Couldn't record (DB trouble): back off instead of spinning.
                 tokio::time::sleep(retry).await;
             }
@@ -448,7 +492,12 @@ impl Scheduler {
         true
     }
 
-    async fn push_deadline_for(&self, monitor_id: i64, grace: Duration, retry: Duration) -> Option<OffsetDateTime> {
+    async fn push_deadline_for(
+        &self,
+        monitor_id: i64,
+        grace: Duration,
+        retry: Duration,
+    ) -> Option<OffsetDateTime> {
         let runtime = self.runtime(monitor_id);
         let guard = runtime.lock().await;
         let s = guard.state.as_ref()?;
@@ -473,7 +522,10 @@ impl Scheduler {
         drop(permit);
         let duration = started.elapsed();
         metrics::record_duration(monitor.monitor_type.as_str(), duration);
-        span.record("duration_ms", u64::try_from(duration.as_millis()).unwrap_or(u64::MAX));
+        span.record(
+            "duration_ms",
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+        );
         if let Some(ms) = outcome.response_time_ms {
             span.record("response_ms", ms);
         }
@@ -489,7 +541,12 @@ impl Scheduler {
     }
 
     /// State machine + persistence + group propagation + SSE signal.
-    async fn record(&self, monitor: &Monitor, outcome: CheckOutcome, source: Source) -> Option<HeartbeatStatus> {
+    async fn record(
+        &self,
+        monitor: &Monitor,
+        outcome: CheckOutcome,
+        source: Source,
+    ) -> Option<HeartbeatStatus> {
         let status = self.process(monitor, outcome, source).await;
         if status.is_some()
             && let Some(parent) = monitor.parent_id
@@ -503,7 +560,12 @@ impl Scheduler {
     /// Runs one observation through the state machine, persists the heartbeat
     /// and events atomically, and dispatches notifications. Returns the
     /// recorded status, or `None` if the database couldn't be read/written.
-    async fn process(&self, monitor: &Monitor, outcome: CheckOutcome, source: Source) -> Option<HeartbeatStatus> {
+    async fn process(
+        &self,
+        monitor: &Monitor,
+        outcome: CheckOutcome,
+        source: Source,
+    ) -> Option<HeartbeatStatus> {
         let monitor_id = monitor.id;
         let runtime = self.runtime(monitor_id);
         let mut guard = runtime.lock().await;
@@ -540,7 +602,9 @@ impl Scheduler {
             }
         };
 
-        let prev = guard.state.get_or_insert_with(|| seeded.unwrap_or_default());
+        let prev = guard
+            .state
+            .get_or_insert_with(|| seeded.unwrap_or_default());
         match source {
             Source::Push => prev.last_push_at = Some(now),
             Source::PushMissed => prev.last_miss_at = Some(now),
@@ -627,7 +691,9 @@ impl Scheduler {
         .await;
         match result {
             Ok(_) => self.inner.updates.notify(),
-            Err(err) => tracing::warn!(monitor_id, agent_id, %err, "failed to record agent heartbeat"),
+            Err(err) => {
+                tracing::warn!(monitor_id, agent_id, %err, "failed to record agent heartbeat")
+            }
         }
     }
 
@@ -640,7 +706,10 @@ impl Scheduler {
         for _ in 0..MAX_GROUP_DEPTH {
             let Some(id) = next else { return };
             if visited.contains(&id) {
-                tracing::warn!(group_id = id, "monitor group cycle detected; stopping propagation");
+                tracing::warn!(
+                    group_id = id,
+                    "monitor group cycle detected; stopping propagation"
+                );
                 return;
             }
             visited.push(id);
@@ -679,8 +748,7 @@ impl Scheduler {
                     alerting_elapsed(at, OffsetDateTime::now_utc())
                         < Duration::from_secs(group.interval_seconds.max(1).unsigned_abs())
                 });
-                let same =
-                    matches!(s.last_status, Some(last) if last == status || last == HeartbeatStatus::Maintenance);
+                let same = matches!(s.last_status, Some(last) if last == status || last == HeartbeatStatus::Maintenance);
                 if recent && same {
                     return None;
                 }
@@ -692,7 +760,9 @@ impl Scheduler {
             message: Some(message),
             expiry: None,
         };
-        self.process(&group, outcome, Source::Group).await.and(group.parent_id)
+        self.process(&group, outcome, Source::Group)
+            .await
+            .and(group.parent_id)
     }
 
     // -- notifications ------------------------------------------------------------
@@ -722,7 +792,11 @@ impl Scheduler {
             };
             // Sequential per notice so channels see Down before Escalation, etc.
             for notice in notices {
-                let channels = if notice.escalation { &escalation } else { &regular };
+                let channels = if notice.escalation {
+                    &escalation
+                } else {
+                    &regular
+                };
                 if channels.is_empty() {
                     tracing::debug!(
                         monitor_id,
@@ -743,7 +817,12 @@ impl Scheduler {
                     url: settings.monitor_url(monitor_id),
                     occurred_at,
                 };
-                let results = join_all(channels.iter().map(|c| notification::send(&http, c, &event))).await;
+                let results = join_all(
+                    channels
+                        .iter()
+                        .map(|c| notification::send(&http, c, &event)),
+                )
+                .await;
                 for (channel, result) in channels.iter().zip(results) {
                     metrics::record_notification(&channel.kind, result.is_ok());
                     match result {
@@ -821,7 +900,10 @@ fn spread(id: i64) -> u64 {
 
 /// Boot-time delay before a monitor's first check, within min(interval, 30s).
 fn start_jitter(id: i64, interval_seconds: i64) -> Duration {
-    let window_ms = interval_seconds.clamp(1, MAX_START_SPREAD_SECS).unsigned_abs() * 1000;
+    let window_ms = interval_seconds
+        .clamp(1, MAX_START_SPREAD_SECS)
+        .unsigned_abs()
+        * 1000;
     Duration::from_millis(spread(id) % window_ms)
 }
 
@@ -882,7 +964,11 @@ fn persist(conn: &mut Connection, p: &Persist) -> rusqlite::Result<Vec<Notice>> 
 
 /// Upserts `monitor_expiry` (resetting `notified_at` when the expiry date
 /// changed, i.e. renewed) and returns a warning notice when one is due.
-fn record_expiry(conn: &Connection, p: &Persist, expiry: &ExpiryInfo) -> rusqlite::Result<Vec<Notice>> {
+fn record_expiry(
+    conn: &Connection,
+    p: &Persist,
+    expiry: &ExpiryInfo,
+) -> rusqlite::Result<Vec<Notice>> {
     let kind = expiry.kind.as_str();
     let existing: Option<(String, Option<String>)> = conn
         .query_row(
@@ -928,18 +1014,36 @@ fn record_expiry(conn: &Connection, p: &Persist, expiry: &ExpiryInfo) -> rusqlit
         params![p.monitor_id, kind, now_text],
     )?;
     let (event_kind, notice_kind, what) = match expiry.kind {
-        ExpiryKind::Cert => (MonitorEventKind::CertExpiring, EventKind::CertExpiring, "Certificate"),
-        ExpiryKind::Domain => (MonitorEventKind::DomainExpiring, EventKind::DomainExpiring, "Domain"),
+        ExpiryKind::Cert => (
+            MonitorEventKind::CertExpiring,
+            EventKind::CertExpiring,
+            "Certificate",
+        ),
+        ExpiryKind::Domain => (
+            MonitorEventKind::DomainExpiring,
+            EventKind::DomainExpiring,
+            "Domain",
+        ),
     };
     let date = expiry.expires_at.get(..10).unwrap_or(&expiry.expires_at);
-    let subject = expiry.subject.as_deref().map(|s| format!(" {s}")).unwrap_or_default();
+    let subject = expiry
+        .subject
+        .as_deref()
+        .map(|s| format!(" {s}"))
+        .unwrap_or_default();
     let event_text = match left {
         l if l < 0 => format!("{what}{subject} expired on {date}"),
         0 => format!("{what}{subject} expires today ({date})"),
         1 => format!("{what}{subject} expires in 1 day ({date})"),
         l => format!("{what}{subject} expires in {l} days ({date})"),
     };
-    events::log_point(conn, p.monitor_id, event_kind, Some(&event_text), Some(&now_text))?;
+    events::log_point(
+        conn,
+        p.monitor_id,
+        event_kind,
+        Some(&event_text),
+        Some(&now_text),
+    )?;
     let mut detail = format!("Expires {date} UTC");
     if let Some(s) = &expiry.subject {
         detail.push_str(&format!(" · {s}"));

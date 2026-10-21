@@ -13,12 +13,12 @@
 pub mod access;
 pub mod analytics;
 pub mod assets;
-pub mod feed;
-pub mod subscribe;
 #[cfg(test)]
 mod extras_tests;
+pub mod feed;
 #[cfg(test)]
 mod incident_updates_tests;
+pub mod subscribe;
 #[cfg(test)]
 mod subscribe_tests;
 
@@ -63,7 +63,10 @@ pub fn public_router() -> Router<AppState> {
         .route("/status/{slug}/fragment", get(fragment))
         .route("/status/{slug}/feed.xml", get(feed::feed))
         .route("/status/{slug}/unlock", axum::routing::post(access::unlock))
-        .route("/status/{slug}/subscribe", get(subscribe::form).post(subscribe::sign_up))
+        .route(
+            "/status/{slug}/subscribe",
+            get(subscribe::form).post(subscribe::sign_up),
+        )
         .route(
             "/status/{slug}/subscribe/confirm/{token}",
             get(subscribe::confirm_page).post(subscribe::confirm),
@@ -94,7 +97,11 @@ pub enum PublicStatus {
 }
 
 impl PublicStatus {
-    pub fn from_heartbeat(status: Option<HeartbeatStatus>, active: bool, in_maintenance: bool) -> Self {
+    pub fn from_heartbeat(
+        status: Option<HeartbeatStatus>,
+        active: bool,
+        in_maintenance: bool,
+    ) -> Self {
         if in_maintenance {
             return PublicStatus::Maintenance;
         }
@@ -162,7 +169,11 @@ pub fn overall(statuses: &[PublicStatus], maintenance_shown: bool) -> Overall {
         .collect();
     let total = counted.len();
     let count = |want: PublicStatus| counted.iter().filter(|s| **s == want).count();
-    let (down, degraded, maint) = (count(PublicStatus::Down), count(PublicStatus::Degraded), count(PublicStatus::Maintenance));
+    let (down, degraded, maint) = (
+        count(PublicStatus::Down),
+        count(PublicStatus::Degraded),
+        count(PublicStatus::Maintenance),
+    );
 
     if total == 0 {
         if maintenance_shown {
@@ -201,7 +212,11 @@ pub fn overall(statuses: &[PublicStatus], maintenance_shown: bool) -> Overall {
             class: "warning",
             icon: "alert",
             title: crate::i18n::t("pub.partial_outage"),
-            detail: crate::i18n::tnf("pub.some_down", down as i64, &[("total", &crate::i18n::fmt_int(total as i64))]),
+            detail: crate::i18n::tnf(
+                "pub.some_down",
+                down as i64,
+                &[("total", &crate::i18n::fmt_int(total as i64))],
+            ),
         };
     }
     if degraded > 0 {
@@ -274,8 +289,13 @@ pub struct MonitorView {
 impl MonitorView {
     /// "123 ms" / "< 1 ms" for the public row.
     pub fn response_label(&self) -> Option<String> {
-        self.response_ms
-            .map(|ms| if ms < 1 { "< 1 ms".into() } else { crate::i18n::fmt_ms(ms) })
+        self.response_ms.map(|ms| {
+            if ms < 1 {
+                "< 1 ms".into()
+            } else {
+                crate::i18n::fmt_ms(ms)
+            }
+        })
     }
 
     pub fn uptime_label(&self) -> String {
@@ -409,7 +429,11 @@ pub fn fmt_local(utc: &str, tz: &TimeZone) -> String {
 
 pub fn fmt_ts(ts: Timestamp, tz: &TimeZone) -> String {
     let z = ts.to_zoned(tz.clone());
-    format!("{} {}", crate::i18n::fmt_short_datetime(&z), z.strftime("%Z"))
+    format!(
+        "{} {}",
+        crate::i18n::fmt_short_datetime(&z),
+        z.strftime("%Z")
+    )
 }
 
 /// "2026-10-03" → "Oct 3" / "3. okt.".
@@ -434,7 +458,10 @@ fn day_tip(d: &DayStat, outages: usize, outage_secs: i64) -> String {
     match d.uptime_pct {
         Some(p) => {
             tip.push_str(" · ");
-            tip.push_str(&crate::i18n::tf("detail.day_uptime", &[("value", &fmt_pct(p))]));
+            tip.push_str(&crate::i18n::tf(
+                "detail.day_uptime",
+                &[("value", &fmt_pct(p))],
+            ));
         }
         None if d.maintenance > 0 => {
             tip.push_str(" · ");
@@ -470,7 +497,11 @@ struct DownEvent {
     duration: Option<i64>,
 }
 
-fn down_events_since(conn: &Connection, page_id: i64, since: &str) -> rusqlite::Result<Vec<DownEvent>> {
+fn down_events_since(
+    conn: &Connection,
+    page_id: i64,
+    since: &str,
+) -> rusqlite::Result<Vec<DownEvent>> {
     let mut stmt = conn.prepare(
         "SELECT DISTINCT e.id, e.monitor_id, m.name, e.started_at, e.ended_at, e.duration_seconds
          FROM monitor_events e
@@ -497,7 +528,11 @@ fn event_seconds(e: &DownEvent, now: Timestamp) -> i64 {
         return d;
     }
     let start = maintenance::parse_db_ts(&e.started_at);
-    let end = e.ended_at.as_deref().and_then(maintenance::parse_db_ts).unwrap_or(now);
+    let end = e
+        .ended_at
+        .as_deref()
+        .and_then(maintenance::parse_db_ts)
+        .unwrap_or(now);
     start.map_or(0, |s| end.duration_since(s).as_secs().max(0))
 }
 
@@ -529,7 +564,10 @@ fn page_tags(conn: &Connection, page_id: i64) -> rusqlite::Result<HashMap<i64, V
     Ok(map)
 }
 
-fn latest_local(conn: &Connection, monitor_id: i64) -> rusqlite::Result<(Option<HeartbeatStatus>, Option<i64>)> {
+fn latest_local(
+    conn: &Connection,
+    monitor_id: i64,
+) -> rusqlite::Result<(Option<HeartbeatStatus>, Option<i64>)> {
     let mut stmt = conn.prepare_cached(
         "SELECT status, response_time_ms FROM heartbeats WHERE monitor_id = ?1 AND agent_id IS NULL
          ORDER BY checked_at DESC, id DESC LIMIT 1",
@@ -544,13 +582,20 @@ fn latest_local(conn: &Connection, monitor_id: i64) -> rusqlite::Result<(Option<
     }
 }
 
-fn incident_notice(i: &Incident, tz: &TimeZone, updates: &[db_incidents::IncidentUpdate]) -> NoticeView {
+fn incident_notice(
+    i: &Incident,
+    tz: &TimeZone,
+    updates: &[db_incidents::IncidentUpdate],
+) -> NoticeView {
     let mut meta = crate::i18n::tf("inc.posted", &[("when", &fmt_local(&i.created_at, tz))]);
     if let Some(r) = &i.resolved_at {
         meta = crate::i18n::tf("inc.resolved_at", &[("when", &fmt_local(r, tz))]);
     } else if i.updated_at != i.created_at {
         meta.push_str(" · ");
-        meta.push_str(&crate::i18n::tf("pub.updated_at", &[("when", &fmt_local(&i.updated_at, tz))]));
+        meta.push_str(&crate::i18n::tf(
+            "pub.updated_at",
+            &[("when", &fmt_local(&i.updated_at, tz))],
+        ));
     }
     NoticeView {
         title: i.title.clone(),
@@ -575,7 +620,11 @@ fn incident_notice(i: &Incident, tz: &TimeZone, updates: &[db_incidents::Inciden
 }
 
 /// Builds the whole public view for `page` at `now`, Markdown included.
-pub fn load_view(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqlite::Result<PublicView> {
+pub fn load_view(
+    conn: &Connection,
+    page: StatusPage,
+    now: Timestamp,
+) -> rusqlite::Result<PublicView> {
     load_view_data(conn, page, now).map(render_markdown)
 }
 
@@ -593,12 +642,21 @@ fn render_markdown(mut view: PublicView) -> PublicView {
             u.body_html = markdown::render(&u.body);
         }
     }
-    view.footer_html = view.page.footer_text.as_deref().map(markdown::render).unwrap_or_default();
+    view.footer_html = view
+        .page
+        .footer_text
+        .as_deref()
+        .map(markdown::render)
+        .unwrap_or_default();
     view
 }
 
 /// The database half of [`load_view`]: everything except rendered Markdown.
-fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqlite::Result<PublicView> {
+fn load_view_data(
+    conn: &Connection,
+    page: StatusPage,
+    now: Timestamp,
+) -> rusqlite::Result<PublicView> {
     let settings = db_settings::load(conn)?;
     let tz = site_tz(&settings.timezone);
     let covered = maintenance::covered_monitors(conn)?;
@@ -631,13 +689,17 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
                 continue;
             }
             let (hb, ms) = latest_local(conn, m.monitor_id)?;
-            let status = PublicStatus::from_heartbeat(hb, m.active, covered.contains(&m.monitor_id));
+            let status =
+                PublicStatus::from_heartbeat(hb, m.active, covered.contains(&m.monitor_id));
             statuses.push(status);
             let days = if page.show_uptime {
                 rollups::daily_uptime(conn, m.monitor_id, UPTIME_DAYS)?
                     .into_iter()
                     .map(|d| {
-                        let (n, secs) = per_day.get(&(m.monitor_id, d.day.clone())).copied().unwrap_or_default();
+                        let (n, secs) = per_day
+                            .get(&(m.monitor_id, d.day.clone()))
+                            .copied()
+                            .unwrap_or_default();
                         DayView {
                             class: day_class(&d),
                             tip: day_tip(&d, n, secs),
@@ -662,7 +724,11 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
                 status,
                 tags: tags.get(&m.monitor_id).cloned().unwrap_or_default(),
                 uptime,
-                response_ms: if page.show_response && status == PublicStatus::Up { ms } else { None },
+                response_ms: if page.show_response && status == PublicStatus::Up {
+                    ms
+                } else {
+                    None
+                },
                 days,
             };
             seen.insert(view.id, view.clone());
@@ -697,8 +763,17 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
         }
         maint_views.push(NoticeView {
             title: w.title,
-            class: if state == WindowState::Active { "maintenance" } else { "info" }.into(),
-            icon: if state == WindowState::Active { "wrench" } else { "calendar" },
+            class: if state == WindowState::Active {
+                "maintenance"
+            } else {
+                "info"
+            }
+            .into(),
+            icon: if state == WindowState::Active {
+                "wrench"
+            } else {
+                "calendar"
+            },
             meta,
             body_html: String::new(),
             body: w.description,
@@ -707,14 +782,32 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
     }
 
     let pinned_open = db_incidents::list_pinned_open(conn, page.id)?;
-    let history_incidents = db_incidents::list_history(conn, page.id, &maintenance::fmt_db_ts(now - jiff::SignedDuration::from_hours(24 * HISTORY_DAYS)))?;
-    let update_ids: Vec<i64> = pinned_open.iter().chain(&history_incidents).map(|i| i.id).collect();
+    let history_incidents = db_incidents::list_history(
+        conn,
+        page.id,
+        &maintenance::fmt_db_ts(now - jiff::SignedDuration::from_hours(24 * HISTORY_DAYS)),
+    )?;
+    let update_ids: Vec<i64> = pinned_open
+        .iter()
+        .chain(&history_incidents)
+        .map(|i| i.id)
+        .collect();
     let timelines = db_incidents::updates_for(conn, &update_ids)?;
-    let updates_of = |i: &Incident| timelines.get(&i.id).map(Vec::as_slice).unwrap_or(&[]).to_vec();
-    let pinned = pinned_open.iter().map(|i| incident_notice(i, &tz, &updates_of(i))).collect();
+    let updates_of = |i: &Incident| {
+        timelines
+            .get(&i.id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .to_vec()
+    };
+    let pinned = pinned_open
+        .iter()
+        .map(|i| incident_notice(i, &tz, &updates_of(i)))
+        .collect();
 
     // History: past announcements + automatic outages, grouped by local day.
-    let since_14 = maintenance::fmt_db_ts(now - jiff::SignedDuration::from_hours(24 * HISTORY_DAYS));
+    let since_14 =
+        maintenance::fmt_db_ts(now - jiff::SignedDuration::from_hours(24 * HISTORY_DAYS));
     let mut buckets: Vec<(jiff::civil::Date, HistoryDay)> = Vec::new();
     let mut bucket = |ts_text: &str| -> Option<usize> {
         let ts = maintenance::parse_db_ts(ts_text)?;
@@ -738,14 +831,25 @@ fn load_view_data(conn: &Connection, page: StatusPage, now: Timestamp) -> rusqli
             history_items.push((b, Ok(incident_notice(&i, &tz, &updates_of(&i)))));
         }
     }
-    for e in events.iter().filter(|e| e.started_at.as_str() >= since_14.as_str()) {
+    for e in events
+        .iter()
+        .filter(|e| e.started_at.as_str() >= since_14.as_str())
+    {
         let secs = event_seconds(e, now);
         let ongoing = e.ended_at.is_none();
         let start_local = maintenance::parse_db_ts(&e.started_at)
-            .map(|t| crate::i18n::local_digits(crate::i18n::current(), t.to_zoned(tz.clone()).strftime("%H:%M").to_string()))
+            .map(|t| {
+                crate::i18n::local_digits(
+                    crate::i18n::current(),
+                    t.to_zoned(tz.clone()).strftime("%H:%M").to_string(),
+                )
+            })
             .unwrap_or_default();
         let text = if ongoing {
-            crate::i18n::tf("pub.down_since", &[("time", &start_local), ("duration", &fmt_duration(secs))])
+            crate::i18n::tf(
+                "pub.down_since",
+                &[("time", &start_local), ("duration", &fmt_duration(secs))],
+            )
         } else {
             crate::i18n::tf("pub.down_for", &[("duration", &fmt_duration(secs))])
         };
@@ -815,7 +919,11 @@ struct LiveFragment {
 /// Resolves a page for a public request: published pages for everyone,
 /// unpublished ones only for logged-in editors (as a preview). The access
 /// says whether a password-protected page's content may be shown.
-async fn resolve(state: &AppState, slug: String, jar: &SignedCookieJar) -> ApiResult<(PublicView, access::Access)> {
+async fn resolve(
+    state: &AppState,
+    slug: String,
+    jar: &SignedCookieJar,
+) -> ApiResult<(PublicView, access::Access)> {
     let user = super::auth::session_user(state, jar).await.unwrap_or(None);
     let can_edit = user.as_ref().is_some_and(|u| u.can_edit());
     let view = cached_view(state, slug)
@@ -840,7 +948,8 @@ const VIEW_CACHE_MAX: usize = 256;
 /// run several at once) without the address reuse a pointer key would risk.
 type ViewKey = (std::path::PathBuf, String, crate::i18n::Lang);
 
-static VIEWS: LazyLock<Mutex<HashMap<ViewKey, (Instant, PublicView)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static VIEWS: LazyLock<Mutex<HashMap<ViewKey, (Instant, PublicView)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Forget cached public views (after a page, incident or maintenance change),
 /// and rendered badges, whose visibility depends on the pages.
@@ -887,7 +996,10 @@ async fn cached_view(state: &AppState, slug: String) -> ApiResult<Option<PublicV
 /// Middleware for routers that edit what public pages show (pages,
 /// incidents, maintenance): any successful write drops the cached views.
 pub async fn invalidate_after_writes(request: Request, next: Next) -> Response {
-    let write = !matches!(*request.method(), Method::GET | Method::HEAD | Method::OPTIONS);
+    let write = !matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    );
     let response = next.run(request).await;
     if write && !response.status().is_client_error() && !response.status().is_server_error() {
         invalidate_views();
@@ -914,8 +1026,14 @@ fn page_response(view: PublicView) -> Response {
     };
     let protected = page.is_protected();
     // Third-party analytics only on the real, published page (not previews).
-    let snippet = if view.preview { None } else { analytics::snippet(page) };
-    let csp = snippet.as_ref().and_then(|_| analytics::csp(&page.analytics));
+    let snippet = if view.preview {
+        None
+    } else {
+        analytics::snippet(page)
+    };
+    let csp = snippet
+        .as_ref()
+        .and_then(|_| analytics::csp(&page.analytics));
     let tpl = PublicPageTemplate {
         page_title: page.title.clone(),
         theme: page.theme.clone(),
@@ -931,7 +1049,11 @@ fn page_response(view: PublicView) -> Response {
     let h = resp.headers_mut();
     h.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static(if protected { "private, no-store" } else { "no-cache" }),
+        HeaderValue::from_static(if protected {
+            "private, no-store"
+        } else {
+            "no-cache"
+        }),
     );
     if noindex {
         h.insert("x-robots-tag", HeaderValue::from_static("noindex"));
@@ -951,22 +1073,38 @@ async fn page(
 ) -> ApiResult<Response> {
     let (view, access) = resolve(&state, slug, &jar).await?;
     if !access.allows(&view.page) {
-        return Ok(access::locked_response(&view.page, None, StatusCode::UNAUTHORIZED));
+        return Ok(access::locked_response(
+            &view.page,
+            None,
+            StatusCode::UNAUTHORIZED,
+        ));
     }
     analytics::count_view(&state, &view.page, &headers, peer.0, access.logged_in).await;
     Ok(page_response(view))
 }
 
-async fn fragment(State(state): State<AppState>, jar: SignedCookieJar, Path(slug): Path<String>) -> ApiResult<Response> {
+async fn fragment(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
     let (v, access) = resolve(&state, slug, &jar).await?;
     if !access.allows(&v.page) {
-        return Ok((StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")]).into_response());
+        return Ok((
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, "no-store")],
+        )
+            .into_response());
     }
     let protected = v.page.is_protected();
     let mut resp = HtmlTemplate(LiveFragment { v }).into_response();
     resp.headers_mut().insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static(if protected { "private, no-store" } else { "no-cache" }),
+        HeaderValue::from_static(if protected {
+            "private, no-store"
+        } else {
+            "no-cache"
+        }),
     );
     Ok(resp)
 }
@@ -983,13 +1121,27 @@ struct JsonSummary {
 /// `GET /api/status-page/{slug}`: public summary for integrations (published
 /// pages only). Password-protected pages answer 401 unless the request
 /// carries an unlock cookie or a session.
-async fn json_summary(State(state): State<AppState>, jar: SignedCookieJar, Path(slug): Path<String>) -> ApiResult<Response> {
-    let view = published_view(&state, slug).await?.ok_or(ApiError::NotFound)?;
+async fn json_summary(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
+    let view = published_view(&state, slug)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     if view.page.is_protected() {
-        let logged_in = super::auth::session_user(&state, &jar).await.unwrap_or(None).is_some();
+        let logged_in = super::auth::session_user(&state, &jar)
+            .await
+            .unwrap_or(None)
+            .is_some();
         if !access::access_for(&jar, &view.page, logged_in).allows(&view.page) {
             let body = serde_json::json!({ "error": "password_required", "message": "This status page is password protected." });
-            return Ok((StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")], Json(body)).into_response());
+            return Ok((
+                StatusCode::UNAUTHORIZED,
+                [(header::CACHE_CONTROL, "no-store")],
+                Json(body),
+            )
+                .into_response());
         }
     }
     let body = JsonSummary {
@@ -1002,10 +1154,19 @@ async fn json_summary(State(state): State<AppState>, jar: SignedCookieJar, Path(
     let mut resp = Json(body).into_response();
     let h = resp.headers_mut();
     if protected {
-        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
     } else {
-        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=30"));
-        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=30"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        );
     }
     Ok(resp)
 }
@@ -1024,7 +1185,8 @@ struct DomainCache {
 
 /// Keyed by the app instance (the `Config` allocation), so tests with
 /// separate databases don't share entries.
-static DOMAINS: LazyLock<Mutex<HashMap<usize, DomainCache>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static DOMAINS: LazyLock<Mutex<HashMap<usize, DomainCache>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Forget cached custom domains (call after a status page is saved or deleted).
 pub fn invalidate_domains() {
@@ -1049,7 +1211,8 @@ fn request_host(request: &Request) -> Option<String> {
     let host = if raw.starts_with('[') {
         raw
     } else {
-        raw.rsplit_once(':').map_or(raw.clone(), |(h, _)| h.to_string())
+        raw.rsplit_once(':')
+            .map_or(raw.clone(), |(h, _)| h.to_string())
     };
     Some(host.trim_end_matches('.').to_ascii_lowercase())
 }
@@ -1062,13 +1225,14 @@ async fn slug_for_host(state: &AppState, host: &str) -> Option<String> {
     {
         return entry.map.get(host).cloned();
     }
-    let map: HashMap<String, String> = match state.with_conn(|c| db_pages::published_domains(c)).await {
-        Ok(rows) => rows.into_iter().collect(),
-        Err(err) => {
-            tracing::warn!(%err, "custom domain lookup failed");
-            return None;
-        }
-    };
+    let map: HashMap<String, String> =
+        match state.with_conn(|c| db_pages::published_domains(c)).await {
+            Ok(rows) => rows.into_iter().collect(),
+            Err(err) => {
+                tracing::warn!(%err, "custom domain lookup failed");
+                return None;
+            }
+        };
     let slug = map.get(host).cloned();
     if let Ok(mut cache) = DOMAINS.lock() {
         cache.insert(
@@ -1087,7 +1251,11 @@ async fn slug_for_host(state: &AppState, host: &str) -> Option<String> {
 /// page instead of the dashboard (and `/favicon.ico` its uploaded favicon).
 /// Every other path passes through (static assets, the
 /// `/status/{slug}/fragment` refresh, logo, unlock, badges, …).
-pub async fn custom_domain(State(state): State<AppState>, request: Request, next: Next) -> Response {
+pub async fn custom_domain(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
     let get = matches!(*request.method(), Method::GET | Method::HEAD);
     let is_root = get && request.uri().path() == "/";
     let is_favicon = get && request.uri().path() == "/favicon.ico";
@@ -1111,16 +1279,27 @@ pub async fn custom_domain(State(state): State<AppState>, request: Request, next
     crate::i18n::scope(lang, serve_custom_domain(state, slug, request, next)).await
 }
 
-async fn serve_custom_domain(state: AppState, slug: String, request: Request, next: Next) -> Response {
+async fn serve_custom_domain(
+    state: AppState,
+    slug: String,
+    request: Request,
+    next: Next,
+) -> Response {
     match published_view(&state, slug).await {
         Ok(Some(view)) => {
             let jar = SignedCookieJar::from_headers(request.headers(), state.session_key.clone());
-            let logged_in = super::auth::session_user(&state, &jar).await.unwrap_or(None).is_some();
+            let logged_in = super::auth::session_user(&state, &jar)
+                .await
+                .unwrap_or(None)
+                .is_some();
             let access = access::access_for(&jar, &view.page, logged_in);
             if !access.allows(&view.page) {
                 return access::locked_response(&view.page, None, StatusCode::UNAUTHORIZED);
             }
-            let peer = request.extensions().get::<ConnectInfo<std::net::SocketAddr>>().map(|c| c.0);
+            let peer = request
+                .extensions()
+                .get::<ConnectInfo<std::net::SocketAddr>>()
+                .map(|c| c.0);
             analytics::count_view(&state, &view.page, request.headers(), peer, logged_in).await;
             page_response(view)
         }
@@ -1173,7 +1352,9 @@ pub mod markdown {
                 continue;
             }
             match (list_item(line), &mut current) {
-                (Some((ordered, text)), Some(Block::List { ordered: o, items })) if *o == ordered => {
+                (Some((ordered, text)), Some(Block::List { ordered: o, items }))
+                    if *o == ordered =>
+                {
                     items.push(text.to_string());
                 }
                 (Some((ordered, text)), _) => {
@@ -1274,7 +1455,12 @@ pub mod markdown {
     }
 
     impl Finder {
-        fn find(&mut self, start: usize, end: usize, pred: impl Fn(usize) -> bool) -> Option<usize> {
+        fn find(
+            &mut self,
+            start: usize,
+            end: usize,
+            pred: impl Fn(usize) -> bool,
+        ) -> Option<usize> {
             if start >= self.from {
                 match self.result {
                     Some(None) => return None,
@@ -1342,8 +1528,9 @@ pub mod markdown {
                     }
                 }
                 '*' if next == Some('*') => {
-                    if let Some(j) = f.double_star.find(i + 3, n.saturating_sub(1), |j| chars[j] == '*' && chars[j + 1] == '*')
-                        && !chars[i + 2].is_whitespace()
+                    if let Some(j) = f.double_star.find(i + 3, n.saturating_sub(1), |j| {
+                        chars[j] == '*' && chars[j + 1] == '*'
+                    }) && !chars[i + 2].is_whitespace()
                     {
                         out.push_str("<strong>");
                         inline_with(&chars[i + 2..j], out, links);
@@ -1354,13 +1541,18 @@ pub mod markdown {
                 }
                 '*' | '_' => {
                     let left_ok = c == '*' || prev.is_none_or(|p| !p.is_alphanumeric());
-                    let finder = if c == '*' { &mut f.star } else { &mut f.underscore };
+                    let finder = if c == '*' {
+                        &mut f.star
+                    } else {
+                        &mut f.underscore
+                    };
                     if left_ok
                         && next.is_some_and(|x| !x.is_whitespace() && x != c)
                         && let Some(j) = finder.find(i + 2, n, |j| {
                             chars[j] == c
                                 && !chars[j - 1].is_whitespace()
-                                && (c == '*' || chars.get(j + 1).is_none_or(|x| !x.is_alphanumeric()))
+                                && (c == '*'
+                                    || chars.get(j + 1).is_none_or(|x| !x.is_alphanumeric()))
                         })
                     {
                         out.push_str("<em>");
@@ -1371,8 +1563,9 @@ pub mod markdown {
                     }
                 }
                 '[' if links => {
-                    if let Some(j) = f.bracket_paren.find(i + 1, n.saturating_sub(1), |j| chars[j] == ']' && chars[j + 1] == '(')
-                        && let Some(k) = f.close_paren.find(j + 2, n, |k| chars[k] == ')')
+                    if let Some(j) = f.bracket_paren.find(i + 1, n.saturating_sub(1), |j| {
+                        chars[j] == ']' && chars[j + 1] == '('
+                    }) && let Some(k) = f.close_paren.find(j + 2, n, |k| chars[k] == ')')
                         && k - (j + 2) <= MAX_URL
                     {
                         let url: String = chars[j + 2..k].iter().collect();
@@ -1386,11 +1579,20 @@ pub mod markdown {
                 'h' if links && prev.is_none_or(|p| p.is_whitespace() || p == '(') => {
                     let rest: String = chars[i..n.min(i + 8)].iter().collect();
                     if rest.starts_with("https://") || rest.starts_with("http://") {
-                        let mut end = f.whitespace.find(i, n, |k| chars[k].is_whitespace()).unwrap_or(n);
-                        while end > i && matches!(chars[end - 1], '.' | ',' | ';' | ':' | '!' | '?' | ')') {
+                        let mut end = f
+                            .whitespace
+                            .find(i, n, |k| chars[k].is_whitespace())
+                            .unwrap_or(n);
+                        while end > i
+                            && matches!(chars[end - 1], '.' | ',' | ';' | ':' | '!' | '?' | ')')
+                        {
                             end -= 1;
                         }
-                        let url: String = if end - i <= MAX_URL { chars[i..end].iter().collect() } else { String::new() };
+                        let url: String = if end - i <= MAX_URL {
+                            chars[i..end].iter().collect()
+                        } else {
+                            String::new()
+                        };
                         if url.len() > 8 && safe_url(&url) {
                             link(out, &chars[i..end], &url);
                             i = end;
@@ -1448,18 +1650,30 @@ pub mod markdown {
 
         #[test]
         fn paragraphs_and_line_breaks() {
-            assert_eq!(render("Hello\nworld\n\nSecond"), "<p>Hello<br>world</p><p>Second</p>");
+            assert_eq!(
+                render("Hello\nworld\n\nSecond"),
+                "<p>Hello<br>world</p><p>Second</p>"
+            );
             assert_eq!(render(""), "");
             assert_eq!(render("\r\n\r\n  \n"), "");
         }
 
         #[test]
         fn emphasis_code_and_lists() {
-            assert_eq!(render("**bold** and *it* and _it_"), "<p><strong>bold</strong> and <em>it</em> and <em>it</em></p>");
+            assert_eq!(
+                render("**bold** and *it* and _it_"),
+                "<p><strong>bold</strong> and <em>it</em> and <em>it</em></p>"
+            );
             assert_eq!(render("`a<b`"), "<p><code>a&lt;b</code></p>");
-            assert_eq!(render("- one\n- **two**"), "<ul><li>one</li><li><strong>two</strong></li></ul>");
+            assert_eq!(
+                render("- one\n- **two**"),
+                "<ul><li>one</li><li><strong>two</strong></li></ul>"
+            );
             assert_eq!(render("1. a\n2) b"), "<ol><li>a</li><li>b</li></ol>");
-            assert_eq!(render("Intro\n- a\n- b\nOutro"), "<p>Intro</p><ul><li>a</li><li>b</li></ul><p>Outro</p>");
+            assert_eq!(
+                render("Intro\n- a\n- b\nOutro"),
+                "<p>Intro</p><ul><li>a</li><li>b</li></ul><p>Outro</p>"
+            );
             assert_eq!(render("- a\n  continued"), "<ul><li>a continued</li></ul>");
         }
 
@@ -1483,14 +1697,25 @@ pub mod markdown {
                 "<p>See <a href=\"https://example.com/x\" rel=\"nofollow noopener noreferrer\">https://example.com/x</a>.</p>"
             );
             assert!(render("[home](/status/acme)").contains("href=\"/status/acme\""));
-            assert!(render("[mail](mailto:ops@example.com)").contains("href=\"mailto:ops@example.com\""));
+            assert!(
+                render("[mail](mailto:ops@example.com)")
+                    .contains("href=\"mailto:ops@example.com\"")
+            );
             // Never nests links.
-            assert_eq!(render("[https://a.example](https://a.example)").matches("<a ").count(), 1);
+            assert_eq!(
+                render("[https://a.example](https://a.example)")
+                    .matches("<a ")
+                    .count(),
+                1
+            );
         }
 
         #[test]
         fn escapes_html_everywhere() {
-            assert_eq!(render("<script>alert(1)</script>"), "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
+            assert_eq!(
+                render("<script>alert(1)</script>"),
+                "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>"
+            );
             assert_eq!(
                 render("**<img src=x onerror=alert(1)>**"),
                 "<p><strong>&lt;img src=x onerror=alert(1)&gt;</strong></p>"
@@ -1514,7 +1739,10 @@ pub mod markdown {
             ] {
                 let html = render(evil);
                 assert!(!html.contains("<a "), "{evil} produced a link: {html}");
-                assert!(!html.contains("\" on"), "{evil} broke out of an attribute: {html}");
+                assert!(
+                    !html.contains("\" on"),
+                    "{evil} broke out of an attribute: {html}"
+                );
             }
             assert!(!render("javascript:alert(1)").contains("<a "));
         }
@@ -1605,7 +1833,14 @@ mod router_tests {
                         ..NewMonitor::default()
                     },
                 )?;
-                heartbeats::insert(c, mid, None, HeartbeatStatus::Up, Some(123), Some("secret-message"))?;
+                heartbeats::insert(
+                    c,
+                    mid,
+                    None,
+                    HeartbeatStatus::Up,
+                    Some(123),
+                    Some("secret-message"),
+                )?;
                 let pid = status_pages::insert(
                     c,
                     &NewStatusPage {
@@ -1635,7 +1870,12 @@ mod router_tests {
             .unwrap()
     }
 
-    pub(super) async fn get(t: &TestApp, uri: &str, host: Option<&str>, cookie: Option<&str>) -> (StatusCode, HeaderMapLite, String) {
+    pub(super) async fn get(
+        t: &TestApp,
+        uri: &str,
+        host: Option<&str>,
+        cookie: Option<&str>,
+    ) -> (StatusCode, HeaderMapLite, String) {
         let mut req = Request::builder().uri(uri);
         if let Some(h) = host {
             req = req.header(header::HOST, h);
@@ -1643,7 +1883,12 @@ mod router_tests {
         if let Some(c) = cookie {
             req = req.header(header::COOKIE, c);
         }
-        let resp = t.router.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let resp = t
+            .router
+            .clone()
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         let status = resp.status();
         let headers = HeaderMapLite(
             resp.headers()
@@ -1651,7 +1896,8 @@ mod router_tests {
                 .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
                 .collect(),
         );
-        let body = String::from_utf8_lossy(&to_bytes(resp.into_body(), usize::MAX).await.unwrap()).to_string();
+        let body = String::from_utf8_lossy(&to_bytes(resp.into_body(), usize::MAX).await.unwrap())
+            .to_string();
         (status, headers, body)
     }
 
@@ -1700,7 +1946,12 @@ mod router_tests {
         assert_eq!(json["overall"]["indicator"], "operational");
         assert_eq!(json["sections"][0]["monitors"][0]["name"], "Website");
         assert_eq!(json["sections"][0]["monitors"][0]["status"], "up");
-        assert_eq!(json["sections"][0]["monitors"][0]["days"].as_array().map(Vec::len), Some(90));
+        assert_eq!(
+            json["sections"][0]["monitors"][0]["days"]
+                .as_array()
+                .map(Vec::len),
+            Some(90)
+        );
         assert_no_leaks(&body);
 
         let (status, _, _) = get(&t, "/status/nope", None, None).await;
@@ -1711,7 +1962,11 @@ mod router_tests {
     async fn unpublished_page_is_hidden_from_visitors() {
         let t = app().await;
         seed(&t, false, Some("status.hidden.test")).await;
-        for uri in ["/status/acme", "/status/acme/fragment", "/api/status-page/acme"] {
+        for uri in [
+            "/status/acme",
+            "/status/acme/fragment",
+            "/api/status-page/acme",
+        ] {
             let (status, _, _) = get(&t, uri, None, None).await;
             assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         }
@@ -1746,7 +2001,12 @@ mod router_tests {
         assert_no_leaks(&body);
         // Embeddable like /status/{slug}, not locked down like the app.
         assert!(headers.get("x-frame-options").is_none());
-        assert!(!headers.get("content-security-policy").unwrap_or_default().contains("frame-ancestors 'none'"));
+        assert!(
+            !headers
+                .get("content-security-policy")
+                .unwrap_or_default()
+                .contains("frame-ancestors 'none'")
+        );
         // Other hosts still get the app (here: redirect to setup, no users yet).
         let (status, _, body) = get(&t, "/", Some("localhost:3001"), None).await;
         assert_ne!(status, StatusCode::OK);
@@ -1774,15 +2034,30 @@ mod router_tests {
             .await
             .unwrap();
 
-        let (status, headers, body) = get(&t, &format!("/api/badge/{mid}/status?label=web&style=flat-square"), None, None).await;
+        let (status, headers, body) = get(
+            &t,
+            &format!("/api/badge/{mid}/status?label=web&style=flat-square"),
+            None,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(headers.get("content-type"), Some("image/svg+xml; charset=utf-8"));
+        assert_eq!(
+            headers.get("content-type"),
+            Some("image/svg+xml; charset=utf-8")
+        );
         assert_eq!(headers.get("cache-control"), Some("public, max-age=60"));
         assert!(body.starts_with("<svg"));
         assert!(body.contains(">web</text>"));
         assert!(body.contains(">up</text>"));
 
-        let (status, _, body) = get(&t, &format!("/api/badge/{mid}/uptime?duration=7d"), None, None).await;
+        let (status, _, body) = get(
+            &t,
+            &format!("/api/badge/{mid}/uptime?duration=7d"),
+            None,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("uptime (7d)"));
         assert!(body.contains("100%"));
@@ -1820,7 +2095,11 @@ mod router_tests {
             .await
             .unwrap()
             .unwrap();
-        let claims = crate::auth::session::SessionClaims::new(user.id, user.session_version, crate::auth::session::now_unix());
+        let claims = crate::auth::session::SessionClaims::new(
+            user.id,
+            user.session_version,
+            crate::auth::session::now_unix(),
+        );
         let jar = SignedCookieJar::new(t.state.session_key.clone())
             .add(Cookie::new(crate::auth::SESSION_COOKIE, claims.encode()));
         let resp = (jar, ()).into_response();
@@ -1828,7 +2107,13 @@ mod router_tests {
         set_cookie.split(';').next().unwrap().to_string()
     }
 
-    pub(super) async fn send(t: &TestApp, method: &str, uri: &str, cookie: &str, body: &str) -> (StatusCode, HeaderMapLite, String) {
+    pub(super) async fn send(
+        t: &TestApp,
+        method: &str,
+        uri: &str,
+        cookie: &str,
+        body: &str,
+    ) -> (StatusCode, HeaderMapLite, String) {
         let req = Request::builder()
             .method(method)
             .uri(uri)
@@ -1846,7 +2131,8 @@ mod router_tests {
                 .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
                 .collect(),
         );
-        let body = String::from_utf8_lossy(&to_bytes(resp.into_body(), usize::MAX).await.unwrap()).to_string();
+        let body = String::from_utf8_lossy(&to_bytes(resp.into_body(), usize::MAX).await.unwrap())
+            .to_string();
         (status, headers, body)
     }
 
@@ -1870,59 +2156,154 @@ mod router_tests {
             let (status, _, body) = get(&t, &uri, None, Some(&ed)).await;
             assert_eq!(status, StatusCode::OK, "{uri}: {body}");
         }
-        let sid = t.state.with_conn(move |c| status_pages::sections(c, pid)).await.unwrap()[0].id;
-        let (status, _, body) = get(&t, &format!("/status-pages/{pid}/sections/{sid}/picker"), None, Some(&ed)).await;
+        let sid = t
+            .state
+            .with_conn(move |c| status_pages::sections(c, pid))
+            .await
+            .unwrap()[0]
+            .id;
+        let (status, _, body) = get(
+            &t,
+            &format!("/status-pages/{pid}/sections/{sid}/picker"),
+            None,
+            Some(&ed),
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("Already on this section"));
 
         // Create a page; slug derived from the title.
-        let (status, headers, _) = send(&t, "POST", "/status-pages/new", &ed, "title=Docs+%26+API&slug=").await;
+        let (status, headers, _) = send(
+            &t,
+            "POST",
+            "/status-pages/new",
+            &ed,
+            "title=Docs+%26+API&slug=",
+        )
+        .await;
         assert_eq!(status, StatusCode::SEE_OTHER);
-        assert!(headers.get("location").is_some_and(|l| l.ends_with("/edit")));
-        let (status, _, body) = send(&t, "POST", "/status-pages/new", &ed, "title=Again&slug=docs-api").await;
+        assert!(
+            headers
+                .get("location")
+                .is_some_and(|l| l.ends_with("/edit"))
+        );
+        let (status, _, body) = send(
+            &t,
+            "POST",
+            "/status-pages/new",
+            &ed,
+            "title=Again&slug=docs-api",
+        )
+        .await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(body.contains("already uses this slug"));
 
         // Settings: CSS breakout is refused, valid save redirects.
         let bad = "title=Acme&slug=acme&theme=dark&refresh_seconds=60&custom_css=%3C%2Fstyle%3E";
-        let (status, _, body) = send(&t, "POST", &format!("/status-pages/{pid}/edit"), &ed, bad).await;
+        let (status, _, body) =
+            send(&t, "POST", &format!("/status-pages/{pid}/edit"), &ed, bad).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(body.contains("aria-invalid=\"true\""));
         let good = "title=Acme&slug=acme&theme=dark&refresh_seconds=30&published=true&show_uptime=true&custom_domain=status.acme.test";
-        let (status, _, _) = send(&t, "POST", &format!("/status-pages/{pid}/edit"), &ed, good).await;
+        let (status, _, _) =
+            send(&t, "POST", &format!("/status-pages/{pid}/edit"), &ed, good).await;
         assert_eq!(status, StatusCode::SEE_OTHER);
-        let page = t.state.with_conn(move |c| status_pages::get(c, pid)).await.unwrap().unwrap();
+        let page = t
+            .state
+            .with_conn(move |c| status_pages::get(c, pid))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!((page.theme.as_str(), page.refresh_seconds), ("dark", 30));
         assert_eq!(page.custom_domain.as_deref(), Some("status.acme.test"));
 
         // Sections: add, reorder (moving the monitor), rename, add monitors.
-        let (status, headers, body) = send(&t, "POST", &format!("/status-pages/{pid}/sections"), &ed, "name=APIs").await;
+        let (status, headers, body) = send(
+            &t,
+            "POST",
+            &format!("/status-pages/{pid}/sections"),
+            &ed,
+            "name=APIs",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("value=\"APIs\""));
-        assert!(headers.get("hx-trigger").is_some_and(|h| h.contains("vv:toast")));
-        let secs = t.state.with_conn(move |c| status_pages::sections(c, pid)).await.unwrap();
+        assert!(
+            headers
+                .get("hx-trigger")
+                .is_some_and(|h| h.contains("vv:toast"))
+        );
+        let secs = t
+            .state
+            .with_conn(move |c| status_pages::sections(c, pid))
+            .await
+            .unwrap();
         let s2 = secs[1].id;
         let order = format!("sections%5B%5D={s2}&sections%5B%5D={sid}&section_{s2}%5B%5D={mid}");
-        let (status, _, _) = send(&t, "POST", &format!("/status-pages/{pid}/order"), &ed, &order).await;
+        let (status, _, _) = send(
+            &t,
+            "POST",
+            &format!("/status-pages/{pid}/order"),
+            &ed,
+            &order,
+        )
+        .await;
         assert_eq!(status, StatusCode::NO_CONTENT);
-        let secs = t.state.with_conn(move |c| status_pages::sections(c, pid)).await.unwrap();
+        let secs = t
+            .state
+            .with_conn(move |c| status_pages::sections(c, pid))
+            .await
+            .unwrap();
         assert_eq!(secs[0].id, s2);
         assert_eq!(secs[0].monitors[0].monitor_id, mid);
         assert!(secs[1].monitors.is_empty());
-        let (status, _, _) = send(&t, "POST", &format!("/status-pages/{pid}/sections/{s2}"), &ed, &format!("name_{s2}=Public+APIs")).await;
+        let (status, _, _) = send(
+            &t,
+            "POST",
+            &format!("/status-pages/{pid}/sections/{s2}"),
+            &ed,
+            &format!("name_{s2}=Public+APIs"),
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
-        let (status, _, body) = send(&t, "POST", &format!("/status-pages/{pid}/sections/{sid}/monitors"), &ed, &format!("monitor_id={mid}")).await;
+        let (status, _, body) = send(
+            &t,
+            "POST",
+            &format!("/status-pages/{pid}/sections/{sid}/monitors"),
+            &ed,
+            &format!("monitor_id={mid}"),
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("Public APIs"));
 
         // Incidents.
-        let (status, _, _) = send(&t, "POST", &format!("/status-pages/{pid}/incidents"), &ed, "title=Planned&severity=info&body=Hi").await;
+        let (status, _, _) = send(
+            &t,
+            "POST",
+            &format!("/status-pages/{pid}/incidents"),
+            &ed,
+            "title=Planned&severity=info&body=Hi",
+        )
+        .await;
         assert_eq!(status, StatusCode::SEE_OTHER);
         let (_, _, body) = get(&t, "/status/acme", None, None).await;
-        assert!(body.contains("Planned"), "unpinned open incidents show in the history");
+        assert!(
+            body.contains("Planned"),
+            "unpinned open incidents show in the history"
+        );
 
         // Maintenance: a manual window covering the monitor flips the public page.
-        let (status, _, body) = send(&t, "POST", "/maintenance/new", &ed, &format!("title=Upgrade&strategy=manual&active=true&monitor_id={mid}&status_page_id={pid}")).await;
+        let (status, _, body) = send(
+            &t,
+            "POST",
+            "/maintenance/new",
+            &ed,
+            &format!(
+                "title=Upgrade&strategy=manual&active=true&monitor_id={mid}&status_page_id={pid}"
+            ),
+        )
+        .await;
         assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
         let covered = t
             .state
@@ -1940,7 +2321,8 @@ mod router_tests {
             .unwrap();
         let (status, _, _) = get(&t, &format!("/maintenance/{wid}/edit"), None, Some(&ed)).await;
         assert_eq!(status, StatusCode::OK);
-        let (status, headers, _) = send(&t, "POST", &format!("/maintenance/{wid}/end"), &ed, "").await;
+        let (status, headers, _) =
+            send(&t, "POST", &format!("/maintenance/{wid}/end"), &ed, "").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers.get("hx-refresh"), Some("true"));
         let covered = t
@@ -1950,13 +2332,19 @@ mod router_tests {
             .unwrap();
         assert!(!covered);
         let (status, _, _) = send(&t, "POST", &format!("/maintenance/{wid}/pause"), &ed, "").await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "manual windows can't be paused");
-        let (status, headers, _) = send(&t, "DELETE", &format!("/maintenance/{wid}"), &ed, "").await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "manual windows can't be paused"
+        );
+        let (status, headers, _) =
+            send(&t, "DELETE", &format!("/maintenance/{wid}"), &ed, "").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers.get("hx-redirect"), Some("/maintenance"));
 
         // Delete the page.
-        let (status, headers, _) = send(&t, "DELETE", &format!("/status-pages/{pid}"), &ed, "").await;
+        let (status, headers, _) =
+            send(&t, "DELETE", &format!("/status-pages/{pid}"), &ed, "").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(headers.get("hx-redirect"), Some("/status-pages"));
     }
@@ -1973,11 +2361,22 @@ mod router_tests {
         let (status, _, body) = get(&t, "/maintenance", None, Some(&viewer)).await;
         assert_eq!(status, StatusCode::OK);
         assert!(!body.contains("Schedule maintenance"));
-        for uri in [format!("/status-pages/{pid}/edit"), "/status-pages/new".into(), "/maintenance/new".into()] {
+        for uri in [
+            format!("/status-pages/{pid}/edit"),
+            "/status-pages/new".into(),
+            "/maintenance/new".into(),
+        ] {
             let (status, _, _) = get(&t, &uri, None, Some(&viewer)).await;
             assert_eq!(status, StatusCode::FORBIDDEN, "{uri}");
         }
-        let (status, _, _) = send(&t, "POST", &format!("/status-pages/{pid}/sections"), &viewer, "name=x").await;
+        let (status, _, _) = send(
+            &t,
+            "POST",
+            &format!("/status-pages/{pid}/sections"),
+            &viewer,
+            "name=x",
+        )
+        .await;
         assert_eq!(status, StatusCode::FORBIDDEN);
         let (status, _, _) = send(&t, "DELETE", &format!("/status-pages/{pid}"), &viewer, "").await;
         assert_eq!(status, StatusCode::FORBIDDEN);
@@ -1991,10 +2390,20 @@ mod router_tests {
             .with_conn(|c| users::insert_user(c, "admin", "x", Role::Admin))
             .await
             .unwrap();
-        for uri in ["/status-pages", "/status-pages/1/edit", "/maintenance", "/maintenance/new"] {
+        for uri in [
+            "/status-pages",
+            "/status-pages/1/edit",
+            "/maintenance",
+            "/maintenance/new",
+        ] {
             let (status, headers, _) = get(&t, uri, None, None).await;
             assert!(status.is_redirection(), "{uri}: {status}");
-            assert!(headers.get("location").is_some_and(|l| l.starts_with("/login")), "{uri}");
+            assert!(
+                headers
+                    .get("location")
+                    .is_some_and(|l| l.starts_with("/login")),
+                "{uri}"
+            );
         }
     }
 }
@@ -2009,25 +2418,55 @@ mod tests {
         assert_eq!(overall(&[], false).indicator, "unknown");
         assert_eq!(overall(&[], true).indicator, "maintenance");
         assert_eq!(overall(&[Up, Up], false).indicator, "operational");
-        assert_eq!(overall(&[Up, Paused, Unknown], false).indicator, "operational");
+        assert_eq!(
+            overall(&[Up, Paused, Unknown], false).indicator,
+            "operational"
+        );
         assert_eq!(overall(&[Up, Degraded], false).indicator, "degraded");
-        assert_eq!(overall(&[Up, Down, Degraded], false).indicator, "partial_outage");
+        assert_eq!(
+            overall(&[Up, Down, Degraded], false).indicator,
+            "partial_outage"
+        );
         assert_eq!(overall(&[Down, Down], false).indicator, "major_outage");
-        assert_eq!(overall(&[Down, Maintenance], false).indicator, "major_outage");
+        assert_eq!(
+            overall(&[Down, Maintenance], false).indicator,
+            "major_outage"
+        );
         assert_eq!(overall(&[Up, Maintenance], false).indicator, "maintenance");
         assert_eq!(overall(&[Up], true).indicator, "maintenance");
-        assert_eq!(overall(&[Up, Down, Up], false).detail, "1 of 3 services is down.");
-        assert_eq!(overall(&[Down, Down, Up], false).detail, "2 of 3 services are down.");
+        assert_eq!(
+            overall(&[Up, Down, Up], false).detail,
+            "1 of 3 services is down."
+        );
+        assert_eq!(
+            overall(&[Down, Down, Up], false).detail,
+            "2 of 3 services are down."
+        );
     }
 
     #[test]
     fn public_status_mapping() {
         use HeartbeatStatus as H;
-        assert_eq!(PublicStatus::from_heartbeat(Some(H::Up), true, false), PublicStatus::Up);
-        assert_eq!(PublicStatus::from_heartbeat(Some(H::Down), true, true), PublicStatus::Maintenance);
-        assert_eq!(PublicStatus::from_heartbeat(Some(H::Down), false, false), PublicStatus::Paused);
-        assert_eq!(PublicStatus::from_heartbeat(Some(H::Pending), true, false), PublicStatus::Degraded);
-        assert_eq!(PublicStatus::from_heartbeat(None, true, false), PublicStatus::Unknown);
+        assert_eq!(
+            PublicStatus::from_heartbeat(Some(H::Up), true, false),
+            PublicStatus::Up
+        );
+        assert_eq!(
+            PublicStatus::from_heartbeat(Some(H::Down), true, true),
+            PublicStatus::Maintenance
+        );
+        assert_eq!(
+            PublicStatus::from_heartbeat(Some(H::Down), false, false),
+            PublicStatus::Paused
+        );
+        assert_eq!(
+            PublicStatus::from_heartbeat(Some(H::Pending), true, false),
+            PublicStatus::Degraded
+        );
+        assert_eq!(
+            PublicStatus::from_heartbeat(None, true, false),
+            PublicStatus::Unknown
+        );
     }
 
     #[test]
@@ -2063,7 +2502,10 @@ mod tests {
         d.down = 2;
         d.uptime_pct = Some(98.0);
         assert_eq!(day_class(&d), "status-pending");
-        assert_eq!(day_tip(&d, 1, 600), "Oct 3 · 98.00% uptime · 1 outage, 10 min");
+        assert_eq!(
+            day_tip(&d, 1, 600),
+            "Oct 3 · 98.00% uptime · 1 outage, 10 min"
+        );
         d.uptime_pct = Some(40.0);
         assert_eq!(day_class(&d), "status-down");
         d.uptime_pct = None;

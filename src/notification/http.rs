@@ -313,7 +313,10 @@ mod tests {
         // An endless 500 body: must not be buffered (or waited for) in full.
         let app = axum::Router::new().fallback(|| async {
             let chunks = stream::repeat_with(|| Ok::<_, std::io::Error>(vec![b'x'; 4096]));
-            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Body::from_stream(chunks))
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Body::from_stream(chunks),
+            )
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

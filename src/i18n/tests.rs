@@ -13,7 +13,10 @@ fn translated() -> impl Iterator<Item = Lang> {
 
 fn plural_base(key: &str) -> Option<&str> {
     let (base, category) = key.rsplit_once('.')?;
-    Plural::ALL.iter().any(|p| p.as_str() == category).then_some(base)
+    Plural::ALL
+        .iter()
+        .any(|p| p.as_str() == category)
+        .then_some(base)
 }
 
 /// Plural bases of the English source: keys that come as `.one` + `.other`.
@@ -40,7 +43,9 @@ fn placeholder_names(s: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut rest = s;
     while let Some(start) = rest.find('{') {
-        let Some(len) = rest[start..].find('}') else { break };
+        let Some(len) = rest[start..].find('}') else {
+            break;
+        };
         out.insert(rest[start + 1..start + len].to_string());
         rest = &rest[start + len..];
     }
@@ -60,11 +65,18 @@ fn every_catalog_parses() {
 fn every_language_has_a_locale_file_named_after_its_code() {
     let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/locales"));
     for lang in Lang::all() {
-        assert!(dir.join(format!("{}.toml", lang.code())).is_file(), "locales/{}.toml is missing", lang.code());
+        assert!(
+            dir.join(format!("{}.toml", lang.code())).is_file(),
+            "locales/{}.toml is missing",
+            lang.code()
+        );
     }
     let codes: BTreeSet<&str> = LANGS.iter().map(|l| l.code).collect();
     assert_eq!(codes.len(), LANGS.len(), "duplicate language codes");
-    assert_eq!(LANGS[0].code, "en", "English is the first entry (source and fallback)");
+    assert_eq!(
+        LANGS[0].code, "en",
+        "English is the first entry (source and fallback)"
+    );
 }
 
 #[test]
@@ -78,7 +90,11 @@ fn no_language_has_keys_english_lacks_or_empty_values() {
             .filter(|k| !en.contains(*k) && !plural_base(k).is_some_and(|b| bases.contains(b)))
             .collect();
         assert!(extra.is_empty(), "{lang}: keys not in en {extra:?}");
-        let empty: Vec<_> = cat.iter().filter(|(_, v)| v.trim().is_empty()).map(|(k, _)| k).collect();
+        let empty: Vec<_> = cat
+            .iter()
+            .filter(|(_, v)| v.trim().is_empty())
+            .map(|(k, _)| k)
+            .collect();
         assert!(empty.is_empty(), "{lang}: empty values {empty:?}");
     }
 }
@@ -97,7 +113,11 @@ fn placeholders_match_english() {
                     .any(|k| placeholder_names(&en[k]) == placeholder_names(value));
                 assert!(ok, "{lang}: placeholders of {key} don't match English");
             } else if let Some(source) = en.get(key) {
-                assert_eq!(placeholder_names(source), placeholder_names(value), "{lang}: placeholders differ in {key}");
+                assert_eq!(
+                    placeholder_names(source),
+                    placeholder_names(value),
+                    "{lang}: placeholders differ in {key}"
+                );
             }
         }
     }
@@ -113,7 +133,10 @@ fn plural_categories_match_each_languages_rule() {
         let cat = catalog::all(lang);
         let want: BTreeSet<Plural> = lang.plural_rule().categories().iter().copied().collect();
         for base in &bases {
-            let have: BTreeSet<Plural> = Plural::ALL.into_iter().filter(|p| cat.contains_key(&format!("{base}.{}", p.as_str()))).collect();
+            let have: BTreeSet<Plural> = Plural::ALL
+                .into_iter()
+                .filter(|p| cat.contains_key(&format!("{base}.{}", p.as_str())))
+                .collect();
             if have.is_empty() && lang != Lang::EN {
                 continue; // not translated yet: English forms are used
             }
@@ -131,27 +154,121 @@ fn plural_rules_follow_cldr() {
         }
     };
     check(PluralRule::Other, &[(0, Other), (1, Other), (7, Other)]);
-    check(PluralRule::OneOther, &[(0, Other), (1, One), (2, Other), (21, Other), (1_000_000, Other)]);
-    check(PluralRule::FrenchLike, &[(0, One), (1, One), (2, Other), (999_999, Other), (1_000_000, Many), (5_000_000, Many)]);
-    check(PluralRule::SpanishLike, &[(0, Other), (1, One), (2, Other), (1_000_000, Many), (1_000_001, Other)]);
+    check(
+        PluralRule::OneOther,
+        &[
+            (0, Other),
+            (1, One),
+            (2, Other),
+            (21, Other),
+            (1_000_000, Other),
+        ],
+    );
+    check(
+        PluralRule::FrenchLike,
+        &[
+            (0, One),
+            (1, One),
+            (2, Other),
+            (999_999, Other),
+            (1_000_000, Many),
+            (5_000_000, Many),
+        ],
+    );
+    check(
+        PluralRule::SpanishLike,
+        &[
+            (0, Other),
+            (1, One),
+            (2, Other),
+            (1_000_000, Many),
+            (1_000_001, Other),
+        ],
+    );
     check(
         PluralRule::Polish,
-        &[(0, Many), (1, One), (2, Few), (4, Few), (5, Many), (12, Many), (14, Many), (21, Many), (22, Few), (24, Few), (25, Many), (112, Many), (122, Few), (1000, Many)],
+        &[
+            (0, Many),
+            (1, One),
+            (2, Few),
+            (4, Few),
+            (5, Many),
+            (12, Many),
+            (14, Many),
+            (21, Many),
+            (22, Few),
+            (24, Few),
+            (25, Many),
+            (112, Many),
+            (122, Few),
+            (1000, Many),
+        ],
     );
     check(
         PluralRule::EastSlavic,
-        &[(0, Many), (1, One), (2, Few), (5, Many), (11, Many), (12, Many), (21, One), (22, Few), (25, Many), (101, One), (111, Many)],
+        &[
+            (0, Many),
+            (1, One),
+            (2, Few),
+            (5, Many),
+            (11, Many),
+            (12, Many),
+            (21, One),
+            (22, Few),
+            (25, Many),
+            (101, One),
+            (111, Many),
+        ],
     );
-    check(PluralRule::CzechSlovak, &[(0, Other), (1, One), (2, Few), (4, Few), (5, Other), (21, Other)]);
+    check(
+        PluralRule::CzechSlovak,
+        &[
+            (0, Other),
+            (1, One),
+            (2, Few),
+            (4, Few),
+            (5, Other),
+            (21, Other),
+        ],
+    );
     check(
         PluralRule::Romanian,
-        &[(0, Few), (1, One), (2, Few), (19, Few), (20, Other), (21, Other), (100, Other), (101, Few), (119, Few), (120, Other)],
+        &[
+            (0, Few),
+            (1, One),
+            (2, Few),
+            (19, Few),
+            (20, Other),
+            (21, Other),
+            (100, Other),
+            (101, Few),
+            (119, Few),
+            (120, Other),
+        ],
     );
-    check(PluralRule::Hebrew, &[(0, Other), (1, One), (2, Two), (3, Other), (20, Other)]);
-    check(PluralRule::ZeroOne, &[(0, One), (1, One), (2, Other), (100, Other)]);
+    check(
+        PluralRule::Hebrew,
+        &[(0, Other), (1, One), (2, Two), (3, Other), (20, Other)],
+    );
+    check(
+        PluralRule::ZeroOne,
+        &[(0, One), (1, One), (2, Other), (100, Other)],
+    );
     check(
         PluralRule::Arabic,
-        &[(0, Zero), (1, One), (2, Two), (3, Few), (10, Few), (11, Many), (99, Many), (100, Other), (102, Other), (103, Few), (111, Many)],
+        &[
+            (0, Zero),
+            (1, One),
+            (2, Two),
+            (3, Few),
+            (10, Few),
+            (11, Many),
+            (99, Many),
+            (100, Other),
+            (102, Other),
+            (103, Few),
+            (111, Many),
+        ],
     );
     // Negative counts use their magnitude.
     assert_eq!(PluralRule::OneOther.category(-1), One);
@@ -172,7 +289,11 @@ fn plural_rules_follow_cldr() {
         let allowed: BTreeSet<Plural> = rule.categories().iter().copied().collect();
         assert!(allowed.contains(&Other), "{rule:?} requires `other`");
         for n in (0..2_100).chain([1_000_000, 2_000_000, 1_000_001]) {
-            assert!(allowed.contains(&rule.category(n)), "{rule:?}: {n} is {:?}", rule.category(n));
+            assert!(
+                allowed.contains(&rule.category(n)),
+                "{rule:?}: {n} is {:?}",
+                rule.category(n)
+            );
         }
     }
 }
@@ -183,20 +304,38 @@ fn plural_lookup_uses_the_language_rule_and_falls_back() {
     assert_eq!(tn_in(Lang::EN, "count.monitors", 2), "2 monitors");
     assert_eq!(tn_in(Lang::NB, "count.monitors", 1), "1 overvåking");
     assert_eq!(tn_in(Lang::NB, "count.monitors", 0), "0 overvåkinger");
-    assert_eq!(tn_in(Lang::NB, "count.monitors", 12_000), "12\u{a0}000 overvåkinger");
+    assert_eq!(
+        tn_in(Lang::NB, "count.monitors", 12_000),
+        "12\u{a0}000 overvåkinger"
+    );
     // Arabic picks all six forms, and Persian formats the number in its own digits.
     let ar = Lang::from_code("ar").expect("Arabic");
-    let forms: BTreeSet<String> = [0, 1, 2, 5, 11, 100].iter().map(|n| tn_in(ar, "count.monitors", *n)).collect();
+    let forms: BTreeSet<String> = [0, 1, 2, 5, 11, 100]
+        .iter()
+        .map(|n| tn_in(ar, "count.monitors", *n))
+        .collect();
     assert_eq!(forms.len(), 6, "{forms:?}");
     let fa = Lang::from_code("fa").expect("Persian");
-    assert!(tn_in(fa, "count.monitors", 12).starts_with("۱۲") || tn_in(fa, "count.monitors", 12).contains("۱۲"));
+    assert!(
+        tn_in(fa, "count.monitors", 12).starts_with("۱۲")
+            || tn_in(fa, "count.monitors", 12).contains("۱۲")
+    );
     // Russian and Czech use their `few`/`many` forms.
     let ru = Lang::from_code("ru").expect("Russian");
-    let forms: BTreeSet<String> = [1, 2, 5].iter().map(|n| tn_in(ru, "count.monitors", *n)).collect();
+    let forms: BTreeSet<String> = [1, 2, 5]
+        .iter()
+        .map(|n| tn_in(ru, "count.monitors", *n))
+        .collect();
     assert_eq!(forms.len(), 3, "{forms:?}");
-    assert_eq!(tn_in(ru, "count.monitors", 21), tn_in(ru, "count.monitors", 1).replace('1', "21"));
+    assert_eq!(
+        tn_in(ru, "count.monitors", 21),
+        tn_in(ru, "count.monitors", 1).replace('1', "21")
+    );
     let cs = Lang::from_code("cs").expect("Czech");
-    let forms: BTreeSet<String> = [1, 3, 5].iter().map(|n| tn_in(cs, "count.monitors", *n)).collect();
+    let forms: BTreeSet<String> = [1, 3, 5]
+        .iter()
+        .map(|n| tn_in(cs, "count.monitors", *n))
+        .collect();
     assert_eq!(forms.len(), 3, "{forms:?}");
     // Unknown keys render as number + key, never panic.
     assert_eq!(tn_in(Lang::EN, "no.such.plural", 3), "3 no.such.plural");
@@ -243,12 +382,17 @@ fn assert_keys_exist(file: &Path, src: &str, calls: &[&str]) -> usize {
         n += 1;
         if plural {
             assert!(
-                cat.contains_key(&format!("{key}.one")) && cat.contains_key(&format!("{key}.other")),
+                cat.contains_key(&format!("{key}.one"))
+                    && cat.contains_key(&format!("{key}.other")),
                 "{}: plural key {key}.one/.other missing",
                 file.display()
             );
         } else {
-            assert!(cat.contains_key(&key), "{}: key {key} missing", file.display());
+            assert!(
+                cat.contains_key(&key),
+                "{}: key {key} missing",
+                file.display()
+            );
         }
     }
     n
@@ -257,7 +401,10 @@ fn assert_keys_exist(file: &Path, src: &str, calls: &[&str]) -> usize {
 #[test]
 fn every_key_used_in_templates_exists() {
     let mut files = Vec::new();
-    template_files(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/templates")), &mut files);
+    template_files(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/templates")),
+        &mut files,
+    );
     assert!(!files.is_empty());
     let mut total = 0;
     for file in files {
@@ -280,14 +427,21 @@ fn every_key_used_in_rust_exists() {
         }
     }
     let mut files = Vec::new();
-    walk(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src")), &mut files);
+    walk(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src")),
+        &mut files,
+    );
     for file in files {
         // The i18n module's own docs and tests use example keys.
         if file.parent().is_some_and(|d| d.ends_with("i18n")) {
             continue;
         }
         let src = std::fs::read_to_string(&file).expect("read source");
-        assert_keys_exist(&file, &src, &["i18n::t", "i18n::tf", "i18n::tn", "i18n::tnf"]);
+        assert_keys_exist(
+            &file,
+            &src,
+            &["i18n::t", "i18n::tf", "i18n::tn", "i18n::tnf"],
+        );
     }
 }
 
@@ -314,7 +468,10 @@ async fn async_scope_sets_language() {
 
 #[test]
 fn interpolation() {
-    assert_eq!(interpolate("Delete “{name}”?", &[("name", "API")]), "Delete “API”?");
+    assert_eq!(
+        interpolate("Delete “{name}”?", &[("name", "API")]),
+        "Delete “API”?"
+    );
     assert_eq!(interpolate("{a} and {a}", &[("a", "x")]), "x and x");
 }
 
@@ -337,14 +494,43 @@ fn language_codes_and_accept_language() {
     assert_eq!(code("DE-ch"), Some("de"));
     assert_eq!(code("fr-CA"), Some("fr"));
     assert_eq!(code("es-419"), Some("es"));
-    for (tag, want) in [("it", "it"), ("nl-BE", "nl"), ("pl-PL", "pl"), ("sv-FI", "sv"), ("da-DK", "da")] {
+    for (tag, want) in [
+        ("it", "it"),
+        ("nl-BE", "nl"),
+        ("pl-PL", "pl"),
+        ("sv-FI", "sv"),
+        ("da-DK", "da"),
+    ] {
         assert_eq!(code(tag), Some(want), "{tag}");
     }
     // Chinese: Hans by default, Hant and the Traditional regions to zh-TW.
-    for (tag, want) in [("zh", "zh-CN"), ("zh-Hans-CN", "zh-CN"), ("zh-SG", "zh-CN"), ("zh-Hant", "zh-TW"), ("zh-TW", "zh-TW"), ("zh-HK", "zh-TW"), ("zh-Hant-HK", "zh-TW"), ("zh-MO", "zh-TW")] {
+    for (tag, want) in [
+        ("zh", "zh-CN"),
+        ("zh-Hans-CN", "zh-CN"),
+        ("zh-SG", "zh-CN"),
+        ("zh-Hant", "zh-TW"),
+        ("zh-TW", "zh-TW"),
+        ("zh-HK", "zh-TW"),
+        ("zh-Hant-HK", "zh-TW"),
+        ("zh-MO", "zh-TW"),
+    ] {
         assert_eq!(code(tag), Some(want), "{tag}");
     }
-    for (tag, want) in [("iw", "he"), ("he-IL", "he"), ("ar-EG", "ar"), ("fa-IR", "fa"), ("ru-UA", "ru"), ("uk-UA", "uk"), ("cs-CZ", "cs"), ("tr-TR", "tr"), ("ja-JP", "ja"), ("ko-KR", "ko"), ("fi-FI", "fi"), ("hu-HU", "hu"), ("ro-RO", "ro")] {
+    for (tag, want) in [
+        ("iw", "he"),
+        ("he-IL", "he"),
+        ("ar-EG", "ar"),
+        ("fa-IR", "fa"),
+        ("ru-UA", "ru"),
+        ("uk-UA", "uk"),
+        ("cs-CZ", "cs"),
+        ("tr-TR", "tr"),
+        ("ja-JP", "ja"),
+        ("ko-KR", "ko"),
+        ("fi-FI", "fi"),
+        ("hu-HU", "hu"),
+        ("ro-RO", "ro"),
+    ] {
         assert_eq!(code(tag), Some(want), "{tag}");
     }
     assert_eq!(code("sk"), None);
@@ -352,7 +538,10 @@ fn language_codes_and_accept_language() {
     assert_eq!(code("*"), None);
     assert_eq!(code(""), None);
     // The picker only accepts canonical codes.
-    assert_eq!(Lang::from_exact_code("pt-BR"), Some(Lang::from_code("pt").unwrap()));
+    assert_eq!(
+        Lang::from_exact_code("pt-BR"),
+        Some(Lang::from_code("pt").unwrap())
+    );
     assert_eq!(Lang::from_exact_code("pt"), None);
     assert_eq!(Lang::from_exact_code("PT-br"), None);
 
@@ -381,17 +570,46 @@ fn registry_entries_are_consistent() {
         assert_ne!(info.numbers.decimal, info.numbers.group, "{lang}");
     }
     let choices = language_choices();
-    assert!(choices.iter().any(|(code, label)| *code == "en" && label == "English"));
-    assert!(choices.iter().any(|(code, label)| *code == "de" && label == "Deutsch (beta)"));
-    assert!(choices.iter().any(|(code, label)| *code == "pt-BR" && label == "Português (Brasil) (beta)"));
-    assert!(choices.iter().any(|(code, label)| *code == "nb" && label == "Norsk bokmål"), "{choices:?}");
+    assert!(
+        choices
+            .iter()
+            .any(|(code, label)| *code == "en" && label == "English")
+    );
+    assert!(
+        choices
+            .iter()
+            .any(|(code, label)| *code == "de" && label == "Deutsch (beta)")
+    );
+    assert!(
+        choices
+            .iter()
+            .any(|(code, label)| *code == "pt-BR" && label == "Português (Brasil) (beta)")
+    );
+    assert!(
+        choices
+            .iter()
+            .any(|(code, label)| *code == "nb" && label == "Norsk bokmål"),
+        "{choices:?}"
+    );
     assert_eq!(Lang::EN.dir().as_str(), "ltr");
     for lang in Lang::all() {
         let rtl = matches!(lang.code(), "ar" | "he" | "fa");
-        assert_eq!(lang.dir().as_str(), if rtl { "rtl" } else { "ltr" }, "{lang}");
+        assert_eq!(
+            lang.dir().as_str(),
+            if rtl { "rtl" } else { "ltr" },
+            "{lang}"
+        );
     }
-    assert!(choices.iter().any(|(code, label)| *code == "ar" && label == "العربية (beta)"));
-    assert!(choices.iter().any(|(code, label)| *code == "zh-TW" && label == "繁體中文 (beta)"));
+    assert!(
+        choices
+            .iter()
+            .any(|(code, label)| *code == "ar" && label == "العربية (beta)")
+    );
+    assert!(
+        choices
+            .iter()
+            .any(|(code, label)| *code == "zh-TW" && label == "繁體中文 (beta)")
+    );
 }
 
 #[test]
@@ -403,25 +621,80 @@ fn numbers_follow_each_languages_conventions() {
     let nb = '\u{a0}';
     let nn = '\u{202f}';
     for (code, a, b, c) in [
-        ("en", "1,234".to_string(), "12,345".to_string(), "1,234,567".to_string()),
-        ("nb", "1234".into(), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        (
+            "en",
+            "1,234".to_string(),
+            "12,345".to_string(),
+            "1,234,567".to_string(),
+        ),
+        (
+            "nb",
+            "1234".into(),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
         ("de", "1.234".into(), "12.345".into(), "1.234.567".into()),
-        ("fr", format!("1{nn}234"), format!("12{nn}345"), format!("1{nn}234{nn}567")),
+        (
+            "fr",
+            format!("1{nn}234"),
+            format!("12{nn}345"),
+            format!("1{nn}234{nn}567"),
+        ),
         ("es", "1234".into(), "12.345".into(), "1.234.567".into()),
         ("it", "1.234".into(), "12.345".into(), "1.234.567".into()),
         ("nl", "1.234".into(), "12.345".into(), "1.234.567".into()),
         ("pt-BR", "1.234".into(), "12.345".into(), "1.234.567".into()),
-        ("pl", "1234".into(), format!("12{nb}345"), format!("1{nb}234{nb}567")),
-        ("sv", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        (
+            "pl",
+            "1234".into(),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
+        (
+            "sv",
+            format!("1{nb}234"),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
         ("da", "1.234".into(), "12.345".into(), "1.234.567".into()),
-        ("fi", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
-        ("cs", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
-        ("uk", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
-        ("ru", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
-        ("hu", format!("1{nb}234"), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        (
+            "fi",
+            format!("1{nb}234"),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
+        (
+            "cs",
+            format!("1{nb}234"),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
+        (
+            "uk",
+            format!("1{nb}234"),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
+        (
+            "ru",
+            format!("1{nb}234"),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
+        (
+            "hu",
+            format!("1{nb}234"),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
         ("tr", "1.234".into(), "12.345".into(), "1.234.567".into()),
         ("ro", "1.234".into(), "12.345".into(), "1.234.567".into()),
-        ("pt-PT", "1234".into(), format!("12{nb}345"), format!("1{nb}234{nb}567")),
+        (
+            "pt-PT",
+            "1234".into(),
+            format!("12{nb}345"),
+            format!("1{nb}234{nb}567"),
+        ),
         ("ja", "1,234".into(), "12,345".into(), "1,234,567".into()),
         ("ko", "1,234".into(), "12,345".into(), "1,234,567".into()),
         ("zh-CN", "1,234".into(), "12,345".into(), "1,234,567".into()),
@@ -431,12 +704,27 @@ fn numbers_follow_each_languages_conventions() {
         // Persian: Persian digits, ٬ for grouping.
         ("fa", "۱٬۲۳۴".into(), "۱۲٬۳۴۵".into(), "۱٬۲۳۴٬۵۶۷".into()),
     ] {
-        assert_eq!((int(code, 1_234), int(code, 12_345), int(code, 1_234_567)), (a, b, c), "{code}");
-        assert_eq!(int(code, -1_000_000), format!("-{}", int(code, 1_000_000)), "{code}");
-        assert_eq!(int(code, 999), local_digits(Lang::from_code(code).unwrap(), "999".into()), "{code}");
+        assert_eq!(
+            (int(code, 1_234), int(code, 12_345), int(code, 1_234_567)),
+            (a, b, c),
+            "{code}"
+        );
+        assert_eq!(
+            int(code, -1_000_000),
+            format!("-{}", int(code, 1_000_000)),
+            "{code}"
+        );
+        assert_eq!(
+            int(code, 999),
+            local_digits(Lang::from_code(code).unwrap(), "999".into()),
+            "{code}"
+        );
     }
     assert_eq!(dec("en", 99.951), "99.95");
-    for code in ["nb", "de", "fr", "es", "it", "nl", "pt-BR", "pl", "sv", "da", "fi", "cs", "uk", "ru", "hu", "tr", "ro", "pt-PT"] {
+    for code in [
+        "nb", "de", "fr", "es", "it", "nl", "pt-BR", "pl", "sv", "da", "fi", "cs", "uk", "ru",
+        "hu", "tr", "ro", "pt-PT",
+    ] {
         assert_eq!(dec(code, 99.951), "99,95", "{code}");
         assert_eq!(dec(code, -0.001), "0,00", "{code}");
     }
@@ -470,11 +758,19 @@ fn numbers_follow_each_languages_conventions() {
 #[test]
 fn fmt_lists_and_patterns_are_well_formed() {
     for lang in Lang::all() {
-        for (key, n) in [("months_short", 12), ("months_long", 12), ("weekdays_short", 7), ("weekdays_long", 7)] {
+        for (key, n) in [
+            ("months_short", 12),
+            ("months_long", 12),
+            ("weekdays_short", 7),
+            ("weekdays_long", 7),
+        ] {
             let list = lookup(lang, &format!("fmt.{key}")).expect("fmt list");
             let items: Vec<&str> = list.split('|').collect();
             assert_eq!(items.len(), n, "{lang}: fmt.{key}");
-            assert!(items.iter().all(|i| !i.trim().is_empty()), "{lang}: empty item in fmt.{key}");
+            assert!(
+                items.iter().all(|i| !i.trim().is_empty()),
+                "{lang}: empty item in fmt.{key}"
+            );
             let unique: BTreeSet<&&str> = items.iter().collect();
             assert_eq!(unique.len(), n, "{lang}: repeated name in fmt.{key}");
         }
@@ -507,31 +803,64 @@ fn fmt_lists_and_patterns_are_well_formed() {
 #[test]
 fn dates_and_durations_render_in_every_language() {
     let date = jiff::civil::date(2026, 3, 9);
-    let z = date.at(14, 5, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).expect("zoned");
+    let z = date
+        .at(14, 5, 0, 0)
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .expect("zoned");
     for lang in Lang::all() {
-        let (nine, year, time) = (local_digits(lang, "9".into()), local_digits(lang, "2026".into()), local_digits(lang, "14:05".into()));
+        let (nine, year, time) = (
+            local_digits(lang, "9".into()),
+            local_digits(lang, "2026".into()),
+            local_digits(lang, "14:05".into()),
+        );
         let dm = fmt_day_month_in(lang, date);
         assert!(dm.contains(&nine), "{lang}: {dm}");
         assert!(!dm.contains('{'), "{lang}: unfilled pattern {dm}");
         let full = fmt_datetime_in(lang, &z);
-        assert!(full.contains(&year) && full.ends_with(&time) && !full.contains('{'), "{lang}: {full}");
+        assert!(
+            full.contains(&year) && full.ends_with(&time) && !full.contains('{'),
+            "{lang}: {full}"
+        );
         assert!(fmt_short_datetime_in(lang, &z).ends_with(&time), "{lang}");
-        assert!(fmt_weekday_day_month_in(lang, date).contains(&nine), "{lang}");
+        assert!(
+            fmt_weekday_day_month_in(lang, date).contains(&nine),
+            "{lang}"
+        );
         assert!(!fmt_day_month_long_in(lang, date).contains('{'), "{lang}");
         assert_eq!(fmt_duration_in(lang, 0), fmt_duration_in(lang, 0));
         for secs in [45, 190, 3 * 3600 + 240, 2 * 86_400 + 5 * 3600, 86_400] {
-            for text in [fmt_duration_in(lang, secs), fmt_duration_compact_in(lang, secs)] {
-                assert!(!text.contains('{') && !text.trim().is_empty(), "{lang}: {text:?} for {secs}");
+            for text in [
+                fmt_duration_in(lang, secs),
+                fmt_duration_compact_in(lang, secs),
+            ] {
+                assert!(
+                    !text.contains('{') && !text.trim().is_empty(),
+                    "{lang}: {text:?} for {secs}"
+                );
             }
         }
         for ago in [10, 190, -7200, 5 * 86_400] {
             let text = fmt_relative_in(lang, ago);
-            assert!(!text.contains('{') && !text.trim().is_empty(), "{lang}: {text:?} for {ago}");
+            assert!(
+                !text.contains('{') && !text.trim().is_empty(),
+                "{lang}: {text:?} for {ago}"
+            );
         }
-        assert_ne!(fmt_relative_in(lang, 190), fmt_relative_in(lang, -190), "{lang}: past and future read the same");
+        assert_ne!(
+            fmt_relative_in(lang, 190),
+            fmt_relative_in(lang, -190),
+            "{lang}: past and future read the same"
+        );
         // Weekday names: Monday first, ISO numbering.
-        assert_eq!(weekday_name_in(lang, 1, true), weekday_name_in(lang, 1, true));
-        assert_ne!(weekday_name_in(lang, 1, true), weekday_name_in(lang, 7, true), "{lang}");
+        assert_eq!(
+            weekday_name_in(lang, 1, true),
+            weekday_name_in(lang, 1, true)
+        );
+        assert_ne!(
+            weekday_name_in(lang, 1, true),
+            weekday_name_in(lang, 7, true),
+            "{lang}"
+        );
     }
 }
 
@@ -544,10 +873,19 @@ fn english_and_bokmal_formats_are_unchanged() {
     assert_eq!(fmt_duration_in(Lang::NB, 3 * 3600 + 240), "3 t 4 min");
     assert_eq!(fmt_duration_in(Lang::NB, 86_400), "1 d");
     assert_eq!(fmt_duration_compact_in(Lang::EN, 4 * 60 + 10), "4m 10s");
-    assert_eq!(fmt_duration_compact_in(Lang::EN, 2 * 3600 + 5 * 60), "2h 5m");
-    assert_eq!(fmt_duration_compact_in(Lang::EN, 3 * 86_400 + 4 * 3600), "3d 4h");
+    assert_eq!(
+        fmt_duration_compact_in(Lang::EN, 2 * 3600 + 5 * 60),
+        "2h 5m"
+    );
+    assert_eq!(
+        fmt_duration_compact_in(Lang::EN, 3 * 86_400 + 4 * 3600),
+        "3d 4h"
+    );
     assert_eq!(fmt_duration_compact_in(Lang::EN, 12), "12s");
-    assert_eq!(fmt_duration_compact_in(Lang::NB, 2 * 3600 + 5 * 60), "2t 5m");
+    assert_eq!(
+        fmt_duration_compact_in(Lang::NB, 2 * 3600 + 5 * 60),
+        "2t 5m"
+    );
     assert_eq!(fmt_relative_in(Lang::EN, 10), "just now");
     assert_eq!(fmt_relative_in(Lang::EN, 190), "3 min ago");
     assert_eq!(fmt_relative_in(Lang::NB, 190), "for 3 min siden");
@@ -559,8 +897,14 @@ fn english_and_bokmal_formats_are_unchanged() {
     assert_eq!(fmt_day_month_in(Lang::NB, date), "19. okt.");
     assert_eq!(fmt_day_month_long_in(Lang::NB, date), "19. oktober");
     assert_eq!(fmt_date_in(Lang::EN, date), "Oct 19, 2026");
-    assert_eq!(fmt_date_in(Lang::NB, jiff::civil::date(2026, 3, 1)), "1. mars 2026");
-    let z = date.at(14, 5, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).expect("zoned");
+    assert_eq!(
+        fmt_date_in(Lang::NB, jiff::civil::date(2026, 3, 1)),
+        "1. mars 2026"
+    );
+    let z = date
+        .at(14, 5, 0, 0)
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .expect("zoned");
     assert_eq!(fmt_datetime_in(Lang::EN, &z), "Oct 19, 2026, 14:05");
     assert_eq!(fmt_datetime_in(Lang::NB, &z), "19. okt. 2026, 14:05");
     assert_eq!(fmt_short_datetime_in(Lang::NB, &z), "19. okt., 14:05");
@@ -573,20 +917,40 @@ fn english_and_bokmal_formats_are_unchanged() {
 #[test]
 fn js_bundle_is_embeddable_json_in_every_language() {
     let en_keys: BTreeSet<String> = {
-        let parsed: serde_json::Value = serde_json::from_str(&js_bundle(Lang::EN)).expect("valid json");
-        parsed.as_object().expect("object").keys().cloned().collect()
+        let parsed: serde_json::Value =
+            serde_json::from_str(&js_bundle(Lang::EN)).expect("valid json");
+        parsed
+            .as_object()
+            .expect("object")
+            .keys()
+            .cloned()
+            .collect()
     };
     assert!(en_keys.len() > 15);
     for lang in Lang::all() {
         let json = js_bundle(lang);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
-        let keys: BTreeSet<String> = parsed.as_object().expect("object").keys().cloned().collect();
+        let keys: BTreeSet<String> = parsed
+            .as_object()
+            .expect("object")
+            .keys()
+            .cloned()
+            .collect();
         assert_eq!(keys, en_keys, "{lang}");
         assert!(!json.contains("</"), "{lang}");
-        let empty: Vec<&String> = parsed.as_object().unwrap().iter().filter(|(_, v)| v.as_str().is_none_or(str::is_empty)).map(|(k, _)| k).collect();
+        let empty: Vec<&String> = parsed
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter(|(_, v)| v.as_str().is_none_or(str::is_empty))
+            .map(|(k, _)| k)
+            .collect();
         assert!(empty.is_empty(), "{lang}: empty js strings {empty:?}");
     }
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&js_bundle(Lang::NB)).unwrap()["live"], "Direkte");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&js_bundle(Lang::NB)).unwrap()["live"],
+        "Direkte"
+    );
 }
 
 #[test]
@@ -608,7 +972,15 @@ fn coverage(lang: Lang) -> (usize, usize) {
     let required = lang.plural_rule().categories();
     let total = plain.len() + bases.len() * required.len();
     let done = plain.iter().filter(|k| cat.contains_key(*k)).count()
-        + bases.iter().map(|b| required.iter().filter(|p| cat.contains_key(&format!("{b}.{}", p.as_str()))).count()).sum::<usize>();
+        + bases
+            .iter()
+            .map(|b| {
+                required
+                    .iter()
+                    .filter(|p| cat.contains_key(&format!("{b}.{}", p.as_str())))
+                    .count()
+            })
+            .sum::<usize>();
     (done, total)
 }
 
@@ -618,7 +990,10 @@ fn coverage_report() {
     for lang in Lang::all() {
         let (done, total) = coverage(lang);
         #[allow(clippy::cast_precision_loss)]
-        rows.insert(lang.code(), (done, total, 100.0 * done as f64 / total as f64));
+        rows.insert(
+            lang.code(),
+            (done, total, 100.0 * done as f64 / total as f64),
+        );
     }
     for (code, (done, total, pct)) in &rows {
         println!("{code:>6}: {done:>5}/{total:<5} {pct:5.1}%");
@@ -628,7 +1003,10 @@ fn coverage_report() {
     // must be translated in the same change (or follow-up) before this passes.
     for lang in translated() {
         let (done, total, pct) = rows[lang.code()];
-        assert_eq!(done, total, "{lang} is only {pct:.1}% translated: run `cargo test --lib coverage_report -- --nocapture` and see docs/translating.md");
+        assert_eq!(
+            done, total,
+            "{lang} is only {pct:.1}% translated: run `cargo test --lib coverage_report -- --nocapture` and see docs/translating.md"
+        );
     }
 }
 
@@ -669,20 +1047,38 @@ fn physical_declarations(css: &str) -> Vec<(usize, String)> {
         if line.contains("rtl-ok") || line.starts_with("/*") || line.starts_with('*') {
             continue;
         }
-        let Some((prop, value)) = line.split_once(':') else { continue };
+        let Some((prop, value)) = line.split_once(':') else {
+            continue;
+        };
         let (prop, value) = (prop.trim(), value.trim().trim_end_matches(';').trim());
-        let has_side = |v: &str| v.split(|c: char| !c.is_ascii_alphabetic() && c != '-').any(|w| w == "left" || w == "right");
+        let has_side = |v: &str| {
+            v.split(|c: char| !c.is_ascii_alphabetic() && c != '-')
+                .any(|w| w == "left" || w == "right")
+        };
         let physical = match prop {
-            "left" | "right" | "float" | "clear" => prop != "float" && prop != "clear" || has_side(value),
-            p if p.starts_with("margin-") || p.starts_with("padding-") || p.starts_with("scroll-margin-") || p.starts_with("scroll-padding-") => {
+            "left" | "right" | "float" | "clear" => {
+                prop != "float" && prop != "clear" || has_side(value)
+            }
+            p if p.starts_with("margin-")
+                || p.starts_with("padding-")
+                || p.starts_with("scroll-margin-")
+                || p.starts_with("scroll-padding-") =>
+            {
                 p.ends_with("-left") || p.ends_with("-right")
             }
             p if p.starts_with("border-") => {
-                p.starts_with("border-left") || p.starts_with("border-right") || (p.ends_with("-radius") && (p.contains("-left") || p.contains("-right")))
+                p.starts_with("border-left")
+                    || p.starts_with("border-right")
+                    || (p.ends_with("-radius") && (p.contains("-left") || p.contains("-right")))
             }
             "text-align" => has_side(value),
             "transform-origin" | "background-position" => has_side(value),
-            "transform" => value.contains("translateX(") && !value.contains("--dir") && !value.contains("translateX(-50%)") && !value.contains("translateX(0"),
+            "transform" => {
+                value.contains("translateX(")
+                    && !value.contains("--dir")
+                    && !value.contains("translateX(-50%)")
+                    && !value.contains("translateX(0")
+            }
             "margin" | "padding" | "border-width" | "border-color" | "border-style" => {
                 let t = css_tokens(value);
                 t.len() == 4 && t[1] != t[3]
@@ -698,19 +1094,28 @@ fn physical_declarations(css: &str) -> Vec<(usize, String)> {
 
 #[test]
 fn the_stylesheet_has_no_unmarked_physical_left_right_properties() {
-    let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/style.css")).expect("style.css");
+    let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/style.css"))
+        .expect("style.css");
     let found = physical_declarations(&css);
     assert!(
         found.is_empty(),
         "use logical properties (margin-inline-start, inset-inline-end, text-align: start, …) or add `/* rtl-ok: reason */`:\n{}",
-        found.iter().map(|(n, l)| format!("  style.css:{n}: {l}")).collect::<Vec<_>>().join("\n")
+        found
+            .iter()
+            .map(|(n, l)| format!("  style.css:{n}: {l}"))
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }
 
 #[test]
 fn the_physical_property_lint_recognises_what_it_should() {
     let flagged = |css: &str| physical_declarations(css).len();
-    assert_eq!(flagged("a { margin-left: 4px; }\n.b {\n  margin-left: 4px;\n}"), 1, "only declaration lines count");
+    assert_eq!(
+        flagged("a { margin-left: 4px; }\n.b {\n  margin-left: 4px;\n}"),
+        1,
+        "only declaration lines count"
+    );
     for bad in [
         "margin-left: auto;",
         "margin-right: -6px;",
@@ -768,23 +1173,59 @@ async fn pages_carry_the_language_direction() {
     let page = |accept: &'static str| {
         let app = app.clone();
         async move {
-            let res = app.oneshot(Request::get("/setup").header("accept-language", accept).body(Body::empty()).unwrap()).await.unwrap();
-            let bytes = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap();
+            let res = app
+                .oneshot(
+                    Request::get("/setup")
+                        .header("accept-language", accept)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
+                .await
+                .unwrap();
             String::from_utf8_lossy(&bytes).into_owned()
         }
     };
-    for (accept, lang) in [("ar", "ar"), ("ar-EG", "ar"), ("he", "he"), ("iw", "he"), ("fa-IR", "fa")] {
+    for (accept, lang) in [
+        ("ar", "ar"),
+        ("ar-EG", "ar"),
+        ("he", "he"),
+        ("iw", "he"),
+        ("fa-IR", "fa"),
+    ] {
         let rtl = page(accept).await;
         let want = format!("<html lang=\"{lang}\" dir=\"rtl\"");
-        assert!(rtl.contains(&want), "{accept}: {}", &rtl[..rtl.len().min(200)]);
+        assert!(
+            rtl.contains(&want),
+            "{accept}: {}",
+            &rtl[..rtl.len().min(200)]
+        );
     }
     for (accept, lang) in [("ja", "ja"), ("zh-HK", "zh-TW"), ("ru-RU", "ru")] {
         let want = format!("<html lang=\"{lang}\" dir=\"ltr\"");
         assert!(page(accept).await.contains(&want), "{accept}");
     }
     let ltr = page("de-AT,de;q=0.9").await;
-    assert!(ltr.contains("<html lang=\"de\" dir=\"ltr\""), "{}", &ltr[..ltr.len().min(200)]);
-    assert!(page("en-GB").await.contains("<html lang=\"en\" dir=\"ltr\""));
-    assert!(page("pt-PT").await.contains("<html lang=\"pt-PT\" dir=\"ltr\""));
-    assert!(page("pt").await.contains("<html lang=\"pt-BR\" dir=\"ltr\""));
+    assert!(
+        ltr.contains("<html lang=\"de\" dir=\"ltr\""),
+        "{}",
+        &ltr[..ltr.len().min(200)]
+    );
+    assert!(
+        page("en-GB")
+            .await
+            .contains("<html lang=\"en\" dir=\"ltr\"")
+    );
+    assert!(
+        page("pt-PT")
+            .await
+            .contains("<html lang=\"pt-PT\" dir=\"ltr\"")
+    );
+    assert!(
+        page("pt")
+            .await
+            .contains("<html lang=\"pt-BR\" dir=\"ltr\"")
+    );
 }

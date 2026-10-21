@@ -53,7 +53,10 @@ type Stream = Box<dyn Io>;
 
 /// How the certificate is checked (before "ignore TLS errors").
 pub fn verify(ep: &Endpoint) -> Verify {
-    let on = |key: &str| ep.query(key).is_some_and(|v| v.trim().eq_ignore_ascii_case("true"));
+    let on = |key: &str| {
+        ep.query(key)
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("true"))
+    };
     if on("tlsInsecure") || on("tlsAllowInvalidCertificates") || on("sslAllowInvalidCertificates") {
         Verify::None
     } else if on("tlsAllowInvalidHostnames") || on("sslAllowInvalidHostnames") {
@@ -91,7 +94,11 @@ fn mechanism(ep: &Endpoint) -> Result<Option<Hash>, String> {
 /// Only the options the specification allows there are kept.
 fn txt_options(text: &str) -> Vec<(String, String)> {
     url::form_urlencoded::parse(text.trim().as_bytes())
-        .filter(|(k, _)| ["authSource", "replicaSet", "loadBalanced"].iter().any(|o| o.eq_ignore_ascii_case(k)))
+        .filter(|(k, _)| {
+            ["authSource", "replicaSet", "loadBalanced"]
+                .iter()
+                .any(|o| o.eq_ignore_ascii_case(k))
+        })
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect()
 }
@@ -102,20 +109,33 @@ fn txt_options(text: &str) -> Vec<(String, String)> {
 fn check_srv_host(name: &str, host: &str) -> Result<(), String> {
     let name = name.trim_end_matches('.').to_ascii_lowercase();
     let host = host.trim_end_matches('.').to_ascii_lowercase();
-    let parent = if name.split('.').count() >= 3 { name.split_once('.').map_or(name.as_str(), |(_, p)| p) } else { name.as_str() };
+    let parent = if name.split('.').count() >= 3 {
+        name.split_once('.').map_or(name.as_str(), |(_, p)| p)
+    } else {
+        name.as_str()
+    };
     if host.ends_with(&format!(".{parent}")) {
         Ok(())
     } else {
-        Err(format!("The SRV record of {name} points outside its domain ({})", util::truncate(&host, 60)))
+        Err(format!(
+            "The SRV record of {name} points outside its domain ({})",
+            util::truncate(&host, 60)
+        ))
     }
 }
 
 /// The hosts and TXT options of a `mongodb+srv://` name.
-async fn srv_lookup(name: &str, timeout: Duration) -> Result<(Vec<(String, u16)>, Vec<(String, String)>), String> {
+async fn srv_lookup(
+    name: &str,
+    timeout: Duration,
+) -> Result<(Vec<(String, u16)>, Vec<(String, String)>), String> {
     use hickory_resolver::proto::rr::{Name, RData, RecordType};
 
     let resolver = super::dns::build_resolver(None, timeout)?;
-    let fqdn = |n: &str| Name::from_utf8(format!("{}.", n.trim_end_matches('.'))).map_err(|e| format!("Invalid host name \"{name}\": {e}"));
+    let fqdn = |n: &str| {
+        Name::from_utf8(format!("{}.", n.trim_end_matches('.')))
+            .map_err(|e| format!("Invalid host name \"{name}\": {e}"))
+    };
     let srv = resolver
         .lookup(fqdn(&format!("_mongodb._tcp.{name}"))?, RecordType::SRV)
         .await
@@ -124,7 +144,11 @@ async fn srv_lookup(name: &str, timeout: Duration) -> Result<(Vec<(String, u16)>
         .answers()
         .iter()
         .filter_map(|r| match &r.data {
-            RData::SRV(s) => Some((s.priority, s.target.to_ascii().trim_end_matches('.').to_string(), s.port)),
+            RData::SRV(s) => Some((
+                s.priority,
+                s.target.to_ascii().trim_end_matches('.').to_string(),
+                s.port,
+            )),
             _ => None,
         })
         .collect();
@@ -141,7 +165,12 @@ async fn srv_lookup(name: &str, timeout: Duration) -> Result<(Vec<(String, u16)>
                 .answers()
                 .iter()
                 .filter_map(|r| match &r.data {
-                    RData::TXT(t) => Some(t.txt_data.iter().map(|part| String::from_utf8_lossy(part).into_owned()).collect()),
+                    RData::TXT(t) => Some(
+                        t.txt_data
+                            .iter()
+                            .map(|part| String::from_utf8_lossy(part).into_owned())
+                            .collect(),
+                    ),
                     _ => None,
                 })
                 .collect();
@@ -152,7 +181,13 @@ async fn srv_lookup(name: &str, timeout: Duration) -> Result<(Vec<(String, u16)>
         }
         Err(_) => Vec::new(),
     };
-    Ok((records.into_iter().map(|(_, host, port)| (host, port)).collect(), options))
+    Ok((
+        records
+            .into_iter()
+            .map(|(_, host, port)| (host, port))
+            .collect(),
+        options,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -184,9 +219,18 @@ fn op_msg(request_id: i32, doc: &Document) -> Vec<u8> {
 /// The body document of an OP_MSG (after its 16-byte header).
 fn parse_op_msg(msg: &[u8]) -> Result<Document, String> {
     let bad = || "Not a MongoDB server (malformed reply)".to_string();
-    let flags = u32::from_le_bytes(msg.get(..4).ok_or_else(bad)?.try_into().map_err(|_| bad())?);
+    let flags = u32::from_le_bytes(
+        msg.get(..4)
+            .ok_or_else(bad)?
+            .try_into()
+            .map_err(|_| bad())?,
+    );
     // A trailing CRC-32C (checksumPresent) is not part of the sections.
-    let end = if flags & 1 != 0 { msg.len().checked_sub(4).ok_or_else(bad)? } else { msg.len() };
+    let end = if flags & 1 != 0 {
+        msg.len().checked_sub(4).ok_or_else(bad)?
+    } else {
+        msg.len()
+    };
     let mut at = 4;
     while at < end {
         let kind = msg[at];
@@ -197,7 +241,10 @@ fn parse_op_msg(msg: &[u8]) -> Result<Document, String> {
             1 => {
                 let size = rest.get(..4).ok_or_else(bad)?;
                 let size = i32::from_le_bytes(size.try_into().map_err(|_| bad())?);
-                at += usize::try_from(size).ok().filter(|s| *s >= 4).ok_or_else(bad)?;
+                at += usize::try_from(size)
+                    .ok()
+                    .filter(|s| *s >= 4)
+                    .ok_or_else(bad)?;
             }
             _ => return Err(bad()),
         }
@@ -209,12 +256,15 @@ fn parse_op_msg(msg: &[u8]) -> Result<Document, String> {
 async fn read_reply(s: &mut Stream, request_id: i32) -> Result<Document, String> {
     let mut header = [0u8; 16];
     s.read_exact(&mut header).await.map_err(io_err)?;
-    let field = |i: usize| i32::from_le_bytes([header[i], header[i + 1], header[i + 2], header[i + 3]]);
+    let field =
+        |i: usize| i32::from_le_bytes([header[i], header[i + 1], header[i + 2], header[i + 3]]);
     let (len, response_to, op) = (field(0), field(8), field(12));
     if op == OP_REPLY && response_to == request_id {
         return Err("The server is too old (MongoDB 3.6 or later is needed)".into());
     }
-    let len = usize::try_from(len).ok().filter(|l| (21..=MAX_MESSAGE).contains(l));
+    let len = usize::try_from(len)
+        .ok()
+        .filter(|l| (21..=MAX_MESSAGE).contains(l));
     let (Some(len), true, true) = (len, op == OP_MSG, response_to == request_id) else {
         return Err("Not a MongoDB server (unexpected reply)".into());
     };
@@ -233,7 +283,10 @@ struct CommandError {
 impl CommandError {
     fn text(&self) -> String {
         match self.code {
-            Some(code) => format!("Server error {code}: {}", util::truncate(&self.message, 160)),
+            Some(code) => format!(
+                "Server error {code}: {}",
+                util::truncate(&self.message, 160)
+            ),
             None => format!("Server error: {}", util::truncate(&self.message, 160)),
         }
     }
@@ -277,7 +330,10 @@ impl Conn {
     async fn command(&mut self, doc: &Document) -> Result<Document, Failure> {
         self.next_id = self.next_id.wrapping_add(1);
         let id = self.next_id;
-        self.stream.write_all(&op_msg(id, doc)).await.map_err(io_err)?;
+        self.stream
+            .write_all(&op_msg(id, doc))
+            .await
+            .map_err(io_err)?;
         self.stream.flush().await.map_err(io_err)?;
         let reply = read_reply(&mut self.stream, id).await?;
         if reply.number("ok") == Some(1.0) {
@@ -296,40 +352,62 @@ impl Conn {
 
 /// MongoDB's SCRAM-SHA-1 hashes the password with the user name first.
 fn sha1_password(user: &str, password: &str) -> String {
-    hex::encode(md5::Md5::digest(format!("{user}:mongo:{password}").as_bytes()))
+    hex::encode(md5::Md5::digest(
+        format!("{user}:mongo:{password}").as_bytes(),
+    ))
 }
 
 fn auth_error(err: Failure) -> Failure {
     match err {
-        Failure::Command(CommandError { code: Some(AUTHENTICATION_FAILED), .. }) => {
-            "Authentication failed: wrong user name or password".into()
-        }
+        Failure::Command(CommandError {
+            code: Some(AUTHENTICATION_FAILED),
+            ..
+        }) => "Authentication failed: wrong user name or password".into(),
         Failure::Command(e) => format!("Authentication failed: {}", e.text()).into(),
         other => other,
     }
 }
 
-async fn authenticate(c: &mut Conn, hash: Hash, user: &str, password: &str, source: &str) -> Result<(), Failure> {
+async fn authenticate(
+    c: &mut Conn,
+    hash: Hash,
+    user: &str,
+    password: &str,
+    source: &str,
+) -> Result<(), Failure> {
     let nonce = scram::nonce();
     let bare = format!("n={},r={nonce}", scram::saslname(user));
     let start = Document::new()
         .with("saslStart", 1)
         .with("mechanism", hash.mechanism())
-        .with("payload", Bson::Binary(0, format!("n,,{bare}").into_bytes()))
+        .with(
+            "payload",
+            Bson::Binary(0, format!("n,,{bare}").into_bytes()),
+        )
         .with("autoAuthorize", 1)
         .with("options", Document::new().with("skipEmptyExchange", true))
         .with("$db", source);
     let reply = c.command(&start).await.map_err(auth_error)?;
-    let conversation = reply.get("conversationId").cloned().ok_or("Unexpected SCRAM reply from the server")?;
-    let server_first = String::from_utf8_lossy(reply.binary("payload").ok_or("Unexpected SCRAM reply from the server")?).into_owned();
+    let conversation = reply
+        .get("conversationId")
+        .cloned()
+        .ok_or("Unexpected SCRAM reply from the server")?;
+    let server_first = String::from_utf8_lossy(
+        reply
+            .binary("payload")
+            .ok_or("Unexpected SCRAM reply from the server")?,
+    )
+    .into_owned();
     let secret = match hash {
         Hash::Sha256 => password.to_string(),
         Hash::Sha1 => sha1_password(user, password),
     };
     let (b, n) = (bare.clone(), nonce.clone());
-    let fin = tokio::task::spawn_blocking(move || scram::client_final(hash, secret.as_bytes(), &b, &server_first, &n))
-        .await
-        .map_err(|_| "SCRAM computation failed".to_string())??;
+    let fin = tokio::task::spawn_blocking(move || {
+        scram::client_final(hash, secret.as_bytes(), &b, &server_first, &n)
+    })
+    .await
+    .map_err(|_| "SCRAM computation failed".to_string())??;
     let cont = |payload: Vec<u8>| {
         Document::new()
             .with("saslContinue", 1)
@@ -337,8 +415,12 @@ async fn authenticate(c: &mut Conn, hash: Hash, user: &str, password: &str, sour
             .with("payload", Bson::Binary(0, payload))
             .with("$db", source)
     };
-    let reply = c.command(&cont(fin.message.into_bytes())).await.map_err(auth_error)?;
-    let server_final = String::from_utf8_lossy(reply.binary("payload").unwrap_or_default()).into_owned();
+    let reply = c
+        .command(&cont(fin.message.into_bytes()))
+        .await
+        .map_err(auth_error)?;
+    let server_final =
+        String::from_utf8_lossy(reply.binary("payload").unwrap_or_default()).into_owned();
     if !scram::server_final_ok(&server_final, &fin.server_signature) {
         return Err("The server failed to prove it knows the password".into());
     }
@@ -374,7 +456,11 @@ fn role(hello: &Document) -> String {
         of_set("arbiter")
     } else if hello.bool("secondary") {
         match hello.str("primary") {
-            Some(p) => format!("{} (primary {})", of_set("secondary"), util::truncate(p, 60)),
+            Some(p) => format!(
+                "{} (primary {})",
+                of_set("secondary"),
+                util::truncate(p, 60)
+            ),
             None => format!("{}, no primary known", of_set("secondary")),
         }
     } else if hello.bool("isreplicaset") {
@@ -387,11 +473,21 @@ fn role(hello: &Document) -> String {
 /// With `replicaSet=…`: the server must be in that set, and the set needs a primary.
 fn check_replica_set(hello: &Document, wanted: &str) -> Result<(), String> {
     match hello.str("setName") {
-        None => Err(format!("The server is not a member of replica set {wanted}")),
-        Some(set) if set != wanted => Err(format!("The server belongs to replica set {set}, not {wanted}")),
+        None => Err(format!(
+            "The server is not a member of replica set {wanted}"
+        )),
+        Some(set) if set != wanted => Err(format!(
+            "The server belongs to replica set {set}, not {wanted}"
+        )),
         Some(set) => {
-            let primary = hello.bool("isWritablePrimary") || hello.bool("ismaster") || hello.get("primary").is_some();
-            if primary { Ok(()) } else { Err(format!("Replica set {set} has no primary")) }
+            let primary = hello.bool("isWritablePrimary")
+                || hello.bool("ismaster")
+                || hello.get("primary").is_some();
+            if primary {
+                Ok(())
+            } else {
+                Err(format!("Replica set {set} has no primary"))
+            }
         }
     }
 }
@@ -405,7 +501,12 @@ struct Found {
 }
 
 /// Connect to the first seed that accepts (TLS when asked for).
-async fn connect(seeds: &[(String, u16)], tls: bool, verify: Verify, timeout: Duration) -> Result<(Stream, Option<CertSummary>, Option<&'static str>), Failure> {
+async fn connect(
+    seeds: &[(String, u16)],
+    tls: bool,
+    verify: Verify,
+    timeout: Duration,
+) -> Result<(Stream, Option<CertSummary>, Option<&'static str>), Failure> {
     let mut last = String::from("No hosts to connect to");
     for (host, port) in seeds {
         let (tcp, addr) = match conn::tcp(host, *port).await {
@@ -423,13 +524,20 @@ async fn connect(seeds: &[(String, u16)], tls: bool, verify: Verify, timeout: Du
                 let (cert, version) = (tls::peer_cert(&stream), tls::version_label(&stream));
                 Ok((Box::new(stream), cert, Some(version)))
             }
-            Err(err) => Err(Failure::Outcome(Box::new(conn::tls_failure(&err, host, addr, verify == Verify::None, timeout).await))),
+            Err(err) => Err(Failure::Outcome(Box::new(
+                conn::tls_failure(&err, host, addr, verify == Verify::None, timeout).await,
+            ))),
         };
     }
     Err(Failure::Down(last))
 }
 
-async fn session(ep: &Endpoint, monitor: &Monitor, forced: Option<Hash>, timeout: Duration) -> Result<Found, Failure> {
+async fn session(
+    ep: &Endpoint,
+    monitor: &Monitor,
+    forced: Option<Hash>,
+    timeout: Duration,
+) -> Result<Found, Failure> {
     let (seeds, txt) = if ep.srv {
         srv_lookup(&ep.host, timeout).await?
     } else {
@@ -438,13 +546,25 @@ async fn session(ep: &Endpoint, monitor: &Monitor, forced: Option<Hash>, timeout
         (seeds, Vec::new())
     };
     // Options in the address win over those from DNS.
-    let option = |key: &str| ep.query(key).or_else(|| txt.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v.as_str()));
+    let option = |key: &str| {
+        ep.query(key).or_else(|| {
+            txt.iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v.as_str())
+        })
+    };
     let verify = verify(ep).unless_ignored(monitor.ignore_tls);
     let (stream, cert, tls_version) = connect(&seeds, ep.tls, verify, timeout).await?;
     let mut c = Conn { stream, next_id: 0 };
 
     let user = monitor.basic_auth_user.as_deref();
-    let source = option("authSource").filter(|s| !s.is_empty()).unwrap_or(if ep.path.is_empty() { "admin" } else { &ep.path });
+    let source = option("authSource")
+        .filter(|s| !s.is_empty())
+        .unwrap_or(if ep.path.is_empty() {
+            "admin"
+        } else {
+            &ep.path
+        });
     let hello = |name: &str| {
         let mut doc = Document::new().with(name, 1).with("$db", "admin");
         if let Some(user) = user {
@@ -458,33 +578,62 @@ async fn session(ep: &Endpoint, monitor: &Monitor, forced: Option<Hash>, timeout
             // The server requires driver.name, driver.version and os.type.
             let client = Document::new()
                 .with("application", Document::new().with("name", "Vigilant Vole"))
-                .with("driver", Document::new().with("name", "vigilant-vole").with("version", env!("CARGO_PKG_VERSION")))
+                .with(
+                    "driver",
+                    Document::new()
+                        .with("name", "vigilant-vole")
+                        .with("version", env!("CARGO_PKG_VERSION")),
+                )
                 .with("os", Document::new().with("type", std::env::consts::OS));
             doc = doc.with("client", client);
         }
         doc
     };
     let reply = match c.command(&hello("hello")).await {
-        Err(Failure::Command(CommandError { code: Some(COMMAND_NOT_FOUND), .. })) => c.command(&hello("isMaster")).await?,
+        Err(Failure::Command(CommandError {
+            code: Some(COMMAND_NOT_FOUND),
+            ..
+        })) => c.command(&hello("isMaster")).await?,
         other => other?,
     };
-    let version = match c.command(&Document::new().with("buildInfo", 1).with("$db", "admin")).await {
+    let version = match c
+        .command(&Document::new().with("buildInfo", 1).with("$db", "admin"))
+        .await
+    {
         Ok(info) => info.str("version").map(str::to_string),
         Err(_) => None,
     };
     if let Some(user) = user {
         let hash = forced.unwrap_or_else(|| {
             let offered = reply.array("saslSupportedMechs").unwrap_or_default();
-            if offered.iter().any(|m| m == &Bson::from("SCRAM-SHA-256")) { Hash::Sha256 } else { Hash::Sha1 }
+            if offered.iter().any(|m| m == &Bson::from("SCRAM-SHA-256")) {
+                Hash::Sha256
+            } else {
+                Hash::Sha1
+            }
         });
-        authenticate(&mut c, hash, user, monitor.basic_auth_pass.as_deref().unwrap_or_default(), source).await?;
+        authenticate(
+            &mut c,
+            hash,
+            user,
+            monitor.basic_auth_pass.as_deref().unwrap_or_default(),
+            source,
+        )
+        .await?;
     }
-    c.command(&Document::new().with("ping", 1).with("$db", "admin")).await?;
+    c.command(&Document::new().with("ping", 1).with("$db", "admin"))
+        .await?;
     if let Some(set) = option("replicaSet").filter(|s| !s.is_empty()) {
         check_replica_set(&reply, set)?;
     }
     let _ = c.stream.shutdown().await;
-    Ok(Found { version, role: role(&reply), logged_in: user.is_some(), cert, tls_version })
+    Ok(Found {
+        version,
+        role: role(&reply),
+        logged_in: user.is_some(),
+        cert,
+        tls_version,
+    })
 }
 
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
@@ -505,8 +654,17 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
                 Some(v) => format!("MongoDB {}", util::truncate(v, 30)),
                 None => "MongoDB".to_string(),
             };
-            let checked = if found.logged_in { "login and ping OK" } else { "ping OK" };
-            conn::up(ms, format!("{product} · {} · {checked}", found.role), found.cert.as_ref(), found.tls_version)
+            let checked = if found.logged_in {
+                "login and ping OK"
+            } else {
+                "ping OK"
+            };
+            conn::up(
+                ms,
+                format!("{product} · {} · {checked}", found.role),
+                found.cert.as_ref(),
+                found.tls_version,
+            )
         }
         Ok(Err(failure)) => match failure.message() {
             Ok(msg) => CheckOutcome::down(msg),

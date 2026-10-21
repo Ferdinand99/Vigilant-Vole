@@ -8,11 +8,13 @@
 use std::collections::BTreeMap;
 
 use crate::db::models::{Monitor, MonitorType, NewMonitor};
-use crate::notification::SECRET_MASK;
 use crate::db::tags::{self as db_tags, MonitorTag};
-use crate::monitor::checkers::{self, BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METHODS, JSON_OPERATORS};
 use crate::monitor::checkers::conn::SslMode;
 use crate::monitor::checkers::http_auth::{self, AUTH_METHODS, MtlsError, OAUTH_CLIENT_AUTHS};
+use crate::monitor::checkers::{
+    self, BODY_ENCODINGS, DNS_RECORD_TYPES, HTTP_METHODS, JSON_OPERATORS,
+};
+use crate::notification::SECRET_MASK;
 
 mod browser;
 mod grpc;
@@ -67,7 +69,10 @@ pub struct Pairs(pub Vec<(String, String)>);
 impl Pairs {
     /// First value for `key`, untrimmed.
     pub fn raw(&self, key: &str) -> Option<&str> {
-        self.0.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.0
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 
     /// First value for `key`, trimmed ("" when missing).
@@ -88,7 +93,11 @@ impl Pairs {
 
     /// Every value for `key`.
     pub fn all(&self, key: &str) -> Vec<&str> {
-        self.0.iter().filter(|(k, _)| k == key).map(|(_, v)| v.as_str()).collect()
+        self.0
+            .iter()
+            .filter(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+            .collect()
     }
 }
 
@@ -209,7 +218,11 @@ fn opt(s: &Option<String>) -> String {
 
 impl FormValues {
     /// Values for a monitor (edit / clone) or for `NewMonitor::default()` (create).
-    pub fn from_new(m: &NewMonitor, channels: Vec<(i64, ChannelMode)>, tags: &[MonitorTag]) -> Self {
+    pub fn from_new(
+        m: &NewMonitor,
+        channels: Vec<(i64, ChannelMode)>,
+        tags: &[MonitorTag],
+    ) -> Self {
         let (target, target_opts) = target_opts::split(m.monitor_type, &m.target);
         Self {
             name: m.name.clone(),
@@ -219,7 +232,10 @@ impl FormValues {
             target_opts,
             parent_id: m.parent_id.map(|p| p.to_string()).unwrap_or_default(),
             interval: m.interval_seconds.to_string(),
-            retry_interval: m.retry_interval_seconds.map(|r| r.to_string()).unwrap_or_default(),
+            retry_interval: m
+                .retry_interval_seconds
+                .map(|r| r.to_string())
+                .unwrap_or_default(),
             timeout: m.timeout_seconds.to_string(),
             retries: m.retries.to_string(),
             upside_down: m.upside_down,
@@ -265,8 +281,16 @@ impl FormValues {
             tls_client_cert: opt(&m.tls_client_cert),
             tls_client_key: opt(&m.tls_client_key),
             tls_ca_cert: opt(&m.tls_ca_cert),
-            remote_browser_id: m.remote_browser_id.map(|id| id.to_string()).unwrap_or_default(),
-            browser_check: if m.browser_selector.is_some() { "selector" } else { "keyword" }.to_string(),
+            remote_browser_id: m
+                .remote_browser_id
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+            browser_check: if m.browser_selector.is_some() {
+                "selector"
+            } else {
+                "keyword"
+            }
+            .to_string(),
             browser_selector: opt(&m.browser_selector),
             browser_wait: m.browser_wait.clone(),
             browser_viewport: m.browser_viewport.clone(),
@@ -275,7 +299,11 @@ impl FormValues {
         }
     }
 
-    pub fn from_monitor(m: &Monitor, channels: Vec<(i64, ChannelMode)>, tags: &[MonitorTag]) -> Self {
+    pub fn from_monitor(
+        m: &Monitor,
+        channels: Vec<(i64, ChannelMode)>,
+        tags: &[MonitorTag],
+    ) -> Self {
         Self::from_new(&m.to_new(), channels, tags)
     }
 
@@ -283,7 +311,12 @@ impl FormValues {
     /// OAuth client secret or private key becomes [`SECRET_MASK`], which [`validate`] reads as
     /// "keep the stored one".
     pub fn masked(mut self) -> Self {
-        for secret in [&mut self.basic_auth_pass, &mut self.secret, &mut self.oauth_client_secret, &mut self.tls_client_key] {
+        for secret in [
+            &mut self.basic_auth_pass,
+            &mut self.secret,
+            &mut self.oauth_client_secret,
+            &mut self.tls_client_key,
+        ] {
             if !secret.is_empty() {
                 *secret = SECRET_MASK.to_string();
             }
@@ -340,7 +373,10 @@ impl FormValues {
                     .trim()
                     .to_string()
             },
-            target_opts: target_opts::read(MonitorType::parse(&p.text("monitor_type")).unwrap_or_default(), p),
+            target_opts: target_opts::read(
+                MonitorType::parse(&p.text("monitor_type")).unwrap_or_default(),
+                p,
+            ),
             parent_id: p.text("parent_id"),
             interval: p.text("interval_seconds"),
             retry_interval: p.text("retry_interval_seconds"),
@@ -383,7 +419,9 @@ impl FormValues {
             // Forms posted without the field (older clients) mean basic auth
             // when a user name is given.
             auth_method: match p.text("auth_method") {
-                m if m.is_empty() => http_auth::implied_method(p.raw("basic_auth_user")).to_string(),
+                m if m.is_empty() => {
+                    http_auth::implied_method(p.raw("basic_auth_user")).to_string()
+                }
                 m => m,
             },
             oauth_token_url: p.text("oauth_token_url"),
@@ -421,26 +459,28 @@ impl FormValues {
 
     /// The value for a selected tag, or `None` when not selected.
     pub fn tag_value(&self, id: i64) -> Option<&str> {
-        self.tags.iter().find(|(t, _)| *t == id).map(|(_, v)| v.as_str())
+        self.tags
+            .iter()
+            .find(|(t, _)| *t == id)
+            .map(|(_, v)| v.as_str())
     }
 
     /// Header rows for the key–value editor (at least one, possibly empty).
     pub fn header_rows(&self) -> Vec<(String, String)> {
-        let mut rows: Vec<(String, String)> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
-            &self.http_headers,
-        )
-        .map(|obj| {
-            obj.into_iter()
-                .map(|(k, v)| {
-                    let v = match v {
-                        serde_json::Value::String(s) => s,
-                        other => other.to_string(),
-                    };
-                    (k, v)
+        let mut rows: Vec<(String, String)> =
+            serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&self.http_headers)
+                .map(|obj| {
+                    obj.into_iter()
+                        .map(|(k, v)| {
+                            let v = match v {
+                                serde_json::Value::String(s) => s,
+                                other => other.to_string(),
+                            };
+                            (k, v)
+                        })
+                        .collect()
                 })
-                .collect()
-        })
-        .unwrap_or_default();
+                .unwrap_or_default();
         if rows.is_empty() {
             rows.push((String::new(), String::new()));
         }
@@ -480,7 +520,14 @@ pub struct Validated {
     pub new_tag: Option<(String, String, String)>,
 }
 
-fn int_in(errors: &mut Errors, field: &'static str, raw: &str, min: i64, max: i64, what: &str) -> Option<i64> {
+fn int_in(
+    errors: &mut Errors,
+    field: &'static str,
+    raw: &str,
+    min: i64,
+    max: i64,
+    what: &str,
+) -> Option<i64> {
     match raw.trim().parse::<i64>() {
         Ok(v) if (min..=max).contains(&v) => Some(v),
         Ok(_) => {
@@ -488,7 +535,11 @@ fn int_in(errors: &mut Errors, field: &'static str, raw: &str, min: i64, max: i6
                 field,
                 crate::i18n::tf(
                     "validation.int_range",
-                    &[("what", what), ("min", &min.to_string()), ("max", &max.to_string())],
+                    &[
+                        ("what", what),
+                        ("min", &min.to_string()),
+                        ("max", &max.to_string()),
+                    ],
                 ),
             );
             None
@@ -496,7 +547,10 @@ fn int_in(errors: &mut Errors, field: &'static str, raw: &str, min: i64, max: i6
         Err(_) => {
             errors.insert(
                 field,
-                crate::i18n::tf("validation.int_whole", &[("what", what), ("min", &min.to_string())]),
+                crate::i18n::tf(
+                    "validation.int_whole",
+                    &[("what", what), ("min", &min.to_string())],
+                ),
             );
             None
         }
@@ -507,12 +561,26 @@ fn int_in(errors: &mut Errors, field: &'static str, raw: &str, min: i64, max: i6
 
 /// `interval_seconds`: the check interval.
 pub(crate) fn check_interval(e: &mut Errors, raw: &str) -> Option<i64> {
-    int_in(e, "interval_seconds", raw, MIN_INTERVAL, MAX_INTERVAL, crate::i18n::t("validation.what_interval"))
+    int_in(
+        e,
+        "interval_seconds",
+        raw,
+        MIN_INTERVAL,
+        MAX_INTERVAL,
+        crate::i18n::t("validation.what_interval"),
+    )
 }
 
 /// `retries`: failed checks before a monitor counts as down.
 pub(crate) fn check_retries(e: &mut Errors, raw: &str) -> Option<i64> {
-    int_in(e, "retries", raw, 0, MAX_RETRIES, crate::i18n::t("validation.what_retries"))
+    int_in(
+        e,
+        "retries",
+        raw,
+        0,
+        MAX_RETRIES,
+        crate::i18n::t("validation.what_retries"),
+    )
 }
 
 /// `retry_interval_seconds` (a value; the form treats "" as "same as the interval").
@@ -529,7 +597,14 @@ pub(crate) fn check_retry_interval(e: &mut Errors, raw: &str) -> Option<i64> {
 
 /// `timeout_seconds`: how long one check may take.
 pub(crate) fn check_timeout(e: &mut Errors, raw: &str) -> Option<i64> {
-    int_in(e, "timeout_seconds", raw, 1, MAX_TIMEOUT, crate::i18n::t("validation.what_timeout"))
+    int_in(
+        e,
+        "timeout_seconds",
+        raw,
+        1,
+        MAX_TIMEOUT,
+        crate::i18n::t("validation.what_timeout"),
+    )
 }
 
 /// Whether a check with this timeout fits in the interval.
@@ -540,20 +615,31 @@ pub(crate) fn timeout_fits(timeout: i64, interval: i64) -> bool {
 /// Flags `timeout_seconds` when the timeout is longer than the interval.
 pub(crate) fn check_timeout_fits(e: &mut Errors, timeout: i64, interval: i64) {
     if !timeout_fits(timeout, interval) {
-        e.insert("timeout_seconds", crate::i18n::t("validation.timeout_gt_interval").into());
+        e.insert(
+            "timeout_seconds",
+            crate::i18n::t("validation.timeout_gt_interval").into(),
+        );
     }
 }
 
 /// Why a tag name can't be used (`None` when it can; empty names are the caller's business).
 pub(crate) fn tag_name_error(name: &str) -> Option<String> {
-    (name.trim().chars().count() > db_tags::MAX_NAME_LEN)
-        .then(|| crate::i18n::tf("validation.tag_name_long", &[("max", &db_tags::MAX_NAME_LEN.to_string())]))
+    (name.trim().chars().count() > db_tags::MAX_NAME_LEN).then(|| {
+        crate::i18n::tf(
+            "validation.tag_name_long",
+            &[("max", &db_tags::MAX_NAME_LEN.to_string())],
+        )
+    })
 }
 
 /// Why a tag value can't be used (`None` when it can).
 pub(crate) fn tag_value_error(value: &str) -> Option<String> {
-    (value.chars().count() > db_tags::MAX_VALUE_LEN)
-        .then(|| crate::i18n::tf("validation.tag_value_long", &[("max", &db_tags::MAX_VALUE_LEN.to_string())]))
+    (value.chars().count() > db_tags::MAX_VALUE_LEN).then(|| {
+        crate::i18n::tf(
+            "validation.tag_value_long",
+            &[("max", &db_tags::MAX_VALUE_LEN.to_string())],
+        )
+    })
 }
 
 fn non_empty(s: &str) -> Option<String> {
@@ -613,7 +699,10 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
         });
     }
     if t.chars().count() > MAX_TARGET_LEN {
-        return Err(crate::i18n::tf("validation.target_long", &[("max", &MAX_TARGET_LEN.to_string())]));
+        return Err(crate::i18n::tf(
+            "validation.target_long",
+            &[("max", &MAX_TARGET_LEN.to_string())],
+        ));
     }
     let host_like = |t: &str| -> Result<(), String> {
         if t.contains("://") || t.contains('/') {
@@ -625,7 +714,10 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
         Ok(())
     };
     match kind {
-        MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery | MonitorType::RealBrowser => {
+        MonitorType::Http
+        | MonitorType::Keyword
+        | MonitorType::JsonQuery
+        | MonitorType::RealBrowser => {
             let url = url::Url::parse(t)
                 .map_err(|_| crate::i18n::t("validation.url_full").to_string())?;
             if !matches!(url.scheme(), "http" | "https") {
@@ -714,7 +806,9 @@ pub fn validate_docker_host(host: &str) -> Result<(), String> {
     let h = host.trim();
     if h.is_empty()
         || h.starts_with('/')
-        || ["unix://", "npipe://", "tcp://", "http://"].iter().any(|p| h.starts_with(p))
+        || ["unix://", "npipe://", "tcp://", "http://"]
+            .iter()
+            .any(|p| h.starts_with(p))
     {
         Ok(())
     } else if h.starts_with("https://") {
@@ -725,7 +819,8 @@ pub fn validate_docker_host(host: &str) -> Result<(), String> {
 }
 
 fn validate_proxy(proxy: &str) -> Result<(), String> {
-    let url = url::Url::parse(proxy).map_err(|_| crate::i18n::t("validation.proxy_url").to_string())?;
+    let url =
+        url::Url::parse(proxy).map_err(|_| crate::i18n::t("validation.proxy_url").to_string())?;
     if !matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h") {
         return Err(crate::i18n::t("validation.proxy_scheme").into());
     }
@@ -762,15 +857,23 @@ fn same_destination(old: &NewMonitor, new: &NewMonitor) -> bool {
 fn same_service(old: &NewMonitor, new: &NewMonitor) -> bool {
     let kind = old.monitor_type;
     kind == new.monitor_type
-        && match (checkers::endpoint::parse(kind, &old.target), checkers::endpoint::parse(kind, &new.target)) {
+        && match (
+            checkers::endpoint::parse(kind, &old.target),
+            checkers::endpoint::parse(kind, &new.target),
+        ) {
             (Ok(a), Ok(b)) => {
                 let (was, now) = (protection(kind, &a), protection(kind, &b));
-                let same_host = |(h1, p1): &(String, u16), (h2, p2): &(String, u16)| h1.eq_ignore_ascii_case(h2) && p1 == p2;
+                let same_host = |(h1, p1): &(String, u16), (h2, p2): &(String, u16)| {
+                    h1.eq_ignore_ascii_case(h2) && p1 == p2
+                };
                 a.host.eq_ignore_ascii_case(&b.host)
                     && a.port == b.port
                     && a.srv == b.srv
                     && a.more_hosts.len() == b.more_hosts.len()
-                    && a.more_hosts.iter().zip(&b.more_hosts).all(|(x, y)| same_host(x, y))
+                    && a.more_hosts
+                        .iter()
+                        .zip(&b.more_hosts)
+                        .all(|(x, y)| same_host(x, y))
                     && now.0 >= was.0
                     && now.1 >= was.1
             }
@@ -784,11 +887,18 @@ fn same_service(old: &NewMonitor, new: &NewMonitor) -> bool {
 fn protection(kind: MonitorType, ep: &checkers::endpoint::Endpoint) -> (bool, SslMode) {
     let sslmode = match kind {
         MonitorType::Postgres | MonitorType::Mysql => SslMode::of(ep).unwrap_or(SslMode::Disable),
-        MonitorType::SqlServer => checkers::sqlserver::Settings::of(ep).map_or(SslMode::Disable, |s| s.protection()),
+        MonitorType::SqlServer => {
+            checkers::sqlserver::Settings::of(ep).map_or(SslMode::Disable, |s| s.protection())
+        }
         MonitorType::Mongodb => checkers::mongodb::protection(ep),
         // SNMPv3 never sends its passwords; v1/v2c sends the secret (the
         // community) in the clear, so going back from v3 asks for it again.
-        MonitorType::Snmp if checkers::snmp::options(ep).is_ok_and(|o| o.version == checkers::snmp::Version::V3) => SslMode::Require,
+        MonitorType::Snmp
+            if checkers::snmp::options(ep)
+                .is_ok_and(|o| o.version == checkers::snmp::Version::V3) =>
+        {
+            SslMode::Require
+        }
         _ => SslMode::Disable,
     };
     (ep.tls, sslmode)
@@ -803,7 +913,14 @@ fn pem_text(s: &str) -> Option<String> {
 /// which only holds while `unchanged` says it still goes to the same place;
 /// otherwise an editor could point the monitor at their own server and
 /// receive it. Anything else is a new value, empty clears it.
-fn resolve_secret(e: &mut Errors, field: &'static str, submitted: &str, stored: Option<&String>, unchanged: bool, reenter: &'static str) -> Option<String> {
+fn resolve_secret(
+    e: &mut Errors,
+    field: &'static str,
+    submitted: &str,
+    stored: Option<&String>,
+    unchanged: bool,
+    reenter: &'static str,
+) -> Option<String> {
     if submitted.trim() != SECRET_MASK {
         return (!submitted.trim().is_empty()).then(|| submitted.to_string());
     }
@@ -827,7 +944,11 @@ fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut 
     if !AUTH_METHODS.contains(&method) {
         e.insert("auth_method", crate::i18n::t("httpauth.err_method").into());
     }
-    m.auth_method = if AUTH_METHODS.contains(&method) { method.to_string() } else { "none".into() };
+    m.auth_method = if AUTH_METHODS.contains(&method) {
+        method.to_string()
+    } else {
+        "none".into()
+    };
     m.basic_auth_user = None;
     m.basic_auth_pass = None;
     m.oauth_token_url = None;
@@ -844,9 +965,20 @@ fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut 
         "basic" => {
             m.basic_auth_user = non_empty(&v.basic_auth_user);
             let unchanged = same_destination(base, m);
-            m.basic_auth_pass = resolve_secret(e, "basic_auth_pass", &v.basic_auth_pass, base.basic_auth_pass.as_ref(), unchanged, "validation.basic_pass_reenter");
+            m.basic_auth_pass = resolve_secret(
+                e,
+                "basic_auth_pass",
+                &v.basic_auth_pass,
+                base.basic_auth_pass.as_ref(),
+                unchanged,
+                "validation.basic_pass_reenter",
+            );
             if m.basic_auth_user.is_none() {
-                let key = if m.basic_auth_pass.is_some() { "validation.basic_user" } else { "httpauth.err_basic_user" };
+                let key = if m.basic_auth_pass.is_some() {
+                    "validation.basic_user"
+                } else {
+                    "httpauth.err_basic_user"
+                };
                 e.insert("basic_auth_user", crate::i18n::t(key).into());
             }
         }
@@ -854,31 +986,59 @@ fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut 
             m.oauth_token_url = non_empty(&v.oauth_token_url);
             match &m.oauth_token_url {
                 None => {
-                    e.insert("oauth_token_url", crate::i18n::t("httpauth.err_token_url").into());
+                    e.insert(
+                        "oauth_token_url",
+                        crate::i18n::t("httpauth.err_token_url").into(),
+                    );
                 }
                 Some(u) if u.chars().count() > MAX_TARGET_LEN => {
-                    e.insert("oauth_token_url", crate::i18n::tf("validation.target_long", &[("max", &MAX_TARGET_LEN.to_string())]));
+                    e.insert(
+                        "oauth_token_url",
+                        crate::i18n::tf(
+                            "validation.target_long",
+                            &[("max", &MAX_TARGET_LEN.to_string())],
+                        ),
+                    );
                 }
                 Some(u) => {
                     if http_auth::parse_token_url(u).is_err() {
-                        e.insert("oauth_token_url", crate::i18n::t("httpauth.err_token_url_invalid").into());
+                        e.insert(
+                            "oauth_token_url",
+                            crate::i18n::t("httpauth.err_token_url_invalid").into(),
+                        );
                     }
                 }
             }
             m.oauth_client_id = non_empty(&v.oauth_client_id);
             if m.oauth_client_id.is_none() {
-                e.insert("oauth_client_id", crate::i18n::t("httpauth.err_client_id").into());
+                e.insert(
+                    "oauth_client_id",
+                    crate::i18n::t("httpauth.err_client_id").into(),
+                );
             }
             // The secret goes to the token endpoint, so that is its destination.
             let unchanged = destination(base.oauth_token_url.as_deref().unwrap_or_default())
                 == destination(m.oauth_token_url.as_deref().unwrap_or_default())
                 && base.proxy_url == m.proxy_url;
-            m.oauth_client_secret =
-                resolve_secret(e, "oauth_client_secret", &v.oauth_client_secret, base.oauth_client_secret.as_ref(), unchanged, "httpauth.err_secret_reenter");
+            m.oauth_client_secret = resolve_secret(
+                e,
+                "oauth_client_secret",
+                &v.oauth_client_secret,
+                base.oauth_client_secret.as_ref(),
+                unchanged,
+                "httpauth.err_secret_reenter",
+            );
             if m.oauth_client_secret.is_none() && !e.contains_key("oauth_client_secret") {
-                e.insert("oauth_client_secret", crate::i18n::t("httpauth.err_secret").into());
+                e.insert(
+                    "oauth_client_secret",
+                    crate::i18n::t("httpauth.err_secret").into(),
+                );
             }
-            let scope = v.oauth_scope.split_whitespace().collect::<Vec<_>>().join(" ");
+            let scope = v
+                .oauth_scope
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
             m.oauth_scope = (!scope.is_empty()).then_some(scope);
             m.oauth_audience = non_empty(&v.oauth_audience);
             for (field, value) in [
@@ -886,15 +1046,29 @@ fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut 
                 ("oauth_scope", &m.oauth_scope),
                 ("oauth_audience", &m.oauth_audience),
             ] {
-                if value.as_ref().is_some_and(|t| t.chars().count() > MAX_AUTH_FIELD_LEN) {
-                    e.insert(field, crate::i18n::tf("httpauth.err_long", &[("max", &MAX_AUTH_FIELD_LEN.to_string())]));
+                if value
+                    .as_ref()
+                    .is_some_and(|t| t.chars().count() > MAX_AUTH_FIELD_LEN)
+                {
+                    e.insert(
+                        field,
+                        crate::i18n::tf(
+                            "httpauth.err_long",
+                            &[("max", &MAX_AUTH_FIELD_LEN.to_string())],
+                        ),
+                    );
                 }
             }
             match v.oauth_client_auth.trim() {
                 "" => {}
-                other if OAUTH_CLIENT_AUTHS.contains(&other) => m.oauth_client_auth = other.to_string(),
+                other if OAUTH_CLIENT_AUTHS.contains(&other) => {
+                    m.oauth_client_auth = other.to_string()
+                }
                 _ => {
-                    e.insert("oauth_client_auth", crate::i18n::t("httpauth.err_client_auth").into());
+                    e.insert(
+                        "oauth_client_auth",
+                        crate::i18n::t("httpauth.err_client_auth").into(),
+                    );
                 }
             }
         }
@@ -912,14 +1086,30 @@ fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut 
             )
             .map(|k| k.trim().to_string());
             if url::Url::parse(m.target.trim()).is_ok_and(|u| u.scheme() == "http") {
-                e.insert("auth_method", crate::i18n::t("httpauth.err_mtls_https").into());
+                e.insert(
+                    "auth_method",
+                    crate::i18n::t("httpauth.err_mtls_https").into(),
+                );
             }
-            for (field, value) in [("tls_client_cert", &m.tls_client_cert), ("tls_client_key", &m.tls_client_key), ("tls_ca_cert", &m.tls_ca_cert)] {
+            for (field, value) in [
+                ("tls_client_cert", &m.tls_client_cert),
+                ("tls_client_key", &m.tls_client_key),
+                ("tls_ca_cert", &m.tls_ca_cert),
+            ] {
                 if value.as_ref().is_some_and(|t| t.len() > MAX_PEM_LEN) {
-                    e.insert(field, crate::i18n::tf("httpauth.err_pem_long", &[("max", &(MAX_PEM_LEN / 1024).to_string())]));
+                    e.insert(
+                        field,
+                        crate::i18n::tf(
+                            "httpauth.err_pem_long",
+                            &[("max", &(MAX_PEM_LEN / 1024).to_string())],
+                        ),
+                    );
                 }
             }
-            if !["tls_client_cert", "tls_client_key", "tls_ca_cert"].iter().any(|f| e.contains_key(f)) {
+            if !["tls_client_cert", "tls_client_key", "tls_ca_cert"]
+                .iter()
+                .any(|f| e.contains_key(f))
+            {
                 let problems = http_auth::mtls_problems(
                     m.tls_client_cert.as_deref().unwrap_or_default(),
                     m.tls_client_key.as_deref().unwrap_or_default(),
@@ -927,14 +1117,30 @@ fn validate_auth(v: &FormValues, base: &NewMonitor, m: &mut NewMonitor, e: &mut 
                 );
                 for err in problems {
                     let (field, key, detail) = match err {
-                        MtlsError::MissingCert => ("tls_client_cert", "httpauth.err_cert", String::new()),
-                        MtlsError::CertNotPem => ("tls_client_cert", "httpauth.err_cert_pem", String::new()),
-                        MtlsError::MissingKey => ("tls_client_key", "httpauth.err_key", String::new()),
-                        MtlsError::KeyNotPem => ("tls_client_key", "httpauth.err_key_pem", String::new()),
-                        MtlsError::KeyEncrypted => ("tls_client_key", "httpauth.err_key_encrypted", String::new()),
-                        MtlsError::CaNotPem => ("tls_ca_cert", "httpauth.err_ca_pem", String::new()),
+                        MtlsError::MissingCert => {
+                            ("tls_client_cert", "httpauth.err_cert", String::new())
+                        }
+                        MtlsError::CertNotPem => {
+                            ("tls_client_cert", "httpauth.err_cert_pem", String::new())
+                        }
+                        MtlsError::MissingKey => {
+                            ("tls_client_key", "httpauth.err_key", String::new())
+                        }
+                        MtlsError::KeyNotPem => {
+                            ("tls_client_key", "httpauth.err_key_pem", String::new())
+                        }
+                        MtlsError::KeyEncrypted => (
+                            "tls_client_key",
+                            "httpauth.err_key_encrypted",
+                            String::new(),
+                        ),
+                        MtlsError::CaNotPem => {
+                            ("tls_ca_cert", "httpauth.err_ca_pem", String::new())
+                        }
                         MtlsError::Rejected(why) => ("tls_client_key", "httpauth.err_pair", why),
-                        MtlsError::CaRejected(why) => ("tls_ca_cert", "httpauth.err_ca_rejected", why),
+                        MtlsError::CaRejected(why) => {
+                            ("tls_ca_cert", "httpauth.err_ca_rejected", why)
+                        }
                     };
                     e.insert(field, crate::i18n::tf(key, &[("err", &detail)]));
                 }
@@ -954,7 +1160,10 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
     let kind = match MonitorType::parse(&v.monitor_type) {
         Some(k) => k,
         None => {
-            e.insert("monitor_type", crate::i18n::t("validation.monitor_type").into());
+            e.insert(
+                "monitor_type",
+                crate::i18n::t("validation.monitor_type").into(),
+            );
             base.monitor_type
         }
     };
@@ -970,13 +1179,22 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
     if name.is_empty() {
         e.insert("name", crate::i18n::t("validation.name").into());
     } else if name.chars().count() > MAX_NAME_LEN {
-        e.insert("name", crate::i18n::tf("validation.name_long", &[("max", &MAX_NAME_LEN.to_string())]));
+        e.insert(
+            "name",
+            crate::i18n::tf(
+                "validation.name_long",
+                &[("max", &MAX_NAME_LEN.to_string())],
+            ),
+        );
     }
     m.name = name.to_string();
     if v.description.chars().count() > MAX_DESCRIPTION_LEN {
         e.insert(
             "description",
-            crate::i18n::tf("validation.description_long", &[("max", &MAX_DESCRIPTION_LEN.to_string())]),
+            crate::i18n::tf(
+                "validation.description_long",
+                &[("max", &MAX_DESCRIPTION_LEN.to_string())],
+            ),
         );
     }
     m.description = v.description.trim().to_string();
@@ -1034,16 +1252,33 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         }
         let codes = v.accepted_status_codes.trim();
         match checkers::parse_status_codes(codes) {
-            Ok(_) => m.accepted_status_codes = if codes.is_empty() { "200-399".into() } else { codes.to_string() },
+            Ok(_) => {
+                m.accepted_status_codes = if codes.is_empty() {
+                    "200-399".into()
+                } else {
+                    codes.to_string()
+                }
+            }
             Err(msg) => {
                 e.insert(
                     "accepted_status_codes",
-                    format!("{} {}", first_line(&msg), crate::i18n::t("validation.codes_hint")),
+                    format!(
+                        "{} {}",
+                        first_line(&msg),
+                        crate::i18n::t("validation.codes_hint")
+                    ),
                 );
             }
         }
-        m.max_redirects = int_in(&mut e, "max_redirects", &v.max_redirects, 0, 30, crate::i18n::t("validation.what_redirects"))
-            .unwrap_or(m.max_redirects);
+        m.max_redirects = int_in(
+            &mut e,
+            "max_redirects",
+            &v.max_redirects,
+            0,
+            30,
+            crate::i18n::t("validation.what_redirects"),
+        )
+        .unwrap_or(m.max_redirects);
         m.ignore_tls = v.ignore_tls;
         m.http_headers = match non_empty(&v.http_headers) {
             None => None,
@@ -1059,17 +1294,23 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         if BODY_ENCODINGS.contains(&encoding) {
             m.http_body_encoding = encoding.to_string();
         } else if !encoding.is_empty() {
-            e.insert("http_body_encoding", crate::i18n::t("validation.encoding").into());
+            e.insert(
+                "http_body_encoding",
+                crate::i18n::t("validation.encoding").into(),
+            );
         }
-        m.http_body = if v.http_body.trim().is_empty() { None } else { Some(v.http_body.clone()) };
+        m.http_body = if v.http_body.trim().is_empty() {
+            None
+        } else {
+            Some(v.http_body.clone())
+        };
         if let Some(body) = &m.http_body {
             if body.len() > MAX_BODY_LEN {
                 e.insert("http_body", crate::i18n::t("validation.body_long").into());
-            } else if m.http_body_encoding == "json" && serde_json::from_str::<serde_json::Value>(body).is_err() {
-                e.insert(
-                    "http_body",
-                    crate::i18n::t("validation.body_json").into(),
-                );
+            } else if m.http_body_encoding == "json"
+                && serde_json::from_str::<serde_json::Value>(body).is_err()
+            {
+                e.insert("http_body", crate::i18n::t("validation.body_json").into());
             }
         }
         m.proxy_url = non_empty(&v.proxy_url);
@@ -1089,19 +1330,44 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
     let keep_ok = same_service(base, &m);
     if svc.credentials {
         m.basic_auth_user = non_empty(&v.basic_auth_user);
-        m.basic_auth_pass = resolve_secret(&mut e, "basic_auth_pass", &v.basic_auth_pass, base.basic_auth_pass.as_ref(), keep_ok, "validation.secret_reenter");
+        m.basic_auth_pass = resolve_secret(
+            &mut e,
+            "basic_auth_pass",
+            &v.basic_auth_pass,
+            base.basic_auth_pass.as_ref(),
+            keep_ok,
+            "validation.secret_reenter",
+        );
         if m.basic_auth_user.is_none() {
-            if kind == MonitorType::Postgres || kind == MonitorType::Rabbitmq && m.basic_auth_pass.is_some() {
-                e.insert("basic_auth_user", crate::i18n::t("validation.user_required").into());
+            if kind == MonitorType::Postgres
+                || kind == MonitorType::Rabbitmq && m.basic_auth_pass.is_some()
+            {
+                e.insert(
+                    "basic_auth_user",
+                    crate::i18n::t("validation.user_required").into(),
+                );
             } else if m.basic_auth_pass.is_some() && !svc.password_only {
-                e.insert("basic_auth_user", crate::i18n::t("validation.basic_user").into());
+                e.insert(
+                    "basic_auth_user",
+                    crate::i18n::t("validation.basic_user").into(),
+                );
             }
         }
     }
     if svc.secret {
-        m.secret = resolve_secret(&mut e, "secret", &v.secret, base.secret.as_ref(), keep_ok, "validation.secret_reenter");
+        m.secret = resolve_secret(
+            &mut e,
+            "secret",
+            &v.secret,
+            base.secret.as_ref(),
+            keep_ok,
+            "validation.secret_reenter",
+        );
         if m.secret.is_none() && kind == MonitorType::Radius {
-            e.insert("secret", crate::i18n::t("validation.secret_required").into());
+            e.insert(
+                "secret",
+                crate::i18n::t("validation.secret_required").into(),
+            );
         }
     }
     if svc.keyword {
@@ -1112,7 +1378,10 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
             && checkers::endpoint::parse(kind, &m.target).is_ok()
             && checkers::mqtt::topic(&m.target).is_none()
         {
-            e.insert("keyword", crate::i18n::t("validation.mqtt_keyword_topic").into());
+            e.insert(
+                "keyword",
+                crate::i18n::t("validation.mqtt_keyword_topic").into(),
+            );
         }
     }
     if kind == MonitorType::Snmp {
@@ -1135,7 +1404,13 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
             }
             Some(path) => {
                 if let Err(err) = serde_json_path::JsonPath::parse(path) {
-                    e.insert("json_path", crate::i18n::tf("validation.json_path_invalid", &[("err", &err.to_string())]));
+                    e.insert(
+                        "json_path",
+                        crate::i18n::tf(
+                            "validation.json_path_invalid",
+                            &[("err", &err.to_string())],
+                        ),
+                    );
                 }
             }
         }
@@ -1143,11 +1418,17 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         if JSON_OPERATORS.contains(&op) {
             m.json_operator = op.to_string();
         } else {
-            e.insert("json_operator", crate::i18n::t("validation.json_operator").into());
+            e.insert(
+                "json_operator",
+                crate::i18n::t("validation.json_operator").into(),
+            );
         }
         m.json_expected = non_empty(&v.json_expected);
         if m.json_expected.is_none() {
-            e.insert("json_expected", crate::i18n::t("validation.json_expected").into());
+            e.insert(
+                "json_expected",
+                crate::i18n::t("validation.json_expected").into(),
+            );
         }
     }
 
@@ -1156,7 +1437,10 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         if DNS_RECORD_TYPES.contains(&rt.as_str()) {
             m.dns_record_type = rt;
         } else {
-            e.insert("dns_record_type", crate::i18n::t("validation.record_type").into());
+            e.insert(
+                "dns_record_type",
+                crate::i18n::t("validation.record_type").into(),
+            );
         }
         m.dns_resolver = non_empty(&v.dns_resolver);
         if let Some(r) = &m.dns_resolver
@@ -1164,7 +1448,11 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         {
             e.insert(
                 "dns_resolver",
-                format!("{} {}", first_line(&msg), crate::i18n::t("validation.resolver_hint")),
+                format!(
+                    "{} {}",
+                    first_line(&msg),
+                    crate::i18n::t("validation.resolver_hint")
+                ),
             );
         }
         m.dns_expected = non_empty(&v.dns_expected);
@@ -1179,7 +1467,15 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
 
     if reports_expiry(kind) {
         m.expiry_notify = v.expiry_notify;
-        m.expiry_days = int_in(&mut e, "expiry_days", &v.expiry_days, 1, 365, crate::i18n::t("validation.what_days")).unwrap_or(m.expiry_days);
+        m.expiry_days = int_in(
+            &mut e,
+            "expiry_days",
+            &v.expiry_days,
+            1,
+            365,
+            crate::i18n::t("validation.what_days"),
+        )
+        .unwrap_or(m.expiry_days);
     }
 
     if kind == MonitorType::RealBrowser {
@@ -1191,8 +1487,15 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
     }
 
     // -- alerting --------------------------------------------------------
-    m.resend_interval =
-        int_in(&mut e, "resend_interval", &v.resend_interval, 0, 10_000, crate::i18n::t("validation.what_checks")).unwrap_or(m.resend_interval);
+    m.resend_interval = int_in(
+        &mut e,
+        "resend_interval",
+        &v.resend_interval,
+        0,
+        10_000,
+        crate::i18n::t("validation.what_checks"),
+    )
+    .unwrap_or(m.resend_interval);
     m.escalation_minutes = int_in(
         &mut e,
         "escalation_minutes",
@@ -1201,7 +1504,7 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         100_000,
         crate::i18n::t("validation.what_minutes"),
     )
-        .unwrap_or(m.escalation_minutes);
+    .unwrap_or(m.escalation_minutes);
     m.flap_detection = v.flap_detection;
 
     let channels: Vec<(i64, bool)> = v
@@ -1214,7 +1517,10 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
             ChannelMode::Escalation => Some((*id, true)),
         })
         .collect();
-    if channels.iter().any(|(_, esc)| *esc) && m.escalation_minutes == 0 && !e.contains_key("escalation_minutes") {
+    if channels.iter().any(|(_, esc)| *esc)
+        && m.escalation_minutes == 0
+        && !e.contains_key("escalation_minutes")
+    {
         e.insert(
             "escalation_minutes",
             crate::i18n::t("validation.escalation_minutes").into(),
@@ -1283,7 +1589,11 @@ mod tests {
     use super::*;
 
     fn pairs(list: &[(&str, &str)]) -> Pairs {
-        Pairs(list.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
+        Pairs(
+            list.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        )
     }
 
     fn base_pairs(kind: &str, target: &str) -> Vec<(&'static str, String)> {
@@ -1313,7 +1623,11 @@ mod tests {
         validate(&v, &NewMonitor::default(), cx)
     }
 
-    fn with(mut list: Vec<(&'static str, String)>, key: &'static str, value: &str) -> Vec<(&'static str, String)> {
+    fn with(
+        mut list: Vec<(&'static str, String)>,
+        key: &'static str,
+        value: &str,
+    ) -> Vec<(&'static str, String)> {
         list.retain(|(k, _)| *k != key);
         list.push((key, value.to_string()));
         list
@@ -1321,7 +1635,11 @@ mod tests {
 
     #[test]
     fn valid_http_monitor() {
-        let ok = run(base_pairs("http", "https://example.com/health"), &FormContext::default()).unwrap();
+        let ok = run(
+            base_pairs("http", "https://example.com/health"),
+            &FormContext::default(),
+        )
+        .unwrap();
         assert_eq!(ok.monitor.name, "Website");
         assert_eq!(ok.monitor.monitor_type, MonitorType::Http);
         assert_eq!(ok.monitor.accepted_status_codes, "200-299");
@@ -1333,7 +1651,11 @@ mod tests {
 
     #[test]
     fn required_fields_and_numbers_report_inline_errors() {
-        let list = with(with(base_pairs("http", ""), "name", "  "), "interval_seconds", "abc");
+        let list = with(
+            with(base_pairs("http", ""), "name", "  "),
+            "interval_seconds",
+            "abc",
+        );
         let errors = run(with(list, "timeout_seconds", "0"), &FormContext::default()).unwrap_err();
         assert!(errors.contains_key("name"));
         assert!(errors.contains_key("target"));
@@ -1343,8 +1665,16 @@ mod tests {
 
     #[test]
     fn timeout_must_fit_in_interval() {
-        let list = with(with(base_pairs("http", "https://x.io"), "timeout_seconds", "90"), "interval_seconds", "30");
-        assert!(run(list, &FormContext::default()).unwrap_err().contains_key("timeout_seconds"));
+        let list = with(
+            with(base_pairs("http", "https://x.io"), "timeout_seconds", "90"),
+            "interval_seconds",
+            "30",
+        );
+        assert!(
+            run(list, &FormContext::default())
+                .unwrap_err()
+                .contains_key("timeout_seconds")
+        );
     }
 
     #[test]
@@ -1369,60 +1699,108 @@ mod tests {
             (MonitorType::Websocket, "not a url", false),
             (MonitorType::Docker, "postgres", true),
             (MonitorType::Docker, "my container", false),
-            (MonitorType::DomainExpiry, "https://www.example.co.uk/path", true),
+            (
+                MonitorType::DomainExpiry,
+                "https://www.example.co.uk/path",
+                true,
+            ),
             (MonitorType::Push, "", true),
             (MonitorType::Group, "ignored", true),
         ];
         for (kind, target, ok) in cases {
-            assert_eq!(validate_target(*kind, target).is_ok(), *ok, "{kind:?} {target:?}");
+            assert_eq!(
+                validate_target(*kind, target).is_ok(),
+                *ok,
+                "{kind:?} {target:?}"
+            );
         }
         assert_eq!(validate_target(MonitorType::Group, "x").unwrap(), "");
     }
 
     #[test]
     fn http_options_use_checker_parsers() {
-        let list = with(base_pairs("http", "https://x.io"), "accepted_status_codes", "200-199");
+        let list = with(
+            base_pairs("http", "https://x.io"),
+            "accepted_status_codes",
+            "200-199",
+        );
         let list = with(list, "http_headers", "[1,2]");
         let list = with(list, "http_body", "{not json");
         let list = with(list, "proxy_url", "ftp://proxy");
         let list = with(list, "http_method", "BREW");
         let errors = run(list, &FormContext::default()).unwrap_err();
-        for key in ["accepted_status_codes", "http_headers", "http_body", "proxy_url", "http_method"] {
-            assert!(errors.contains_key(key), "missing error for {key}: {errors:?}");
+        for key in [
+            "accepted_status_codes",
+            "http_headers",
+            "http_body",
+            "proxy_url",
+            "http_method",
+        ] {
+            assert!(
+                errors.contains_key(key),
+                "missing error for {key}: {errors:?}"
+            );
         }
         // Raw body encoding accepts anything; headers JSON object is kept.
-        let list = with(base_pairs("http", "https://x.io"), "http_body_encoding", "raw");
+        let list = with(
+            base_pairs("http", "https://x.io"),
+            "http_body_encoding",
+            "raw",
+        );
         let list = with(list, "http_body", "{not json");
         let list = with(list, "http_headers", r#"{"X-Token":"abc"}"#);
         let ok = run(list, &FormContext::default()).unwrap();
-        assert_eq!(ok.monitor.http_headers.as_deref(), Some(r#"{"X-Token":"abc"}"#));
+        assert_eq!(
+            ok.monitor.http_headers.as_deref(),
+            Some(r#"{"X-Token":"abc"}"#)
+        );
         assert_eq!(ok.monitor.http_body.as_deref(), Some("{not json"));
     }
 
     #[test]
     fn type_specific_requirements() {
-        let kw = run(base_pairs("keyword", "https://x.io"), &FormContext::default()).unwrap_err();
+        let kw = run(
+            base_pairs("keyword", "https://x.io"),
+            &FormContext::default(),
+        )
+        .unwrap_err();
         assert!(kw.contains_key("keyword"));
         let json = run(
-            with(base_pairs("json_query", "https://x.io"), "json_path", "$[bad"),
+            with(
+                base_pairs("json_query", "https://x.io"),
+                "json_path",
+                "$[bad",
+            ),
             &FormContext::default(),
         )
         .unwrap_err();
         assert!(json.contains_key("json_path") && json.contains_key("json_expected"));
         let dns = run(
-            with(base_pairs("dns", "example.com"), "dns_resolver", "not-an-ip"),
+            with(
+                base_pairs("dns", "example.com"),
+                "dns_resolver",
+                "not-an-ip",
+            ),
             &FormContext::default(),
         )
         .unwrap_err();
         assert!(dns.contains_key("dns_resolver"));
         let docker = run(
-            with(base_pairs("docker", "web"), "docker_host", "https://docker:2376"),
+            with(
+                base_pairs("docker", "web"),
+                "docker_host",
+                "https://docker:2376",
+            ),
             &FormContext::default(),
         )
         .unwrap_err();
         assert!(docker.contains_key("docker_host"));
         let ok = run(
-            with(with(base_pairs("dns", "example.com"), "dns_resolver", "1.1.1.1"), "dns_record_type", "mx"),
+            with(
+                with(base_pairs("dns", "example.com"), "dns_resolver", "1.1.1.1"),
+                "dns_record_type",
+                "mx",
+            ),
             &FormContext::default(),
         )
         .unwrap();
@@ -1443,12 +1821,20 @@ mod tests {
 
         let submit = |target: &str, proxy: &str, pass: &str| {
             let list = with(
-                with(with(base_pairs("http", target), "basic_auth_user", "bot"), "basic_auth_pass", pass),
+                with(
+                    with(base_pairs("http", target), "basic_auth_user", "bot"),
+                    "basic_auth_pass",
+                    pass,
+                ),
                 "proxy_url",
                 proxy,
             );
             let p = Pairs(list.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-            validate(&FormValues::from_pairs(&p, &[]), &stored, &FormContext::default())
+            validate(
+                &FormValues::from_pairs(&p, &[]),
+                &stored,
+                &FormContext::default(),
+            )
         };
         // Untouched mask, same server (other path): the stored password stays.
         let kept = submit("https://API.example.com:443/other", "", SECRET_MASK).unwrap();
@@ -1466,15 +1852,34 @@ mod tests {
         // Typing a new password is always fine; clearing it removes it.
         let fresh = submit("https://attacker.example/health", "", "new-pass").unwrap();
         assert_eq!(fresh.monitor.basic_auth_pass.as_deref(), Some("new-pass"));
-        assert_eq!(submit("https://api.example.com/health", "", "").unwrap().monitor.basic_auth_pass, None);
+        assert_eq!(
+            submit("https://api.example.com/health", "", "")
+                .unwrap()
+                .monitor
+                .basic_auth_pass,
+            None
+        );
         // A mask on a new monitor (clone) has nothing to restore.
         let p = Pairs(
-            with(with(base_pairs("http", "https://api.example.com/"), "basic_auth_user", "bot"), "basic_auth_pass", SECRET_MASK)
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v))
-                .collect(),
+            with(
+                with(
+                    base_pairs("http", "https://api.example.com/"),
+                    "basic_auth_user",
+                    "bot",
+                ),
+                "basic_auth_pass",
+                SECRET_MASK,
+            )
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
         );
-        let err = validate(&FormValues::from_pairs(&p, &[]), &NewMonitor::default(), &FormContext::default()).unwrap_err();
+        let err = validate(
+            &FormValues::from_pairs(&p, &[]),
+            &NewMonitor::default(),
+            &FormContext::default(),
+        )
+        .unwrap_err();
         assert!(err.contains_key("basic_auth_pass"));
     }
 
@@ -1496,21 +1901,41 @@ mod tests {
         let ok = validate(&v, &base, &FormContext::default()).unwrap();
         assert_eq!(ok.monitor.keyword.as_deref(), Some("keep"));
         assert_eq!(ok.monitor.http_method, "POST");
-        assert!(ok.monitor.expiry_notify, "hidden switch must not reset the stored value");
+        assert!(
+            ok.monitor.expiry_notify,
+            "hidden switch must not reset the stored value"
+        );
     }
 
     #[test]
     fn service_types_save_their_expiry_settings() {
-        let base = NewMonitor { expiry_notify: true, expiry_days: 14, ..NewMonitor::default() };
-        for (kind, target) in [("redis", "rediss://cache:6380"), ("mongodb", "mongodb://db"), ("sqlserver", "sqlserver://db")] {
-            let mut pairs: Vec<(String, String)> =
-                base_pairs(kind, target).into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        let base = NewMonitor {
+            expiry_notify: true,
+            expiry_days: 14,
+            ..NewMonitor::default()
+        };
+        for (kind, target) in [
+            ("redis", "rediss://cache:6380"),
+            ("mongodb", "mongodb://db"),
+            ("sqlserver", "sqlserver://db"),
+        ] {
+            let mut pairs: Vec<(String, String)> = base_pairs(kind, target)
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
             pairs.retain(|(k, _)| k != "expiry_notify" && k != "expiry_days");
             pairs.push(("expiry_days".into(), "7".into()));
             let v = FormValues::from_pairs(&Pairs(pairs), &[]);
-            let ok = validate(&v, &base, &FormContext::default()).unwrap_or_else(|e| panic!("{kind}: {e:?}"));
-            assert!(!ok.monitor.expiry_notify, "{kind}: switching expiry alerts off must stick");
-            assert_eq!(ok.monitor.expiry_days, 7, "{kind}: expiry days must be saved");
+            let ok = validate(&v, &base, &FormContext::default())
+                .unwrap_or_else(|e| panic!("{kind}: {e:?}"));
+            assert!(
+                !ok.monitor.expiry_notify,
+                "{kind}: switching expiry alerts off must stick"
+            );
+            assert_eq!(
+                ok.monitor.expiry_days, 7,
+                "{kind}: expiry days must be saved"
+            );
         }
     }
 
@@ -1537,12 +1962,27 @@ mod tests {
         assert_eq!(ok.monitor.parent_id, Some(5));
         assert_eq!(ok.channels, vec![(1, false), (2, true)]);
         assert_eq!(ok.tags, vec![(10, "prod".to_string())]);
-        assert_eq!(ok.new_tag, Some(("Team".into(), "red".into(), String::new())));
+        assert_eq!(
+            ok.new_tag,
+            Some(("Team".into(), "red".into(), String::new()))
+        );
 
-        let bad = run(with(base_pairs("http", "https://x.io"), "parent_id", "6"), &cx).unwrap_err();
+        let bad = run(
+            with(base_pairs("http", "https://x.io"), "parent_id", "6"),
+            &cx,
+        )
+        .unwrap_err();
         assert!(bad.contains_key("parent_id"));
         // Escalation channels need an escalation delay.
-        let esc = run(with(base_pairs("http", "https://x.io"), "channel_3", "escalation"), &cx).unwrap_err();
+        let esc = run(
+            with(
+                base_pairs("http", "https://x.io"),
+                "channel_3",
+                "escalation",
+            ),
+            &cx,
+        )
+        .unwrap_err();
         assert!(esc.contains_key("escalation_minutes"));
     }
 
@@ -1556,7 +1996,12 @@ mod tests {
             child_count: 2,
             ..FormContext::default()
         };
-        let p = Pairs(base_pairs("http", "https://x.io").into_iter().map(|(k, v)| (k.to_string(), v)).collect());
+        let p = Pairs(
+            base_pairs("http", "https://x.io")
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        );
         let errors = validate(&FormValues::from_pairs(&p, &[]), &base, &cx).unwrap_err();
         assert!(errors["monitor_type"].contains("2 monitors"));
     }
@@ -1570,8 +2015,18 @@ mod tests {
             monitor_type: MonitorType::Push,
             ..NewMonitor::default()
         };
-        let p = Pairs(base_pairs("http", "https://x.io").into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-        let ok = validate(&FormValues::from_pairs(&p, &[]), &base, &FormContext::default()).unwrap();
+        let p = Pairs(
+            base_pairs("http", "https://x.io")
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        );
+        let ok = validate(
+            &FormValues::from_pairs(&p, &[]),
+            &base,
+            &FormContext::default(),
+        )
+        .unwrap();
         assert_eq!(ok.monitor.push_token, None);
     }
 
@@ -1584,7 +2039,10 @@ mod tests {
         ]);
         assert_eq!(FormValues::from_pairs(&p, &[]).target, "db:5432");
         let fallback = pairs(&[("monitor_type", "http"), ("target", "https://x.io")]);
-        assert_eq!(FormValues::from_pairs(&fallback, &[]).target, "https://x.io");
+        assert_eq!(
+            FormValues::from_pairs(&fallback, &[]).target,
+            "https://x.io"
+        );
     }
 
     #[test]
@@ -1600,7 +2058,10 @@ mod tests {
         assert_eq!(v.channel_mode(4), ChannelMode::Off);
         assert_eq!(
             v.header_rows(),
-            vec![("A".to_string(), "1".to_string()), ("B".to_string(), "2".to_string())]
+            vec![
+                ("A".to_string(), "1".to_string()),
+                ("B".to_string(), "2".to_string())
+            ]
         );
         let p = pairs(&[
             ("name", "x"),
@@ -1611,16 +2072,26 @@ mod tests {
             ("tag_value_6", "ignored"),
         ]);
         let parsed = FormValues::from_pairs(&p, &[3, 8]);
-        assert_eq!(parsed.channels, vec![(3, ChannelMode::Alert), (8, ChannelMode::Off)]);
+        assert_eq!(
+            parsed.channels,
+            vec![(3, ChannelMode::Alert), (8, ChannelMode::Off)]
+        );
         assert_eq!(parsed.tag_value(4), Some("v"));
         assert_eq!(parsed.tag_value(5), None);
     }
 
     // -- HTTP authentication methods ---------------------------------------
 
-    fn submit_with(base: &NewMonitor, list: Vec<(&'static str, String)>) -> Result<Validated, Errors> {
+    fn submit_with(
+        base: &NewMonitor,
+        list: Vec<(&'static str, String)>,
+    ) -> Result<Validated, Errors> {
         let p = Pairs(list.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-        validate(&FormValues::from_pairs(&p, &[]), base, &FormContext::default())
+        validate(
+            &FormValues::from_pairs(&p, &[]),
+            base,
+            &FormContext::default(),
+        )
     }
 
     fn oauth_pairs(secret: &str) -> Vec<(&'static str, String)> {
@@ -1652,26 +2123,50 @@ mod tests {
 
     #[test]
     fn oauth2_settings_are_validated_and_normalised() {
-        let ok = submit_with(&NewMonitor::default(), oauth_pairs("sekret")).unwrap().monitor;
+        let ok = submit_with(&NewMonitor::default(), oauth_pairs("sekret"))
+            .unwrap()
+            .monitor;
         assert_eq!(ok.auth_method, "oauth2");
-        assert_eq!(ok.oauth_token_url.as_deref(), Some("https://login.example.com/oauth/token"));
+        assert_eq!(
+            ok.oauth_token_url.as_deref(),
+            Some("https://login.example.com/oauth/token")
+        );
         assert_eq!(ok.oauth_client_id.as_deref(), Some("vole"));
         assert_eq!(ok.oauth_client_secret.as_deref(), Some("sekret"));
         assert_eq!(ok.oauth_scope.as_deref(), Some("read write"));
-        assert_eq!(ok.oauth_audience.as_deref(), Some("https://api.example.com"));
+        assert_eq!(
+            ok.oauth_audience.as_deref(),
+            Some("https://api.example.com")
+        );
         assert_eq!(ok.oauth_client_auth, "client_secret_post");
 
-        let mut bad = with(oauth_pairs(""), "oauth_token_url", "login.example.com/token");
+        let mut bad = with(
+            oauth_pairs(""),
+            "oauth_token_url",
+            "login.example.com/token",
+        );
         bad = with(bad, "oauth_client_id", " ");
         let err = submit_with(&NewMonitor::default(), bad).unwrap_err();
         for key in ["oauth_token_url", "oauth_client_id", "oauth_client_secret"] {
             assert!(err.contains_key(key), "{key}: {err:?}");
         }
-        let err = submit_with(&NewMonitor::default(), with(oauth_pairs("x"), "oauth_token_url", "ftp://idp/token")).unwrap_err();
+        let err = submit_with(
+            &NewMonitor::default(),
+            with(oauth_pairs("x"), "oauth_token_url", "ftp://idp/token"),
+        )
+        .unwrap_err();
         assert!(err["oauth_token_url"].contains("http://"), "{err:?}");
-        let err = submit_with(&NewMonitor::default(), with(oauth_pairs("x"), "oauth_client_auth", "private_key_jwt")).unwrap_err();
+        let err = submit_with(
+            &NewMonitor::default(),
+            with(oauth_pairs("x"), "oauth_client_auth", "private_key_jwt"),
+        )
+        .unwrap_err();
         assert!(err.contains_key("oauth_client_auth"));
-        let err = submit_with(&NewMonitor::default(), with(oauth_pairs("x"), "auth_method", "kerberos")).unwrap_err();
+        let err = submit_with(
+            &NewMonitor::default(),
+            with(oauth_pairs("x"), "auth_method", "kerberos"),
+        )
+        .unwrap_err();
         assert!(err.contains_key("auth_method"));
     }
 
@@ -1683,28 +2178,72 @@ mod tests {
         assert!(!format!("{shown:?}").contains("the-client-secret"));
 
         // Untouched mask: kept, even when the monitored URL itself changes.
-        let kept = submit_with(&stored, with(with(oauth_pairs(SECRET_MASK), "target_url", "https://other.example.com/"), "target", "https://other.example.com/")).unwrap();
-        assert_eq!(kept.monitor.oauth_client_secret.as_deref(), Some("the-client-secret"));
+        let kept = submit_with(
+            &stored,
+            with(
+                with(
+                    oauth_pairs(SECRET_MASK),
+                    "target_url",
+                    "https://other.example.com/",
+                ),
+                "target",
+                "https://other.example.com/",
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            kept.monitor.oauth_client_secret.as_deref(),
+            Some("the-client-secret")
+        );
         // A different token endpoint or proxy: the secret must be typed again.
         for (field, value) in [
             ("oauth_token_url", "https://attacker.example/token"),
             ("oauth_token_url", "http://login.example.com/oauth/token"),
             ("proxy_url", "http://proxy.evil:3128"),
         ] {
-            let err = submit_with(&stored, with(oauth_pairs(SECRET_MASK), field, value)).unwrap_err();
-            assert!(err.contains_key("oauth_client_secret"), "{field}={value}: {err:?}");
+            let err =
+                submit_with(&stored, with(oauth_pairs(SECRET_MASK), field, value)).unwrap_err();
+            assert!(
+                err.contains_key("oauth_client_secret"),
+                "{field}={value}: {err:?}"
+            );
         }
         // Typing a new one is always fine; so is a new endpoint with it.
-        let fresh = submit_with(&stored, with(oauth_pairs("new"), "oauth_token_url", "https://attacker.example/token")).unwrap();
+        let fresh = submit_with(
+            &stored,
+            with(
+                oauth_pairs("new"),
+                "oauth_token_url",
+                "https://attacker.example/token",
+            ),
+        )
+        .unwrap();
         assert_eq!(fresh.monitor.oauth_client_secret.as_deref(), Some("new"));
         // A mask with nothing stored (clone / import) has nothing to restore.
         let err = submit_with(&NewMonitor::default(), oauth_pairs(SECRET_MASK)).unwrap_err();
         assert!(err.contains_key("oauth_client_secret"));
         // A re-rendered rejected form never echoes a typed secret, but keeps the mask.
-        let typed = FormValues::from_pairs(&Pairs(oauth_pairs("typed-secret").into_iter().map(|(k, v)| (k.to_string(), v)).collect()), &[]);
-        assert_eq!(typed.clone().without_typed_secrets().oauth_client_secret, "");
-        let masked = FormValues { oauth_client_secret: SECRET_MASK.into(), ..typed };
-        assert_eq!(masked.without_typed_secrets().oauth_client_secret, SECRET_MASK);
+        let typed = FormValues::from_pairs(
+            &Pairs(
+                oauth_pairs("typed-secret")
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect(),
+            ),
+            &[],
+        );
+        assert_eq!(
+            typed.clone().without_typed_secrets().oauth_client_secret,
+            ""
+        );
+        let masked = FormValues {
+            oauth_client_secret: SECRET_MASK.into(),
+            ..typed
+        };
+        assert_eq!(
+            masked.without_typed_secrets().oauth_client_secret,
+            SECRET_MASK
+        );
     }
 
     #[test]
@@ -1718,33 +2257,71 @@ mod tests {
         };
         let out = submit_with(&basic, oauth_pairs("sekret")).unwrap().monitor;
         assert_eq!((out.basic_auth_user, out.basic_auth_pass), (None, None));
-        let none = submit_with(&stored_oauth(), with(base_pairs("http", "https://api.example.com/health"), "auth_method", "none"))
-            .unwrap()
-            .monitor;
+        let none = submit_with(
+            &stored_oauth(),
+            with(
+                base_pairs("http", "https://api.example.com/health"),
+                "auth_method",
+                "none",
+            ),
+        )
+        .unwrap()
+        .monitor;
         assert_eq!(none.auth_method, "none");
-        assert_eq!((none.oauth_token_url, none.oauth_client_secret), (None, None));
+        assert_eq!(
+            (none.oauth_token_url, none.oauth_client_secret),
+            (None, None)
+        );
         assert_eq!(none.oauth_client_auth, "client_secret_basic");
     }
 
     #[test]
     fn forms_without_auth_method_keep_meaning_basic_auth() {
         // Older clients (and the existing form tests) only post the basic fields.
-        let list = with(with(base_pairs("http", "https://x.io"), "basic_auth_user", "bot"), "basic_auth_pass", "pw");
+        let list = with(
+            with(base_pairs("http", "https://x.io"), "basic_auth_user", "bot"),
+            "basic_auth_pass",
+            "pw",
+        );
         let ok = submit_with(&NewMonitor::default(), list).unwrap().monitor;
         assert_eq!(
-            (ok.auth_method.as_str(), ok.basic_auth_user.as_deref(), ok.basic_auth_pass.as_deref()),
+            (
+                ok.auth_method.as_str(),
+                ok.basic_auth_user.as_deref(),
+                ok.basic_auth_pass.as_deref()
+            ),
             ("basic", Some("bot"), Some("pw"))
         );
-        let ok = submit_with(&NewMonitor::default(), base_pairs("http", "https://x.io")).unwrap().monitor;
+        let ok = submit_with(&NewMonitor::default(), base_pairs("http", "https://x.io"))
+            .unwrap()
+            .monitor;
         assert_eq!(ok.auth_method, "none");
         // A stored method is shown as it is: "none" stays none even with a
         // leftover user name (migration 0096 turned old rows into "basic").
-        let off = NewMonitor { basic_auth_user: Some("bot".into()), ..NewMonitor::default() };
-        assert_eq!(FormValues::from_new(&off, Vec::new(), &[]).auth_method, "none");
-        let ok = submit_with(&off, with(base_pairs("http", "https://x.io"), "auth_method", "none")).unwrap().monitor;
-        assert_eq!((ok.auth_method.as_str(), ok.basic_auth_user.as_deref()), ("none", None));
+        let off = NewMonitor {
+            basic_auth_user: Some("bot".into()),
+            ..NewMonitor::default()
+        };
+        assert_eq!(
+            FormValues::from_new(&off, Vec::new(), &[]).auth_method,
+            "none"
+        );
+        let ok = submit_with(
+            &off,
+            with(base_pairs("http", "https://x.io"), "auth_method", "none"),
+        )
+        .unwrap()
+        .monitor;
+        assert_eq!(
+            (ok.auth_method.as_str(), ok.basic_auth_user.as_deref()),
+            ("none", None)
+        );
         // Basic auth chosen explicitly needs a user name.
-        let err = submit_with(&NewMonitor::default(), with(base_pairs("http", "https://x.io"), "auth_method", "basic")).unwrap_err();
+        let err = submit_with(
+            &NewMonitor::default(),
+            with(base_pairs("http", "https://x.io"), "auth_method", "basic"),
+        )
+        .unwrap_err();
         assert!(err.contains_key("basic_auth_user"));
     }
 
@@ -1758,60 +2335,156 @@ mod tests {
             ..NewMonitor::default()
         };
         let submit = |base: &NewMonitor, kind: &str, target: &str| {
-            let list = with(with(base_pairs(kind, target), "basic_auth_user", "vole"), "basic_auth_pass", SECRET_MASK);
+            let list = with(
+                with(base_pairs(kind, target), "basic_auth_user", "vole"),
+                "basic_auth_pass",
+                SECRET_MASK,
+            );
             submit_with(base, list)
         };
         for (kind, from, to) in [
-            (MonitorType::Redis, "rediss://cache.local:6380", "redis://cache.local:6380"),
-            (MonitorType::Mqtt, "mqtts://broker.local:8883", "mqtt://broker.local:8883"),
-            (MonitorType::Rabbitmq, "amqps://mq.local:5671", "amqp://mq.local:5671"),
-            (MonitorType::Postgres, "postgres://db.local/app?sslmode=require", "postgres://db.local/app?sslmode=disable"),
-            (MonitorType::Postgres, "postgres://db.local/app?sslmode=verify-full", "postgres://db.local/app"),
-            (MonitorType::Mysql, "mysql://db.local/app", "mysql://db.local/app?sslmode=disable"),
-            (MonitorType::SqlServer, "sqlserver://db.local", "sqlserver://db.local?encrypt=disable"),
-            (MonitorType::SqlServer, "sqlserver://db.local?encrypt=true", "sqlserver://db.local?encrypt=false"),
-            (MonitorType::SqlServer, "sqlserver://db.local?encrypt=true&trustServerCertificate=false", "sqlserver://db.local?encrypt=true"),
-            (MonitorType::Mongodb, "mongodb://m.local/?tls=true", "mongodb://m.local/"),
-            (MonitorType::Mongodb, "mongodb://m.local/?tls=true", "mongodb://m.local/?tls=true&tlsAllowInvalidCertificates=true"),
-            (MonitorType::Mongodb, "mongodb://a.local,b.local", "mongodb://a.local,evil.example"),
-            (MonitorType::Mongodb, "mongodb://a.local,b.local", "mongodb://a.local"),
-            (MonitorType::Mongodb, "mongodb+srv://c.example.net", "mongodb://c.example.net/?tls=true"),
+            (
+                MonitorType::Redis,
+                "rediss://cache.local:6380",
+                "redis://cache.local:6380",
+            ),
+            (
+                MonitorType::Mqtt,
+                "mqtts://broker.local:8883",
+                "mqtt://broker.local:8883",
+            ),
+            (
+                MonitorType::Rabbitmq,
+                "amqps://mq.local:5671",
+                "amqp://mq.local:5671",
+            ),
+            (
+                MonitorType::Postgres,
+                "postgres://db.local/app?sslmode=require",
+                "postgres://db.local/app?sslmode=disable",
+            ),
+            (
+                MonitorType::Postgres,
+                "postgres://db.local/app?sslmode=verify-full",
+                "postgres://db.local/app",
+            ),
+            (
+                MonitorType::Mysql,
+                "mysql://db.local/app",
+                "mysql://db.local/app?sslmode=disable",
+            ),
+            (
+                MonitorType::SqlServer,
+                "sqlserver://db.local",
+                "sqlserver://db.local?encrypt=disable",
+            ),
+            (
+                MonitorType::SqlServer,
+                "sqlserver://db.local?encrypt=true",
+                "sqlserver://db.local?encrypt=false",
+            ),
+            (
+                MonitorType::SqlServer,
+                "sqlserver://db.local?encrypt=true&trustServerCertificate=false",
+                "sqlserver://db.local?encrypt=true",
+            ),
+            (
+                MonitorType::Mongodb,
+                "mongodb://m.local/?tls=true",
+                "mongodb://m.local/",
+            ),
+            (
+                MonitorType::Mongodb,
+                "mongodb://m.local/?tls=true",
+                "mongodb://m.local/?tls=true&tlsAllowInvalidCertificates=true",
+            ),
+            (
+                MonitorType::Mongodb,
+                "mongodb://a.local,b.local",
+                "mongodb://a.local,evil.example",
+            ),
+            (
+                MonitorType::Mongodb,
+                "mongodb://a.local,b.local",
+                "mongodb://a.local",
+            ),
+            (
+                MonitorType::Mongodb,
+                "mongodb+srv://c.example.net",
+                "mongodb://c.example.net/?tls=true",
+            ),
         ] {
             let base = stored(kind, from);
             let err = submit(&base, kind.as_str(), to).unwrap_err();
-            assert_eq!(err.get("basic_auth_pass").map(String::as_str), Some(crate::i18n::t("validation.secret_reenter")), "{from} -> {to}");
+            assert_eq!(
+                err.get("basic_auth_pass").map(String::as_str),
+                Some(crate::i18n::t("validation.secret_reenter")),
+                "{from} -> {to}"
+            );
             // The same protection keeps the stored secret.
             let kept = submit(&base, kind.as_str(), from).unwrap().monitor;
             assert_eq!(kept.basic_auth_pass.as_deref(), Some("hunter2"), "{from}");
         }
         // More protection keeps it too.
         for (kind, from, to) in [
-            (MonitorType::Redis, "redis://cache.local:6380", "rediss://cache.local:6380"),
-            (MonitorType::Postgres, "postgres://db.local/app", "postgres://db.local/app?sslmode=verify-full"),
-            (MonitorType::SqlServer, "sqlserver://db.local?encrypt=false", "sqlserver://db.local/app"),
-            (MonitorType::Mongodb, "mongodb://A.local,b.local/app", "mongodb://a.local:27017,b.local/other?tls=true"),
+            (
+                MonitorType::Redis,
+                "redis://cache.local:6380",
+                "rediss://cache.local:6380",
+            ),
+            (
+                MonitorType::Postgres,
+                "postgres://db.local/app",
+                "postgres://db.local/app?sslmode=verify-full",
+            ),
+            (
+                MonitorType::SqlServer,
+                "sqlserver://db.local?encrypt=false",
+                "sqlserver://db.local/app",
+            ),
+            (
+                MonitorType::Mongodb,
+                "mongodb://A.local,b.local/app",
+                "mongodb://a.local:27017,b.local/other?tls=true",
+            ),
         ] {
-            let kept = submit(&stored(kind, from), kind.as_str(), to).unwrap().monitor;
-            assert_eq!(kept.basic_auth_pass.as_deref(), Some("hunter2"), "{from} -> {to}");
+            let kept = submit(&stored(kind, from), kind.as_str(), to)
+                .unwrap()
+                .monitor;
+            assert_eq!(
+                kept.basic_auth_pass.as_deref(),
+                Some("hunter2"),
+                "{from} -> {to}"
+            );
         }
     }
 
     #[test]
     fn auth_fields_of_other_monitor_types_are_left_alone() {
         let stored = stored_oauth();
-        let ok = submit_with(&stored, base_pairs("tcp", "db:5432")).unwrap().monitor;
+        let ok = submit_with(&stored, base_pairs("tcp", "db:5432"))
+            .unwrap()
+            .monitor;
         assert_eq!(ok.auth_method, "oauth2");
         assert_eq!(ok.oauth_client_secret.as_deref(), Some("the-client-secret"));
     }
 
     type TestPki = crate::monitor::checkers::http_auth::test_pki::Pki;
 
-    fn mtls_pairs(pki: &TestPki, key: &str, target: &str, proxy: &str) -> Vec<(&'static str, String)> {
+    fn mtls_pairs(
+        pki: &TestPki,
+        key: &str,
+        target: &str,
+        proxy: &str,
+    ) -> Vec<(&'static str, String)> {
         let mut list = base_pairs("http", target);
         // Browsers post textareas with CRLF line endings.
         for (k, v) in [
             ("auth_method", "mtls"),
-            ("tls_client_cert", &pki.client_cert_pem.replace('\n', "\r\n")),
+            (
+                "tls_client_cert",
+                &pki.client_cert_pem.replace('\n', "\r\n"),
+            ),
             ("tls_client_key", key),
             ("tls_ca_cert", &pki.ca_pem.replace('\n', "\r\n")),
             ("proxy_url", proxy),
@@ -1828,30 +2501,62 @@ mod tests {
         use crate::monitor::checkers::http_auth::test_pki::unrelated_key_pem;
         let pki = TestPki::new();
         let crlf_key = pki.client_key_pem.replace('\n', "\r\n");
-        let ok = submit_with(&NewMonitor::default(), mtls_pairs(&pki, &crlf_key, API, "")).unwrap().monitor;
+        let ok = submit_with(&NewMonitor::default(), mtls_pairs(&pki, &crlf_key, API, ""))
+            .unwrap()
+            .monitor;
         assert_eq!(ok.auth_method, "mtls");
-        assert_eq!(ok.tls_client_cert.as_deref(), Some(pki.client_cert_pem.trim()));
-        assert_eq!(ok.tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
+        assert_eq!(
+            ok.tls_client_cert.as_deref(),
+            Some(pki.client_cert_pem.trim())
+        );
+        assert_eq!(
+            ok.tls_client_key.as_deref(),
+            Some(pki.client_key_pem.trim())
+        );
         assert_eq!(ok.tls_ca_cert.as_deref(), Some(pki.ca_pem.trim()));
         assert!(!ok.tls_client_cert.unwrap().contains('\r'));
 
         let good = || mtls_pairs(&pki, &pki.client_key_pem, API, "");
-        let err = submit_with(&NewMonitor::default(), mtls_pairs(&pki, &unrelated_key_pem(), API, "")).unwrap_err();
-        assert!(err["tls_client_key"].contains("can’t be used together"), "{err:?}");
-        let err = submit_with(&NewMonitor::default(), with(good(), "tls_client_cert", "hello")).unwrap_err();
-        assert!(err["tls_client_cert"].contains("BEGIN CERTIFICATE"), "{err:?}");
-        let err = submit_with(&NewMonitor::default(), with(good(), "tls_client_key", "")).unwrap_err();
+        let err = submit_with(
+            &NewMonitor::default(),
+            mtls_pairs(&pki, &unrelated_key_pem(), API, ""),
+        )
+        .unwrap_err();
+        assert!(
+            err["tls_client_key"].contains("can’t be used together"),
+            "{err:?}"
+        );
+        let err = submit_with(
+            &NewMonitor::default(),
+            with(good(), "tls_client_cert", "hello"),
+        )
+        .unwrap_err();
+        assert!(
+            err["tls_client_cert"].contains("BEGIN CERTIFICATE"),
+            "{err:?}"
+        );
+        let err =
+            submit_with(&NewMonitor::default(), with(good(), "tls_client_key", "")).unwrap_err();
         assert!(err.contains_key("tls_client_key"));
         let encrypted = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA";
-        let err = submit_with(&NewMonitor::default(), with(good(), "tls_client_key", encrypted)).unwrap_err();
+        let err = submit_with(
+            &NewMonitor::default(),
+            with(good(), "tls_client_key", encrypted),
+        )
+        .unwrap_err();
         assert!(err["tls_client_key"].contains("passphrase"), "{err:?}");
-        let err = submit_with(&NewMonitor::default(), with(good(), "tls_ca_cert", "nope")).unwrap_err();
+        let err =
+            submit_with(&NewMonitor::default(), with(good(), "tls_ca_cert", "nope")).unwrap_err();
         assert!(err.contains_key("tls_ca_cert"));
         // The CA is optional.
         assert!(submit_with(&NewMonitor::default(), with(good(), "tls_ca_cert", "")).is_ok());
         // Client certificates need https.
         let http = mtls_pairs(&pki, &pki.client_key_pem, "http://api.example.com/", "");
-        assert!(submit_with(&NewMonitor::default(), http).unwrap_err().contains_key("auth_method"));
+        assert!(
+            submit_with(&NewMonitor::default(), http)
+                .unwrap_err()
+                .contains_key("auth_method")
+        );
     }
 
     #[test]
@@ -1866,29 +2571,70 @@ mod tests {
         };
         let shown = FormValues::from_new(&stored, Vec::new(), &[]).masked();
         assert_eq!(shown.tls_client_key, SECRET_MASK);
-        assert!(shown.tls_client_cert.contains("BEGIN CERTIFICATE"), "the certificate is public and stays visible");
+        assert!(
+            shown.tls_client_cert.contains("BEGIN CERTIFICATE"),
+            "the certificate is public and stays visible"
+        );
         assert!(!format!("{shown:?}").contains("PRIVATE KEY"));
 
-        let kept = submit_with(&stored, mtls_pairs(&pki, SECRET_MASK, "https://API.example.com:443/other", "")).unwrap();
-        assert_eq!(kept.monitor.tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
-        for (target, proxy) in [("https://attacker.example/", ""), (API, "http://proxy.evil:3128")] {
-            let err = submit_with(&stored, mtls_pairs(&pki, SECRET_MASK, target, proxy)).unwrap_err();
-            assert!(err.contains_key("tls_client_key"), "{target} {proxy}: {err:?}");
+        let kept = submit_with(
+            &stored,
+            mtls_pairs(&pki, SECRET_MASK, "https://API.example.com:443/other", ""),
+        )
+        .unwrap();
+        assert_eq!(
+            kept.monitor.tls_client_key.as_deref(),
+            Some(pki.client_key_pem.trim())
+        );
+        for (target, proxy) in [
+            ("https://attacker.example/", ""),
+            (API, "http://proxy.evil:3128"),
+        ] {
+            let err =
+                submit_with(&stored, mtls_pairs(&pki, SECRET_MASK, target, proxy)).unwrap_err();
+            assert!(
+                err.contains_key("tls_client_key"),
+                "{target} {proxy}: {err:?}"
+            );
         }
-        let err = submit_with(&NewMonitor::default(), mtls_pairs(&pki, SECRET_MASK, API, "")).unwrap_err();
+        let err = submit_with(
+            &NewMonitor::default(),
+            mtls_pairs(&pki, SECRET_MASK, API, ""),
+        )
+        .unwrap_err();
         assert!(err.contains_key("tls_client_key"));
-        let typed = submit_with(&stored, mtls_pairs(&pki, &pki.client_key_pem, "https://attacker.example/", "")).unwrap();
-        assert_eq!(typed.monitor.tls_client_key.as_deref(), Some(pki.client_key_pem.trim()));
+        let typed = submit_with(
+            &stored,
+            mtls_pairs(&pki, &pki.client_key_pem, "https://attacker.example/", ""),
+        )
+        .unwrap();
+        assert_eq!(
+            typed.monitor.tls_client_key.as_deref(),
+            Some(pki.client_key_pem.trim())
+        );
         // A rejected re-render doesn't put a typed key back into the page.
-        let p = Pairs(mtls_pairs(&pki, &pki.client_key_pem, API, "").into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-        assert_eq!(FormValues::from_pairs(&p, &[]).without_typed_secrets().tls_client_key, "");
+        let p = Pairs(
+            mtls_pairs(&pki, &pki.client_key_pem, API, "")
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        );
+        assert_eq!(
+            FormValues::from_pairs(&p, &[])
+                .without_typed_secrets()
+                .tls_client_key,
+            ""
+        );
     }
 
     #[test]
     fn every_auth_method_round_trips_through_the_form() {
         let pki = TestPki::new();
         let cases = [
-            NewMonitor { target: "https://x.io".into(), ..NewMonitor::default() },
+            NewMonitor {
+                target: "https://x.io".into(),
+                ..NewMonitor::default()
+            },
             NewMonitor {
                 target: "https://x.io".into(),
                 auth_method: "basic".into(),
@@ -1915,8 +2661,13 @@ mod tests {
             // Edit without touching anything: what the browser posts back.
             let mut v = FormValues::from_new(&stored, Vec::new(), &[]).masked();
             v.name = "Website".into();
-            let out = validate(&v, &stored, &FormContext::default()).unwrap().monitor;
-            let (before, after) = (serde_json::to_value(&stored).unwrap(), serde_json::to_value(&out).unwrap());
+            let out = validate(&v, &stored, &FormContext::default())
+                .unwrap()
+                .monitor;
+            let (before, after) = (
+                serde_json::to_value(&stored).unwrap(),
+                serde_json::to_value(&out).unwrap(),
+            );
             for field in [
                 "auth_method",
                 "basic_auth_user",
@@ -1931,7 +2682,11 @@ mod tests {
                 "tls_client_key",
                 "tls_ca_cert",
             ] {
-                assert_eq!(after[field], before[field], "{} / {field}", stored.auth_method);
+                assert_eq!(
+                    after[field], before[field],
+                    "{} / {field}",
+                    stored.auth_method
+                );
             }
         }
     }

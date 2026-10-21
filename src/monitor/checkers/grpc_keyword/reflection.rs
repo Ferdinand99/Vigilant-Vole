@@ -90,7 +90,11 @@ struct Session<'a> {
 
 impl Session<'_> {
     async fn ask(&mut self, request: Request) -> Result<Response, String> {
-        let message = ReflectionRequest { host: String::new(), request: Some(request) }.encode_to_vec();
+        let message = ReflectionRequest {
+            host: String::new(),
+            request: Some(request),
+        }
+        .encode_to_vec();
         let answer = match self.channel.unary(self.path, self.metadata, &message).await {
             // UNIMPLEMENTED on v1: try the older name once.
             Err(CallError::Status { code: 12, .. }) if self.path == V1 => {
@@ -106,19 +110,34 @@ impl Session<'_> {
             CallError::Status { .. } => format!("Server reflection failed: {}", e.describe()),
             CallError::Failed(msg) => msg,
         })?;
-        let response = ReflectionResponse::decode(answer.as_slice()).map_err(|_| "The server's reflection answer isn't readable".to_string())?;
-        response.response.ok_or_else(|| "The server's reflection answer is empty".into())
+        let response = ReflectionResponse::decode(answer.as_slice())
+            .map_err(|_| "The server's reflection answer isn't readable".to_string())?;
+        response
+            .response
+            .ok_or_else(|| "The server's reflection answer is empty".into())
     }
 
     /// The files of a file request; `what` names it in a NOT_FOUND message.
-    async fn files(&mut self, request: Request, what: &str) -> Result<Vec<FileDescriptorProto>, String> {
+    async fn files(
+        &mut self,
+        request: Request,
+        what: &str,
+    ) -> Result<Vec<FileDescriptorProto>, String> {
         match self.ask(request).await? {
-            Response::Error(err) if err.error_code == 5 => Err(format!("The server doesn't know {what}")),
-            Response::Error(err) => Err(format!("Server reflection failed: {}", util::truncate(&err.error_message, 120))),
+            Response::Error(err) if err.error_code == 5 => {
+                Err(format!("The server doesn't know {what}"))
+            }
+            Response::Error(err) => Err(format!(
+                "Server reflection failed: {}",
+                util::truncate(&err.error_message, 120)
+            )),
             Response::Files(files) => files
                 .file_descriptor_proto
                 .iter()
-                .map(|bytes| FileDescriptorProto::decode(bytes.as_slice()).map_err(|_| "The server sent an unreadable file descriptor".to_string()))
+                .map(|bytes| {
+                    FileDescriptorProto::decode(bytes.as_slice())
+                        .map_err(|_| "The server sent an unreadable file descriptor".to_string())
+                })
                 .collect(),
             _ => Err("The server's reflection answer has no files".into()),
         }
@@ -133,18 +152,46 @@ async fn resolve_service(session: &mut Session<'_>, service: &str) -> Result<Str
     }
     let list = match session.ask(Request::ListServices(String::new())).await? {
         Response::Services(list) => list,
-        Response::Error(err) => return Err(format!("Server reflection failed: {}", util::truncate(&err.error_message, 120))),
-        Response::Files(_) => return Err("The server's reflection answer has no service list".into()),
+        Response::Error(err) => {
+            return Err(format!(
+                "Server reflection failed: {}",
+                util::truncate(&err.error_message, 120)
+            ));
+        }
+        Response::Files(_) => {
+            return Err("The server's reflection answer has no service list".into());
+        }
     };
     let suffix = format!(".{service}");
-    let found: Vec<&str> = list.service.iter().map(|s| s.name.as_str()).filter(|n| *n == service || n.ends_with(&suffix)).collect();
+    let found: Vec<&str> = list
+        .service
+        .iter()
+        .map(|s| s.name.as_str())
+        .filter(|n| *n == service || n.ends_with(&suffix))
+        .collect();
     match found.as_slice() {
         [one] => Ok((*one).to_string()),
         [] => {
-            let all: Vec<&str> = list.service.iter().map(|s| s.name.as_str()).take(5).collect();
-            Err(format!("The server has no service \"{}\" (it lists: {})", util::truncate(service, 80), if all.is_empty() { "none".into() } else { all.join(", ") }))
+            let all: Vec<&str> = list
+                .service
+                .iter()
+                .map(|s| s.name.as_str())
+                .take(5)
+                .collect();
+            Err(format!(
+                "The server has no service \"{}\" (it lists: {})",
+                util::truncate(service, 80),
+                if all.is_empty() {
+                    "none".into()
+                } else {
+                    all.join(", ")
+                }
+            ))
         }
-        many => Err(format!("\"{service}\" is ambiguous on this server ({}): use the full service name", many.join(", "))),
+        many => Err(format!(
+            "\"{service}\" is ambiguous on this server ({}): use the full service name",
+            many.join(", ")
+        )),
     }
 }
 
@@ -157,33 +204,54 @@ fn add(list: Vec<FileDescriptorProto>, files: &mut HashMap<String, FileDescripto
 /// Fetches the descriptors for `service` from the server and builds a pool.
 /// Imports the server leaves out are asked for by file name; the
 /// well-known types (`google/protobuf/*.proto`) are built in.
-pub(crate) async fn fetch(channel: &mut Channel, metadata: &HeaderMap, service: &str) -> Result<DescriptorPool, String> {
-    let mut session = Session { channel, metadata, path: V1 };
+pub(crate) async fn fetch(
+    channel: &mut Channel,
+    metadata: &HeaderMap,
+    service: &str,
+) -> Result<DescriptorPool, String> {
+    let mut session = Session {
+        channel,
+        metadata,
+        path: V1,
+    };
     let full = resolve_service(&mut session, service).await?;
     let what = format!("the service \"{}\"", util::truncate(&full, 80));
-    let first = session.files(Request::FileContainingSymbol(full.clone()), &what).await?;
+    let first = session
+        .files(Request::FileContainingSymbol(full.clone()), &what)
+        .await?;
     let mut pool = DescriptorPool::global();
     let mut files: HashMap<String, FileDescriptorProto> = HashMap::new();
     add(first, &mut files);
     loop {
         let missing: Vec<(String, String)> = files
             .values()
-            .flat_map(|f| f.dependency.iter().map(move |d| (d.clone(), f.name().to_string())))
+            .flat_map(|f| {
+                f.dependency
+                    .iter()
+                    .map(move |d| (d.clone(), f.name().to_string()))
+            })
             .filter(|(d, _)| !files.contains_key(d) && pool.get_file_by_name(d).is_none())
             .collect();
-        let Some((name, needed_by)) = missing.into_iter().next() else { break };
+        let Some((name, needed_by)) = missing.into_iter().next() else {
+            break;
+        };
         if files.len() >= MAX_FILES {
-            return Err(format!("The service needs more than {MAX_FILES} .proto files"));
+            return Err(format!(
+                "The service needs more than {MAX_FILES} .proto files"
+            ));
         }
         let got = session
             .files(Request::FileByFilename(name.clone()), &name)
             .await
             .map_err(|e| format!("The server didn't send {name} (imported by {needed_by}): {e}"))?;
         if !got.iter().any(|f| f.name() == name) {
-            return Err(format!("The server didn't send {name} (imported by {needed_by})"));
+            return Err(format!(
+                "The server didn't send {name} (imported by {needed_by})"
+            ));
         }
         add(got, &mut files);
     }
-    pool.add_file_descriptor_protos(files.into_values()).map_err(|e| format!("The server's descriptors don't fit together: {e}"))?;
+    pool.add_file_descriptor_protos(files.into_values())
+        .map_err(|e| format!("The server's descriptors don't fit together: {e}"))?;
     Ok(pool)
 }

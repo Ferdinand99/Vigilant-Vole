@@ -105,7 +105,12 @@ fn row_to_agent(row: &Row) -> rusqlite::Result<Agent> {
 }
 
 /// Insert an agent with the given token hash. Returns its id.
-pub fn insert_agent(conn: &Connection, name: &str, location: &str, token: &NewToken) -> rusqlite::Result<i64> {
+pub fn insert_agent(
+    conn: &Connection,
+    name: &str,
+    location: &str,
+    token: &NewToken,
+) -> rusqlite::Result<i64> {
     conn.execute(
         "INSERT INTO agents (name, location, prefix, token_hash) VALUES (?1, ?2, ?3, ?4)",
         params![name, location, token.prefix, token.hash],
@@ -163,7 +168,10 @@ pub fn rotate_token(conn: &Connection, id: i64, token: &NewToken) -> rusqlite::R
 }
 
 pub fn set_active(conn: &Connection, id: i64, active: bool) -> rusqlite::Result<bool> {
-    let n = conn.execute("UPDATE agents SET active = ?2 WHERE id = ?1", params![id, active])?;
+    let n = conn.execute(
+        "UPDATE agents SET active = ?2 WHERE id = ?1",
+        params![id, active],
+    )?;
     Ok(n > 0)
 }
 
@@ -280,14 +288,20 @@ mod tests {
         let conn = test_conn();
         let t = generate_token();
         let id = insert_agent(&conn, "Frankfurt", "eu-central", &t).unwrap();
-        assert_eq!(find_by_token(&conn, &t.token).unwrap().map(|a| a.id), Some(id));
+        assert_eq!(
+            find_by_token(&conn, &t.token).unwrap().map(|a| a.id),
+            Some(id)
+        );
         assert!(find_by_token(&conn, "vva_wrong").unwrap().is_none());
         assert!(find_by_token(&conn, "vv_notanagent").unwrap().is_none());
 
         let t2 = generate_token();
         assert!(rotate_token(&conn, id, &t2).unwrap());
         assert!(find_by_token(&conn, &t.token).unwrap().is_none());
-        assert_eq!(find_by_token(&conn, &t2.token).unwrap().map(|a| a.id), Some(id));
+        assert_eq!(
+            find_by_token(&conn, &t2.token).unwrap().map(|a| a.id),
+            Some(id)
+        );
     }
 
     #[test]
@@ -315,14 +329,36 @@ mod tests {
             ..NewMonitor::default()
         };
         let on = db_monitors::insert_monitor(&conn, &base).unwrap();
-        db_monitors::insert_monitor(&conn, &NewMonitor { run_on_agents: false, ..base.clone() }).unwrap();
-        db_monitors::insert_monitor(&conn, &NewMonitor { active: false, ..base.clone() }).unwrap();
         db_monitors::insert_monitor(
             &conn,
-            &NewMonitor { monitor_type: MonitorType::Push, target: String::new(), ..base.clone() },
+            &NewMonitor {
+                run_on_agents: false,
+                ..base.clone()
+            },
         )
         .unwrap();
-        let ids: Vec<i64> = list_agent_monitors(&conn).unwrap().iter().map(|m| m.id).collect();
+        db_monitors::insert_monitor(
+            &conn,
+            &NewMonitor {
+                active: false,
+                ..base.clone()
+            },
+        )
+        .unwrap();
+        db_monitors::insert_monitor(
+            &conn,
+            &NewMonitor {
+                monitor_type: MonitorType::Push,
+                target: String::new(),
+                ..base.clone()
+            },
+        )
+        .unwrap();
+        let ids: Vec<i64> = list_agent_monitors(&conn)
+            .unwrap()
+            .iter()
+            .map(|m| m.id)
+            .collect();
         assert_eq!(ids, vec![on]);
         assert_eq!(count_agent_monitors(&conn).unwrap(), 1);
     }

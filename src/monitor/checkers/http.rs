@@ -228,10 +228,15 @@ impl<V: Clone> ClientCache<V> {
     }
 
     fn insert(&mut self, key: ClientKey, value: V, now: Instant) {
-        self.entries.retain(|_, (_, used)| now.duration_since(*used) < CLIENT_IDLE);
+        self.entries
+            .retain(|_, (_, used)| now.duration_since(*used) < CLIENT_IDLE);
         if self.entries.len() >= MAX_CLIENTS
             && !self.entries.contains_key(&key)
-            && let Some(lru) = self.entries.iter().min_by_key(|(_, (_, used))| *used).map(|(k, _)| k.clone())
+            && let Some(lru) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(k, _)| k.clone())
         {
             self.entries.remove(&lru);
         }
@@ -239,9 +244,16 @@ impl<V: Clone> ClientCache<V> {
     }
 }
 
-fn client_for(key: &ClientKey, mtls: Option<(&str, &str, Option<&str>)>) -> Result<reqwest::Client, String> {
+fn client_for(
+    key: &ClientKey,
+    mtls: Option<(&str, &str, Option<&str>)>,
+) -> Result<reqwest::Client, String> {
     static CLIENTS: OnceLock<Mutex<ClientCache<reqwest::Client>>> = OnceLock::new();
-    let cache = CLIENTS.get_or_init(|| Mutex::new(ClientCache { entries: HashMap::new() }));
+    let cache = CLIENTS.get_or_init(|| {
+        Mutex::new(ClientCache {
+            entries: HashMap::new(),
+        })
+    });
     if let Ok(mut map) = cache.lock()
         && let Some(client) = map.get(key, Instant::now())
     {
@@ -269,7 +281,8 @@ fn client_for(key: &ClientKey, mtls: Option<(&str, &str, Option<&str>)>) -> Resu
     if key.mtls.is_some()
         && let Some((cert, private_key, ca)) = mtls
     {
-        builder = http_auth::apply_mtls(builder, cert, private_key, ca).map_err(|e| e.to_string())?;
+        builder =
+            http_auth::apply_mtls(builder, cert, private_key, ca).map_err(|e| e.to_string())?;
     }
     let client = builder
         .build()
@@ -730,8 +743,15 @@ mod tests {
 
     #[test]
     fn client_cache_drops_idle_clients_and_stays_bounded() {
-        let key = |n: usize| ClientKey { ignore_tls: false, max_redirects: 0, proxy: None, mtls: Some(n.to_string()) };
-        let mut cache = ClientCache { entries: HashMap::new() };
+        let key = |n: usize| ClientKey {
+            ignore_tls: false,
+            max_redirects: 0,
+            proxy: None,
+            mtls: Some(n.to_string()),
+        };
+        let mut cache = ClientCache {
+            entries: HashMap::new(),
+        };
         let t0 = Instant::now();
         cache.insert(key(0), 0, t0);
         cache.insert(key(1), 1, t0);
@@ -754,7 +774,10 @@ mod tests {
         let url = Url::parse("https://user:hunter2@api.example.com/health?token=abc#x").unwrap();
         let message = format!("error sending request for url ({url})");
         let scrubbed = scrub_url(&message, &url);
-        assert_eq!(scrubbed, "error sending request for url (https://api.example.com/health)");
+        assert_eq!(
+            scrubbed,
+            "error sending request for url (https://api.example.com/health)"
+        );
     }
 
     #[test]
@@ -1079,7 +1102,10 @@ mod server_tests {
         m.basic_auth_user = Some("user".into());
         m.basic_auth_pass = Some("pass".into());
         // The method decides: leftover credentials with "none" are not sent.
-        assert_eq!(check(&m).await.message.as_deref(), Some("HTTP 401 Unauthorized"));
+        assert_eq!(
+            check(&m).await.message.as_deref(),
+            Some("HTTP 401 Unauthorized")
+        );
         m.auth_method = "basic".into();
         assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
     }

@@ -26,8 +26,8 @@ use tokio::sync::{Semaphore, watch};
 use tokio::task::JoinHandle;
 
 use self::protocol::{
-    MAX_BATCH, MONITORS_PATH, MonitorsResponse, NAME_HEADER, POLL_SECONDS, RESULTS_PATH, ResultItem,
-    ResultsResponse, VERSION_HEADER, now_db,
+    MAX_BATCH, MONITORS_PATH, MonitorsResponse, NAME_HEADER, POLL_SECONDS, RESULTS_PATH,
+    ResultItem, ResultsResponse, VERSION_HEADER, now_db,
 };
 use crate::db::models::{HeartbeatStatus, Monitor};
 use crate::monitor::checkers;
@@ -129,7 +129,9 @@ impl ClientError {
     pub fn is_transient(&self) -> bool {
         match self {
             ClientError::Http(_) => true,
-            ClientError::Status(code, _) => code.is_server_error() || *code == StatusCode::TOO_MANY_REQUESTS,
+            ClientError::Status(code, _) => {
+                code.is_server_error() || *code == StatusCode::TOO_MANY_REQUESTS
+            }
             ClientError::Unauthorized | ClientError::Disabled => false,
         }
     }
@@ -146,7 +148,8 @@ fn default_name() -> String {
 impl Client {
     pub fn new(args: &AgentArgs) -> Result<Self, AgentError> {
         let base = args.server.trim().trim_end_matches('/').to_string();
-        let parsed = url::Url::parse(&base).map_err(|e| format!("--server must be a URL like https://status.example.com: {e}"))?;
+        let parsed = url::Url::parse(&base)
+            .map_err(|e| format!("--server must be a URL like https://status.example.com: {e}"))?;
         if !matches!(parsed.scheme(), "http" | "https") {
             return Err("--server must start with http:// or https://".into());
         }
@@ -155,7 +158,8 @@ impl Client {
             return Err("--token must be an agent token (it starts with vva_)".into());
         }
         let mut headers = HeaderMap::new();
-        let mut auth = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| "invalid token")?;
+        let mut auth =
+            HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| "invalid token")?;
         auth.set_sensitive(true);
         headers.insert(AUTHORIZATION, auth);
         headers.insert(VERSION_HEADER, HeaderValue::from_static(VERSION));
@@ -196,7 +200,11 @@ impl Client {
         if !resp.status().is_success() {
             return Err(Self::error_for(resp).await);
         }
-        let tag = resp.headers().get(ETAG).and_then(|v| v.to_str().ok()).map(str::to_string);
+        let tag = resp
+            .headers()
+            .get(ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
         Ok(Fetch::Changed(resp.json().await?, tag))
     }
 
@@ -346,7 +354,9 @@ fn spawn_monitor(monitor: Monitor, permits: Arc<Semaphore>, buffer: Buffer) -> J
         let first = rand::rng().random_range(0.0..spread);
         tokio::time::sleep(Duration::from_secs_f64(first)).await;
         loop {
-            let Some(item) = check_once(&monitor, &permits).await else { return };
+            let Some(item) = check_once(&monitor, &permits).await else {
+                return;
+            };
             let status = item.status;
             tracing::debug!(monitor_id = monitor.id, status = %status, ms = ?item.response_time_ms, "check done");
             let dropped = buffer.push(item);
@@ -395,7 +405,9 @@ pub async fn run_once(client: &Client, concurrency: usize) -> Result<OnceSummary
                     "{:>5}  {:<11} {:>7}  {}  {}",
                     m.id,
                     item.status.as_str(),
-                    item.response_time_ms.map(|ms| format!("{ms} ms")).unwrap_or_default(),
+                    item.response_time_ms
+                        .map(|ms| format!("{ms} ms"))
+                        .unwrap_or_default(),
                     m.name,
                     item.message.as_deref().unwrap_or("")
                 );
@@ -412,7 +424,10 @@ pub async fn run_once(client: &Client, concurrency: usize) -> Result<OnceSummary
     let mut summary = OnceSummary {
         agent: list.agent.name,
         checked: results.len(),
-        up: results.iter().filter(|r| r.status == HeartbeatStatus::Up).count(),
+        up: results
+            .iter()
+            .filter(|r| r.status == HeartbeatStatus::Up)
+            .count(),
         ..OnceSummary::default()
     };
     summary.failed = summary.checked - summary.up;
@@ -434,7 +449,12 @@ struct Running {
 }
 
 /// Make the running tasks match `monitors`. Returns (started, stopped).
-fn reconcile(running: &mut HashMap<i64, Running>, monitors: Vec<Monitor>, permits: &Arc<Semaphore>, buffer: &Buffer) -> (usize, usize) {
+fn reconcile(
+    running: &mut HashMap<i64, Running>,
+    monitors: Vec<Monitor>,
+    permits: &Arc<Semaphore>,
+    buffer: &Buffer,
+) -> (usize, usize) {
     let mut started = 0;
     let mut stopped = 0;
     let wanted: HashMap<i64, Monitor> = monitors.into_iter().map(|m| (m.id, m)).collect();
@@ -458,12 +478,18 @@ fn reconcile(running: &mut HashMap<i64, Running>, monitors: Vec<Monitor>, permit
 }
 
 fn backoff_after(failures: u32) -> Duration {
-    let secs = 2u64.saturating_pow(failures.min(6)).min(MAX_BACKOFF.as_secs());
+    let secs = 2u64
+        .saturating_pow(failures.min(6))
+        .min(MAX_BACKOFF.as_secs());
     Duration::from_secs(secs.max(1))
 }
 
 /// The long-running agent: poll, check, flush, until `stop` turns true.
-pub async fn run_loop(client: Client, concurrency: usize, mut stop: watch::Receiver<bool>) -> Result<(), AgentError> {
+pub async fn run_loop(
+    client: Client,
+    concurrency: usize,
+    mut stop: watch::Receiver<bool>,
+) -> Result<(), AgentError> {
     let permits = Arc::new(Semaphore::new(concurrency.max(1)));
     let buffer = Buffer::new(MAX_BUFFER);
     let mut running: HashMap<i64, Running> = HashMap::new();
@@ -554,8 +580,13 @@ pub async fn run_loop(client: Client, concurrency: usize, mut stop: watch::Recei
     if !buffer.is_empty() {
         match tokio::time::timeout(Duration::from_secs(5), flush(&client, &buffer)).await {
             Ok(Ok(sent)) => tracing::info!(sent, "flushed results before exit"),
-            Ok(Err(err)) => tracing::warn!(%err, lost = buffer.len(), "could not flush results before exit"),
-            Err(_) => tracing::warn!(lost = buffer.len(), "timed out flushing results before exit"),
+            Ok(Err(err)) => {
+                tracing::warn!(%err, lost = buffer.len(), "could not flush results before exit")
+            }
+            Err(_) => tracing::warn!(
+                lost = buffer.len(),
+                "timed out flushing results before exit"
+            ),
         }
     }
     tracing::info!("agent stopped");
@@ -662,16 +693,24 @@ mod tests {
             buffer.push(item(2));
             let err = flush(&client, &buffer).await.unwrap_err();
             assert!(err.is_auth(), "{err}");
-            assert_eq!(buffer.len(), 2, "results must survive a refused token ({status})");
+            assert_eq!(
+                buffer.len(),
+                2,
+                "results must survive a refused token ({status})"
+            );
         }
     }
 
     #[tokio::test]
     async fn a_refused_token_at_startup_ends_the_loop_with_an_error() {
-        for (status, needle) in [(StatusCode::UNAUTHORIZED, "401"), (StatusCode::FORBIDDEN, "403")] {
+        for (status, needle) in [
+            (StatusCode::UNAUTHORIZED, "401"),
+            (StatusCode::FORBIDDEN, "403"),
+        ] {
             let client = refusing_server(status).await;
             let (_stop_tx, stop_rx) = watch::channel(false);
-            let result = tokio::time::timeout(Duration::from_secs(5), run_loop(client, 1, stop_rx)).await;
+            let result =
+                tokio::time::timeout(Duration::from_secs(5), run_loop(client, 1, stop_rx)).await;
             let err = result.expect("the agent must not hang").unwrap_err();
             assert!(err.to_string().contains(needle), "{err}");
         }
