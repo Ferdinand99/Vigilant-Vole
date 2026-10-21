@@ -67,3 +67,22 @@ fn splunk_on_call_splits_the_rest_endpoint_into_key_and_routing_key() {
         assert!(map_notification(&row).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn email_sms_and_push_providers_map_across() {
+    let (kind, c) = mapped(json!({"type": "SendGrid", "sendgridApiKey": "SG.k", "sendgridFromEmail": "from@example.com", "sendgridToEmail": "to@example.com"}));
+    assert_eq!((kind, c["api_key"].as_str(), c["from"].as_str(), c["to"].as_str()), ("sendgrid", Some("SG.k"), Some("from@example.com"), Some("to@example.com")));
+    let Value::Object(row) = json!({"type": "Brevo", "brevoApiKey": "k", "brevoFromEmail": "from@example.com", "brevoFromName": "Kuma", "brevoToEmail": "to@example.com", "brevoCcEmail": "cc@example.com"}) else { unreachable!() };
+    let (kind, config, warning) = map_notification(&row).unwrap();
+    assert_eq!((kind, config["from_name"].as_str()), ("brevo", Some("Kuma")));
+    assert!(warning.is_some_and(|w| w.contains("CC")));
+
+    let (kind, c) = mapped(json!({"type": "clicksendsms", "clicksendsmsLogin": "me", "clicksendsmsPassword": "k", "clicksendsmsToNumber": "+4712345678", "clicksendsmsSenderName": "Vole"}));
+    assert_eq!((kind, c["username"].as_str(), c["api_key"].as_str(), c["from"].as_str()), ("clicksend", Some("me"), Some("k"), Some("Vole")));
+    let (kind, c) = mapped(json!({"type": "Elks", "elksUsername": "u1", "elksAuthToken": "pw", "elksFromNumber": "Vole", "elksToNumber": "+46701234567"}));
+    assert_eq!((kind, c["password"].as_str(), c["to"].as_str()), ("elks", Some("pw"), Some("+46701234567")));
+    let (kind, c) = mapped(json!({"type": "gorush", "gorushServerURL": "http://gorush:8088", "gorushPlatform": "ios", "gorushDeviceToken": "tok", "gorushTopic": "com.example"}));
+    assert_eq!((kind, c["platform"].as_str(), c["tokens"].as_str(), c["topic"].as_str()), ("gorush", Some("ios"), Some("tok"), Some("com.example")));
+    let (_, c) = mapped(json!({"type": "gorush", "gorushServerURL": "http://gorush:8088", "gorushPlatform": "blackberry", "gorushDeviceToken": "tok"}));
+    assert_eq!(c["platform"], "android");
+}

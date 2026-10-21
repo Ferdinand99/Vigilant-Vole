@@ -577,3 +577,28 @@ async fn a_failing_on_call_tool_cannot_leak_its_key() {
     let err = send(&client(), &channel("goalert", json!({"server": base, "token": "GKEY-1234"})), &event(EventKind::Down)).await.unwrap_err();
     assert!(err.contains("403") && !err.contains("GKEY-1234"), "{err}");
 }
+
+#[tokio::test]
+async fn email_sms_and_push_apis_end_to_end_with_their_hosts_overridden() {
+    // Gorush is self-hosted, so it can be tested for real.
+    let (base, captured) = capture_server(StatusCode::OK, "{}").await;
+    send(&client(), &channel("gorush", json!({"server": base, "platform": "android", "tokens": "t1,t2"})), &event(EventKind::Down))
+        .await
+        .unwrap();
+    let reqs = captured.lock().unwrap().clone();
+    assert_eq!(reqs[0].uri.path(), "/api/push");
+    assert_eq!(reqs[0].json()["notifications"][0]["tokens"], json!(["t1", "t2"]));
+    // The hosted APIs are fixed; checking the requests they build is enough.
+    for (kind, config) in [
+        ("sendgrid", json!({"api_key": "K", "from": "a@b.example", "to": "c@d.example"})),
+        ("brevo", json!({"api_key": "K", "from": "a@b.example", "to": "c@d.example"})),
+        ("clicksend", json!({"username": "u", "api_key": "K", "to": "+4711111111"})),
+        ("elks", json!({"username": "u", "password": "p", "from": "Vole", "to": "+46701111111"})),
+    ] {
+        let p = provider(kind).unwrap();
+        let schema::Transport::Http(build) = p.transport else { panic!("{kind} is HTTP") };
+        let requests = build(&config, &event(EventKind::Down)).unwrap();
+        assert!(!requests.is_empty() && requests[0].url.starts_with("https://"), "{kind}");
+        assert!(schema::validate(p, &config).is_ok(), "{kind}");
+    }
+}

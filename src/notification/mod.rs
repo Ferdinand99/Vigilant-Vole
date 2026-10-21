@@ -12,6 +12,7 @@
 //! the request URL or any secret from the channel config.
 
 
+pub mod apis;
 pub mod apprise;
 pub mod bark;
 pub mod dingtalk;
@@ -93,6 +94,11 @@ pub const PROVIDERS: &[&ProviderSchema] = &[
     &oncall::GOALERT,
     &oncall::SPLUNK,
     &oncall::KEEP,
+    &apis::SENDGRID,
+    &apis::BREVO,
+    &apis::CLICKSEND,
+    &apis::ELKS,
+    &apis::GORUSH,
 ];
 
 /// Channel kinds this build can deliver to (derived from [`PROVIDERS`]).

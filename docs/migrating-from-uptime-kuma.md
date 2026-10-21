@@ -84,7 +84,9 @@ Afterwards:
 
 Discord, Slack, Telegram, Webhook, SMTP (→ Email), ntfy, Gotify, Pushover, Microsoft Teams, Matrix,
 Mattermost, Rocket.Chat, Google Chat, PagerDuty, Opsgenie, Pushbullet, Signal, Apprise, Home Assistant,
-Bark, Feishu, DingTalk (`dingding`), Twilio.
+Bark, Feishu, DingTalk (`dingding`), Twilio, Threema, Nextcloud Talk, WhatsApp (WAHA and Evolution API), SIGNL4,
+Squadcast, Grafana OnCall, GoAlert, Splunk On-Call (its REST endpoint is split into API key and routing key), Keep,
+SendGrid, Brevo (CC and BCC are not imported), ClickSend, 46elks and Gorush.
 
 Any other Kuma provider is skipped with the hint to use **Apprise** (90+ services through an Apprise API server)
 or a **Webhook** instead. Notes:

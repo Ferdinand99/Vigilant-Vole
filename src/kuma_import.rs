@@ -1431,6 +1431,47 @@ fn map_notification(c: &Row) -> Result<(&'static str, Row, Option<String>), Stri
             put(&mut out, "api_key", raw(c, &["webhookAPIKey"]));
             "keep"
         }
+        "sendgrid" => {
+            put(&mut out, "api_key", raw(c, &["sendgridApiKey"]));
+            put(&mut out, "from", s(c, &["sendgridFromEmail"]));
+            put(&mut out, "to", s(c, &["sendgridToEmail"]));
+            if s(c, &["sendgridCcEmail"]).is_some() || s(c, &["sendgridBccEmail"]).is_some() {
+                warning = Some("CC and BCC addresses aren’t imported; add them to “To” if they should still get the mail.".to_string());
+            }
+            "sendgrid"
+        }
+        "brevo" => {
+            put(&mut out, "api_key", raw(c, &["brevoApiKey"]));
+            put(&mut out, "from", s(c, &["brevoFromEmail"]));
+            put(&mut out, "from_name", s(c, &["brevoFromName"]));
+            put(&mut out, "to", s(c, &["brevoToEmail"]));
+            if s(c, &["brevoCcEmail"]).is_some() || s(c, &["brevoBccEmail"]).is_some() {
+                warning = Some("CC and BCC addresses aren’t imported; add them to “To” if they should still get the mail.".to_string());
+            }
+            "brevo"
+        }
+        "clicksendsms" => {
+            put(&mut out, "username", s(c, &["clicksendsmsLogin"]));
+            put(&mut out, "api_key", raw(c, &["clicksendsmsPassword"]));
+            put(&mut out, "to", s(c, &["clicksendsmsToNumber"]));
+            put(&mut out, "from", s(c, &["clicksendsmsSenderName"]));
+            "clicksend"
+        }
+        "elks" => {
+            put(&mut out, "username", s(c, &["elksUsername"]));
+            put(&mut out, "password", raw(c, &["elksAuthToken"]));
+            put(&mut out, "from", s(c, &["elksFromNumber"]));
+            put(&mut out, "to", s(c, &["elksToNumber"]));
+            "elks"
+        }
+        "gorush" => {
+            put(&mut out, "server", s(c, &["gorushServerURL"]));
+            let platform = s(c, &["gorushPlatform"]).filter(|p| ["ios", "android", "huawei"].contains(&p.as_str()));
+            out.insert("platform".into(), json!(platform.unwrap_or_else(|| "android".into())));
+            put(&mut out, "tokens", s(c, &["gorushDeviceToken"]));
+            put(&mut out, "topic", s(c, &["gorushTopic"]));
+            "gorush"
+        }
         "" => return Err("It has no provider type.".into()),
         other => return Err(format!("The “{other}” provider isn’t supported; Apprise or a webhook can usually reach it.")),
     };

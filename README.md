@@ -61,7 +61,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **MCP server** — connect your own Claude Code, Claude Desktop or any MCP client (`POST /mcp`, Streamable HTTP, or the `vigilant-vole mcp` stdio bridge) with an API token: a read token to ask what's down and why, a write token to pause monitors, post incident updates or start maintenance. Vigilant Vole never calls an AI itself; secrets are masked and nothing can delete data — see [docs/mcp.md](docs/mcp.md)
 
 **Alerting**
-- **24 notification providers**, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
+- **40 notification providers**, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
 - **Smart alerting** — retries with a separate retry interval, upside-down mode, reminders every N down checks, **escalation** channels after N minutes down, **flap detection**, and recovery messages that say **how long it was down**
 - **Multi-location remote agents** — run checks from other networks and **only alert when agents confirm the outage**
 
@@ -115,7 +115,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Game servers | ✅ a curated set: Valve/Source games (A2S, Steam type), Minecraft Java and Bedrock, Satisfactory, FiveM/RedM, Mumble | ✅ ~360 games via GameDig |
 | Real-browser (headless Chrome) monitor | ✅ via a remote browser (CDP) | ✅ (built-in Chromium or a remote browser) |
 | HTTP auth | Basic, OAuth2 client credentials, mTLS ✅ | Basic, NTLM, mTLS, OAuth2 client credentials ✅ |
-| Notification providers | 24 native + Apprise (90+ services) | **90+ native** ✅ |
+| Notification providers | 40 native + Apprise (90+ services) | **90+ native** ✅ |
 | Reminders (resend while down) | ✅ | ✅ |
 | Escalation channels after N minutes | ✅ | ❌ |
 | Flap detection | ✅ | ❌ |
@@ -306,11 +306,11 @@ Under **Settings → Notifications**, add channels and click **Send test**. Mark
 
 | Category | Providers |
 |---|---|
-| Chat | Discord (rich embeds), Slack (Block Kit), Microsoft Teams (Adaptive Cards), Google Chat, Mattermost, Rocket.Chat, Matrix, Webex, Feishu/Lark, DingTalk |
-| Messaging | Telegram, Signal (signal-cli REST API), SMS via Twilio |
-| Push | ntfy, Pushover, Gotify, Pushbullet, Bark |
-| Email | SMTP (STARTTLS / TLS / none, HTML + text) |
-| Incident management | PagerDuty (opens and resolves), Opsgenie (creates and closes) |
+| Chat | Discord (rich embeds), Slack (Block Kit), Microsoft Teams (Adaptive Cards), Google Chat, Mattermost, Rocket.Chat, Matrix, Webex, Feishu/Lark, DingTalk, Zulip, Nextcloud Talk |
+| Messaging | Telegram, Signal (signal-cli REST API), Threema Gateway, WhatsApp (WAHA, Evolution API), SMS via Twilio, ClickSend or 46elks |
+| Push | ntfy, Pushover, Gotify, Pushbullet, Bark, Gorush |
+| Email | SMTP (STARTTLS / TLS / none, HTML + text), SendGrid, Brevo |
+| Incident management | PagerDuty and Opsgenie (open and close), SIGNL4, Squadcast, Grafana OnCall, GoAlert, Splunk On-Call, Keep |
 | Anything else | Webhook (custom method, headers and `{{placeholder}}` body template), **Apprise** (90+ services through an [Apprise API](https://github.com/caronc/apprise-api) server), Home Assistant (any notify service) |
 
 Events: down, up (with downtime), reminder, escalation, certificate expiring, domain expiring, maintenance start/end, flapping. Alerts fire on settled transitions only — a monitor in its retry grace period stays *pending* and quiet. Secrets are never sent back to the browser in full.
@@ -519,7 +519,7 @@ src/
 ├── db/                  # SQLite (rusqlite + deadpool), migrations, queries, daily rollups
 ├── monitor/             # scheduler, pure alerting state machine, retention, engine metrics
 │   └── checkers/        # http, tcp, ping, tailscale, dns, docker, websocket, domain (RDAP), ntp, steam, game_server, tls, smtp, redis, postgres, mysql, mqtt, kafka, rabbitmq, grpc, grpc_keyword, radius, snmp, sqlserver, mongodb, real_browser (CDP)
-├── notification/        # 24 providers behind one schema-driven registry
+├── notification/        # 40 providers behind one schema-driven registry
 ├── agent/               # remote probe agent + its wire protocol
 ├── discovery.rs         # Docker label discovery
 ├── maintenance.rs       # maintenance window evaluation
@@ -545,7 +545,7 @@ Done:
 - [x] Multi-user, roles, 2FA, API tokens
 - [x] Tags and monitor groups
 - [x] Monitor pause/resume, clone, bulk actions
-- [x] 30 monitor types, 24 notification providers + Apprise
+- [x] 30 monitor types, 40 notification providers + Apprise
 - [x] Real-browser monitors with failure screenshots (external headless Chromium)
 - [x] Escalation, reminders, flap detection
 - [x] Remote agents with outage confirmation
