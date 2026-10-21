@@ -243,6 +243,9 @@ async fn download_database(
         now.minute()
     );
     tracing::info!(user = %user.username, "database backup downloaded");
+    // Fused: the compression layer polls the body again after its end, and
+    // an `unfold` stream panics when polled after finishing.
+    let stream = futures_util::StreamExt::fuse(stream);
     let mut res = HttpBody::from_stream(stream).into_response();
     let h = res.headers_mut();
     h.insert(

@@ -6,6 +6,8 @@
 //!   per monitor and overall)
 //! - Are probes getting slow? (`check_duration` histogram per monitor type,
 //!   `last_latency_ms` per monitor)
+//! - Is the scheduler keeping up? (`check_delay`: how long after its due time
+//!   a scheduled check got to start, including the wait for a probe slot)
 //! - Are alerts actually delivered? (`notifications` sent/failed per channel kind)
 //!
 //! Label sets are bounded: monitor ids, 13 monitor types, and channel kinds.
@@ -21,6 +23,9 @@ use crate::db::models::HeartbeatStatus;
 /// Histogram bucket upper bounds for check durations, in seconds.
 pub const DURATION_BUCKETS: [f64; 10] = [0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0];
 
+/// Histogram bucket upper bounds for check start delays, in seconds.
+pub const DELAY_BUCKETS: [f64; 10] = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0];
+
 /// Point-in-time copy of the engine's counters.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct EngineMetrics {
@@ -33,6 +38,8 @@ pub struct EngineMetrics {
     pub monitors: Vec<MonitorMetrics>,
     /// Ordered by monitor type.
     pub check_duration: Vec<DurationHistogram>,
+    /// How late scheduled checks started (all monitor types).
+    pub check_delay: DelayHistogram,
     /// Ordered by channel kind.
     pub notifications: Vec<NotificationMetrics>,
     /// Monitors with a running check loop / push watchdog.
@@ -58,6 +65,15 @@ pub struct DurationHistogram {
     pub count: u64,
 }
 
+/// Cumulative histogram of scheduled-check start delays.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct DelayHistogram {
+    /// `(upper bound in seconds, cumulative count)`, matching [`DELAY_BUCKETS`].
+    pub buckets: Vec<(f64, u64)>,
+    pub sum_seconds: f64,
+    pub count: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NotificationMetrics {
     pub kind: String,
@@ -71,6 +87,7 @@ struct Registry {
     checks_failed: u64,
     monitors: BTreeMap<i64, MonitorMetrics>,
     durations: BTreeMap<String, (Vec<u64>, f64, u64)>,
+    delay: ([u64; DELAY_BUCKETS.len()], f64, u64),
     notifications: BTreeMap<String, (u64, u64)>,
     running_tasks: usize,
 }
@@ -123,6 +140,21 @@ pub(crate) fn record_duration(monitor_type: &str, duration: Duration) {
     });
 }
 
+/// How long after its due time a scheduled check started its probe.
+pub(crate) fn record_delay(delay: Duration) {
+    let secs = delay.as_secs_f64();
+    with_registry(|r| {
+        let (buckets, sum, count) = &mut r.delay;
+        for (slot, bound) in buckets.iter_mut().zip(DELAY_BUCKETS) {
+            if secs <= bound {
+                *slot += 1;
+            }
+        }
+        *sum += secs;
+        *count += 1;
+    });
+}
+
 /// One delivery attempt to a channel of `kind`.
 pub(crate) fn record_notification(kind: &str, ok: bool) {
     with_registry(|r| {
@@ -166,6 +198,11 @@ pub(crate) fn snapshot() -> EngineMetrics {
                 count: *count,
             })
             .collect(),
+        check_delay: DelayHistogram {
+            buckets: DELAY_BUCKETS.iter().copied().zip(r.delay.0).collect(),
+            sum_seconds: r.delay.1,
+            count: r.delay.2,
+        },
         notifications: r
             .notifications
             .iter()
@@ -213,6 +250,26 @@ mod tests {
         let counts: Vec<u64> = h.buckets.iter().map(|b| b.1).collect();
         assert_eq!(counts, [0, 0, 1, 1, 1, 1, 1, 1, 1, 1]);
         assert_eq!(h.count, 1);
+    }
+
+    #[test]
+    fn delays_fill_cumulative_buckets() {
+        // Global registry: compare before/after instead of absolute counts.
+        let before = snapshot().check_delay;
+        record_delay(Duration::from_millis(300));
+        let after = snapshot().check_delay;
+        assert_eq!(after.buckets.len(), DELAY_BUCKETS.len());
+        let grew: Vec<u64> = after
+            .buckets
+            .iter()
+            .zip(&before.buckets)
+            .map(|(a, b)| a.1 - b.1)
+            .collect();
+        // Other tests may record delays concurrently: only lower bounds hold.
+        // 300 ms lands in every bucket from 0.5 s up.
+        assert!(grew[4..].iter().all(|n| *n >= 1), "{grew:?}");
+        assert!(after.count > before.count);
+        assert!(after.sum_seconds >= before.sum_seconds + 0.3 - 1e-9);
     }
 
     #[test]

@@ -39,3 +39,22 @@ jobs:
 
       - name: Unit tests
         run: cargo test --lib
+
+  upgrade:
+    # Databases saved by every release (tests/fixtures/upgrade, made by
+    # tools/upgrade-fixtures/generate.sh) upgraded with this build, plus the
+    # backup/restore and config round-trip drills. No network needed.
+    name: Upgrade and backup drills
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.99
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Upgrade from every release
+        run: cargo test --test upgrade
+
+      - name: Backup and restore drills
+        run: cargo test --test backup_restore

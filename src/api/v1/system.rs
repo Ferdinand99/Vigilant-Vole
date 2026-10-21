@@ -51,7 +51,7 @@ async fn health(
 ) -> V1Result<Response> {
     let counts = state
         .with_conn(|c| {
-            let monitors = crate::db::monitors::list_monitors_with_status(c)?;
+            let monitors = crate::db::monitors::list_monitors_with_latest(c)?;
             let mut by_status = std::collections::BTreeMap::<&str, i64>::new();
             for row in &monitors {
                 let key = if !row.monitor.active {

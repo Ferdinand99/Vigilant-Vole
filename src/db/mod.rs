@@ -1,12 +1,12 @@
 //! Database plumbing: connection pool, tracked migrations, and a small
 //! `interact` helper so callers don't repeat the pool/interact/error dance.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use deadpool_sqlite::{
     Config as PoolConfig, Hook, HookError, InteractError, Pool, PoolError, Runtime,
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use rust_embed::Embed;
 
 pub mod agents;
@@ -33,9 +33,15 @@ struct Migrations;
 /// Applied to every new pooled connection. `foreign_keys` is a per-connection
 /// setting; rusqlite's bundled SQLite defaults it on, but set it explicitly so
 /// ON DELETE CASCADE / SET NULL never silently depend on build flags.
+///
+/// `journal_size_limit`: after a checkpoint the WAL file is cut back to 64 MiB.
+/// Without it the WAL keeps the size of its biggest burst for good; the first
+/// retention run after lowering the retention (millions of deletes) left a
+/// 650 MB WAL next to a 660 MB database in the soak test.
 const CONNECTION_PRAGMAS: &str = "PRAGMA foreign_keys = ON;
      PRAGMA busy_timeout = 5000;
-     PRAGMA synchronous = NORMAL;";
+     PRAGMA synchronous = NORMAL;
+     PRAGMA journal_size_limit = 67108864;";
 
 /// Marker a migration file may contain (anywhere, conventionally line 1) to run
 /// with foreign key enforcement disabled — required for the SQLite
@@ -72,6 +78,71 @@ pub enum MigrationError {
     ForeignKeyViolations { name: String, violations: String },
     #[error("pre-migration backup failed: {0}")]
     Backup(String),
+    #[error("can't open the database: {0}")]
+    Unavailable(String),
+    /// The database records migrations this build doesn't have: it was
+    /// opened by a newer release. Running against it could misread or
+    /// damage data, so startup stops instead.
+    #[error(
+        "the database was created by a newer Vigilant Vole (schema {schema}); this version only knows schemas up to {known}. \
+         Upgrade Vigilant Vole again, or restore the backup made before that upgrade from {backups}"
+    )]
+    NewerSchema {
+        /// The newest migration the database has, without `.sql`.
+        schema: String,
+        /// The newest migration this build has, without `.sql`.
+        known: String,
+        /// Where pre-migration backups are kept.
+        backups: String,
+    },
+}
+
+/// A failed startup migration, with where the database was left and where
+/// the copy taken before migrating is.
+#[derive(Debug, thiserror::Error)]
+#[error("database migration failed: {error}{}", recovery_hint(.at, .backup))]
+pub struct UpgradeError {
+    #[source]
+    pub error: Box<MigrationError>,
+    /// The last migration that is applied (each one commits on its own).
+    pub at: Option<String>,
+    /// The copy written before the first pending migration ran.
+    pub backup: Option<PathBuf>,
+}
+
+impl UpgradeError {
+    fn new(error: MigrationError, at: Option<String>, backup: Option<PathBuf>) -> Self {
+        UpgradeError {
+            error: Box::new(error),
+            at,
+            backup,
+        }
+    }
+}
+
+fn recovery_hint(at: &Option<String>, backup: &Option<PathBuf>) -> String {
+    let mut hint = String::new();
+    if let Some(at) = at {
+        hint.push_str(&format!(
+            ". Nothing of the failed migration was kept; the database is at {at}"
+        ));
+    }
+    if let Some(backup) = backup {
+        hint.push_str(&format!(
+            ". The copy made before upgrading is {}",
+            backup.display()
+        ));
+    }
+    hint
+}
+
+/// What [`migrate`] did.
+#[derive(Debug, Default)]
+pub struct MigrationReport {
+    /// Migrations applied, in order.
+    pub applied: Vec<String>,
+    /// The pre-migration copy, when one was needed.
+    pub backup: Option<PathBuf>,
 }
 
 impl From<InteractError> for DbError {
@@ -80,16 +151,44 @@ impl From<InteractError> for DbError {
     }
 }
 
+/// Connections in the check engine's own pool ([`build_engine_pool`]).
+const ENGINE_POOL_SIZE: usize = 4;
+
 pub fn build_pool(db_path: &Path) -> Pool {
-    PoolConfig::new(db_path)
+    pool_with(db_path, None)
+}
+
+/// A separate pool for the check engine (heartbeats, alert state,
+/// notifications). With one shared pool, a busy web UI (dashboards, status
+/// pages, API clients) queues every heartbeat write behind its own reads and
+/// checks fall minutes behind; with its own connections the engine only
+/// competes for CPU and the write lock.
+pub fn build_engine_pool(db_path: &Path) -> Pool {
+    pool_with(db_path, Some(ENGINE_POOL_SIZE))
+}
+
+fn pool_with(db_path: &Path, max_size: Option<usize>) -> Pool {
+    let builder = PoolConfig::new(db_path)
         .builder(Runtime::Tokio1)
-        .expect("invalid sqlite pool config")
+        .expect("invalid sqlite pool config");
+    let builder = match max_size {
+        Some(n) => builder.max_size(n),
+        None => builder,
+    };
+    builder
         .post_create(Hook::async_fn(|conn, _| {
             Box::pin(async move {
-                conn.interact(|c| c.execute_batch(CONNECTION_PRAGMAS))
-                    .await
-                    .map_err(|e| HookError::message(e.to_string()))?
-                    .map_err(HookError::Backend)
+                conn.interact(|c| {
+                    // Every transaction here writes. Taking the write lock at
+                    // BEGIN makes a busy writer wait (busy_timeout) instead of
+                    // failing with "database is locked" when another
+                    // connection committed between its first read and write.
+                    c.set_transaction_behavior(TransactionBehavior::Immediate);
+                    c.execute_batch(CONNECTION_PRAGMAS)
+                })
+                .await
+                .map_err(|e| HookError::message(e.to_string()))?
+                .map_err(HookError::Backend)
             })
         }))
         .build()
@@ -110,50 +209,115 @@ where
     Ok(conn.interact(f).await??)
 }
 
-/// Apply all pending embedded migrations. Panics on failure: the server must
-/// not start against a half-migrated schema.
+/// Apply all pending embedded migrations. Panics on failure (tests and
+/// tools); the server uses [`migrate`] and reports the error instead.
+pub async fn run_migrations(pool: &Pool, backup_dir: &Path) {
+    if let Err(e) = migrate(pool, backup_dir).await {
+        panic!("{e}");
+    }
+}
+
+/// Apply all pending embedded migrations; the server must not start when
+/// this fails.
 ///
 /// Before migrating a database that already holds a schema, a consistent copy
 /// is written to `backup_dir` (`VACUUM INTO`); restoring that file is the
-/// rollback path, since SQLite migrations here are forward-only.
-pub async fn run_migrations(pool: &Pool, backup_dir: &Path) {
+/// rollback path, since SQLite migrations here are forward-only. Each
+/// migration commits on its own, so a failure leaves the database at the last
+/// migration that succeeded (never half-way through one). A database from a
+/// newer release is refused before anything is written.
+pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, UpgradeError> {
     let backup_dir = backup_dir.to_path_buf();
-    let conn = pool.get().await.expect("failed to get db connection");
-    conn.interact(move |conn| -> Result<(), MigrationError> {
-        // WAL is persistent per database file; set it once here rather than per connection.
-        conn.pragma_update(None, "journal_mode", "WAL")?;
-        let existing = prepare_tracking(conn)?;
-        let pending = pending_migrations(conn)?;
-        if existing && !pending.is_empty() {
-            let first = pending
-                .first()
-                .map(|(name, _)| name.trim_end_matches(".sql"))
-                .unwrap_or("");
-            backup_before_migration(conn, &backup_dir, first)?;
+    let unavailable = |e: String| UpgradeError::new(MigrationError::Unavailable(e), None, None);
+    let conn = pool.get().await.map_err(|e| unavailable(e.to_string()))?;
+    conn.interact(move |conn| {
+        let mut report = MigrationReport::default();
+        let started = (|| -> Result<(), MigrationError> {
+            // WAL is persistent per database file; set it once here rather than per connection.
+            conn.pragma_update(None, "journal_mode", "WAL")?;
+            let existing = prepare_tracking(conn)?;
+            refuse_newer_schema(conn, &backup_dir.display().to_string())?;
+            let pending = pending_migrations(conn)?;
+            if existing && !pending.is_empty() {
+                let first = pending
+                    .first()
+                    .map(|(name, _)| name.trim_end_matches(".sql"))
+                    .unwrap_or("");
+                report.backup = Some(backup_before_migration(conn, &backup_dir, first)?);
+            }
+            Ok(())
+        })();
+        if let Err(error) = started {
+            return Err(UpgradeError::new(error, None, report.backup));
         }
-        apply_migrations(conn)?;
-        Ok(())
+        match apply_migrations(conn) {
+            Ok(applied) => {
+                report.applied = applied;
+                Ok(report)
+            }
+            Err(error) => Err(UpgradeError::new(
+                error,
+                latest_applied(conn).ok().flatten(),
+                report.backup,
+            )),
+        }
     })
     .await
-    .expect("migration task panicked")
-    .unwrap_or_else(|e| panic!("database migration failed: {e}"));
+    .map_err(|e| unavailable(e.to_string()))?
+}
+
+/// The newest migration recorded in `schema_migrations`.
+fn latest_applied(conn: &Connection) -> rusqlite::Result<Option<String>> {
+    conn.query_row("SELECT MAX(name) FROM schema_migrations", [], |r| r.get(0))
+}
+
+/// Refuses databases that record migrations this build doesn't embed (a
+/// newer release has opened them). `backups` names the backup folder in the
+/// message.
+fn refuse_newer_schema(conn: &Connection, backups: &str) -> Result<(), MigrationError> {
+    let known: Vec<String> = embedded_migrations()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    let mut stmt = conn.prepare("SELECT name FROM schema_migrations ORDER BY name")?;
+    let applied = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let Some(newest) = applied.iter().rev().find(|name| !known.contains(name)) else {
+        return Ok(());
+    };
+    Err(MigrationError::NewerSchema {
+        schema: newest.trim_end_matches(".sql").to_string(),
+        known: known
+            .last()
+            .map(|n| n.trim_end_matches(".sql").to_string())
+            .unwrap_or_default(),
+        backups: backups.to_string(),
+    })
 }
 
 fn backup_before_migration(
     conn: &Connection,
     dir: &Path,
     label: &str,
-) -> Result<(), MigrationError> {
+) -> Result<PathBuf, MigrationError> {
     std::fs::create_dir_all(dir).map_err(|e| MigrationError::Backup(e.to_string()))?;
     let stamp = time::OffsetDateTime::now_utc().unix_timestamp();
-    let path = dir.join(format!("vigilant-vole-before-{label}-{stamp}.db"));
+    // A start that fails and is retried within the same second (a restart
+    // loop) must not trip over the previous attempt's copy.
+    let mut path = dir.join(format!("vigilant-vole-before-{label}-{stamp}.db"));
+    let mut attempt = 1;
+    while path.exists() {
+        attempt += 1;
+        path = dir.join(format!("vigilant-vole-before-{label}-{stamp}-{attempt}.db"));
+    }
     let path_str = path.to_str().ok_or_else(|| {
         MigrationError::Backup(format!("non-UTF-8 backup path {}", path.display()))
     })?;
     conn.execute("VACUUM INTO ?1", params![path_str])
         .map_err(|e| MigrationError::Backup(e.to_string()))?;
     tracing::info!(path = %path.display(), "backed up database before migrating");
-    Ok(())
+    Ok(path)
 }
 
 /// Every embedded migration, sorted by file name.
@@ -177,6 +341,7 @@ fn embedded_migrations() -> Vec<(String, String)> {
 /// recorded in `schema_migrations`. Returns the names applied in this call.
 pub fn apply_migrations(conn: &mut Connection) -> Result<Vec<String>, MigrationError> {
     prepare_tracking(conn)?;
+    refuse_newer_schema(conn, "DATA_DIR/backups")?;
     let mut applied = Vec::new();
     for (name, sql) in pending_migrations(conn)? {
         apply_one(conn, &name, &sql)?;

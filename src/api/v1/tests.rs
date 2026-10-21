@@ -1599,6 +1599,29 @@ async fn docs_and_backup_pages_render_for_the_right_roles() {
     assert!(kuma_import_magic(&bytes));
 }
 
+/// Browsers ask for gzip, so the snapshot goes through the compression
+/// layer, which polls the body once more after its end. The download must
+/// still finish (it used to panic there and cut the file short).
+#[tokio::test]
+async fn database_backup_downloads_completely_when_compressed() {
+    let h = harness().await;
+    let mut admin = Browser::login(&h, "admin").await;
+    let res = admin
+        .send(
+            Request::builder()
+                .uri("/settings/backup/database")
+                .header(header::ACCEPT_ENCODING, "gzip"),
+            ReqBody::empty(),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()[header::CONTENT_ENCODING], "gzip");
+    let compressed = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    // A complete gzip member ends with the CRC and size trailer after a
+    // final deflate block; a cut-off stream is shorter than the header.
+    assert!(compressed.len() > 18 && compressed.starts_with(&[0x1f, 0x8b]));
+}
+
 #[tokio::test]
 async fn markdown_reference_follows_the_docs_page_access_and_caches() {
     let h = harness().await;

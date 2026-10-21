@@ -503,6 +503,32 @@ pub fn render(input: &MetricsInput) -> String {
     }
 
     e.family(
+        "vigilant_check_delay_seconds",
+        "histogram",
+        "How long after its due time a scheduled check started its probe (timer lag plus the wait for a probe slot).",
+    );
+    let delay = &eng.check_delay;
+    for (bound, count) in &delay.buckets {
+        let le = format_value(*bound);
+        e.sample(
+            "vigilant_check_delay_seconds_bucket",
+            &[("le", &le)],
+            *count as f64,
+        );
+    }
+    e.sample(
+        "vigilant_check_delay_seconds_bucket",
+        &[("le", "+Inf")],
+        delay.count as f64,
+    );
+    e.sample("vigilant_check_delay_seconds_sum", &[], delay.sum_seconds);
+    e.sample(
+        "vigilant_check_delay_seconds_count",
+        &[],
+        delay.count as f64,
+    );
+
+    e.family(
         "vigilant_notifications_sent_total",
         "counter",
         "Notifications delivered by channel kind since start.",
@@ -707,7 +733,8 @@ fn load_snapshot(conn: &mut Connection) -> rusqlite::Result<DbSnapshot> {
             .optional()?;
         let (uptime_24h, uptime_30d) = if m.active {
             (
-                rollups::uptime_pct(conn, m.id, 1)?,
+                // Shared with the dashboard; a minute old at most.
+                rollups::uptime_24h_cached(conn, m.id)?,
                 rollups::uptime_pct(conn, m.id, 30)?,
             )
         } else {
@@ -951,7 +978,7 @@ async fn sync_now(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::monitor::{DurationHistogram, MonitorMetrics, NotificationMetrics};
+    use crate::monitor::{DelayHistogram, DurationHistogram, MonitorMetrics, NotificationMetrics};
 
     #[test]
     fn label_values_are_escaped() {
@@ -1053,6 +1080,11 @@ mod tests {
                     sum_seconds: 1.5,
                     count: 4,
                 }],
+                check_delay: DelayHistogram {
+                    buckets: vec![(0.1, 5), (1.0, 6)],
+                    sum_seconds: 2.25,
+                    count: 7,
+                },
                 notifications: vec![NotificationMetrics {
                     kind: "discord".into(),
                     sent: 3,
@@ -1094,6 +1126,10 @@ mod tests {
         assert!(has(
             "vigilant_check_duration_seconds_sum{monitor_type=\"http\"} 1.5"
         ));
+        assert!(has("vigilant_check_delay_seconds_bucket{le=\"0.1\"} 5"));
+        assert!(has("vigilant_check_delay_seconds_bucket{le=\"+Inf\"} 7"));
+        assert!(has("vigilant_check_delay_seconds_sum 2.25"));
+        assert!(has("vigilant_check_delay_seconds_count 7"));
         assert!(has(
             "vigilant_notifications_failed_total{kind=\"discord\"} 1"
         ));

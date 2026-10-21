@@ -29,6 +29,7 @@ site/
 docker-compose*.yml
 Dockerfile
 .dockerignore
+tools/
 
 # Test suites and their artifacts
 e2e/

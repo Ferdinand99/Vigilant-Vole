@@ -20,6 +20,8 @@
 //! `maintenance` are excluded from the denominator. No up/down data → `None`.
 
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -268,17 +270,80 @@ pub fn uptime_pct_at(
         down += d.unwrap_or(0);
     }
     // Raw part: everything in the window that the rolled-up range above did
-    // not cover (the partial first day and every day after the watermark).
-    let (u, d): (Option<i64>, Option<i64>) = conn.query_row(
-        "SELECT SUM(status = 'up'), SUM(status = 'down') FROM heartbeats
-         WHERE monitor_id = ?1 AND agent_id IS NULL AND checked_at >= ?2 AND checked_at <= ?3
-           AND (?4 IS NULL OR checked_at < ?5 OR checked_at >= date(?4, '+1 day'))",
-        params![monitor_id, window_start, now, wm, first_full_day],
+    // not cover: the partial first day and every day after the watermark. As
+    // two index ranges, so the rolled-up days in between are never read (one
+    // range with a filter read every retained heartbeat of the window: at 90
+    // days, ~35x slower per monitor, for every status page and scrape).
+    let (end, after_wm): (String, Option<String>) = conn.query_row(
+        "SELECT datetime(?1, '+1 second'), date(?2, '+1 day')",
+        params![now, wm],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
-    up += u.unwrap_or(0);
-    down += d.unwrap_or(0);
+    let ranges = match after_wm {
+        Some(after_wm) if after_wm > first_full_day => {
+            vec![(window_start, first_full_day), (after_wm, end)]
+        }
+        _ => vec![(window_start, end)],
+    };
+    let mut stmt = conn.prepare_cached(RAW_UP_DOWN)?;
+    for (from, until) in &ranges {
+        let (u, d): (Option<i64>, Option<i64>) = stmt
+            .query_row(params![monitor_id, from, until], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?;
+        up += u.unwrap_or(0);
+        down += d.unwrap_or(0);
+    }
     Ok(pct(up, down))
+}
+
+/// Up and down counts of a monitor's local heartbeats in `[?2, ?3)`.
+const RAW_UP_DOWN: &str = "SELECT SUM(status = 'up'), SUM(status = 'down') FROM heartbeats
+     WHERE monitor_id = ?1 AND agent_id IS NULL AND checked_at >= ?2 AND checked_at < ?3";
+
+/// How long a monitor's 24 h uptime is reused by [`uptime_24h_cached`].
+const UPTIME_24H_TTL: Duration = Duration::from_secs(60);
+/// More cached entries than this (many databases in one process) and the
+/// cache starts over.
+const UPTIME_24H_CACHE_MAX: usize = 50_000;
+
+/// (database file, monitor id) â†’ (computed at, uptime).
+type UptimeCache = HashMap<(String, i64), (Instant, f64)>;
+
+static UPTIME_24H: LazyLock<Mutex<UptimeCache>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// [`uptime_pct`] over one day, reused for up to [`UPTIME_24H_TTL`]. The
+/// dashboard (every page load and every live update of every open
+/// dashboard) shows it for every monitor, and computing it reads every
+/// heartbeat of the last day: at a thousand monitors that is most of the
+/// render. A minute of staleness doesn't move a 24 h ratio. Monitors without
+/// data yet (`None`) are not cached, so a new monitor shows its uptime
+/// after its first check. In-memory databases (tests) are never cached.
+pub fn uptime_24h_cached(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Option<f64>> {
+    let Some(path) = conn.path().filter(|p| !p.is_empty()) else {
+        return uptime_pct(conn, monitor_id, 1);
+    };
+    let key = (path.to_owned(), monitor_id);
+    let lock = || UPTIME_24H.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((at, pct)) = lock().get(&key)
+        && at.elapsed() < UPTIME_24H_TTL
+    {
+        return Ok(Some(*pct));
+    }
+    let fresh = uptime_pct(conn, monitor_id, 1)?;
+    let mut cache = lock();
+    match fresh {
+        Some(pct) => {
+            if cache.len() >= UPTIME_24H_CACHE_MAX {
+                cache.clear();
+            }
+            cache.insert(key, (Instant::now(), pct));
+        }
+        None => {
+            cache.remove(&key);
+        }
+    }
+    Ok(fresh)
 }
 
 fn now_text(conn: &Connection) -> rusqlite::Result<String> {
@@ -508,5 +573,79 @@ mod tests {
         beat(&conn, id, "down", None, "2026-03-10 11:00:00");
         rollup(&conn, NOW).unwrap(); // 03-05 now in both tables
         assert_eq!(uptime_pct_at(&conn, id, 30, NOW).unwrap(), Some(50.0));
+    }
+
+    #[test]
+    fn long_range_uptime_skips_rolled_up_raw_rows() {
+        let conn = test_conn();
+        let id = monitor(&conn);
+        // 30 days of hourly heartbeats, rolled up (watermark = yesterday).
+        for day in 0..30 {
+            for hour in 0..24 {
+                conn.execute(
+                    "INSERT INTO heartbeats (monitor_id, status, checked_at)
+                     VALUES (?1, 'up', datetime(?2, ?3, ?4))",
+                    params![id, NOW, format!("-{day} days"), format!("-{hour} hours")],
+                )
+                .unwrap();
+            }
+        }
+        rollup(&conn, NOW).unwrap();
+        let steps = |conn: &Connection| {
+            conn.prepare_cached(RAW_UP_DOWN)
+                .unwrap()
+                .get_status(rusqlite::StatementStatus::VmStep)
+        };
+        let before = steps(&conn);
+        assert_eq!(uptime_pct_at(&conn, id, 30, NOW).unwrap(), Some(100.0));
+        // Only the partial first day and today are read from `heartbeats`
+        // (~2 × 24 rows), not the ~700 rolled-up rows in between.
+        let read = steps(&conn) - before;
+        assert!(read < 400, "read {read} VM steps for the raw part");
+    }
+
+    fn live_beat(conn: &Connection, id: i64, status: &str) {
+        conn.execute(
+            "INSERT INTO heartbeats (monitor_id, status) VALUES (?1, ?2)",
+            params![id, status],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn cached_24h_uptime_is_reused_but_new_monitors_show_up_at_once() {
+        let path = std::env::temp_dir().join(format!(
+            "vv-uptime-cache-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let mut conn = Connection::open(&path).unwrap();
+        crate::db::apply_migrations(&mut conn).unwrap();
+        let id = monitor(&conn);
+        // No data yet: not cached, so the first heartbeat counts right away.
+        assert_eq!(uptime_24h_cached(&conn, id).unwrap(), None);
+        live_beat(&conn, id, "up");
+        assert_eq!(uptime_24h_cached(&conn, id).unwrap(), Some(100.0));
+        // Within the TTL the cached value stands; the uncached one moves.
+        live_beat(&conn, id, "down");
+        assert_eq!(uptime_24h_cached(&conn, id).unwrap(), Some(100.0));
+        assert_eq!(uptime_pct(&conn, id, 1).unwrap(), Some(50.0));
+        drop(conn);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn in_memory_databases_are_never_cached() {
+        let conn = test_conn();
+        let id = monitor(&conn);
+        live_beat(&conn, id, "up");
+        assert_eq!(uptime_24h_cached(&conn, id).unwrap(), Some(100.0));
+        live_beat(&conn, id, "down");
+        assert_eq!(uptime_24h_cached(&conn, id).unwrap(), Some(50.0));
     }
 }
