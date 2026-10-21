@@ -89,10 +89,7 @@ impl AppState {
         F: FnOnce(&mut rusqlite::Connection) -> rusqlite::Result<T> + Send + 'static,
         T: Send + 'static,
     {
-        // The closure runs on a blocking thread: carry the request's language
-        // along so labels built there (status pages, pickers) are translated.
-        let lang = crate::i18n::current();
-        Ok(crate::db::interact(&self.db, move |c| crate::i18n::sync_scope(lang, || f(c))).await?)
+        crate::kit::state::with_conn(&self.db, f).await
     }
 
     /// Current settings (one small query).

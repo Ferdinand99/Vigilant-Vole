@@ -128,12 +128,7 @@ fn apply(s: &mut Settings, key: &str, value: String) {
     }
 }
 
-pub fn parse_bool(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "on" | "yes"
-    )
-}
+pub use crate::kit::db::settings::parse_bool;
 
 #[cfg(test)]
 mod tests {

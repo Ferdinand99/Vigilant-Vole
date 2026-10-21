@@ -13,34 +13,14 @@
 use axum::http::{HeaderMap, Method};
 use url::Url;
 
-/// Prefixes of paths that never rely on the session cookie.
-const EXEMPT_PREFIXES: &[&str] = &[
-    "/api/push",
-    "/api/agent",
-    "/api/v1",
-    "/api/badge",
-    "/metrics",
-    "/mcp",
-];
-
-/// Is `path` one of the token/public machine endpoints?
+/// Is `path` one of the token/public machine endpoints? The product lists
+/// them in its [`KitConfig`](crate::kit::config::KitConfig).
 pub fn is_exempt_path(path: &str) -> bool {
-    EXEMPT_PREFIXES.iter().any(|prefix| {
+    let cfg = crate::kit::config::get();
+    cfg.csrf_exempt_prefixes.iter().any(|prefix| {
         path.strip_prefix(prefix)
             .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-    })
-}
-
-/// `/status/{slug}/subscribe/unsubscribe/{token}`: mail clients POST this
-/// link from the `List-Unsubscribe` header (RFC 8058 one-click) without an
-/// `Origin` or `Referer`. The secret token in the path is the proof, and the
-/// session cookie plays no part.
-fn is_unsubscribe_link(path: &str) -> bool {
-    let parts: Vec<&str> = path.split('/').collect();
-    matches!(
-        parts.as_slice(),
-        ["", "status", slug, "subscribe", "unsubscribe", token] if !slug.is_empty() && !token.is_empty()
-    )
+    }) || (cfg.csrf_exempt_path)(path)
 }
 
 fn is_safe_method(method: &Method) -> bool {
@@ -86,7 +66,7 @@ pub fn is_allowed(
     trust_proxy: bool,
     base_url: Option<&str>,
 ) -> bool {
-    if is_safe_method(method) || is_exempt_path(path) || is_unsubscribe_link(path) {
+    if is_safe_method(method) || is_exempt_path(path) {
         return true;
     }
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());

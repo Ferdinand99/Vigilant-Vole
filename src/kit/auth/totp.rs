@@ -11,7 +11,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use totp_rs::{Algorithm, Builder, Secret, Totp};
 
-use crate::api::ApiError;
+use crate::kit::http::ApiError;
 
 pub const DIGITS: usize = 6;
 pub const STEP_SECS: u64 = 30;
@@ -32,7 +32,7 @@ fn label_part(s: &str) -> String {
     let cleaned: String = s.chars().map(|c| if c == ':' { '-' } else { c }).collect();
     let trimmed = cleaned.trim();
     if trimmed.is_empty() {
-        "Vigilant Vole".into()
+        crate::kit::config::get().product.into()
     } else {
         trimmed.to_string()
     }

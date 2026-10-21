@@ -1,6 +1,6 @@
-//! `vv_…` API tokens: generation, hashing, and reading them from requests.
+//! API tokens (`<prefix>…`): generation, hashing, and reading them from requests.
 //!
-//! A token is `vv_` + 43 base62 characters (≈256 bits from the OS-seeded
+//! A token is the product's prefix + 43 base62 characters (≈256 bits from the OS-seeded
 //! CSPRNG). Only its SHA-256 is stored, which is fine for a random secret of
 //! that size (no need for a slow KDF), and lets us look it up by hash.
 
@@ -9,24 +9,27 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use sha2::{Digest, Sha256};
 
-pub const TOKEN_PREFIX: &str = "vv_";
 /// 62^43 > 2^256.
 pub const TOKEN_BODY_LEN: usize = 43;
-/// Characters kept for display ("vv_AbC123…").
-const DISPLAY_LEN: usize = TOKEN_PREFIX.len() + 6;
+/// Characters kept after the prefix for display ("vv_AbC123…").
+const DISPLAY_BODY_LEN: usize = 6;
+
+fn prefix() -> &'static str {
+    crate::kit::config::get().token_prefix
+}
 
 const BASE62: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /// A new random token (show it once, store [`hash`]).
 pub fn generate() -> String {
     // Rejection sampling: 248 = 4 × 62, so `b % 62` is uniform for b < 248.
-    let mut out = String::with_capacity(TOKEN_PREFIX.len() + TOKEN_BODY_LEN);
-    out.push_str(TOKEN_PREFIX);
+    let mut out = String::with_capacity(prefix().len() + TOKEN_BODY_LEN);
+    out.push_str(prefix());
     let mut buf = [0u8; 64];
-    while out.len() < TOKEN_PREFIX.len() + TOKEN_BODY_LEN {
+    while out.len() < prefix().len() + TOKEN_BODY_LEN {
         rand::fill(&mut buf);
         for b in buf {
-            if out.len() == TOKEN_PREFIX.len() + TOKEN_BODY_LEN {
+            if out.len() == prefix().len() + TOKEN_BODY_LEN {
                 break;
             }
             if b < 248 {
@@ -39,7 +42,7 @@ pub fn generate() -> String {
 
 /// Cheap shape check before touching the database.
 pub fn is_well_formed(token: &str) -> bool {
-    token.strip_prefix(TOKEN_PREFIX).is_some_and(|body| {
+    token.strip_prefix(prefix()).is_some_and(|body| {
         body.len() == TOKEN_BODY_LEN && body.bytes().all(|b| b.is_ascii_alphanumeric())
     })
 }
@@ -51,7 +54,10 @@ pub fn hash(token: &str) -> String {
 
 /// The visible start of a token for lists.
 pub fn display_prefix(token: &str) -> String {
-    token.chars().take(DISPLAY_LEN).collect()
+    token
+        .chars()
+        .take(prefix().len() + DISPLAY_BODY_LEN)
+        .collect()
 }
 
 /// Credentials from `Authorization: Bearer <token>` or, Kuma/Prometheus-style,

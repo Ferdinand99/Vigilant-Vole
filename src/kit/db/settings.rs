@@ -44,3 +44,19 @@ pub fn set_opt(conn: &Connection, key: &str, value: Option<&str>) -> rusqlite::R
         None => delete(conn, key),
     }
 }
+
+/// `"1"`, `"true"`, `"on"` and `"yes"` (any case) are true; anything else is not.
+pub fn parse_bool(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "on" | "yes"
+    )
+}
+
+/// The configured public URL without trailing slash, if one is set.
+pub fn base_url(conn: &Connection) -> rusqlite::Result<Option<String>> {
+    Ok(get(conn, BASE_URL)?.and_then(|v| {
+        let t = v.trim();
+        (!t.is_empty()).then(|| t.trim_end_matches('/').to_string())
+    }))
+}

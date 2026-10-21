@@ -3,30 +3,33 @@
 //!
 //! Public helpers for other modules:
 //! - [`session_user`]: the logged-in user on a public page (cookie only)
-//! - [`authenticate_token`]: resolve a `vv_…` API token to a (scope-capped) user
+//! - [`authenticate_token`]: resolve an API token to a (scope-capped) user
 //! - [`authenticate_headers`]: same, reading `Authorization: Bearer|Basic`
 
 use crate::i18n::Tr as _;
-use std::net::SocketAddr;
 use std::time::Instant;
 
 use askama::Template;
 use axum::Router;
-use axum::extract::{ConnectInfo, FromRequestParts, Query, Request, State};
-use axum::http::request::Parts;
-use axum::http::{HeaderMap, Method, StatusCode, header};
-use axum::middleware::Next;
+use axum::extract::{Query, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
 use super::{ApiError, ApiResult, AppState, HtmlTemplate, flash};
-use crate::auth::session::{self, PENDING_2FA_COOKIE, PendingLogin, SessionClaims};
-use crate::auth::{self, AuthMethod, CurrentUser, SESSION_COOKIE, csrf, rate_limit, tokens, totp};
+use crate::auth::session::{self, PENDING_2FA_COOKIE, PendingLogin};
+#[cfg(test)]
+use crate::auth::tokens;
+use crate::auth::{self, AuthMethod, CurrentUser, SESSION_COOKIE, rate_limit, totp};
+#[cfg(test)]
 use crate::db::api_tokens as db_tokens;
 use crate::db::settings as db_settings;
 use crate::db::users::{self as db_users, User};
+use crate::kit::auth::guard;
+pub use crate::kit::auth::guard::{PeerAddr, csrf_guard, login_jar, require_auth, secure_cookies};
+use crate::kit::state::Core;
 
 /// Protected auth routes: none (2FA management lives under `/settings/security`).
 pub fn router() -> Router<AppState> {
@@ -45,38 +48,47 @@ pub fn public_router() -> Router<AppState> {
 // Small extractors / helpers
 // ---------------------------------------------------------------------------
 
-/// TCP peer address when the server was started with connect info.
-pub struct PeerAddr(pub Option<SocketAddr>);
-
-impl<S: Send + Sync> FromRequestParts<S> for PeerAddr {
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        Ok(PeerAddr(
-            parts
-                .extensions
-                .get::<ConnectInfo<SocketAddr>>()
-                .map(|ci| ci.0),
-        ))
-    }
-}
-
-/// Should cookies set in response to this request carry `Secure`?
-pub fn secure_cookies(headers: &HeaderMap) -> bool {
-    session::is_https(headers, session::trust_proxy())
-}
-
-fn current_user_from(user: &User) -> CurrentUser {
-    CurrentUser {
-        id: user.id,
-        username: user.username.clone(),
-        display_name: user.name().to_string(),
-        role: user.role,
-    }
+fn core(state: &AppState) -> Core {
+    axum::extract::FromRef::from_ref(state)
 }
 
 async fn has_users(state: &AppState) -> ApiResult<bool> {
-    Ok(state.with_conn(|c| db_users::count_users(c)).await? > 0)
+    guard::has_users(&core(state)).await
+}
+
+/// Resolves the session cookie to an active user, if any. Protected routes get
+/// this via the `CurrentUser` extractor; public pages (e.g. a status page that
+/// shows an "Edit" link to logged-in editors) can call it directly.
+pub async fn session_user(
+    state: &AppState,
+    jar: &SignedCookieJar,
+) -> ApiResult<Option<CurrentUser>> {
+    guard::session_user(&core(state), jar).await
+}
+
+pub async fn authenticate_token_detailed(
+    state: &AppState,
+    token: &str,
+) -> ApiResult<Option<(CurrentUser, AuthMethod)>> {
+    guard::authenticate_token_detailed(&core(state), token).await
+}
+
+/// Resolves an API token to the user it acts as, with the role capped by
+/// the token's scope (read → viewer, write → the user's role). `None` for
+/// unknown, malformed, expired or revoked tokens and disabled users. Records
+/// `last_used_at` (at most once a minute).
+pub async fn authenticate_token(state: &AppState, token: &str) -> ApiResult<Option<CurrentUser>> {
+    guard::authenticate_token(&core(state), token).await
+}
+
+/// [`authenticate_token`] for `Authorization: Bearer <token>` or
+/// `Authorization: Basic base64(any:<token>)` (Prometheus `basic_auth`).
+/// `None` when the header is missing or the token is invalid.
+pub async fn authenticate_headers(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> ApiResult<Option<CurrentUser>> {
+    guard::authenticate_headers(&core(state), headers).await
 }
 
 async fn site_name(state: &AppState) -> String {
@@ -85,18 +97,6 @@ async fn site_name(state: &AppState) -> String {
         .await
         .map(|s| s.site_name)
         .unwrap_or_else(|_| db_settings::Settings::default().site_name)
-}
-
-/// Adds a fresh session cookie for `user` (and drops any pending-2FA cookie).
-pub fn login_jar(
-    jar: SignedCookieJar,
-    user_id: i64,
-    session_version: i64,
-    secure: bool,
-) -> SignedCookieJar {
-    let claims = SessionClaims::new(user_id, session_version, session::now_unix());
-    jar.add(session::session_cookie(&claims, secure))
-        .remove(session::removal_cookie(PENDING_2FA_COOKIE))
 }
 
 fn wait_message(wait: std::time::Duration) -> String {
@@ -661,351 +661,6 @@ async fn logout(jar: SignedCookieJar) -> impl IntoResponse {
 // ---------------------------------------------------------------------------
 // Middleware + request authentication
 // ---------------------------------------------------------------------------
-
-/// Resolves the session cookie: claims must be well-formed, not idle-expired,
-/// and match the user's current `session_version`; the user must be active.
-async fn resolve_session(
-    state: &AppState,
-    jar: &SignedCookieJar,
-) -> ApiResult<Option<(CurrentUser, SessionClaims)>> {
-    Ok(resolve_session_lang(state, jar)
-        .await?
-        .map(|(user, claims, _)| (user, claims)))
-}
-
-/// Like [`resolve_session`], plus the user's own interface language.
-async fn resolve_session_lang(
-    state: &AppState,
-    jar: &SignedCookieJar,
-) -> ApiResult<Option<(CurrentUser, SessionClaims, Option<crate::i18n::Lang>)>> {
-    let now = session::now_unix();
-    let Some(claims) = jar
-        .get(SESSION_COOKIE)
-        .and_then(|c| SessionClaims::decode(c.value()))
-        .filter(|c| c.is_live(now))
-    else {
-        return Ok(None);
-    };
-    let id = claims.user_id;
-    let user = state.with_conn(move |c| db_users::get_user(c, id)).await?;
-    Ok(user
-        .filter(|u| u.active && u.session_version == claims.version)
-        .map(|u| {
-            let lang = u.language.as_deref().and_then(crate::i18n::Lang::from_code);
-            (current_user_from(&u), claims, lang)
-        }))
-}
-
-/// Resolves the session cookie to an active user, if any. Protected routes get
-/// this via the `CurrentUser` extractor; public pages (e.g. a status page that
-/// shows an "Edit" link to logged-in editors) can call it directly.
-pub async fn session_user(
-    state: &AppState,
-    jar: &SignedCookieJar,
-) -> ApiResult<Option<CurrentUser>> {
-    Ok(resolve_session(state, jar).await?.map(|(user, _)| user))
-}
-
-pub async fn authenticate_token_detailed(
-    state: &AppState,
-    token: &str,
-) -> ApiResult<Option<(CurrentUser, AuthMethod)>> {
-    if !tokens::is_well_formed(token) {
-        return Ok(None);
-    }
-    let token_hash = tokens::hash(token);
-    let Some(owner) = state
-        .with_conn(move |c| db_tokens::find_valid_by_hash(c, &token_hash))
-        .await?
-    else {
-        return Ok(None);
-    };
-    if owner.needs_touch {
-        let id = owner.token_id;
-        if let Err(err) = state.with_conn(move |c| db_tokens::touch(c, id)).await {
-            tracing::warn!(error = %err, "failed to record API token use");
-        }
-    }
-    let display_name = if owner.display_name.trim().is_empty() {
-        owner.username.clone()
-    } else {
-        owner.display_name
-    };
-    let user = CurrentUser {
-        id: owner.user_id,
-        username: owner.username,
-        display_name,
-        role: owner.scope.cap(owner.role),
-    };
-    Ok(Some((
-        user,
-        AuthMethod::Token {
-            token_id: owner.token_id,
-            scope: owner.scope,
-        },
-    )))
-}
-
-/// Resolves a `vv_…` API token to the user it acts as, with the role capped by
-/// the token's scope (read → viewer, write → the user's role). `None` for
-/// unknown, malformed, expired or revoked tokens and disabled users. Records
-/// `last_used_at` (at most once a minute).
-pub async fn authenticate_token(state: &AppState, token: &str) -> ApiResult<Option<CurrentUser>> {
-    Ok(authenticate_token_detailed(state, token)
-        .await?
-        .map(|(user, _)| user))
-}
-
-/// [`authenticate_token`] for `Authorization: Bearer <token>` or
-/// `Authorization: Basic base64(any:<token>)` (Prometheus `basic_auth`).
-/// `None` when the header is missing or the token is invalid.
-pub async fn authenticate_headers(
-    state: &AppState,
-    headers: &HeaderMap,
-) -> ApiResult<Option<CurrentUser>> {
-    match tokens::token_from_headers(headers) {
-        Some(token) => authenticate_token(state, &token).await,
-        None => Ok(None),
-    }
-}
-
-fn is_htmx(headers: &HeaderMap) -> bool {
-    headers.contains_key("hx-request")
-}
-
-/// Unauthenticated response: full-page GETs go to `/login?next=<here>`;
-/// htmx/JSON callers get a 401 shaped by `error::negotiate`.
-fn unauthorized(method: &Method, uri: &axum::http::Uri, headers: &HeaderMap) -> Response {
-    let path = uri.path();
-    if *method == Method::GET && !is_htmx(headers) && !path.starts_with("/api/") {
-        let here = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
-        let next = session::sanitize_next(Some(here));
-        let target = if next == "/" {
-            "/login".to_string()
-        } else {
-            format!(
-                "/login?next={}",
-                url::form_urlencoded::byte_serialize(next.as_bytes()).collect::<String>()
-            )
-        };
-        return Redirect::to(&target).into_response();
-    }
-    ApiError::Unauthorized.into_response()
-}
-
-fn sets_session_cookie(response: &Response) -> bool {
-    response
-        .headers()
-        .get_all(header::SET_COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .any(|v| v.starts_with(&format!("{SESSION_COOKIE}=")))
-}
-
-/// Gate for every protected route. Inserts [`CurrentUser`] and [`AuthMethod`]
-/// into the request extensions.
-///
-/// - Under `/api/`, an `Authorization` header (Bearer or Basic) authenticates
-///   with an API token, and only with it (no fallback to the cookie).
-/// - Otherwise the session cookie; its idle timer slides forward hourly.
-/// - A brand new install (no users) bootstraps to `/setup`.
-pub async fn require_auth(
-    State(state): State<AppState>,
-    jar: SignedCookieJar,
-    mut request: Request,
-    next: Next,
-) -> Response {
-    let is_api = request.uri().path().starts_with("/api/");
-
-    if is_api && tokens::has_authorization(request.headers()) {
-        let token = tokens::token_from_headers(request.headers());
-        let resolved = match token {
-            Some(token) => authenticate_token_detailed(&state, &token).await,
-            None => Ok(None),
-        };
-        return match resolved {
-            Ok(Some((user, method))) => {
-                request.extensions_mut().insert(user);
-                request.extensions_mut().insert(method);
-                next.run(request).await
-            }
-            Ok(None) => ApiError::Unauthorized.into_response(),
-            Err(err) => err.into_response(),
-        };
-    }
-
-    match resolve_session_lang(&state, &jar).await {
-        Ok(Some((user, claims, lang))) => {
-            request.extensions_mut().insert(user);
-            request.extensions_mut().insert(AuthMethod::Session);
-            let secure = secure_cookies(request.headers());
-            // A user's own language wins over the site default.
-            let lang = lang.unwrap_or_else(crate::i18n::current);
-            let response = crate::i18n::scope(lang, next.run(request)).await;
-            let now = session::now_unix();
-            // Slide the idle timer, unless the handler just issued a new
-            // session cookie itself (e.g. after a password change).
-            if claims.needs_refresh(now) && !sets_session_cookie(&response) {
-                let refreshed = claims.refreshed(now);
-                let jar = SignedCookieJar::new(state.session_key.clone())
-                    .add(session::session_cookie(&refreshed, secure));
-                return (jar, response).into_response();
-            }
-            response
-        }
-        Ok(None) => {
-            // A brand new install has nobody to log in as yet.
-            match has_users(&state).await {
-                Ok(true) => {}
-                Ok(false) if !is_api => return Redirect::to("/setup").into_response(),
-                Ok(false) => return ApiError::Unauthorized.into_response(),
-                Err(err) => return err.into_response(),
-            }
-            let response = unauthorized(request.method(), request.uri(), request.headers());
-            if jar.get(SESSION_COOKIE).is_some() {
-                // Stale cookie (expired, signed out elsewhere, user disabled): drop it.
-                return (
-                    jar.remove(session::removal_cookie(SESSION_COOKIE)),
-                    response,
-                )
-                    .into_response();
-            }
-            response
-        }
-        Err(err) => err.into_response(),
-    }
-}
-
-/// CSRF guard (runs on every route): state-changing requests must carry
-/// `HX-Request: true` or a same-origin `Origin`/`Referer` — see
-/// [`crate::auth::csrf`]. Token/public machine endpoints are exempt.
-pub async fn csrf_guard(
-    State(state): State<AppState>,
-    mut request: Request,
-    next: Next,
-) -> Response {
-    // This layer wraps every route, so it is also where duplicate session cookies are
-    // collapsed before any extractor reads them.
-    dedupe_session_cookie(request.headers_mut(), &state.session_key);
-    let trust = session::trust_proxy();
-    let (method, path, headers) = (request.method(), request.uri().path(), request.headers());
-    if csrf::is_allowed(method, path, headers, trust, None) {
-        return next.run(request).await;
-    }
-    // Second chance: the configured public URL (a proxy that rewrites Host).
-    let has_source = headers.contains_key(header::ORIGIN) || headers.contains_key(header::REFERER);
-    if has_source {
-        let base_url = state.settings().await.ok().and_then(|s| s.base_url);
-        if csrf::is_allowed(method, path, headers, trust, base_url.as_deref()) {
-            return next.run(request).await;
-        }
-    }
-    tracing::warn!(
-        method = %method,
-        path = %path,
-        origin = ?headers.get(header::ORIGIN),
-        referer = ?headers.get(header::REFERER),
-        "blocked cross-site request"
-    );
-    ApiError::Forbidden.into_response()
-}
-
-/// Browsers can hold several `vv_session` cookies for one host at once (e.g. one left
-/// over from an older install on another port, or set with a different Path/Domain).
-/// The cookie jar keeps only the first one it sees, so a stale cookie would shadow every
-/// fresh login. Keep the first value whose signature verifies and drop the others.
-fn dedupe_session_cookie(headers: &mut HeaderMap, key: &axum_extra::extract::cookie::Key) {
-    let prefix = format!("{SESSION_COOKIE}=");
-    let pairs: Vec<String> = headers
-        .get_all(header::COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .flat_map(|v| v.split(';'))
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty())
-        .collect();
-    if pairs.iter().filter(|p| p.starts_with(&prefix)).count() < 2 {
-        return;
-    }
-    let valid = pairs
-        .iter()
-        .filter(|p| p.starts_with(&prefix))
-        .find(|p| {
-            let Ok(value) = axum::http::HeaderValue::from_str(p) else {
-                return false;
-            };
-            let mut single = HeaderMap::new();
-            single.insert(header::COOKIE, value);
-            SignedCookieJar::from_headers(&single, key.clone())
-                .get(SESSION_COOKIE)
-                .is_some()
-        })
-        .cloned();
-    let merged: Vec<String> = valid
-        .into_iter()
-        .chain(pairs.into_iter().filter(|p| !p.starts_with(&prefix)))
-        .collect();
-    headers.remove(header::COOKIE);
-    if let Ok(value) = axum::http::HeaderValue::from_str(&merged.join("; ")) {
-        headers.insert(header::COOKIE, value);
-    }
-}
-
-#[cfg(test)]
-mod dedupe_tests {
-    use axum::http::{HeaderMap, HeaderValue, header};
-    use axum::response::IntoResponse;
-    use axum_extra::extract::cookie::{Cookie, Key, SignedCookieJar};
-
-    use super::{SESSION_COOKIE, dedupe_session_cookie};
-
-    fn signed_pair(key: &Key, value: &str) -> String {
-        let response = SignedCookieJar::new(key.clone())
-            .add(Cookie::new(SESSION_COOKIE, value.to_string()))
-            .into_response();
-        let set = response.headers()[header::SET_COOKIE]
-            .to_str()
-            .unwrap()
-            .to_string();
-        set.split(';').next().unwrap().to_string()
-    }
-
-    #[test]
-    fn a_stale_session_cookie_does_not_shadow_a_valid_one() {
-        let key = Key::generate();
-        let stale = signed_pair(&Key::generate(), "old-install");
-        let fresh = signed_pair(&key, "fresh");
-        let mut headers = HeaderMap::new();
-        let raw = format!("{stale}; vv_flash=x; {fresh}");
-        headers.insert(header::COOKIE, HeaderValue::from_str(&raw).unwrap());
-
-        dedupe_session_cookie(&mut headers, &key);
-
-        let jar = SignedCookieJar::from_headers(&headers, key);
-        assert_eq!(
-            jar.get(SESSION_COOKIE)
-                .map(|c| c.value().to_string())
-                .as_deref(),
-            Some("fresh")
-        );
-        assert!(
-            headers[header::COOKIE]
-                .to_str()
-                .unwrap()
-                .contains("vv_flash=x")
-        );
-    }
-
-    #[test]
-    fn a_single_session_cookie_is_left_alone() {
-        let key = Key::generate();
-        let raw = format!("{}; other=1", signed_pair(&key, "only"));
-        let mut headers = HeaderMap::new();
-        headers.insert(header::COOKIE, HeaderValue::from_str(&raw).unwrap());
-        dedupe_session_cookie(&mut headers, &key);
-        assert_eq!(headers[header::COOKIE].to_str().unwrap(), raw);
-    }
-}
 
 #[cfg(test)]
 mod tests;

@@ -27,6 +27,16 @@ pub struct KitConfig {
     /// Prefix of the database copy taken before a migration
     /// ("vigilant-vole-before-").
     pub backup_prefix: &'static str,
+    /// Prefix of the product's environment variables ("VV" for
+    /// `VV_TRUST_PROXY` and `VV_SETUP_TOKEN`).
+    pub env_prefix: &'static str,
+    /// Paths (prefixes) whose requests authenticate with tokens, not
+    /// cookies, and so need no CSRF proof.
+    pub csrf_exempt_prefixes: &'static [&'static str],
+    /// Further exempt paths that a prefix can't describe.
+    pub csrf_exempt_path: fn(&str) -> bool,
+    /// Passwords (lower case) the product refuses besides the kit's list.
+    pub extra_common_passwords: &'static [&'static str],
     /// The product's translations: `(language code, locale file text)`.
     /// The kit knows the languages ([`super::i18n::LANGS`]); the texts are
     /// the product's.

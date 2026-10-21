@@ -3,15 +3,45 @@
 
 use crate::kit::config::KitConfig;
 
+/// Name of the signed session cookie.
+pub const SESSION_COOKIE: &str = "vv_session";
+/// Cookie between password and second factor.
+pub const PENDING_2FA_COOKIE: &str = "vv_2fa";
+/// Prefix of API tokens.
+pub const TOKEN_PREFIX: &str = "vv_";
+
+/// `/status/{slug}/subscribe/unsubscribe/{token}`: mail clients POST this
+/// link from the `List-Unsubscribe` header (RFC 8058 one-click) without an
+/// `Origin` or `Referer`. The secret token in the path is the proof, and the
+/// session cookie plays no part.
+fn csrf_exempt_path(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    matches!(
+        parts.as_slice(),
+        ["", "status", slug, "subscribe", "unsubscribe", token] if !slug.is_empty() && !token.is_empty()
+    )
+}
+
 pub static KIT: KitConfig = KitConfig {
     product: "Vigilant Vole",
     slug: "vigilant-vole",
-    session_cookie: "vv_session",
-    pending_2fa_cookie: "vv_2fa",
-    token_prefix: "vv_",
+    session_cookie: SESSION_COOKIE,
+    pending_2fa_cookie: PENDING_2FA_COOKIE,
+    token_prefix: TOKEN_PREFIX,
     other_token_prefixes: &["vva_"],
     user_agent: concat!("VigilantVole/", env!("CARGO_PKG_VERSION")),
     backup_prefix: "vigilant-vole-before-",
+    env_prefix: "VV",
+    csrf_exempt_prefixes: &[
+        "/api/push",
+        "/api/agent",
+        "/api/v1",
+        "/api/badge",
+        "/metrics",
+        "/mcp",
+    ],
+    csrf_exempt_path,
+    extra_common_passwords: &["uptimekuma", "vigilantvole"],
     migrations: &crate::db::MIGRATIONS,
     embeddable_prefixes: &["/status/", "/api/status-page/"],
     static_file: crate::api::static_file,

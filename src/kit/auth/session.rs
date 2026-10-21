@@ -25,8 +25,6 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use time::Duration;
 
-use super::SESSION_COOKIE;
-
 /// Sessions end after this long without a request.
 pub const IDLE_TIMEOUT_SECS: i64 = 30 * 24 * 60 * 60;
 /// Sessions end this long after login, however active they are.
@@ -36,31 +34,36 @@ const CLOCK_SLACK_SECS: i64 = 300;
 /// Re-issue the session cookie (sliding expiry) at most this often.
 pub const REFRESH_AFTER_SECS: i64 = 60 * 60;
 /// Password-verified, waiting for the second factor.
-pub const PENDING_2FA_COOKIE: &str = "vv_2fa";
 pub const PENDING_2FA_TTL_SECS: i64 = 5 * 60;
 
-/// `VV_TRUST_PROXY=1` (or true/yes/on): honour `X-Forwarded-Proto`,
+/// `<PREFIX>_TRUST_PROXY=1` (or true/yes/on): honour `X-Forwarded-Proto`,
 /// `X-Forwarded-Host` and `X-Forwarded-For` / `X-Real-IP` from a reverse proxy.
 /// Off by default, because a directly exposed instance must not believe
 /// client-supplied forwarding headers.
 pub static TRUST_PROXY: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("VV_TRUST_PROXY")
-        .map(|v| crate::db::settings::parse_bool(&v))
-        .unwrap_or(false)
+    std::env::var(format!(
+        "{}_TRUST_PROXY",
+        crate::kit::config::get().env_prefix
+    ))
+    .map(|v| crate::kit::db::settings::parse_bool(&v))
+    .unwrap_or(false)
 });
 
 pub fn trust_proxy() -> bool {
     *TRUST_PROXY
 }
 
-/// `VV_SETUP_TOKEN`: when set (non-empty), the first-run `/setup` page only
+/// `<PREFIX>_SETUP_TOKEN`: when set (non-empty), the first-run `/setup` page only
 /// opens with `?token=<value>`, so whoever reaches a fresh instance first
 /// can't claim it.
 pub static SETUP_TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
-    std::env::var("VV_SETUP_TOKEN")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
+    std::env::var(format!(
+        "{}_SETUP_TOKEN",
+        crate::kit::config::get().env_prefix
+    ))
+    .ok()
+    .map(|v| v.trim().to_string())
+    .filter(|v| !v.is_empty())
 });
 
 /// Whether `given` unlocks setup when `expected` is the configured token
@@ -225,7 +228,7 @@ fn base_cookie(
 
 pub fn session_cookie(claims: &SessionClaims, secure: bool) -> Cookie<'static> {
     base_cookie(
-        SESSION_COOKIE,
+        crate::kit::config::get().session_cookie,
         claims.encode(),
         secure,
         claims.max_age_secs(),
@@ -234,7 +237,7 @@ pub fn session_cookie(claims: &SessionClaims, secure: bool) -> Cookie<'static> {
 
 pub fn pending_cookie(pending: &PendingLogin, secure: bool) -> Cookie<'static> {
     base_cookie(
-        PENDING_2FA_COOKIE,
+        crate::kit::config::get().pending_2fa_cookie,
         pending.encode(),
         secure,
         PENDING_2FA_TTL_SECS,
