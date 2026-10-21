@@ -97,3 +97,11 @@
 - Gemener i meningar (sentence case), månader och veckodagar med liten bokstav.
 - Datum: "{day} {month}" (t.ex. 5 jan.), 24-timmarsklocka.
 - Kompositer skrivs ihop på svenska (statussida, underhållsfönster); lånord med bindestreck (API-token).
+
+| cron expression | cron-uttryck | "cron" kept Latin |
+| subscriber | prenumerant | pl. prenumeranter |
+| subscribe / unsubscribe | prenumerera / avsluta prenumeration | |
+| confirm subscription | bekräfta prenumeration | |
+| webhook subscriber | webhook-prenumerant | |
+| pending (sign-up) | väntar | |
+| maintenance started / ended | underhåll startat / avslutat | |

@@ -3,7 +3,9 @@
 
 use std::path::Path;
 
-use deadpool_sqlite::{Config as PoolConfig, Hook, HookError, InteractError, Pool, PoolError, Runtime};
+use deadpool_sqlite::{
+    Config as PoolConfig, Hook, HookError, InteractError, Pool, PoolError, Runtime,
+};
 use rusqlite::{Connection, OptionalExtension, params};
 use rust_embed::Embed;
 
@@ -20,6 +22,7 @@ pub mod remote_browsers;
 pub mod rollups;
 pub mod settings;
 pub mod status_pages;
+pub mod subscribers;
 pub mod tags;
 pub mod users;
 
@@ -122,7 +125,10 @@ pub async fn run_migrations(pool: &Pool, backup_dir: &Path) {
         let existing = prepare_tracking(conn)?;
         let pending = pending_migrations(conn)?;
         if existing && !pending.is_empty() {
-            let first = pending.first().map(|(name, _)| name.trim_end_matches(".sql")).unwrap_or("");
+            let first = pending
+                .first()
+                .map(|(name, _)| name.trim_end_matches(".sql"))
+                .unwrap_or("");
             backup_before_migration(conn, &backup_dir, first)?;
         }
         apply_migrations(conn)?;
@@ -133,13 +139,17 @@ pub async fn run_migrations(pool: &Pool, backup_dir: &Path) {
     .unwrap_or_else(|e| panic!("database migration failed: {e}"));
 }
 
-fn backup_before_migration(conn: &Connection, dir: &Path, label: &str) -> Result<(), MigrationError> {
+fn backup_before_migration(
+    conn: &Connection,
+    dir: &Path,
+    label: &str,
+) -> Result<(), MigrationError> {
     std::fs::create_dir_all(dir).map_err(|e| MigrationError::Backup(e.to_string()))?;
     let stamp = time::OffsetDateTime::now_utc().unix_timestamp();
     let path = dir.join(format!("vigilant-vole-before-{label}-{stamp}.db"));
-    let path_str = path
-        .to_str()
-        .ok_or_else(|| MigrationError::Backup(format!("non-UTF-8 backup path {}", path.display())))?;
+    let path_str = path.to_str().ok_or_else(|| {
+        MigrationError::Backup(format!("non-UTF-8 backup path {}", path.display()))
+    })?;
     conn.execute("VACUUM INTO ?1", params![path_str])
         .map_err(|e| MigrationError::Backup(e.to_string()))?;
     tracing::info!(path = %path.display(), "backed up database before migrating");
@@ -154,7 +164,8 @@ fn embedded_migrations() -> Vec<(String, String)> {
         .into_iter()
         .map(|name| {
             let file = Migrations::get(&name).expect("embedded migration missing");
-            let sql = String::from_utf8(file.data.into_owned()).expect("migration is not valid utf8");
+            let sql =
+                String::from_utf8(file.data.into_owned()).expect("migration is not valid utf8");
             (name.into_owned(), sql)
         })
         .collect()
@@ -172,6 +183,11 @@ pub fn apply_migrations(conn: &mut Connection) -> Result<Vec<String>, MigrationE
         tracing::info!(migration = %name, "applied database migration");
         applied.push(name);
     }
+    // Data fix-ups SQL can't do (hashing); each does nothing once done.
+    let hashed = subscribers::hash_legacy_tokens(conn)?;
+    if hashed > 0 {
+        tracing::info!(count = hashed, "hashed status page subscriber tokens");
+    }
     Ok(applied)
 }
 
@@ -185,7 +201,8 @@ fn prepare_tracking(conn: &Connection) -> rusqlite::Result<bool> {
          );",
     )?;
     mark_legacy_baseline(conn)?;
-    let tracked: i64 = conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))?;
+    let tracked: i64 =
+        conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))?;
     Ok(tracked > 0)
 }
 
@@ -194,7 +211,11 @@ fn pending_migrations(conn: &Connection) -> rusqlite::Result<Vec<(String, String
     let mut pending = Vec::new();
     for (name, sql) in embedded_migrations() {
         let done: Option<i64> = conn
-            .query_row("SELECT 1 FROM schema_migrations WHERE name = ?1", params![name], |r| r.get(0))
+            .query_row(
+                "SELECT 1 FROM schema_migrations WHERE name = ?1",
+                params![name],
+                |r| r.get(0),
+            )
             .optional()?;
         if done.is_none() {
             pending.push((name, sql));
@@ -207,7 +228,8 @@ fn pending_migrations(conn: &Connection) -> rusqlite::Result<Vec<(String, String
 /// schema; record it so it isn't re-run (it is idempotent, but tracking should
 /// reflect reality).
 fn mark_legacy_baseline(conn: &Connection) -> rusqlite::Result<()> {
-    let tracked: i64 = conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))?;
+    let tracked: i64 =
+        conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))?;
     if tracked > 0 {
         return Ok(());
     }
@@ -242,7 +264,12 @@ fn apply_one(conn: &mut Connection, name: &str, sql: &str) -> Result<(), Migrati
     result
 }
 
-fn run_in_transaction(conn: &mut Connection, name: &str, sql: &str, check_fks: bool) -> Result<(), MigrationError> {
+fn run_in_transaction(
+    conn: &mut Connection,
+    name: &str,
+    sql: &str,
+    check_fks: bool,
+) -> Result<(), MigrationError> {
     let failed = |source| MigrationError::Failed {
         name: name.to_string(),
         source,
@@ -258,7 +285,10 @@ fn run_in_transaction(conn: &mut Connection, name: &str, sql: &str, check_fks: b
             });
         }
     }
-    tx.execute("INSERT INTO schema_migrations (name) VALUES (?1)", params![name])?;
+    tx.execute(
+        "INSERT INTO schema_migrations (name) VALUES (?1)",
+        params![name],
+    )?;
     tx.commit()?;
     Ok(())
 }

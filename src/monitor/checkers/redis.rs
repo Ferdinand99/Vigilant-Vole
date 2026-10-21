@@ -39,7 +39,11 @@ fn encode(args: &[&str]) -> Vec<u8> {
 
 async fn read_line<R: AsyncBufReadExt + Unpin>(r: &mut R) -> Result<String, String> {
     let mut raw = Vec::new();
-    let n = r.take(MAX_LINE).read_until(b'\n', &mut raw).await.map_err(|e| util::tidy_io_error(&e))?;
+    let n = r
+        .take(MAX_LINE)
+        .read_until(b'\n', &mut raw)
+        .await
+        .map_err(|e| util::tidy_io_error(&e))?;
     if n == 0 {
         return Err("Connection closed by the server".into());
     }
@@ -52,13 +56,20 @@ async fn read_line<R: AsyncBufReadExt + Unpin>(r: &mut R) -> Result<String, Stri
 
 async fn read_value<R: AsyncBufReadExt + Unpin>(r: &mut R) -> Result<Value, String> {
     let line = read_line(r).await?;
-    let (kind, rest) = line.split_at_checked(1).ok_or("Not a Redis server (empty reply)")?;
+    let (kind, rest) = line
+        .split_at_checked(1)
+        .ok_or("Not a Redis server (empty reply)")?;
     match kind {
         "+" => Ok(Value::Simple(rest.to_string())),
         "-" => Ok(Value::Error(rest.to_string())),
-        ":" => rest.parse().map(Value::Int).map_err(|_| "Not a Redis server (bad integer)".to_string()),
+        ":" => rest
+            .parse()
+            .map(Value::Int)
+            .map_err(|_| "Not a Redis server (bad integer)".to_string()),
         "$" => {
-            let len: i64 = rest.parse().map_err(|_| "Not a Redis server (bad length)".to_string())?;
+            let len: i64 = rest
+                .parse()
+                .map_err(|_| "Not a Redis server (bad length)".to_string())?;
             if len < 0 {
                 return Ok(Value::Bulk(None));
             }
@@ -67,7 +78,9 @@ async fn read_value<R: AsyncBufReadExt + Unpin>(r: &mut R) -> Result<Value, Stri
                 return Err("Reply from the server is too large".into());
             }
             let mut buf = vec![0u8; len + 2];
-            r.read_exact(&mut buf).await.map_err(|e| util::tidy_io_error(&e))?;
+            r.read_exact(&mut buf)
+                .await
+                .map_err(|e| util::tidy_io_error(&e))?;
             buf.truncate(len);
             Ok(Value::Bulk(Some(buf)))
         }
@@ -76,7 +89,10 @@ async fn read_value<R: AsyncBufReadExt + Unpin>(r: &mut R) -> Result<Value, Stri
 }
 
 async fn request<S: Io>(r: &mut BufReader<S>, args: &[&str]) -> Result<Value, String> {
-    r.get_mut().write_all(&encode(args)).await.map_err(|e| util::tidy_io_error(&e))?;
+    r.get_mut()
+        .write_all(&encode(args))
+        .await
+        .map_err(|e| util::tidy_io_error(&e))?;
     read_value(r).await
 }
 
@@ -85,7 +101,10 @@ fn explain(err: &str) -> String {
     let upper = err.to_ascii_uppercase();
     if upper.starts_with("NOAUTH") {
         "Authentication required: set a password".into()
-    } else if upper.starts_with("WRONGPASS") || upper.contains("INVALID PASSWORD") || upper.contains("WRONG NUMBER OF ARGUMENTS FOR 'AUTH'") {
+    } else if upper.starts_with("WRONGPASS")
+        || upper.contains("INVALID PASSWORD")
+        || upper.contains("WRONG NUMBER OF ARGUMENTS FOR 'AUTH'")
+    {
         "Authentication failed: wrong user name or password".into()
     } else if upper.contains("WITHOUT ANY PASSWORD CONFIGURED") {
         "The server has no password: remove the password from the monitor".into()
@@ -101,7 +120,10 @@ fn explain(err: &str) -> String {
 fn version_from_info(info: &[u8]) -> Option<String> {
     String::from_utf8_lossy(info)
         .lines()
-        .find_map(|l| l.strip_prefix("redis_version:").or_else(|| l.strip_prefix("valkey_version:")))
+        .find_map(|l| {
+            l.strip_prefix("redis_version:")
+                .or_else(|| l.strip_prefix("valkey_version:"))
+        })
         .map(|v| v.trim().to_string())
 }
 
@@ -114,7 +136,12 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         "" => None,
         p => match p.parse::<u32>() {
             Ok(n) => Some(n),
-            Err(_) => return CheckOutcome::down(format!("The database \"{}\" must be a number", util::truncate(p, 20))),
+            Err(_) => {
+                return CheckOutcome::down(format!(
+                    "The database \"{}\" must be a number",
+                    util::truncate(p, 20)
+                ));
+            }
         },
     };
     let timeout = super::timeout_of(monitor);
@@ -135,7 +162,10 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
             }
         }
         if let Some(n) = db {
-            match request(&mut r, &["SELECT", &n.to_string()]).await.map_err(fail)? {
+            match request(&mut r, &["SELECT", &n.to_string()])
+                .await
+                .map_err(fail)?
+            {
                 Value::Simple(_) => {}
                 Value::Error(e) => return Err(fail(explain(&e))),
                 _ => return Err(fail("Unexpected reply to SELECT".into())),
@@ -144,7 +174,12 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         match request(&mut r, &["PING"]).await.map_err(fail)? {
             Value::Simple(s) if s.eq_ignore_ascii_case("PONG") => {}
             Value::Error(e) => return Err(fail(explain(&e))),
-            other => return Err(fail(format!("Unexpected reply to PING: {}", util::truncate(&format!("{other:?}"), 60)))),
+            other => {
+                return Err(fail(format!(
+                    "Unexpected reply to PING: {}",
+                    util::truncate(&format!("{other:?}"), 60)
+                )));
+            }
         }
         let ms = util::elapsed_ms(start);
         let version = match request(&mut r, &["INFO", "server"]).await {
@@ -159,7 +194,12 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         if let Some(n) = db {
             message.push_str(&format!(" · db {n}"));
         }
-        Ok(conn::up(ms, message, connected.cert.as_ref(), connected.tls_version))
+        Ok(conn::up(
+            ms,
+            message,
+            connected.cert.as_ref(),
+            connected.tls_version,
+        ))
     };
     match tokio::time::timeout(timeout, probe).await {
         Ok(Ok(outcome)) | Ok(Err(outcome)) => outcome,
@@ -195,7 +235,10 @@ mod tests {
                 buf.truncate(len);
                 args.push(String::from_utf8(buf).unwrap());
             }
-            let cmd = args.first().map(|s| s.to_ascii_uppercase()).unwrap_or_default();
+            let cmd = args
+                .first()
+                .map(|s| s.to_ascii_uppercase())
+                .unwrap_or_default();
             let reply: Vec<u8> = match cmd.as_str() {
                 "AUTH" => {
                     let given = args.last().map(String::as_str);
@@ -203,11 +246,14 @@ mod tests {
                         authed = true;
                         b"+OK\r\n".to_vec()
                     } else {
-                        b"-WRONGPASS invalid username-password pair or user is disabled.\r\n".to_vec()
+                        b"-WRONGPASS invalid username-password pair or user is disabled.\r\n"
+                            .to_vec()
                     }
                 }
                 _ if !authed => b"-NOAUTH Authentication required.\r\n".to_vec(),
-                "SELECT" if args[1].parse::<u32>().unwrap() > 15 => b"-ERR DB index is out of range\r\n".to_vec(),
+                "SELECT" if args[1].parse::<u32>().unwrap() > 15 => {
+                    b"-ERR DB index is out of range\r\n".to_vec()
+                }
                 "SELECT" => b"+OK\r\n".to_vec(),
                 "PING" => b"+PONG\r\n".to_vec(),
                 "INFO" => {
@@ -263,11 +309,17 @@ mod tests {
         let mut m = redis(&format!("redis://{addr}/3"));
         let out = check(&m).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
-        assert_eq!(out.message.as_deref(), Some("Authentication required: set a password"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Authentication required: set a password")
+        );
 
         m.basic_auth_pass = Some("wrong".into());
         let out = check(&m).await;
-        assert_eq!(out.message.as_deref(), Some("Authentication failed: wrong user name or password"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Authentication failed: wrong user name or password")
+        );
 
         m.basic_auth_pass = Some("s3cret".into());
         let out = check(&m).await;
@@ -276,9 +328,18 @@ mod tests {
 
         m.target = format!("redis://{addr}/99");
         let out = check(&m).await;
-        assert_eq!(out.message.as_deref(), Some("The database index is out of range"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The database index is out of range")
+        );
         m.target = format!("redis://{addr}/main");
-        assert!(check(&m).await.message.unwrap().contains("must be a number"));
+        assert!(
+            check(&m)
+                .await
+                .message
+                .unwrap()
+                .contains("must be a number")
+        );
     }
 
     #[tokio::test]
@@ -296,7 +357,11 @@ mod tests {
         let target = format!("rediss://localhost:{}", addr.port());
         let out = check(&redis(&target)).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
-        assert!(out.message.as_deref().unwrap().contains("not trusted"), "{:?}", out.message);
+        assert!(
+            out.message.as_deref().unwrap().contains("not trusted"),
+            "{:?}",
+            out.message
+        );
 
         let mut m = redis(&target);
         m.ignore_tls = true;
@@ -308,7 +373,10 @@ mod tests {
 
     #[tokio::test]
     async fn other_servers_and_closed_ports_are_down() {
-        let addr = crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+        let addr = crate::monitor::checkers::test_support::foreign_server(
+            b"HTTP/1.1 400 Bad Request\r\n\r\n",
+        )
+        .await;
         let out = check(&redis(&addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not a Redis server"));
@@ -322,7 +390,10 @@ mod tests {
 
     #[test]
     fn commands_are_encoded_as_resp_arrays() {
-        assert_eq!(encode(&["AUTH", "u", "p"]), b"*3\r\n$4\r\nAUTH\r\n$1\r\nu\r\n$1\r\np\r\n");
+        assert_eq!(
+            encode(&["AUTH", "u", "p"]),
+            b"*3\r\n$4\r\nAUTH\r\n$1\r\nu\r\n$1\r\np\r\n"
+        );
     }
 
     /// Against a real server: `VV_TEST_REDIS=redis://host:port/db,user,password` (user and password may be empty).
@@ -330,7 +401,9 @@ mod tests {
     #[ignore = "needs a Redis server (VV_TEST_REDIS)"]
     async fn live_server() {
         let spec = std::env::var("VV_TEST_REDIS").expect("VV_TEST_REDIS");
-        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else { panic!("target,user,password") };
+        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else {
+            panic!("target,user,password")
+        };
         let mut m = redis(target);
         m.basic_auth_user = (!user.is_empty()).then(|| user.to_string());
         m.basic_auth_pass = (!pass.is_empty()).then(|| pass.to_string());

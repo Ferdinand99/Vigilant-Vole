@@ -14,7 +14,14 @@ use axum::http::{HeaderMap, Method};
 use url::Url;
 
 /// Prefixes of paths that never rely on the session cookie.
-const EXEMPT_PREFIXES: &[&str] = &["/api/push", "/api/agent", "/api/v1", "/api/badge", "/metrics"];
+const EXEMPT_PREFIXES: &[&str] = &[
+    "/api/push",
+    "/api/agent",
+    "/api/v1",
+    "/api/badge",
+    "/metrics",
+    "/mcp",
+];
 
 /// Is `path` one of the token/public machine endpoints?
 pub fn is_exempt_path(path: &str) -> bool {
@@ -24,8 +31,23 @@ pub fn is_exempt_path(path: &str) -> bool {
     })
 }
 
+/// `/status/{slug}/subscribe/unsubscribe/{token}`: mail clients POST this
+/// link from the `List-Unsubscribe` header (RFC 8058 one-click) without an
+/// `Origin` or `Referer`. The secret token in the path is the proof, and the
+/// session cookie plays no part.
+fn is_unsubscribe_link(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    matches!(
+        parts.as_slice(),
+        ["", "status", slug, "subscribe", "unsubscribe", token] if !slug.is_empty() && !token.is_empty()
+    )
+}
+
 fn is_safe_method(method: &Method) -> bool {
-    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE)
+    matches!(
+        *method,
+        Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+    )
 }
 
 /// `(host, port)` with the port dropped when it is the scheme default.
@@ -64,7 +86,7 @@ pub fn is_allowed(
     trust_proxy: bool,
     base_url: Option<&str>,
 ) -> bool {
-    if is_safe_method(method) || is_exempt_path(path) {
+    if is_safe_method(method) || is_exempt_path(path) || is_unsubscribe_link(path) {
         return true;
     }
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
@@ -80,6 +102,16 @@ pub fn is_allowed(
             None => return false,
         },
     };
+    source_matches(source, headers, trust_proxy, base_url)
+}
+
+fn source_matches(
+    source: &str,
+    headers: &HeaderMap,
+    trust_proxy: bool,
+    base_url: Option<&str>,
+) -> bool {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let Some((scheme, source)) = origin_authority(source) else {
         return false;
     };
@@ -124,14 +156,42 @@ mod tests {
     #[test]
     fn safe_methods_pass_without_proof() {
         for m in [Method::GET, Method::HEAD, Method::OPTIONS] {
-            assert!(is_allowed(&m, "/settings/users", &HeaderMap::new(), false, None));
+            assert!(is_allowed(
+                &m,
+                "/settings/users",
+                &HeaderMap::new(),
+                false,
+                None
+            ));
         }
     }
 
     #[test]
     fn unsafe_methods_without_proof_are_blocked() {
         for m in [Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
-            assert!(!is_allowed(&m, "/monitors/1", &h(&[("host", "vole.local")]), false, None));
+            assert!(!is_allowed(
+                &m,
+                "/monitors/1",
+                &h(&[("host", "vole.local")]),
+                false,
+                None
+            ));
+        }
+    }
+
+    #[test]
+    fn one_click_unsubscribe_needs_no_origin_but_nothing_else_does() {
+        let none = h(&[("host", "vole.local")]);
+        assert!(post("/status/acme/subscribe/unsubscribe/vvs_abc", &none));
+        for path in [
+            "/status/acme/subscribe/confirm/vvs_abc",
+            "/status/acme/subscribe",
+            "/status/acme/subscribe/unsubscribe/",
+            "/status//subscribe/unsubscribe/x",
+            "/status/acme/subscribe/unsubscribe/x/more",
+            "/x/status/acme/subscribe/unsubscribe/x",
+        ] {
+            assert!(!post(path, &none), "{path}");
         }
     }
 
@@ -142,38 +202,71 @@ mod tests {
 
     #[test]
     fn same_origin_passes() {
-        assert!(post("/login", &h(&[("host", "vole.local:3001"), ("origin", "http://vole.local:3001")])));
+        assert!(post(
+            "/login",
+            &h(&[
+                ("host", "vole.local:3001"),
+                ("origin", "http://vole.local:3001")
+            ])
+        ));
     }
 
     #[test]
     fn default_ports_are_normalised() {
-        assert!(post("/login", &h(&[("host", "vole.local:443"), ("origin", "https://vole.local")])));
-        assert!(post("/login", &h(&[("host", "vole.local"), ("origin", "http://vole.local:80")])));
+        assert!(post(
+            "/login",
+            &h(&[("host", "vole.local:443"), ("origin", "https://vole.local")])
+        ));
+        assert!(post(
+            "/login",
+            &h(&[("host", "vole.local"), ("origin", "http://vole.local:80")])
+        ));
     }
 
     #[test]
     fn host_comparison_ignores_case() {
-        assert!(post("/login", &h(&[("host", "Vole.Local"), ("origin", "http://vole.local")])));
+        assert!(post(
+            "/login",
+            &h(&[("host", "Vole.Local"), ("origin", "http://vole.local")])
+        ));
     }
 
     #[test]
     fn cross_origin_is_blocked() {
-        assert!(!post("/login", &h(&[("host", "vole.local"), ("origin", "http://evil.example")])));
+        assert!(!post(
+            "/login",
+            &h(&[("host", "vole.local"), ("origin", "http://evil.example")])
+        ));
     }
 
     #[test]
     fn different_port_is_cross_origin() {
-        assert!(!post("/login", &h(&[("host", "vole.local:3001"), ("origin", "http://vole.local:8080")])));
+        assert!(!post(
+            "/login",
+            &h(&[
+                ("host", "vole.local:3001"),
+                ("origin", "http://vole.local:8080")
+            ])
+        ));
     }
 
     #[test]
     fn lookalike_suffix_is_blocked() {
-        assert!(!post("/login", &h(&[("host", "vole.local"), ("origin", "http://vole.local.evil.example")])));
+        assert!(!post(
+            "/login",
+            &h(&[
+                ("host", "vole.local"),
+                ("origin", "http://vole.local.evil.example")
+            ])
+        ));
     }
 
     #[test]
     fn null_origin_is_blocked() {
-        assert!(!post("/login", &h(&[("host", "vole.local"), ("origin", "null")])));
+        assert!(!post(
+            "/login",
+            &h(&[("host", "vole.local"), ("origin", "null")])
+        ));
     }
 
     #[test]
@@ -188,8 +281,17 @@ mod tests {
 
     #[test]
     fn referer_is_the_fallback() {
-        assert!(post("/logout", &h(&[("host", "vole.local"), ("referer", "http://vole.local/settings")])));
-        assert!(!post("/logout", &h(&[("host", "vole.local"), ("referer", "http://evil.example/x")])));
+        assert!(post(
+            "/logout",
+            &h(&[
+                ("host", "vole.local"),
+                ("referer", "http://vole.local/settings")
+            ])
+        ));
+        assert!(!post(
+            "/logout",
+            &h(&[("host", "vole.local"), ("referer", "http://evil.example/x")])
+        ));
     }
 
     #[test]
@@ -205,14 +307,35 @@ mod tests {
 
     #[test]
     fn configured_base_url_is_trusted() {
-        let headers = h(&[("host", "127.0.0.1:3001"), ("origin", "https://up.example.com")]);
-        assert!(is_allowed(&Method::POST, "/login", &headers, false, Some("https://up.example.com/")));
-        assert!(!is_allowed(&Method::POST, "/login", &headers, false, Some("http://up.example.com")));
+        let headers = h(&[
+            ("host", "127.0.0.1:3001"),
+            ("origin", "https://up.example.com"),
+        ]);
+        assert!(is_allowed(
+            &Method::POST,
+            "/login",
+            &headers,
+            false,
+            Some("https://up.example.com/")
+        ));
+        assert!(!is_allowed(
+            &Method::POST,
+            "/login",
+            &headers,
+            false,
+            Some("http://up.example.com")
+        ));
     }
 
     #[test]
     fn machine_endpoints_are_exempt() {
-        for path in ["/api/push/abc", "/api/agent/v1/results", "/api/v1/monitors", "/metrics", "/api/badge/1/status"] {
+        for path in [
+            "/api/push/abc",
+            "/api/agent/v1/results",
+            "/api/v1/monitors",
+            "/metrics",
+            "/api/badge/1/status",
+        ] {
             assert!(post(path, &HeaderMap::new()), "{path}");
         }
     }

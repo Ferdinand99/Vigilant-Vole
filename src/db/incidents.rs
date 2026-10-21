@@ -66,7 +66,8 @@ pub struct NewIncident {
     pub pinned: bool,
 }
 
-const COLUMNS: &str = "id, status_page_id, title, body, severity, pinned, created_at, updated_at, resolved_at";
+const COLUMNS: &str =
+    "id, status_page_id, title, body, severity, pinned, created_at, updated_at, resolved_at";
 
 pub fn row_to_incident(row: &Row) -> rusqlite::Result<Incident> {
     Ok(Incident {
@@ -104,7 +105,11 @@ pub fn list_pinned_open(conn: &Connection, page_id: i64) -> rusqlite::Result<Vec
 
 /// Incidents for the history section: everything not pinned-and-open that
 /// was created or resolved at/after `since` (UTC text).
-pub fn list_history(conn: &Connection, page_id: i64, since: &str) -> rusqlite::Result<Vec<Incident>> {
+pub fn list_history(
+    conn: &Connection,
+    page_id: i64,
+    since: &str,
+) -> rusqlite::Result<Vec<Incident>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS} FROM incidents
          WHERE status_page_id = ?1 AND NOT (pinned = 1 AND resolved_at IS NULL)
@@ -141,7 +146,12 @@ pub fn update(conn: &Connection, page_id: i64, id: i64, i: &NewIncident) -> rusq
 }
 
 /// Resolve (`true`) or reopen (`false`).
-pub fn set_resolved(conn: &Connection, page_id: i64, id: i64, resolved: bool) -> rusqlite::Result<bool> {
+pub fn set_resolved(
+    conn: &Connection,
+    page_id: i64,
+    id: i64,
+    resolved: bool,
+) -> rusqlite::Result<bool> {
     let sql = if resolved {
         "UPDATE incidents SET resolved_at = datetime('now'), updated_at = datetime('now')
          WHERE id = ?1 AND status_page_id = ?2 AND resolved_at IS NULL"
@@ -155,6 +165,143 @@ pub fn delete(conn: &Connection, page_id: i64, id: i64) -> rusqlite::Result<bool
     Ok(conn.execute(
         "DELETE FROM incidents WHERE id = ?1 AND status_page_id = ?2",
         params![id, page_id],
+    )? > 0)
+}
+
+// ---------------------------------------------------------------------------
+// Updates (the timeline of an incident)
+// ---------------------------------------------------------------------------
+
+/// Where an incident stands, as announced in an update.
+pub const UPDATE_STATUSES: &[&str] = &["investigating", "identified", "monitoring", "resolved"];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct IncidentUpdate {
+    pub id: i64,
+    pub incident_id: i64,
+    /// "investigating" | "identified" | "monitoring" | "resolved".
+    pub status: String,
+    /// Markdown subset, rendered like the incident body.
+    pub body: String,
+    pub created_at: String,
+}
+
+impl IncidentUpdate {
+    pub fn status_label(&self) -> &'static str {
+        update_status_label(&self.status)
+    }
+}
+
+pub fn update_status_label(status: &str) -> &'static str {
+    match status {
+        "identified" => crate::i18n::t("inc.st_identified"),
+        "monitoring" => crate::i18n::t("inc.st_monitoring"),
+        "resolved" => crate::i18n::t("inc.st_resolved"),
+        _ => crate::i18n::t("inc.st_investigating"),
+    }
+}
+
+fn row_to_update(row: &Row) -> rusqlite::Result<IncidentUpdate> {
+    Ok(IncidentUpdate {
+        id: row.get("id")?,
+        incident_id: row.get("incident_id")?,
+        status: row.get("status")?,
+        body: row.get("body")?,
+        created_at: row.get("created_at")?,
+    })
+}
+
+/// One incident's updates, newest first.
+pub fn list_updates(conn: &Connection, incident_id: i64) -> rusqlite::Result<Vec<IncidentUpdate>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, incident_id, status, body, created_at FROM incident_updates
+         WHERE incident_id = ?1 ORDER BY created_at DESC, id DESC",
+    )?;
+    let rows = stmt.query_map(params![incident_id], row_to_update)?;
+    rows.collect()
+}
+
+/// The updates of several incidents at once, newest first per incident.
+pub fn updates_for(
+    conn: &Connection,
+    incident_ids: &[i64],
+) -> rusqlite::Result<std::collections::HashMap<i64, Vec<IncidentUpdate>>> {
+    let mut map: std::collections::HashMap<i64, Vec<IncidentUpdate>> =
+        std::collections::HashMap::new();
+    if incident_ids.is_empty() {
+        return Ok(map);
+    }
+    let marks = vec!["?"; incident_ids.len()].join(",");
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, incident_id, status, body, created_at FROM incident_updates
+         WHERE incident_id IN ({marks}) ORDER BY created_at DESC, id DESC"
+    ))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(incident_ids), row_to_update)?;
+    for row in rows {
+        let u = row?;
+        map.entry(u.incident_id).or_default().push(u);
+    }
+    Ok(map)
+}
+
+/// The most recent incidents of a page (open first is not needed here), for feeds.
+pub fn list_recent(
+    conn: &Connection,
+    page_id: i64,
+    limit: usize,
+) -> rusqlite::Result<Vec<Incident>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM incidents WHERE status_page_id = ?1 ORDER BY updated_at DESC, id DESC LIMIT ?2"
+    ))?;
+    let rows = stmt.query_map(
+        params![page_id, i64::try_from(limit).unwrap_or(50)],
+        row_to_incident,
+    )?;
+    rows.collect()
+}
+
+/// Posts an update to an incident of `page_id`. A `resolved` update resolves
+/// the incident; any other status reopens it. `None` if the incident isn't
+/// on that page.
+pub fn add_update(
+    conn: &Connection,
+    page_id: i64,
+    incident_id: i64,
+    status: &str,
+    body: &str,
+) -> rusqlite::Result<Option<i64>> {
+    if get(conn, page_id, incident_id)?.is_none() {
+        return Ok(None);
+    }
+    conn.execute(
+        "INSERT INTO incident_updates (incident_id, status, body) VALUES (?1, ?2, ?3)",
+        params![incident_id, status, body],
+    )?;
+    let id = conn.last_insert_rowid();
+    if status == "resolved" {
+        conn.execute(
+            "UPDATE incidents SET resolved_at = COALESCE(resolved_at, datetime('now')), updated_at = datetime('now') WHERE id = ?1",
+            params![incident_id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE incidents SET resolved_at = NULL, updated_at = datetime('now') WHERE id = ?1",
+            params![incident_id],
+        )?;
+    }
+    Ok(Some(id))
+}
+
+pub fn delete_update(
+    conn: &Connection,
+    page_id: i64,
+    incident_id: i64,
+    update_id: i64,
+) -> rusqlite::Result<bool> {
+    Ok(conn.execute(
+        "DELETE FROM incident_updates WHERE id = ?3 AND incident_id = ?2
+           AND incident_id IN (SELECT id FROM incidents WHERE id = ?2 AND status_page_id = ?1)",
+        params![page_id, incident_id, update_id],
     )? > 0)
 }
 
@@ -193,7 +340,14 @@ mod tests {
         let id = insert(&conn, p, &incident("Slow API", true)).unwrap();
         let unpinned = insert(&conn, p, &incident("FYI", false)).unwrap();
 
-        assert_eq!(list_pinned_open(&conn, p).unwrap().iter().map(|i| i.id).collect::<Vec<_>>(), [id]);
+        assert_eq!(
+            list_pinned_open(&conn, p)
+                .unwrap()
+                .iter()
+                .map(|i| i.id)
+                .collect::<Vec<_>>(),
+            [id]
+        );
         let history = list_history(&conn, p, "2000-01-01 00:00:00").unwrap();
         assert_eq!(history.iter().map(|i| i.id).collect::<Vec<_>>(), [unpinned]);
 
@@ -208,9 +362,15 @@ mod tests {
         assert_eq!(get(&conn, p, id).unwrap().unwrap().severity, "success");
 
         assert!(set_resolved(&conn, p, id, true).unwrap());
-        assert!(!set_resolved(&conn, p, id, true).unwrap(), "already resolved");
+        assert!(
+            !set_resolved(&conn, p, id, true).unwrap(),
+            "already resolved"
+        );
         assert!(list_pinned_open(&conn, p).unwrap().is_empty());
-        assert_eq!(list_history(&conn, p, "2000-01-01 00:00:00").unwrap().len(), 2);
+        assert_eq!(
+            list_history(&conn, p, "2000-01-01 00:00:00").unwrap().len(),
+            2
+        );
         let all = list_for_page(&conn, p).unwrap();
         assert_eq!(all[0].id, unpinned, "open incidents come first");
 
@@ -229,7 +389,11 @@ mod tests {
         let resolved = insert(&conn, p, &incident("Resolved", true)).unwrap();
         set_resolved(&conn, p, resolved, true).unwrap();
         let pinned_new = insert(&conn, p, &incident("Pinned, newer", true)).unwrap();
-        let order: Vec<i64> = list_for_page(&conn, p).unwrap().iter().map(|i| i.id).collect();
+        let order: Vec<i64> = list_for_page(&conn, p)
+            .unwrap()
+            .iter()
+            .map(|i| i.id)
+            .collect();
         assert_eq!(order, [pinned_new, pinned_old, open, resolved]);
     }
 
@@ -248,5 +412,63 @@ mod tests {
             assert!(!severity_icon(s).is_empty());
             assert!(!severity_label(s).is_empty());
         }
+    }
+
+    #[test]
+    fn updates_form_a_timeline_and_drive_the_resolved_state() {
+        let mut conn = test_conn();
+        let p = page(&mut conn, "acme");
+        let other = page(&mut conn, "other");
+        let id = insert(&conn, p, &incident("Slow API", true)).unwrap();
+
+        let first = add_update(&conn, p, id, "investigating", "Looking into it")
+            .unwrap()
+            .unwrap();
+        let second = add_update(&conn, p, id, "identified", "A bad deploy")
+            .unwrap()
+            .unwrap();
+        let timeline = list_updates(&conn, id).unwrap();
+        assert_eq!(
+            timeline.iter().map(|u| u.id).collect::<Vec<_>>(),
+            [second, first],
+            "newest first"
+        );
+        assert_eq!(timeline[0].status_label(), "Identified");
+        assert!(!get(&conn, p, id).unwrap().unwrap().is_resolved());
+
+        // A resolving update resolves the incident; another status reopens it.
+        add_update(&conn, p, id, "resolved", "Fixed")
+            .unwrap()
+            .unwrap();
+        let resolved_at = get(&conn, p, id).unwrap().unwrap().resolved_at;
+        assert!(resolved_at.is_some());
+        add_update(&conn, p, id, "resolved", "Still fixed")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            get(&conn, p, id).unwrap().unwrap().resolved_at,
+            resolved_at,
+            "keeps the first resolution time"
+        );
+        add_update(&conn, p, id, "monitoring", "Watching")
+            .unwrap()
+            .unwrap();
+        assert!(!get(&conn, p, id).unwrap().unwrap().is_resolved());
+
+        // Scoped to the page; deleting the incident takes its updates along.
+        assert_eq!(
+            add_update(&conn, other, id, "monitoring", "x").unwrap(),
+            None
+        );
+        assert!(!delete_update(&conn, other, id, first).unwrap());
+        assert!(delete_update(&conn, p, id, first).unwrap());
+        assert_eq!(list_updates(&conn, id).unwrap().len(), 4);
+        let many = updates_for(&conn, &[id, 999]).unwrap();
+        assert_eq!(many[&id].len(), 4);
+        assert!(!many.contains_key(&999));
+        assert!(updates_for(&conn, &[]).unwrap().is_empty());
+        assert_eq!(list_recent(&conn, p, 10).unwrap().len(), 1);
+        assert!(delete(&conn, p, id).unwrap());
+        assert!(list_updates(&conn, id).unwrap().is_empty());
     }
 }

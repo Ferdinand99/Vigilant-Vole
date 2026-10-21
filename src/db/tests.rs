@@ -18,8 +18,13 @@ fn table_exists(conn: &Connection, name: &str) -> bool {
 }
 
 fn applied(conn: &Connection) -> Vec<String> {
-    let mut stmt = conn.prepare("SELECT name FROM schema_migrations ORDER BY name").unwrap();
-    stmt.query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap()
+    let mut stmt = conn
+        .prepare("SELECT name FROM schema_migrations ORDER BY name")
+        .unwrap();
+    stmt.query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
 }
 
 /// A database exactly as the pre-tracking binary left it: 0001 schema, no
@@ -100,7 +105,10 @@ fn rerunning_migrations_is_a_no_op() {
 fn legacy_database_is_detected_and_baseline_not_rerun() {
     let (conn, ran) = upgrade(legacy_db());
     // Every migration after the baseline runs; the baseline itself is only marked applied.
-    assert_eq!(ran.first().map(String::as_str), Some("0002_full_schema.sql"));
+    assert_eq!(
+        ran.first().map(String::as_str),
+        Some("0002_full_schema.sql")
+    );
     assert!(!ran.iter().any(|name| name.starts_with("0001")));
     assert_eq!(applied(&conn).len(), ran.len() + 1);
 }
@@ -111,15 +119,29 @@ fn legacy_upgrade_preserves_users_as_admins() {
     let users: Vec<(i64, String, String, String, String)> = conn
         .prepare("SELECT id, username, password_hash, role, created_at FROM users ORDER BY id")
         .unwrap()
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+        .query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
     assert_eq!(
         users,
         vec![
-            (1, "alice".into(), "hash-a".into(), "admin".into(), "2025-01-01 10:00:00".into()),
-            (2, "bob".into(), "hash-b".into(), "admin".into(), "2025-01-02 10:00:00".into()),
+            (
+                1,
+                "alice".into(),
+                "hash-a".into(),
+                "admin".into(),
+                "2025-01-01 10:00:00".into()
+            ),
+            (
+                2,
+                "bob".into(),
+                "hash-b".into(),
+                "admin".into(),
+                "2025-01-02 10:00:00".into()
+            ),
         ]
     );
 }
@@ -129,7 +151,14 @@ fn legacy_upgrade_preserves_monitors_with_new_defaults() {
     let (conn, _) = upgrade(legacy_db());
     let m = crate::db::monitors::get_monitor(&conn, 1).unwrap().unwrap();
     assert_eq!(
-        (m.name.as_str(), m.target.as_str(), m.interval_seconds, m.timeout_seconds, m.retries, m.active),
+        (
+            m.name.as_str(),
+            m.target.as_str(),
+            m.interval_seconds,
+            m.timeout_seconds,
+            m.retries,
+            m.active
+        ),
         ("Site", "https://example.com", 30, 5, 2, true)
     );
     assert_eq!(m.created_at, "2025-01-03 00:00:00");
@@ -151,7 +180,9 @@ fn legacy_upgrade_keeps_heartbeats_and_drops_orphans() {
         .unwrap();
     assert_eq!(ids, vec![1, 2, 3]);
     let msg: Option<String> = conn
-        .query_row("SELECT message FROM heartbeats WHERE id = 2", [], |r| r.get(0))
+        .query_row("SELECT message FROM heartbeats WHERE id = 2", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(msg.as_deref(), Some("timed out"));
 }
@@ -160,15 +191,27 @@ fn legacy_upgrade_keeps_heartbeats_and_drops_orphans() {
 fn legacy_upgrade_links_every_monitor_to_every_channel() {
     let (conn, _) = upgrade(legacy_db());
     let links: i64 = conn
-        .query_row("SELECT COUNT(*) FROM monitor_notifications WHERE escalation = 0", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM monitor_notifications WHERE escalation = 0",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(links, 3 * 2);
     let defaults: i64 = conn
-        .query_row("SELECT COUNT(*) FROM notification_channels WHERE is_default = 1", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM notification_channels WHERE is_default = 1",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(defaults, 2);
     let inactive: i64 = conn
-        .query_row("SELECT active FROM notification_channels WHERE id = 2", [], |r| r.get(0))
+        .query_row(
+            "SELECT active FROM notification_channels WHERE id = 2",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(inactive, 0);
 }
@@ -176,15 +219,26 @@ fn legacy_upgrade_links_every_monitor_to_every_channel() {
 #[test]
 fn foreign_keys_are_enforced_after_upgrade() {
     let (conn, _) = upgrade(legacy_db());
-    let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+    let fk: i64 = conn
+        .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(fk, 1);
-    conn.execute("DELETE FROM monitors WHERE id = 1", []).unwrap();
+    conn.execute("DELETE FROM monitors WHERE id = 1", [])
+        .unwrap();
     let remaining: i64 = conn
-        .query_row("SELECT COUNT(*) FROM heartbeats WHERE monitor_id = 1", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM heartbeats WHERE monitor_id = 1",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(remaining, 0);
     let links: i64 = conn
-        .query_row("SELECT COUNT(*) FROM monitor_notifications WHERE monitor_id = 1", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM monitor_notifications WHERE monitor_id = 1",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(links, 0);
 }
@@ -217,7 +271,9 @@ fn failed_migration_rolls_back_and_restores_foreign_keys() {
     );
     assert!(err.is_err());
     assert!(!table_exists(&conn, "half_done"));
-    let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+    let fk: i64 = conn
+        .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(fk, 1);
 }
 
@@ -226,9 +282,16 @@ fn backup_before_migration_writes_a_restorable_copy() {
     let (conn, _) = upgrade(legacy_db());
     let dir = std::env::temp_dir().join(format!("vv-backup-test-{}", std::process::id()));
     super::backup_before_migration(&conn, &dir, "0002_full_schema").unwrap();
-    let file = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap().path();
+    let file = std::fs::read_dir(&dir)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
     let copy = Connection::open(&file).unwrap();
-    let users: i64 = copy.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0)).unwrap();
+    let users: i64 = copy
+        .query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))
+        .unwrap();
     drop(copy);
     std::fs::remove_dir_all(&dir).unwrap();
     assert_eq!(users, 2);
@@ -240,7 +303,10 @@ fn migrated_before(before: &str) -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(CONNECTION_PRAGMAS).unwrap();
     super::prepare_tracking(&conn).unwrap();
-    for (name, sql) in super::embedded_migrations().into_iter().filter(|(name, _)| name.as_str() < before) {
+    for (name, sql) in super::embedded_migrations()
+        .into_iter()
+        .filter(|(name, _)| name.as_str() < before)
+    {
         super::apply_one(&mut conn, &name, &sql).unwrap();
     }
     conn
@@ -260,30 +326,91 @@ fn sqlserver_and_mongodb_upgrade_keeps_every_monitor_column() {
     )
     .unwrap();
     // The old CHECK refuses the new types.
-    assert!(conn.execute("INSERT INTO monitors (name, monitor_type) VALUES ('x', 'mongodb')", []).is_err());
+    assert!(
+        conn.execute(
+            "INSERT INTO monitors (name, monitor_type) VALUES ('x', 'mongodb')",
+            []
+        )
+        .is_err()
+    );
 
     let ran = apply_migrations(&mut conn).unwrap();
     assert!(ran.iter().any(|n| n.starts_with("0097")), "{ran:?}");
     let api = crate::db::monitors::get_monitor(&conn, 2).unwrap().unwrap();
-    assert_eq!((api.parent_id, api.basic_auth_user.as_deref(), api.basic_auth_pass.as_deref()), (Some(1), Some("bot"), Some("pw")));
-    assert_eq!((api.auth_method.as_str(), api.oauth_token_url.as_deref(), api.oauth_client_secret.as_deref()), ("oauth2", Some("https://idp.test/token"), Some("client-secret")));
-    assert_eq!((api.tls_client_key.as_deref(), api.external_id.as_deref(), api.source.as_str()), (Some("KEY"), Some("x-1"), "config"));
+    assert_eq!(
+        (
+            api.parent_id,
+            api.basic_auth_user.as_deref(),
+            api.basic_auth_pass.as_deref()
+        ),
+        (Some(1), Some("bot"), Some("pw"))
+    );
+    assert_eq!(
+        (
+            api.auth_method.as_str(),
+            api.oauth_token_url.as_deref(),
+            api.oauth_client_secret.as_deref()
+        ),
+        (
+            "oauth2",
+            Some("https://idp.test/token"),
+            Some("client-secret")
+        )
+    );
+    assert_eq!(
+        (
+            api.tls_client_key.as_deref(),
+            api.external_id.as_deref(),
+            api.source.as_str()
+        ),
+        (Some("KEY"), Some("x-1"), "config")
+    );
     assert_eq!(api.created_at, "2026-01-02 03:04:05");
     let radius = crate::db::monitors::get_monitor(&conn, 3).unwrap().unwrap();
     assert_eq!(radius.secret.as_deref(), Some("shared"));
-    let beats: i64 = conn.query_row("SELECT COUNT(*) FROM heartbeats WHERE monitor_id = 2", [], |r| r.get(0)).unwrap();
+    let beats: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM heartbeats WHERE monitor_id = 2",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert_eq!(beats, 1, "heartbeats survive the rebuild");
 
     // Also the types planned for the same release, and their column.
-    for kind in ["sqlserver", "mongodb", "tailscale_ping", "game_server", "grpc_keyword", "real_browser"] {
-        conn.execute("INSERT INTO monitors (name, monitor_type, target) VALUES (?1, ?1, 'db.test')", params![kind]).unwrap();
+    for kind in [
+        "sqlserver",
+        "mongodb",
+        "tailscale_ping",
+        "game_server",
+        "grpc_keyword",
+        "real_browser",
+    ] {
+        conn.execute(
+            "INSERT INTO monitors (name, monitor_type, target) VALUES (?1, ?1, 'db.test')",
+            params![kind],
+        )
+        .unwrap();
     }
-    let proto: Option<String> = conn.query_row("SELECT grpc_proto FROM monitors WHERE id = 3", [], |r| r.get(0)).unwrap();
+    let proto: Option<String> = conn
+        .query_row("SELECT grpc_proto FROM monitors WHERE id = 3", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
     assert_eq!(proto, None);
-    assert!(conn.execute("INSERT INTO monitors (name, monitor_type) VALUES ('x', 'oracle')", []).is_err());
+    assert!(
+        conn.execute(
+            "INSERT INTO monitors (name, monitor_type) VALUES ('x', 'oracle')",
+            []
+        )
+        .is_err()
+    );
     // Deleting a monitor still cascades (foreign keys point at the new table).
-    conn.execute("DELETE FROM monitors WHERE id = 2", []).unwrap();
-    let beats: i64 = conn.query_row("SELECT COUNT(*) FROM heartbeats", [], |r| r.get(0)).unwrap();
+    conn.execute("DELETE FROM monitors WHERE id = 2", [])
+        .unwrap();
+    let beats: i64 = conn
+        .query_row("SELECT COUNT(*) FROM heartbeats", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(beats, 0);
 }
 
@@ -291,6 +418,50 @@ fn sqlserver_and_mongodb_upgrade_keeps_every_monitor_column() {
 fn every_monitor_type_is_accepted_by_a_fresh_schema() {
     let conn = test_conn();
     for kind in crate::db::models::MonitorType::all() {
-        conn.execute("INSERT INTO monitors (name, monitor_type) VALUES (?1, ?1)", params![kind.as_str()]).unwrap();
+        conn.execute(
+            "INSERT INTO monitors (name, monitor_type) VALUES (?1, ?1)",
+            params![kind.as_str()],
+        )
+        .unwrap();
     }
+}
+
+#[test]
+fn subscriber_tokens_upgrade_hashes_old_links_and_drops_base_url() {
+    let mut conn = migrated_before("0103");
+    let token = crate::auth::tokens::generate();
+    conn.execute(
+        "INSERT INTO status_pages (id, slug, title) VALUES (1, 's', 'S')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO status_page_subscribers (page_id, kind, target, token, lang, base_url, confirmed_at)
+         VALUES (1, 'email', 'a@example.com', ?1, 'nb', 'http://attacker.example', datetime('now'))",
+        params![token],
+    )
+    .unwrap();
+    super::apply_migrations(&mut conn).unwrap();
+    let columns: Vec<String> = conn
+        .prepare("SELECT name FROM pragma_table_info('status_page_subscribers')")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert!(
+        !columns.iter().any(|c| c == "base_url" || c == "token"),
+        "{columns:?}"
+    );
+    // The link that was already sent still finds the subscriber; the plain
+    // token is gone from the database.
+    let sub = crate::db::subscribers::by_token(&conn, &token)
+        .unwrap()
+        .unwrap();
+    assert_eq!((sub.lang.as_str(), sub.is_confirmed()), ("nb", true));
+    assert_ne!(sub.token_hash, token);
+    // Deleting the page still cascades to its subscribers.
+    conn.execute("DELETE FROM status_pages WHERE id = 1", [])
+        .unwrap();
+    assert_eq!(crate::db::subscribers::count(&conn, 1).unwrap(), 0);
 }

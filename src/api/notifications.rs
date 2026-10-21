@@ -440,7 +440,10 @@ fn validate_name(name: &str) -> Option<String> {
     if name.is_empty() {
         Some(crate::i18n::t("notif.err_name").into())
     } else if name.chars().count() > NAME_MAX {
-        Some(crate::i18n::tf("notif.err_name_long", &[("max", &NAME_MAX.to_string())]))
+        Some(crate::i18n::tf(
+            "notif.err_name_long",
+            &[("max", &NAME_MAX.to_string())],
+        ))
     } else {
         None
     }
@@ -738,7 +741,11 @@ async fn update(
         })
         .await?;
     tracing::info!(user = %user.username, channel_id = id, "notification channel updated");
-    let jar = flash(jar, "success", crate::i18n::tf("notif.saved", &[("name", &name)]));
+    let jar = flash(
+        jar,
+        "success",
+        crate::i18n::tf("notif.saved", &[("name", &name)]),
+    );
     Ok((jar, Redirect::to("/settings/notifications")).into_response())
 }
 
@@ -803,7 +810,10 @@ async fn run_test(state: &AppState, kind: &str, config: &Value, label: &str) -> 
     let event = notification::test_event(&settings.site_name, settings.base_url.as_deref());
     match notification::send_config(&state.http, kind, config, &event).await {
         Ok(()) => (
-            [toast(&crate::i18n::tf("notif.test_sent", &[("label", label)]), "success")],
+            [toast(
+                &crate::i18n::tf("notif.test_sent", &[("label", label)]),
+                "success",
+            )],
             StatusCode::OK,
         )
             .into_response(),
@@ -833,7 +843,9 @@ fn first_error_toast(schema: &ProviderSchema, errors: &[FieldError]) -> Response
     let (key, msg) = &errors[0];
     let label = schema
         .field(key)
-        .map_or(crate::i18n::t("notif.settings_label"), |f| f.tr_label(schema.kind));
+        .map_or(crate::i18n::t("notif.settings_label"), |f| {
+            f.tr_label(schema.kind)
+        });
     ([toast(&format!("{label}: {msg}"), "error")], StatusCode::OK).into_response()
 }
 
@@ -996,7 +1008,12 @@ mod tests {
         };
         let row = ChannelRow::new(channel, 0);
         assert_eq!(row.kind, "discord");
-        let html = ListPartial { rows: vec![row], can_edit: true }.render().unwrap();
+        let html = ListPartial {
+            rows: vec![row],
+            can_edit: true,
+        }
+        .render()
+        .unwrap();
         assert!(html.contains("provider-tile provider-discord"), "{html}");
     }
 

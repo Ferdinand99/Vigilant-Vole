@@ -11,6 +11,7 @@
 //! Errors returned by [`send`] are safe to log and show: they never contain
 //! the request URL or any secret from the channel config.
 
+pub mod apis;
 pub mod apprise;
 pub mod bark;
 pub mod dingtalk;
@@ -24,7 +25,9 @@ pub mod http;
 pub mod matrix;
 pub mod mattermost;
 pub mod message;
+pub mod nextcloudtalk;
 pub mod ntfy;
+pub mod oncall;
 pub mod opsgenie;
 pub mod pagerduty;
 pub mod pushbullet;
@@ -35,9 +38,12 @@ pub mod signal;
 pub mod slack;
 pub mod teams;
 pub mod telegram;
+pub mod threema;
 pub mod twilio;
 pub mod webex;
 pub mod webhook;
+pub mod whatsapp;
+pub mod zulip;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -51,7 +57,7 @@ pub use schema::{Category, Field, FieldKind, ProviderSchema, SECRET_MASK, Transp
 use crate::db::models::{NotificationChannel, NotificationEvent};
 
 /// Every provider, in picker order within each category.
-pub const PROVIDERS: [&ProviderSchema; 24] = [
+pub const PROVIDERS: &[&ProviderSchema] = &[
     &discord::SCHEMA,
     &slack::SCHEMA,
     &teams::SCHEMA,
@@ -76,6 +82,22 @@ pub const PROVIDERS: [&ProviderSchema; 24] = [
     &webhook::SCHEMA,
     &apprise::SCHEMA,
     &homeassistant::SCHEMA,
+    &zulip::SCHEMA,
+    &nextcloudtalk::SCHEMA,
+    &threema::SCHEMA,
+    &whatsapp::WAHA,
+    &whatsapp::EVOLUTION,
+    &oncall::SIGNL4,
+    &oncall::SQUADCAST,
+    &oncall::GRAFANA_ONCALL,
+    &oncall::GOALERT,
+    &oncall::SPLUNK,
+    &oncall::KEEP,
+    &apis::SENDGRID,
+    &apis::BREVO,
+    &apis::CLICKSEND,
+    &apis::ELKS,
+    &apis::GORUSH,
 ];
 
 /// Channel kinds this build can deliver to (derived from [`PROVIDERS`]).

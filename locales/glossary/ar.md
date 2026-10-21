@@ -93,3 +93,6 @@ Monitor is treated as a masculine noun (مراقب); its plural is مراقبا�
 | MOTD | MOTD | Latin |
 | replica set | replicaSet | stays Latin (URL option) |
 | selector | محدد | CSS selector: محدد CSS |
+
+- cron expression: تعبير cron (the word "cron" stays Latin).
+- subscriber: مشترك (pl. المشتركون); subscribe / unsubscribe: اشتراك / إلغاء الاشتراك; confirm subscription: تأكيد الاشتراك; webhook subscriber: مشترك Webhook; pending (sign-up): قيد الانتظار; maintenance started / ended: بدأت الصيانة / انتهت الصيانة.

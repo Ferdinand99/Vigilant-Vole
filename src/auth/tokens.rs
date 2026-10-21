@@ -39,9 +39,9 @@ pub fn generate() -> String {
 
 /// Cheap shape check before touching the database.
 pub fn is_well_formed(token: &str) -> bool {
-    token
-        .strip_prefix(TOKEN_PREFIX)
-        .is_some_and(|body| body.len() == TOKEN_BODY_LEN && body.bytes().all(|b| b.is_ascii_alphanumeric()))
+    token.strip_prefix(TOKEN_PREFIX).is_some_and(|body| {
+        body.len() == TOKEN_BODY_LEN && body.bytes().all(|b| b.is_ascii_alphanumeric())
+    })
 }
 
 /// Lowercase hex SHA-256 (the `api_tokens.token_hash` column).
@@ -109,7 +109,10 @@ mod tests {
 
     #[test]
     fn hash_is_sha256_hex() {
-        assert_eq!(hash("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(
+            hash("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]
@@ -125,8 +128,14 @@ mod tests {
 
     #[test]
     fn bearer_token_is_read() {
-        assert_eq!(token_from_headers(&auth("Bearer vv_abc")).as_deref(), Some("vv_abc"));
-        assert_eq!(token_from_headers(&auth("bearer  vv_abc ")).as_deref(), Some("vv_abc"));
+        assert_eq!(
+            token_from_headers(&auth("Bearer vv_abc")).as_deref(),
+            Some("vv_abc")
+        );
+        assert_eq!(
+            token_from_headers(&auth("bearer  vv_abc ")).as_deref(),
+            Some("vv_abc")
+        );
     }
 
     #[test]

@@ -92,12 +92,16 @@ impl StatusPage {
 
     /// Versioned (cache-busting) logo path, when a logo is uploaded.
     pub fn logo_url(&self) -> Option<String> {
-        self.logo_sha.as_deref().map(|sha| extras::asset_path(&self.slug, extras::AssetKind::Logo, sha))
+        self.logo_sha
+            .as_deref()
+            .map(|sha| extras::asset_path(&self.slug, extras::AssetKind::Logo, sha))
     }
 
     /// Versioned favicon path, when a favicon is uploaded.
     pub fn favicon_url(&self) -> Option<String> {
-        self.favicon_sha.as_deref().map(|sha| extras::asset_path(&self.slug, extras::AssetKind::Favicon, sha))
+        self.favicon_sha
+            .as_deref()
+            .map(|sha| extras::asset_path(&self.slug, extras::AssetKind::Favicon, sha))
     }
 
     pub fn to_new(&self) -> NewStatusPage {
@@ -147,7 +151,8 @@ pub struct SectionMonitor {
 
 impl SectionMonitor {
     pub fn type_label(&self) -> &'static str {
-        crate::db::models::MonitorType::parse(&self.monitor_type).map_or(crate::i18n::t("form.back_monitor"), |t| t.label())
+        crate::db::models::MonitorType::parse(&self.monitor_type)
+            .map_or(crate::i18n::t("form.back_monitor"), |t| t.label())
     }
 }
 
@@ -210,7 +215,8 @@ pub fn row_to_page(row: &Row) -> rusqlite::Result<StatusPage> {
         analytics: extras::Analytics {
             enabled: row.get("analytics_enabled")?,
             unique: row.get("analytics_unique")?,
-            provider: extras::Provider::parse(&row.get::<_, String>("analytics_provider")?).unwrap_or_default(),
+            provider: extras::Provider::parse(&row.get::<_, String>("analytics_provider")?)
+                .unwrap_or_default(),
             site_id: row.get("analytics_site_id")?,
             url: row.get("analytics_url")?,
         },
@@ -232,7 +238,10 @@ pub fn validate_slug(slug: &str) -> Result<(), &'static str> {
     if slug.len() > 64 {
         return Err(crate::i18n::t("sp.err_slug_long"));
     }
-    if !slug.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') {
+    if !slug
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
         return Err(crate::i18n::t("sp.err_slug_chars"));
     }
     if slug.starts_with('-') || slug.ends_with('-') {
@@ -289,12 +298,16 @@ pub fn normalize_domain(input: &str) -> Result<Option<String>, &'static str> {
             && l.len() <= 63
             && !l.starts_with('-')
             && !l.ends_with('-')
-            && l.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            && l.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     };
     if !labels.iter().all(label_ok) {
         return Err(crate::i18n::t("sp.err_domain_chars"));
     }
-    if labels.last().is_some_and(|tld| tld.bytes().all(|b| b.is_ascii_digit())) {
+    if labels
+        .last()
+        .is_some_and(|tld| tld.bytes().all(|b| b.is_ascii_digit()))
+    {
         return Err(crate::i18n::t("sp.err_domain_ip"));
     }
     Ok(Some(d.to_string()))
@@ -308,7 +321,8 @@ pub const FOOTER_MAX: usize = 5_000;
 fn bare_host(value: &str) -> String {
     let v = value.trim().to_ascii_lowercase();
     let host = if v.starts_with('[') {
-        v.split_once(']').map_or(v.clone(), |(h, _)| format!("{h}]"))
+        v.split_once(']')
+            .map_or(v.clone(), |(h, _)| format!("{h}]"))
     } else {
         v.rsplit_once(':').map_or(v.clone(), |(h, _)| h.to_string())
     };
@@ -361,13 +375,21 @@ pub fn list(conn: &Connection) -> rusqlite::Result<Vec<StatusPageSummary>> {
 }
 
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<StatusPage>> {
-    conn.query_row(&format!("SELECT {COLUMNS} FROM status_pages WHERE id = ?1"), params![id], row_to_page)
-        .optional()
+    conn.query_row(
+        &format!("SELECT {COLUMNS} FROM status_pages WHERE id = ?1"),
+        params![id],
+        row_to_page,
+    )
+    .optional()
 }
 
 pub fn get_by_slug(conn: &Connection, slug: &str) -> rusqlite::Result<Option<StatusPage>> {
-    conn.query_row(&format!("SELECT {COLUMNS} FROM status_pages WHERE slug = ?1"), params![slug], row_to_page)
-        .optional()
+    conn.query_row(
+        &format!("SELECT {COLUMNS} FROM status_pages WHERE slug = ?1"),
+        params![slug],
+        row_to_page,
+    )
+    .optional()
 }
 
 /// `(custom_domain, slug)` of every published page with a custom domain.
@@ -388,7 +410,11 @@ pub fn slug_taken(conn: &Connection, slug: &str, except_id: Option<i64>) -> rusq
     )
 }
 
-pub fn domain_taken(conn: &Connection, domain: &str, except_id: Option<i64>) -> rusqlite::Result<bool> {
+pub fn domain_taken(
+    conn: &Connection,
+    domain: &str,
+    except_id: Option<i64>,
+) -> rusqlite::Result<bool> {
     conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM status_pages WHERE custom_domain = ?1 AND id != ?2)",
         params![domain, except_id.unwrap_or(-1)],
@@ -533,7 +559,12 @@ pub fn add_section(conn: &Connection, page_id: i64, name: &str) -> rusqlite::Res
     Ok(id)
 }
 
-pub fn rename_section(conn: &Connection, page_id: i64, section_id: i64, name: &str) -> rusqlite::Result<bool> {
+pub fn rename_section(
+    conn: &Connection,
+    page_id: i64,
+    section_id: i64,
+    name: &str,
+) -> rusqlite::Result<bool> {
     let n = conn.execute(
         "UPDATE status_page_sections SET name = ?3 WHERE id = ?1 AND status_page_id = ?2",
         params![section_id, page_id, name],
@@ -552,7 +583,12 @@ pub fn delete_section(conn: &Connection, page_id: i64, section_id: i64) -> rusql
 }
 
 /// Appends monitors to a section (existing ones and unknown ids are skipped).
-pub fn add_monitors(conn: &mut Connection, page_id: i64, section_id: i64, monitor_ids: &[i64]) -> rusqlite::Result<usize> {
+pub fn add_monitors(
+    conn: &mut Connection,
+    page_id: i64,
+    section_id: i64,
+    monitor_ids: &[i64],
+) -> rusqlite::Result<usize> {
     if !section_on_page(conn, page_id, section_id)? {
         return Ok(0);
     }
@@ -573,7 +609,12 @@ pub fn add_monitors(conn: &mut Connection, page_id: i64, section_id: i64, monito
     Ok(added)
 }
 
-pub fn remove_monitor(conn: &Connection, page_id: i64, section_id: i64, monitor_id: i64) -> rusqlite::Result<bool> {
+pub fn remove_monitor(
+    conn: &Connection,
+    page_id: i64,
+    section_id: i64,
+    monitor_id: i64,
+) -> rusqlite::Result<bool> {
     let n = conn.execute(
         "DELETE FROM status_page_monitors WHERE section_id = ?1 AND monitor_id = ?2
            AND section_id IN (SELECT id FROM status_page_sections WHERE status_page_id = ?3)",
@@ -594,8 +635,9 @@ pub fn apply_order(
 ) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     {
-        let mut set_order =
-            tx.prepare("UPDATE status_page_sections SET sort_order = ?3 WHERE id = ?1 AND status_page_id = ?2")?;
+        let mut set_order = tx.prepare(
+            "UPDATE status_page_sections SET sort_order = ?3 WHERE id = ?1 AND status_page_id = ?2",
+        )?;
         for (i, sid) in section_order.iter().enumerate() {
             set_order.execute(params![sid, page_id, i as i64])?;
         }
@@ -653,8 +695,16 @@ mod tests {
     fn own_host_is_recognised_from_base_url_and_request() {
         let base = Some("https://Vole.Example.com:8443/app/");
         assert!(is_own_host("vole.example.com", base, &[]));
-        assert!(is_own_host("status.acme.test", None, &["Status.Acme.Test:3000"]));
-        assert!(is_own_host("status.acme.test", None, &["status.acme.test."]));
+        assert!(is_own_host(
+            "status.acme.test",
+            None,
+            &["Status.Acme.Test:3000"]
+        ));
+        assert!(is_own_host(
+            "status.acme.test",
+            None,
+            &["status.acme.test."]
+        ));
         assert!(!is_own_host("status.acme.test", base, &["vole.test"]));
         assert!(!is_own_host("status.acme.test", Some("not a url"), &[""]));
     }
@@ -692,7 +742,10 @@ mod tests {
         assert!(validate_slug("ünï").is_err());
         assert!(validate_slug(&"a".repeat(65)).is_err());
         for reserved in ["new", "api", "static", "status-pages", "fragment"] {
-            assert!(validate_slug(reserved).is_err(), "{reserved} should be reserved");
+            assert!(
+                validate_slug(reserved).is_err(),
+                "{reserved} should be reserved"
+            );
         }
     }
 
@@ -707,10 +760,28 @@ mod tests {
     #[test]
     fn domain_validation() {
         assert_eq!(normalize_domain("").unwrap(), None);
-        assert_eq!(normalize_domain("  Status.Example.COM ").unwrap().as_deref(), Some("status.example.com"));
-        assert_eq!(normalize_domain("https://status.example.com/").unwrap().as_deref(), Some("status.example.com"));
-        assert_eq!(normalize_domain("status.example.com.").unwrap().as_deref(), Some("status.example.com"));
-        assert_eq!(normalize_domain("xn--bcher-kva.example").unwrap().as_deref(), Some("xn--bcher-kva.example"));
+        assert_eq!(
+            normalize_domain("  Status.Example.COM ")
+                .unwrap()
+                .as_deref(),
+            Some("status.example.com")
+        );
+        assert_eq!(
+            normalize_domain("https://status.example.com/")
+                .unwrap()
+                .as_deref(),
+            Some("status.example.com")
+        );
+        assert_eq!(
+            normalize_domain("status.example.com.").unwrap().as_deref(),
+            Some("status.example.com")
+        );
+        assert_eq!(
+            normalize_domain("xn--bcher-kva.example")
+                .unwrap()
+                .as_deref(),
+            Some("xn--bcher-kva.example")
+        );
         assert!(normalize_domain("localhost").is_err());
         assert!(normalize_domain("status.example.com:8080").is_err());
         assert!(normalize_domain("status.example.com/path").is_err());
@@ -777,21 +848,58 @@ mod tests {
         let s1 = sections(&conn, page_id).unwrap()[0].id;
         let s2 = add_section(&conn, page_id, "APIs").unwrap();
         let foreign = sections(&conn, other_page).unwrap()[0].id;
-        let (a, b, c) = (monitor(&conn, "a"), monitor(&conn, "b"), monitor(&conn, "c"));
+        let (a, b, c) = (
+            monitor(&conn, "a"),
+            monitor(&conn, "b"),
+            monitor(&conn, "c"),
+        );
 
-        assert_eq!(add_monitors(&mut conn, page_id, s1, &[a, b, a, 999]).unwrap(), 2);
+        assert_eq!(
+            add_monitors(&mut conn, page_id, s1, &[a, b, a, 999]).unwrap(),
+            2
+        );
         assert_eq!(add_monitors(&mut conn, page_id, foreign, &[c]).unwrap(), 0);
         add_monitors(&mut conn, page_id, s2, &[c]).unwrap();
         let secs = sections(&conn, page_id).unwrap();
-        assert_eq!(secs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["Services", "APIs"]);
-        assert_eq!(secs[0].monitors.iter().map(|m| m.monitor_id).collect::<Vec<_>>(), [a, b]);
+        assert_eq!(
+            secs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+            ["Services", "APIs"]
+        );
+        assert_eq!(
+            secs[0]
+                .monitors
+                .iter()
+                .map(|m| m.monitor_id)
+                .collect::<Vec<_>>(),
+            [a, b]
+        );
 
         // Swap sections, move `a` into APIs after `c`, drop nothing else.
-        apply_order(&mut conn, page_id, &[s2, s1], &[(s2, vec![c, a]), (s1, vec![b]), (foreign, vec![a])]).unwrap();
+        apply_order(
+            &mut conn,
+            page_id,
+            &[s2, s1],
+            &[(s2, vec![c, a]), (s1, vec![b]), (foreign, vec![a])],
+        )
+        .unwrap();
         let secs = sections(&conn, page_id).unwrap();
         assert_eq!(secs[0].id, s2);
-        assert_eq!(secs[0].monitors.iter().map(|m| m.monitor_id).collect::<Vec<_>>(), [c, a]);
-        assert_eq!(secs[1].monitors.iter().map(|m| m.monitor_id).collect::<Vec<_>>(), [b]);
+        assert_eq!(
+            secs[0]
+                .monitors
+                .iter()
+                .map(|m| m.monitor_id)
+                .collect::<Vec<_>>(),
+            [c, a]
+        );
+        assert_eq!(
+            secs[1]
+                .monitors
+                .iter()
+                .map(|m| m.monitor_id)
+                .collect::<Vec<_>>(),
+            [b]
+        );
         // The other page's section was not touched.
         assert!(sections(&conn, other_page).unwrap()[0].monitors.is_empty());
 

@@ -24,12 +24,22 @@ fn kuma(name: &str) -> KumaImport {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("kuma.db");
     let _ = std::fs::remove_file(&path);
-    Connection::open(&path).unwrap().execute_batch(SCHEMA).unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch(SCHEMA)
+        .unwrap();
     read_sqlite(&path).unwrap()
 }
 
 fn doc<'a>(import: &'a KumaImport, name: &str) -> &'a MonitorDoc {
-    import.doc.monitors.as_ref().unwrap().iter().find(|m| m.name == name).unwrap()
+    import
+        .doc
+        .monitors
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|m| m.name == name)
+        .unwrap()
 }
 
 #[test]
@@ -38,18 +48,51 @@ fn real_browser_monitors_and_remote_browsers_map_to_ours() {
     let browsers = import.doc.remote_browsers.as_ref().unwrap();
     assert_eq!(browsers.len(), 2);
     // browserless's Playwright path becomes its CDP endpoint, token kept.
-    assert_eq!((browsers[0].name.as_str(), browsers[0].url.as_str()), ("Browserless", "ws://browserless:3000/?token=k3y"));
+    assert_eq!(
+        (browsers[0].name.as_str(), browsers[0].url.as_str()),
+        ("Browserless", "ws://browserless:3000/?token=k3y")
+    );
     assert_eq!(browsers[1].url, "ws://chrome:9222/devtools/browser/abc");
     let shop = doc(&import, "Shop");
-    assert_eq!((shop.monitor_type.as_str(), shop.target.as_str()), ("real_browser", "https://shop.example.com"));
-    assert_eq!(shop.options.get("remote_browser"), Some(&json!("Browserless")));
+    assert_eq!(
+        (shop.monitor_type.as_str(), shop.target.as_str()),
+        ("real_browser", "https://shop.example.com")
+    );
+    assert_eq!(
+        shop.options.get("remote_browser"),
+        Some(&json!("Browserless"))
+    );
     assert_eq!(shop.options.get("ignore_tls"), Some(&json!(true)));
-    assert!(shop.options.get("keyword").is_none(), "Kuma doesn't check keywords on real-browser monitors");
-    assert_eq!(doc(&import, "Blog").options.get("remote_browser"), Some(&json!("Chrome")));
-    assert!(doc(&import, "Local").options.get("remote_browser").is_none());
-    let warned = |name: &str, text: &str| import.warnings.iter().any(|w| w.contains(name) && w.contains(text));
-    assert!(warned("Local", "built-in Chromium"), "{:?}", import.warnings);
-    assert!(warned("Gone", "wasn’t in the export"), "{:?}", import.warnings);
+    assert!(
+        shop.options.get("keyword").is_none(),
+        "Kuma doesn't check keywords on real-browser monitors"
+    );
+    assert_eq!(
+        doc(&import, "Blog").options.get("remote_browser"),
+        Some(&json!("Chrome"))
+    );
+    assert!(
+        doc(&import, "Local")
+            .options
+            .get("remote_browser")
+            .is_none()
+    );
+    let warned = |name: &str, text: &str| {
+        import
+            .warnings
+            .iter()
+            .any(|w| w.contains(name) && w.contains(text))
+    };
+    assert!(
+        warned("Local", "built-in Chromium"),
+        "{:?}",
+        import.warnings
+    );
+    assert!(
+        warned("Gone", "wasn’t in the export"),
+        "{:?}",
+        import.warnings
+    );
     assert!(warned("Browserless", "Playwright"), "{:?}", import.warnings);
 }
 
@@ -59,8 +102,13 @@ fn the_import_plan_creates_browsers_and_links_monitors() {
     let mut conn = test_conn();
     let plan = plan(&conn, &mut import).unwrap();
     assert!(plan.errors.is_empty(), "{:?}", plan.errors);
-    assert_eq!(plan.action_for(config_io::KIND_BROWSER, "Browserless"), Some(config_io::Action::Create));
-    config_io::apply(&mut conn, &import.doc, config_io::Mode::Merge).unwrap().unwrap();
+    assert_eq!(
+        plan.action_for(config_io::KIND_BROWSER, "Browserless"),
+        Some(config_io::Action::Create)
+    );
+    config_io::apply(&mut conn, &import.doc, config_io::Mode::Merge)
+        .unwrap()
+        .unwrap();
     let chrome = db_rb::get_by_name(&conn, "Chrome").unwrap().unwrap();
     let browserless = db_rb::get_by_name(&conn, "Browserless").unwrap().unwrap();
     let monitors = crate::db::monitors::list_monitors(&conn).unwrap();
@@ -78,7 +126,20 @@ fn a_bad_remote_browser_is_skipped_and_its_monitors_kept() {
     let conn = test_conn();
     let plan = plan(&conn, &mut import).unwrap();
     assert!(plan.errors.is_empty(), "{:?}", plan.errors);
-    assert!(import.skipped.iter().any(|s| s.kind == "remote_browser" && s.name == "Browserless"), "{:?}", import.skipped);
-    assert!(doc(&import, "Shop").options.get("remote_browser").is_none(), "the reference is dropped with it");
-    assert_eq!(plan.action_for(config_io::KIND_MONITOR, "Shop"), Some(config_io::Action::Create));
+    assert!(
+        import
+            .skipped
+            .iter()
+            .any(|s| s.kind == "remote_browser" && s.name == "Browserless"),
+        "{:?}",
+        import.skipped
+    );
+    assert!(
+        doc(&import, "Shop").options.get("remote_browser").is_none(),
+        "the reference is dropped with it"
+    );
+    assert_eq!(
+        plan.action_for(config_io::KIND_MONITOR, "Shop"),
+        Some(config_io::Action::Create)
+    );
 }

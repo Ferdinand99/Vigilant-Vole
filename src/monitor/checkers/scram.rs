@@ -32,12 +32,14 @@ impl Hash {
     pub fn hmac(self, key: &[u8], data: &[u8]) -> Vec<u8> {
         match self {
             Hash::Sha1 => {
-                let mut mac = Hmac::<Sha1>::new_from_slice(key).expect("HMAC accepts any key length");
+                let mut mac =
+                    Hmac::<Sha1>::new_from_slice(key).expect("HMAC accepts any key length");
                 mac.update(data);
                 mac.finalize().into_bytes().to_vec()
             }
             Hash::Sha256 => {
-                let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key length");
+                let mut mac =
+                    Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key length");
                 mac.update(data);
                 mac.finalize().into_bytes().to_vec()
             }
@@ -87,7 +89,13 @@ pub struct ClientFinal {
 
 /// Answer the server's first message. `password` is what goes into `Hi()`
 /// (MongoDB's SCRAM-SHA-1 pre-hashes it).
-pub fn client_final(hash: Hash, password: &[u8], client_first_bare: &str, server_first: &str, client_nonce: &str) -> Result<ClientFinal, String> {
+pub fn client_final(
+    hash: Hash,
+    password: &[u8],
+    client_first_bare: &str,
+    server_first: &str,
+    client_nonce: &str,
+) -> Result<ClientFinal, String> {
     let bad = || "The server sent a malformed SCRAM message".to_string();
     let (mut nonce, mut salt, mut iterations) = (None, None, None);
     for part in server_first.split(',') {
@@ -98,7 +106,11 @@ pub fn client_final(hash: Hash, password: &[u8], client_first_bare: &str, server
             _ => {}
         }
     }
-    let (nonce, salt, iterations) = (nonce.ok_or_else(bad)?, salt.ok_or_else(bad)?, iterations.ok_or_else(bad)?);
+    let (nonce, salt, iterations) = (
+        nonce.ok_or_else(bad)?,
+        salt.ok_or_else(bad)?,
+        iterations.ok_or_else(bad)?,
+    );
     if !nonce.starts_with(client_nonce) {
         return Err("The server's SCRAM nonce is wrong".into());
     }
@@ -111,7 +123,11 @@ pub fn client_final(hash: Hash, password: &[u8], client_first_bare: &str, server
     let without_proof = format!("c=biws,r={nonce}");
     let auth_message = format!("{client_first_bare},{server_first},{without_proof}");
     let signature = hash.hmac(&stored_key, auth_message.as_bytes());
-    let proof: Vec<u8> = client_key.iter().zip(&signature).map(|(a, b)| a ^ b).collect();
+    let proof: Vec<u8> = client_key
+        .iter()
+        .zip(&signature)
+        .map(|(a, b)| a ^ b)
+        .collect();
     let server_key = hash.hmac(&salted, b"Server Key");
     Ok(ClientFinal {
         message: format!("{without_proof},p={}", B64.encode(proof)),
@@ -147,7 +163,10 @@ mod tests {
             fin.message,
             "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ="
         );
-        assert!(server_final_ok("v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=", &fin.server_signature));
+        assert!(server_final_ok(
+            "v=6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=",
+            &fin.server_signature
+        ));
         assert!(!server_final_ok("v=AAAA", &fin.server_signature));
     }
 
@@ -162,17 +181,38 @@ mod tests {
             "fyko+d2lbbFgONRv9qkxdawL",
         )
         .unwrap();
-        assert_eq!(fin.message, "c=biws,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts=");
-        assert!(server_final_ok("v=rmF9pqV8S7suAoZWja4dJRkFsKQ=", &fin.server_signature));
+        assert_eq!(
+            fin.message,
+            "c=biws,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts="
+        );
+        assert!(server_final_ok(
+            "v=rmF9pqV8S7suAoZWja4dJRkFsKQ=",
+            &fin.server_signature
+        ));
     }
 
     #[test]
     fn hostile_parameters_are_refused() {
-        let err = client_final(Hash::Sha256, b"pw", "n=,r=abc", "r=abcdef,s=c2FsdA==,i=999999999", "abc").unwrap_err();
+        let err = client_final(
+            Hash::Sha256,
+            b"pw",
+            "n=,r=abc",
+            "r=abcdef,s=c2FsdA==,i=999999999",
+            "abc",
+        )
+        .unwrap_err();
         assert!(err.contains("iteration"));
-        let err = client_final(Hash::Sha256, b"pw", "n=,r=abc", "r=zzz,s=c2FsdA==,i=4096", "abc").unwrap_err();
+        let err = client_final(
+            Hash::Sha256,
+            b"pw",
+            "n=,r=abc",
+            "r=zzz,s=c2FsdA==,i=4096",
+            "abc",
+        )
+        .unwrap_err();
         assert!(err.contains("nonce"));
-        let err = client_final(Hash::Sha1, b"pw", "n=,r=abc", "r=abcdef,i=4096", "abc").unwrap_err();
+        let err =
+            client_final(Hash::Sha1, b"pw", "n=,r=abc", "r=abcdef,i=4096", "abc").unwrap_err();
         assert!(err.contains("malformed"));
     }
 

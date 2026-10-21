@@ -37,7 +37,10 @@ impl FileResolver for OneFile {
 /// `Err` reads like "line 3: name 'strin' is not defined".
 pub fn compile_proto(text: &str) -> Result<DescriptorPool, String> {
     if text.len() > MAX_PROTO_LEN {
-        return Err(format!("The .proto is larger than {} KiB", MAX_PROTO_LEN / 1024));
+        return Err(format!(
+            "The .proto is larger than {} KiB",
+            MAX_PROTO_LEN / 1024
+        ));
     }
     let mut chain = ChainFileResolver::new();
     chain.add(OneFile(text.to_string()));
@@ -53,12 +56,24 @@ pub fn compile_proto(text: &str) -> Result<DescriptorPool, String> {
 /// The compiler's message, prefixed with the line it points at.
 fn describe_proto_error(err: &protox::Error, text: &str) -> String {
     let message = err.to_string();
-    let offset = err.labels().and_then(|mut labels| labels.next()).map(|l| l.offset()).or_else(|| {
-        err.related().and_then(|mut rel| rel.next()).and_then(|d| d.labels()).and_then(|mut l| l.next()).map(|l| l.offset())
-    });
+    let offset = err
+        .labels()
+        .and_then(|mut labels| labels.next())
+        .map(|l| l.offset())
+        .or_else(|| {
+            err.related()
+                .and_then(|mut rel| rel.next())
+                .and_then(|d| d.labels())
+                .and_then(|mut l| l.next())
+                .map(|l| l.offset())
+        });
     match offset.filter(|o| *o <= text.len() && err.file().is_none_or(|f| f == PROTO_FILE)) {
         Some(at) => {
-            let line = text.as_bytes()[..at].iter().filter(|b| **b == b'\n').count() + 1;
+            let line = text.as_bytes()[..at]
+                .iter()
+                .filter(|b| **b == b'\n')
+                .count()
+                + 1;
             format!("line {line}: {message}")
         }
         None => message,
@@ -71,24 +86,38 @@ fn names<I: Iterator<Item = String>>(list: I) -> String {
     if all.len() > 5 {
         shown.push_str(", …");
     }
-    if shown.is_empty() { "none".into() } else { shown }
+    if shown.is_empty() {
+        "none".into()
+    } else {
+        shown
+    }
 }
 
 /// The method `service`/`method` names. The service is its full name
 /// (`pkg.Service`) or an unambiguous short one (`Service`); the method
 /// matches exactly or ignoring case, so Uptime Kuma's lowerCamel names
 /// (`sayHello`) work. Streaming methods are refused.
-pub fn find_method(pool: &DescriptorPool, service: &str, method: &str) -> Result<MethodDescriptor, String> {
+pub fn find_method(
+    pool: &DescriptorPool,
+    service: &str,
+    method: &str,
+) -> Result<MethodDescriptor, String> {
     let service = service.trim_start_matches('.');
     let svc = match pool.get_service_by_name(service) {
         Some(s) => s,
         None => {
             let suffix = format!(".{service}");
-            let mut matches = pool.services().filter(|s| s.name() == service || s.full_name().ends_with(&suffix));
+            let mut matches = pool
+                .services()
+                .filter(|s| s.name() == service || s.full_name().ends_with(&suffix));
             match (matches.next(), matches.next()) {
                 (Some(s), None) => s,
                 (Some(a), Some(b)) => {
-                    return Err(format!("\"{service}\" is ambiguous ({}, {}, …): use the full service name", a.full_name(), b.full_name()));
+                    return Err(format!(
+                        "\"{service}\" is ambiguous ({}, {}, …): use the full service name",
+                        a.full_name(),
+                        b.full_name()
+                    ));
                 }
                 _ => {
                     return Err(format!(
@@ -101,7 +130,9 @@ pub fn find_method(pool: &DescriptorPool, service: &str, method: &str) -> Result
         }
     };
     let found = svc.methods().find(|m| m.name() == method).or_else(|| {
-        let mut loose = svc.methods().filter(|m| m.name().eq_ignore_ascii_case(method));
+        let mut loose = svc
+            .methods()
+            .filter(|m| m.name().eq_ignore_ascii_case(method));
         match (loose.next(), loose.next()) {
             (Some(m), None) => Some(m),
             _ => None,
@@ -116,7 +147,10 @@ pub fn find_method(pool: &DescriptorPool, service: &str, method: &str) -> Result
         ));
     };
     if m.is_client_streaming() || m.is_server_streaming() {
-        return Err(format!("{} is a streaming method; only unary methods can be checked", m.full_name()));
+        return Err(format!(
+            "{} is a streaming method; only unary methods can be checked",
+            m.full_name()
+        ));
     }
     Ok(m)
 }
@@ -129,14 +163,20 @@ pub fn encode_request(m: &MethodDescriptor, json: &str) -> Result<Vec<u8>, Strin
     let options = DeserializeOptions::new().deny_unknown_fields(false);
     let msg = DynamicMessage::deserialize_with_options(m.input(), &mut de, &options)
         .and_then(|msg| de.end().map(|()| msg))
-        .map_err(|e| format!("The request body doesn't fit {}: {e}", m.input().full_name()))?;
+        .map_err(|e| {
+            format!(
+                "The request body doesn't fit {}: {e}",
+                m.input().full_name()
+            )
+        })?;
     Ok(msg.encode_to_vec())
 }
 
 /// The answer as JSON: camelCase keys, enum names, 64-bit integers as
 /// strings and default values left out (what Uptime Kuma matches against).
 pub fn decode_response(m: &MethodDescriptor, message: &[u8]) -> Result<String, String> {
-    let msg = DynamicMessage::decode(m.output(), message).map_err(|e| format!("The answer isn't a {}: {e}", m.output().full_name()))?;
+    let msg = DynamicMessage::decode(m.output(), message)
+        .map_err(|e| format!("The answer isn't a {}: {e}", m.output().full_name()))?;
     serde_json::to_string(&msg).map_err(|e| format!("The answer can't be shown as JSON: {e}"))
 }
 
@@ -179,8 +219,17 @@ impl Cache {
         (e.fingerprint == fingerprint && e.expires.is_none_or(|t| now < t)).then(|| e.pool.clone())
     }
 
-    pub fn put(&self, monitor_id: i64, fingerprint: u64, pool: DescriptorPool, ttl: Option<Duration>, now: Instant) {
-        let Ok(mut map) = self.entries.lock() else { return };
+    pub fn put(
+        &self,
+        monitor_id: i64,
+        fingerprint: u64,
+        pool: DescriptorPool,
+        ttl: Option<Duration>,
+        now: Instant,
+    ) {
+        let Ok(mut map) = self.entries.lock() else {
+            return;
+        };
         map.retain(|_, e| e.expires.is_none_or(|t| now < t));
         if map.len() >= MAX_ENTRIES
             && !map.contains_key(&monitor_id)
@@ -188,7 +237,14 @@ impl Cache {
         {
             map.remove(&victim);
         }
-        map.insert(monitor_id, Entry { fingerprint, pool, expires: ttl.map(|t| now + t) });
+        map.insert(
+            monitor_id,
+            Entry {
+                fingerprint,
+                pool,
+                expires: ttl.map(|t| now + t),
+            },
+        );
     }
 
     pub fn invalidate(&self, monitor_id: i64) {

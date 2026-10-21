@@ -39,10 +39,16 @@ pub(super) fn parse_reply(buf: &[u8], cookie: u64) -> Verdict<Status> {
 fn parse_state(body: &[u8]) -> Result<Status, String> {
     const SHORT: &str = "Truncated Satisfactory query reply";
     let state = *body.first().ok_or(SHORT)?;
-    let build = body.get(1..5).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).ok_or(SHORT)?;
+    let build = body
+        .get(1..5)
+        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .ok_or(SHORT)?;
     let substates = usize::from(*body.get(13).ok_or(SHORT)?);
     let at = 14 + substates * 3;
-    let len = body.get(at..at + 2).map(|b| usize::from(u16::from_le_bytes([b[0], b[1]]))).ok_or(SHORT)?;
+    let len = body
+        .get(at..at + 2)
+        .map(|b| usize::from(u16::from_le_bytes([b[0], b[1]])))
+        .ok_or(SHORT)?;
     let name = body.get(at + 2..at + 2 + len).ok_or(SHORT)?;
     let detail = match state {
         0 => return Err("The server reports that it is offline".into()),
@@ -62,11 +68,22 @@ fn parse_state(body: &[u8]) -> Result<Status, String> {
 /// Players online / limit from a `QueryServerState` reply.
 pub fn players_of(reply: &Value) -> Option<(u64, u64)> {
     let state = &reply["data"]["serverGameState"];
-    Some((state["numConnectedPlayers"].as_u64()?, state["playerLimit"].as_u64()?))
+    Some((
+        state["numConnectedPlayers"].as_u64()?,
+        state["playerLimit"].as_u64()?,
+    ))
 }
 
-async fn api_players(target: &Target, token: &str, timeout: Duration) -> Result<(u64, u64), String> {
-    let host = if target.host.contains(':') { format!("[{}]", target.host) } else { target.host.clone() };
+async fn api_players(
+    target: &Target,
+    token: &str,
+    timeout: Duration,
+) -> Result<(u64, u64), String> {
+    let host = if target.host.contains(':') {
+        format!("[{}]", target.host)
+    } else {
+        target.host.clone()
+    };
     let url = format!("https://{host}:{}/api/v1", target.port);
     let reply = super::fivem::client()?
         .post(url)
@@ -77,18 +94,33 @@ async fn api_players(target: &Target, token: &str, timeout: Duration) -> Result<
         .await
         .map_err(|e| format!("HTTPS API: {}", util::root_cause(&e)))?;
     let status = reply.status();
-    let body = super::fivem::read_capped(reply).await.map_err(|e| format!("HTTPS API: {e}"))?;
+    let body = super::fivem::read_capped(reply)
+        .await
+        .map_err(|e| format!("HTTPS API: {e}"))?;
     if !status.is_success() {
-        let hint = if status.as_u16() == 401 || status.as_u16() == 403 { " (check the API token)" } else { "" };
+        let hint = if status.as_u16() == 401 || status.as_u16() == 403 {
+            " (check the API token)"
+        } else {
+            ""
+        };
         return Err(format!("HTTPS API: HTTP {}{hint}", status.as_u16()));
     }
-    let v: Value = serde_json::from_slice(&body).map_err(|_| "HTTPS API: unreadable reply".to_string())?;
+    let v: Value =
+        serde_json::from_slice(&body).map_err(|_| "HTTPS API: unreadable reply".to_string())?;
     players_of(&v).ok_or_else(|| "HTTPS API: no player count in the reply".to_string())
 }
 
-pub async fn query(target: &Target, token: Option<&str>, timeout: Duration) -> Result<(Status, i64), String> {
+pub async fn query(
+    target: &Target,
+    token: Option<&str>,
+    timeout: Duration,
+) -> Result<(Status, i64), String> {
     let cookie = super::nonce();
-    let (mut status, rtt) = udp_exchange(&target.host, target.port, &poll(cookie), timeout, |buf| parse_reply(buf, cookie)).await?;
+    let (mut status, rtt) =
+        udp_exchange(&target.host, target.port, &poll(cookie), timeout, |buf| {
+            parse_reply(buf, cookie)
+        })
+        .await?;
     if let Some(token) = token {
         match api_players(target, token, timeout / 2).await {
             Ok(players) => status.players = Some(players),

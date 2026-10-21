@@ -101,7 +101,10 @@ async fn read_packet(s: &mut Stream) -> Result<Incoming, String> {
     }
     let mut body = vec![0u8; len];
     s.read_exact(&mut body).await.map_err(io_err)?;
-    Ok(Incoming { kind: first >> 4, body })
+    Ok(Incoming {
+        kind: first >> 4,
+        body,
+    })
 }
 
 fn io_err(e: std::io::Error) -> String {
@@ -156,7 +159,11 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         let mut s: Stream = connected.io;
         let fail = CheckOutcome::down;
         let client_id = format!("vigilant-vole-{}", hex::encode(rand::random::<[u8; 4]>()));
-        let hello = connect_packet(&client_id, monitor.basic_auth_user.as_deref(), monitor.basic_auth_pass.as_deref());
+        let hello = connect_packet(
+            &client_id,
+            monitor.basic_auth_user.as_deref(),
+            monitor.basic_auth_pass.as_deref(),
+        );
         s.write_all(&hello).await.map_err(|e| fail(io_err(e)))?;
         // CONNACK is exactly 20 02 <flags> <code>; anything else isn't MQTT.
         let mut ack = [0u8; 4];
@@ -169,13 +176,18 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         }
         let mut message = "Connected".to_string();
         if let Some(topic) = topic {
-            s.write_all(&subscribe_packet(topic)).await.map_err(|e| fail(io_err(e)))?;
+            s.write_all(&subscribe_packet(topic))
+                .await
+                .map_err(|e| fail(io_err(e)))?;
             loop {
                 let p = read_packet(&mut s).await.map_err(fail)?;
                 match p.kind {
                     9 => {
                         if p.body.get(2).is_none_or(|rc| *rc == 0x80) {
-                            return Err(fail(format!("The broker refused the subscription to \"{}\"", util::truncate(topic, 60))));
+                            return Err(fail(format!(
+                                "The broker refused the subscription to \"{}\"",
+                                util::truncate(topic, 60)
+                            )));
                         }
                         break;
                     }
@@ -191,21 +203,36 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
                     if p.kind != 3 {
                         continue;
                     }
-                    let Some((_, payload)) = parse_publish(&p.body) else { continue };
+                    let Some((_, payload)) = parse_publish(&p.body) else {
+                        continue;
+                    };
                     let hit = String::from_utf8_lossy(payload).contains(keyword);
                     if hit != invert {
-                        message.push_str(if invert { " · message without the keyword" } else { " · message matched" });
+                        message.push_str(if invert {
+                            " · message without the keyword"
+                        } else {
+                            " · message matched"
+                        });
                         break;
                     }
                     if invert {
-                        return Err(fail(format!("Message contains \"{}\": {}", util::truncate(keyword, 40), util::snippet(&String::from_utf8_lossy(payload), 80))));
+                        return Err(fail(format!(
+                            "Message contains \"{}\": {}",
+                            util::truncate(keyword, 40),
+                            util::snippet(&String::from_utf8_lossy(payload), 80)
+                        )));
                     }
                 }
             }
         }
         let ms = util::elapsed_ms(start);
         let _ = s.write_all(&[0xE0, 0x00]).await;
-        Ok(conn::up(ms, message, connected.cert.as_ref(), connected.tls_version))
+        Ok(conn::up(
+            ms,
+            message,
+            connected.cert.as_ref(),
+            connected.tls_version,
+        ))
     };
     match tokio::time::timeout(timeout, probe).await {
         Ok(Ok(outcome)) | Ok(Err(outcome)) => outcome,
@@ -229,7 +256,9 @@ mod tests {
     /// A scripted broker: user `vole` / `pw` (when `auth`), retained message
     /// `{"state":"on"}` on topic `home/status`, nothing on other topics.
     async fn handle(mut s: Stream, auth: bool) {
-        let Ok(connect) = read_packet(&mut s).await else { return };
+        let Ok(connect) = read_packet(&mut s).await else {
+            return;
+        };
         let b = &connect.body;
         let flags = b[7];
         let mut at = 10;
@@ -243,7 +272,9 @@ mod tests {
         let user = (flags & 0x80 != 0).then(|| take(&mut at));
         let pass = (flags & 0x40 != 0).then(|| take(&mut at));
         let ok = !auth || (user.as_deref() == Some("vole") && pass.as_deref() == Some("pw"));
-        s.write_all(&[0x20, 0x02, 0, if ok { 0 } else { 4 }]).await.unwrap();
+        s.write_all(&[0x20, 0x02, 0, if ok { 0 } else { 4 }])
+            .await
+            .unwrap();
         if !ok {
             return;
         }
@@ -252,8 +283,14 @@ mod tests {
                 8 => {
                     let len = usize::from(u16::from_be_bytes([p.body[2], p.body[3]]));
                     let topic = String::from_utf8_lossy(&p.body[4..4 + len]).into_owned();
-                    let code = if topic.starts_with("secret/") { 0x80 } else { 0 };
-                    s.write_all(&[0x90, 0x03, p.body[0], p.body[1], code]).await.unwrap();
+                    let code = if topic.starts_with("secret/") {
+                        0x80
+                    } else {
+                        0
+                    };
+                    s.write_all(&[0x90, 0x03, p.body[0], p.body[1], code])
+                        .await
+                        .unwrap();
                     if topic == "home/status" {
                         let mut body = Vec::new();
                         put_string(&mut body, &topic);
@@ -298,10 +335,19 @@ mod tests {
     fn topics_keep_wildcards_and_question_marks() {
         assert_eq!(topic("mqtt://broker/home/#").as_deref(), Some("home/#"));
         assert_eq!(topic("mqtts://broker:8883/a/+/b").as_deref(), Some("a/+/b"));
-        assert_eq!(topic("broker:1883/sensors/temp?x").as_deref(), Some("sensors/temp?x"));
+        assert_eq!(
+            topic("broker:1883/sensors/temp?x").as_deref(),
+            Some("sensors/temp?x")
+        );
         assert_eq!(topic("[::1]:1883/#").as_deref(), Some("#"));
-        assert_eq!(topic("mqtt://broker//leading/slash").as_deref(), Some("/leading/slash"));
-        assert_eq!(topic("mqtt://broker/100%25/a%2Bb").as_deref(), Some("100%/a+b"));
+        assert_eq!(
+            topic("mqtt://broker//leading/slash").as_deref(),
+            Some("/leading/slash")
+        );
+        assert_eq!(
+            topic("mqtt://broker/100%25/a%2Bb").as_deref(),
+            Some("100%/a+b")
+        );
         assert_eq!(topic("mqtt://broker/"), None);
         assert_eq!(topic("mqtt://broker:1883"), None);
     }
@@ -311,7 +357,11 @@ mod tests {
         let addr = serve(false, false).await;
         for t in ["home/#", "a/+/b", "sensors/temp?x"] {
             let out = check(&mqtt(&format!("mqtt://{addr}/{t}"))).await;
-            assert_eq!(out.message.as_deref(), Some(format!("Subscribed to {t}").as_str()), "{t}");
+            assert_eq!(
+                out.message.as_deref(),
+                Some(format!("Subscribed to {t}").as_str()),
+                "{t}"
+            );
         }
     }
 
@@ -327,7 +377,10 @@ mod tests {
     async fn credentials_are_checked() {
         let addr = serve(true, false).await;
         let out = check(&mqtt(&addr.to_string())).await;
-        assert_eq!(out.message.as_deref(), Some("Authentication failed: wrong user name or password"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Authentication failed: wrong user name or password")
+        );
         let mut m = mqtt(&addr.to_string());
         m.basic_auth_user = Some("vole".into());
         m.basic_auth_pass = Some("pw".into());
@@ -344,15 +397,26 @@ mod tests {
         m.keyword = Some(r#""state":"on""#.into());
         let out = check(&m).await;
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        assert_eq!(out.message.as_deref(), Some("Subscribed to home/status · message matched"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Subscribed to home/status · message matched")
+        );
 
         m.keyword = Some("off".into());
         let out = check(&m).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
-        assert!(out.message.unwrap().starts_with("No matching message on \"home/status\""));
+        assert!(
+            out.message
+                .unwrap()
+                .starts_with("No matching message on \"home/status\"")
+        );
 
         m.keyword_invert = true;
-        assert_eq!(check(&m).await.status, HeartbeatStatus::Up, "the message lacks `off`");
+        assert_eq!(
+            check(&m).await.status,
+            HeartbeatStatus::Up,
+            "the message lacks `off`"
+        );
         m.keyword = Some("on".into());
         let out = check(&m).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
@@ -363,7 +427,10 @@ mod tests {
     async fn refused_subscription_is_down() {
         let addr = serve(false, false).await;
         let out = check(&mqtt(&format!("mqtt://{addr}/secret/x"))).await;
-        assert_eq!(out.message.as_deref(), Some("The broker refused the subscription to \"secret/x\""));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The broker refused the subscription to \"secret/x\"")
+        );
     }
 
     #[tokio::test]
@@ -371,7 +438,11 @@ mod tests {
         let addr = serve(false, true).await;
         let target = format!("mqtts://localhost:{}", addr.port());
         let out = check(&mqtt(&target)).await;
-        assert!(out.message.as_deref().unwrap().contains("not trusted"), "{:?}", out.message);
+        assert!(
+            out.message.as_deref().unwrap().contains("not trusted"),
+            "{:?}",
+            out.message
+        );
         let mut m = mqtt(&target);
         m.ignore_tls = true;
         let out = check(&m).await;
@@ -382,7 +453,9 @@ mod tests {
 
     #[tokio::test]
     async fn other_servers_are_down() {
-        let addr = crate::monitor::checkers::test_support::foreign_server(b"SSH-2.0-OpenSSH_9.6\r\n").await;
+        let addr =
+            crate::monitor::checkers::test_support::foreign_server(b"SSH-2.0-OpenSSH_9.6\r\n")
+                .await;
         let out = check(&mqtt(&addr.to_string())).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not an MQTT broker"));

@@ -18,7 +18,10 @@ pub fn router() -> Router<AppState> {
         .route("/me", get(me))
         .route("/health", get(health))
         .route("/agents", get(agents))
-        .route("/settings", get(get_settings).patch(patch_settings).put(patch_settings))
+        .route(
+            "/settings",
+            get(get_settings).patch(patch_settings).put(patch_settings),
+        )
 }
 
 async fn me(user: CurrentUser, method: Option<Extension<AuthMethod>>) -> Response {
@@ -41,7 +44,11 @@ async fn me(user: CurrentUser, method: Option<Extension<AuthMethod>>) -> Respons
     )
 }
 
-async fn health(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> V1Result<Response> {
+async fn health(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+) -> V1Result<Response> {
     let counts = state
         .with_conn(|c| {
             let monitors = crate::db::monitors::list_monitors_with_status(c)?;
@@ -74,26 +81,46 @@ async fn health(State(state): State<AppState>, _user: CurrentUser, headers: Head
     Ok(json_ok(&headers, &v))
 }
 
-async fn agents(State(state): State<AppState>, user: CurrentUser, headers: HeaderMap) -> V1Result<Response> {
+async fn agents(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+) -> V1Result<Response> {
     user.require_admin()?;
     let data = state.with_conn(|c| db_agents::list_agents(c)).await?;
-    Ok(json_ok(&headers, &json!({ "data": data, "next_cursor": null })))
+    Ok(json_ok(
+        &headers,
+        &json!({ "data": data, "next_cursor": null }),
+    ))
 }
 
-async fn get_settings(State(state): State<AppState>, user: CurrentUser, headers: HeaderMap) -> V1Result<Response> {
+async fn get_settings(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+) -> V1Result<Response> {
     user.require_admin()?;
     let s = state.settings().await?;
     Ok(json_ok(&headers, &s))
 }
 
 /// Partial update; same rules as the general settings page (via the config importer).
-async fn patch_settings(State(state): State<AppState>, user: CurrentUser, Body(input): Body<SettingsDoc>) -> V1Result<Response> {
+async fn patch_settings(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Body(input): Body<SettingsDoc>,
+) -> V1Result<Response> {
     user.require_admin()?;
-    let doc = Document { settings: Some(input), ..Document::default() };
+    let doc = Document {
+        settings: Some(input),
+        ..Document::default()
+    };
     match config_io::import(&state, doc, Mode::Merge, false).await {
         Ok(_) => {}
         Err(config_io::ImportError::Invalid(plan)) => {
-            return Err(V1Error::fields(plan.errors.into_iter().map(|e| (e.key, e.message))));
+            return Err(V1Error::fields(
+                plan.errors.into_iter().map(|e| (e.key, e.message)),
+            ));
         }
         Err(config_io::ImportError::Api(e)) => return Err(e.into()),
     }

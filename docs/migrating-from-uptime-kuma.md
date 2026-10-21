@@ -78,13 +78,15 @@ Afterwards:
 | Status pages (sections, monitors, description, footer, custom CSS, domain) | Status pages (pages with a password are imported as drafts: set a password, then publish) |
 | Status page icon | Logo and browser icon when Kuma has it as a data URL; an uploaded file (`/upload/…`) lives in Kuma's data folder, so the plan asks you to upload it again |
 | Google Analytics tag (1.x), analytics type/ID/script URL (2.x) | `analytics` with the same provider (Google, Plausible, Umami, Matomo; Rybbit isn't supported) |
-| Maintenance (manual, single window, recurring weekday) | Maintenance windows (`manual`, `once`, `daily`/`weekly`) |
+| Maintenance (manual, single window, recurring interval, weekday, day of month, cron) | Maintenance windows (`manual`, `once`, `daily`, `weekly`, `interval`, `monthly`, `cron`). “Last day” entries (`lastDay1`…`lastDay4`) become `-1`…`-4`. |
 
 ### Notification providers mapped
 
 Discord, Slack, Telegram, Webhook, SMTP (→ Email), ntfy, Gotify, Pushover, Microsoft Teams, Matrix,
 Mattermost, Rocket.Chat, Google Chat, PagerDuty, Opsgenie, Pushbullet, Signal, Apprise, Home Assistant,
-Bark, Feishu, DingTalk (`dingding`), Twilio.
+Bark, Feishu, DingTalk (`dingding`), Twilio, Threema, Nextcloud Talk, WhatsApp (WAHA and Evolution API), SIGNL4,
+Squadcast, Grafana OnCall, GoAlert, Splunk On-Call (its REST endpoint is split into API key and routing key), Keep,
+SendGrid, Brevo (CC and BCC are not imported), ClickSend, 46elks and Gorush.
 
 Any other Kuma provider is skipped with the hint to use **Apprise** (90+ services through an Apprise API server)
 or a **Webhook** instead. Notes:
@@ -102,7 +104,7 @@ or a **Webhook** instead. Notes:
 | SQL Server with Windows authentication | Not supported yet. Skipped and listed. |
 | GameDig games outside the Valve protocol, Minecraft, Satisfactory, FiveM/RedM and Mumble (Battlefield, Quake 3, TeamSpeak 3, Terraria, …) | Not supported. Skipped and listed with the game's name. |
 | Manual monitors | Use a push monitor. |
-| Maintenance: cron, day-of-month, "every N days" | Recreate as a daily or weekly window. |
+| Maintenance with a cron expression the parser doesn't accept (six fields with seconds, `L`/`W`/`#`), or “every N days” without a start date | Skipped and listed with the reason. |
 | Heartbeat history, uptime history | Starts fresh. Keep Kuma around read-only if you need the old history. |
 | Users, 2FA, API keys | Create users and tokens in Settings. |
 | Kuma's own settings (time zone, base URL, …) | Set them in Settings → General. |

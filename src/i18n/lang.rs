@@ -50,7 +50,14 @@ impl Plural {
         }
     }
 
-    pub const ALL: [Plural; 6] = [Plural::Zero, Plural::One, Plural::Two, Plural::Few, Plural::Many, Plural::Other];
+    pub const ALL: [Plural; 6] = [
+        Plural::Zero,
+        Plural::One,
+        Plural::Two,
+        Plural::Few,
+        Plural::Many,
+        Plural::Other,
+    ];
 }
 
 /// CLDR cardinal plural rules, for whole numbers (every count in the app is
@@ -95,14 +102,22 @@ impl PluralRule {
             PluralRule::OneOther if n == 1 => Plural::One,
             PluralRule::OneOther => Plural::Other,
             PluralRule::FrenchLike if n <= 1 => Plural::One,
-            PluralRule::FrenchLike | PluralRule::SpanishLike if n != 0 && n.is_multiple_of(1_000_000) => Plural::Many,
+            PluralRule::FrenchLike | PluralRule::SpanishLike
+                if n != 0 && n.is_multiple_of(1_000_000) =>
+            {
+                Plural::Many
+            }
             PluralRule::SpanishLike if n == 1 => Plural::One,
             PluralRule::FrenchLike | PluralRule::SpanishLike => Plural::Other,
             PluralRule::Polish if n == 1 => Plural::One,
-            PluralRule::Polish if (2..=4).contains(&m10) && !(12..=14).contains(&m100) => Plural::Few,
+            PluralRule::Polish if (2..=4).contains(&m10) && !(12..=14).contains(&m100) => {
+                Plural::Few
+            }
             PluralRule::Polish => Plural::Many,
             PluralRule::EastSlavic if m10 == 1 && m100 != 11 => Plural::One,
-            PluralRule::EastSlavic if (2..=4).contains(&m10) && !(12..=14).contains(&m100) => Plural::Few,
+            PluralRule::EastSlavic if (2..=4).contains(&m10) && !(12..=14).contains(&m100) => {
+                Plural::Few
+            }
             PluralRule::EastSlavic => Plural::Many,
             PluralRule::CzechSlovak if n == 1 => Plural::One,
             PluralRule::CzechSlovak if (2..=4).contains(&n) => Plural::Few,
@@ -164,8 +179,21 @@ pub struct Numbers {
 
 impl Numbers {
     /// Latin digits and a trailing `%`; `with_*` adjust the exceptions.
-    pub const fn new(decimal: char, group: char, min_grouping: usize, percent_space: Option<char>) -> Self {
-        Self { decimal, group, min_grouping, percent_space, percent_sign: '%', percent_before: false, zero: '0' }
+    pub const fn new(
+        decimal: char,
+        group: char,
+        min_grouping: usize,
+        percent_space: Option<char>,
+    ) -> Self {
+        Self {
+            decimal,
+            group,
+            min_grouping,
+            percent_space,
+            percent_sign: '%',
+            percent_before: false,
+            zero: '0',
+        }
     }
 
     /// "%12" instead of "12%".
@@ -510,7 +538,8 @@ const ZH_TW: LangInfo = LangInfo {
 /// Every interface language. The first entry is the source language
 /// (English) and the fallback; the rest are in picker order.
 pub static LANGS: &[LangInfo] = &[
-    EN, NB, AR, CS, DA, DE, ES, FA, FI, FR, HE, HU, IT, JA, KO, NL, PL, PT_BR, PT_PT, RO, RU, SV, TR, UK, ZH_CN, ZH_TW,
+    EN, NB, AR, CS, DA, DE, ES, FA, FI, FR, HE, HU, IT, JA, KO, NL, PL, PT_BR, PT_PT, RO, RU, SV,
+    TR, UK, ZH_CN, ZH_TW,
 ];
 
 /// A supported interface language (an index into [`LANGS`]).
@@ -577,17 +606,26 @@ impl Lang {
         if norm.is_empty() {
             return None;
         }
-        if let Some(i) = LANGS.iter().position(|l| l.code.eq_ignore_ascii_case(&norm)) {
+        if let Some(i) = LANGS
+            .iter()
+            .position(|l| l.code.eq_ignore_ascii_case(&norm))
+        {
             return Some(Lang(u8::try_from(i).ok()?));
         }
         if let Some(i) = LANGS.iter().position(|l| {
-            l.aliases.iter().any(|a| a.contains('-') && (norm == *a || norm.starts_with(&format!("{a}-"))))
+            l.aliases
+                .iter()
+                .any(|a| a.contains('-') && (norm == *a || norm.starts_with(&format!("{a}-"))))
         }) {
             return Some(Lang(u8::try_from(i).ok()?));
         }
         let primary = norm.split('-').next()?;
         let i = LANGS.iter().position(|l| {
-            l.code.split('-').next().is_some_and(|p| p.eq_ignore_ascii_case(primary)) || l.aliases.contains(&primary)
+            l.code
+                .split('-')
+                .next()
+                .is_some_and(|p| p.eq_ignore_ascii_case(primary))
+                || l.aliases.contains(&primary)
         })?;
         Some(Lang(u8::try_from(i).ok()?))
     }
@@ -595,7 +633,11 @@ impl Lang {
     /// Only a canonical registry code (`pt-BR`, not `pt`): for validating
     /// what a form posts.
     pub fn from_exact_code(code: &str) -> Option<Lang> {
-        LANGS.iter().position(|l| l.code == code).and_then(|i| u8::try_from(i).ok()).map(Lang)
+        LANGS
+            .iter()
+            .position(|l| l.code == code)
+            .and_then(|i| u8::try_from(i).ok())
+            .map(Lang)
     }
 }
 

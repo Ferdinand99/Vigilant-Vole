@@ -11,7 +11,9 @@ use rustls::client::WebPkiServerVerifier;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signature};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{CertificateError, ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
+use rustls::{
+    CertificateError, ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme,
+};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -82,18 +84,18 @@ fn provider() -> Arc<CryptoProvider> {
         .clone()
 }
 
-/// The OS trust store, loaded once. `None` if it holds no certificates.
+/// The OS trust store, loaded once; the bundled Mozilla roots if the system
+/// holds no certificates (see [`crate::tls_roots`]).
 fn native_roots() -> Option<Arc<RootCertStore>> {
     static ROOTS: OnceLock<Option<Arc<RootCertStore>>> = OnceLock::new();
     ROOTS
         .get_or_init(|| {
+            if !crate::tls_roots::system_store_available() {
+                return Some(crate::tls_roots::bundled_store());
+            }
             let loaded = rustls_native_certs::load_native_certs();
             let mut roots = RootCertStore::empty();
-            let (added, _) = roots.add_parsable_certificates(loaded.certs);
-            if added == 0 {
-                tracing::warn!("no native root certificates found for TLS checks");
-                return None;
-            }
+            roots.add_parsable_certificates(loaded.certs);
             Some(Arc::new(roots))
         })
         .clone()
@@ -121,11 +123,19 @@ fn ca_only_config() -> Option<Arc<ClientConfig>> {
     static CONFIG: OnceLock<Option<Arc<ClientConfig>>> = OnceLock::new();
     CONFIG
         .get_or_init(|| {
-            let inner = WebPkiServerVerifier::builder_with_provider(native_roots()?, provider()).build().ok()?;
+            let inner = WebPkiServerVerifier::builder_with_provider(native_roots()?, provider())
+                .build()
+                .ok()?;
             ClientConfig::builder_with_provider(provider())
                 .with_safe_default_protocol_versions()
                 .ok()
-                .map(|b| Arc::new(b.dangerous().with_custom_certificate_verifier(Arc::new(CaOnly(inner))).with_no_client_auth()))
+                .map(|b| {
+                    Arc::new(
+                        b.dangerous()
+                            .with_custom_certificate_verifier(Arc::new(CaOnly(inner)))
+                            .with_no_client_auth(),
+                    )
+                })
         })
         .clone()
 }
@@ -162,10 +172,13 @@ impl ServerCertVerifier for CaOnly {
         ocsp_response: &[u8],
         now: UnixTime,
     ) -> Result<ServerCertVerified, rustls::Error> {
-        match self.0.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now) {
-            Err(rustls::Error::InvalidCertificate(CertificateError::NotValidForName | CertificateError::NotValidForNameContext { .. })) => {
-                Ok(ServerCertVerified::assertion())
-            }
+        match self
+            .0
+            .verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now)
+        {
+            Err(rustls::Error::InvalidCertificate(
+                CertificateError::NotValidForName | CertificateError::NotValidForNameContext { .. },
+            )) => Ok(ServerCertVerified::assertion()),
             other => other,
         }
     }
@@ -288,24 +301,40 @@ fn verify_with_any_cert(
 
 /// Run the TLS handshake over an established TCP connection. `host` is the
 /// name to verify (and send as SNI); `ignore_tls` accepts any certificate.
-pub async fn upgrade(tcp: TcpStream, host: &str, ignore_tls: bool) -> std::io::Result<TlsStream<TcpStream>> {
+pub async fn upgrade(
+    tcp: TcpStream,
+    host: &str,
+    ignore_tls: bool,
+) -> std::io::Result<TlsStream<TcpStream>> {
     upgrade_alpn(tcp, host, ignore_tls, &[]).await
 }
 
 /// [`upgrade`] offering ALPN protocols (`b"h2"` for gRPC).
-pub async fn upgrade_alpn(tcp: TcpStream, host: &str, ignore_tls: bool, alpn: &[&[u8]]) -> std::io::Result<TlsStream<TcpStream>> {
+pub async fn upgrade_alpn(
+    tcp: TcpStream,
+    host: &str,
+    ignore_tls: bool,
+    alpn: &[&[u8]],
+) -> std::io::Result<TlsStream<TcpStream>> {
     upgrade_with(tcp, host, Verify::Full.unless_ignored(ignore_tls), alpn).await
 }
 
 /// [`upgrade`] with an explicit verification level, over any byte stream
 /// (SQL Server runs its handshake inside its own packets).
-pub async fn upgrade_with<S: AsyncRead + AsyncWrite + Unpin>(tcp: S, host: &str, verify: Verify, alpn: &[&[u8]]) -> std::io::Result<TlsStream<S>> {
+pub async fn upgrade_with<S: AsyncRead + AsyncWrite + Unpin>(
+    tcp: S,
+    host: &str,
+    verify: Verify,
+    alpn: &[&[u8]],
+) -> std::io::Result<TlsStream<S>> {
     let config = match verify {
         Verify::None => insecure_config(),
         Verify::Ca => ca_only_config(),
         Verify::Full => verified_config(),
     };
-    let mut config = config.ok_or_else(|| std::io::Error::other("TLS is unavailable (no trusted root certificates)"))?;
+    let mut config = config.ok_or_else(|| {
+        std::io::Error::other("TLS is unavailable (no trusted root certificates)")
+    })?;
     if !alpn.is_empty() {
         let mut own = (*config).clone();
         own.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
@@ -342,13 +371,20 @@ pub async fn fetch_cert(host: &str, addr: SocketAddr) -> Option<CertSummary> {
 /// upgrade mid-protocol replay their prelude first) so the outcome can carry
 /// its expiry ("expired 3 days ago"). `None` if the error is not a
 /// certificate problem (the caller reports it as a connection failure).
-pub async fn explain_failure<F, Fut>(err: &std::io::Error, timeout: Duration, fetch: F) -> Option<CheckOutcome>
+pub async fn explain_failure<F, Fut>(
+    err: &std::io::Error,
+    timeout: Duration,
+    fetch: F,
+) -> Option<CheckOutcome>
 where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = Option<CertSummary>>,
 {
     let reason = classify_tls_error(&util::full_chain(err))?;
-    let cert = tokio::time::timeout(timeout.min(Duration::from_secs(5)), fetch()).await.ok().flatten();
+    let cert = tokio::time::timeout(timeout.min(Duration::from_secs(5)), fetch())
+        .await
+        .ok()
+        .flatten();
     let now = util::now_unix();
     let mut outcome = match &cert {
         Some(c) if c.is_expired(now) => CheckOutcome::down(c.expired_message(now)),

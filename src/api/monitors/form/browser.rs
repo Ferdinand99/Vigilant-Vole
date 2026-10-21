@@ -1,19 +1,40 @@
 //! The real-browser part of the monitor form: page checks, headers and
 //! basic auth, waiting and viewport, and the remote browser to use.
 
-use super::{Errors, FormContext, FormValues, first_line, non_empty, resolve_secret, same_destination};
+use super::{
+    Errors, FormContext, FormValues, first_line, non_empty, resolve_secret, same_destination,
+};
 use crate::db::models::NewMonitor;
 use crate::monitor::checkers::{self, real_browser};
 
 /// Longest accepted CSS selector.
 pub const MAX_SELECTOR_LEN: usize = 1_024;
 
-pub(super) fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext, m: &mut NewMonitor, e: &mut Errors) {
+pub(super) fn validate(
+    v: &FormValues,
+    base: &NewMonitor,
+    cx: &FormContext,
+    m: &mut NewMonitor,
+    e: &mut Errors,
+) {
     let codes = v.accepted_status_codes.trim();
     match checkers::parse_status_codes(codes) {
-        Ok(_) => m.accepted_status_codes = if codes.is_empty() { "200-399".into() } else { codes.to_string() },
+        Ok(_) => {
+            m.accepted_status_codes = if codes.is_empty() {
+                "200-399".into()
+            } else {
+                codes.to_string()
+            }
+        }
         Err(msg) => {
-            e.insert("accepted_status_codes", format!("{} {}", first_line(&msg), crate::i18n::t("validation.codes_hint")));
+            e.insert(
+                "accepted_status_codes",
+                format!(
+                    "{} {}",
+                    first_line(&msg),
+                    crate::i18n::t("validation.codes_hint")
+                ),
+            );
         }
     }
     m.http_headers = match non_empty(&v.http_headers) {
@@ -42,11 +63,26 @@ pub(super) fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext, m: &
     m.tls_ca_cert = None;
     m.basic_auth_user = non_empty(&v.basic_auth_user);
     let unchanged = same_destination(base, m);
-    m.basic_auth_pass = resolve_secret(e, "basic_auth_pass", &v.basic_auth_pass, base.basic_auth_pass.as_ref(), unchanged, "validation.basic_pass_reenter");
+    m.basic_auth_pass = resolve_secret(
+        e,
+        "basic_auth_pass",
+        &v.basic_auth_pass,
+        base.basic_auth_pass.as_ref(),
+        unchanged,
+        "validation.basic_pass_reenter",
+    );
     if m.basic_auth_user.is_none() && m.basic_auth_pass.is_some() {
-        e.insert("basic_auth_user", crate::i18n::t("validation.basic_user").into());
+        e.insert(
+            "basic_auth_user",
+            crate::i18n::t("validation.basic_user").into(),
+        );
     }
-    m.auth_method = if m.basic_auth_user.is_some() { "basic" } else { "none" }.into();
+    m.auth_method = if m.basic_auth_user.is_some() {
+        "basic"
+    } else {
+        "none"
+    }
+    .into();
 
     // What the page must show: a keyword or a CSS selector (both optional).
     match v.browser_check.trim() {
@@ -55,10 +91,19 @@ pub(super) fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext, m: &
             m.browser_selector = non_empty(&v.browser_selector);
             match &m.browser_selector {
                 None => {
-                    e.insert("browser_selector", crate::i18n::t("validation.browser_selector").into());
+                    e.insert(
+                        "browser_selector",
+                        crate::i18n::t("validation.browser_selector").into(),
+                    );
                 }
                 Some(s) if s.chars().count() > MAX_SELECTOR_LEN => {
-                    e.insert("browser_selector", crate::i18n::tf("validation.browser_selector_long", &[("max", &MAX_SELECTOR_LEN.to_string())]));
+                    e.insert(
+                        "browser_selector",
+                        crate::i18n::tf(
+                            "validation.browser_selector_long",
+                            &[("max", &MAX_SELECTOR_LEN.to_string())],
+                        ),
+                    );
                 }
                 Some(_) => {}
             }
@@ -68,7 +113,10 @@ pub(super) fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext, m: &
             m.keyword = (!v.keyword.trim().is_empty()).then(|| v.keyword.clone());
         }
         _ => {
-            e.insert("browser_check", crate::i18n::t("validation.browser_check").into());
+            e.insert(
+                "browser_check",
+                crate::i18n::t("validation.browser_check").into(),
+            );
         }
     }
     m.keyword_invert = v.keyword_invert;
@@ -77,14 +125,20 @@ pub(super) fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext, m: &
         "" => {}
         w if real_browser::WAITS.contains(&w) => m.browser_wait = w.to_string(),
         _ => {
-            e.insert("browser_wait", crate::i18n::t("validation.browser_wait").into());
+            e.insert(
+                "browser_wait",
+                crate::i18n::t("validation.browser_wait").into(),
+            );
         }
     }
     match v.browser_viewport.trim() {
         "" => {}
         w if real_browser::VIEWPORTS.contains(&w) => m.browser_viewport = w.to_string(),
         _ => {
-            e.insert("browser_viewport", crate::i18n::t("validation.browser_viewport").into());
+            e.insert(
+                "browser_viewport",
+                crate::i18n::t("validation.browser_viewport").into(),
+            );
         }
     }
     m.browser_js_errors = v.browser_js_errors;
@@ -94,7 +148,10 @@ pub(super) fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext, m: &
             Some(id) => Some(*id),
             None => {
                 if !cx.browser_optional {
-                    e.insert("remote_browser_id", crate::i18n::t("validation.browser_none").into());
+                    e.insert(
+                        "remote_browser_id",
+                        crate::i18n::t("validation.browser_none").into(),
+                    );
                 }
                 None
             }
@@ -102,7 +159,10 @@ pub(super) fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext, m: &
         raw => match raw.parse::<i64>() {
             Ok(id) if cx.remote_browser_ids.contains(&id) => Some(id),
             _ => {
-                e.insert("remote_browser_id", crate::i18n::t("validation.browser_unknown").into());
+                e.insert(
+                    "remote_browser_id",
+                    crate::i18n::t("validation.browser_unknown").into(),
+                );
                 None
             }
         },
@@ -137,21 +197,43 @@ mod tests {
     }
 
     fn cx(ids: &[i64]) -> FormContext {
-        FormContext { remote_browser_ids: ids.to_vec(), ..FormContext::default() }
+        FormContext {
+            remote_browser_ids: ids.to_vec(),
+            ..FormContext::default()
+        }
     }
 
     fn run(extra: &[(&str, &str)], cx: &FormContext) -> Result<Validated, Errors> {
-        validate(&FormValues::from_pairs(&browser_pairs(extra), &[]), &NewMonitor::default(), cx)
+        validate(
+            &FormValues::from_pairs(&browser_pairs(extra), &[]),
+            &NewMonitor::default(),
+            cx,
+        )
     }
 
     #[test]
     fn a_real_browser_monitor_defaults_to_the_first_remote_browser() {
-        let ok = run(&[("keyword", "Add to cart"), ("browser_check", "keyword")], &cx(&[4, 9])).unwrap().monitor;
+        let ok = run(
+            &[("keyword", "Add to cart"), ("browser_check", "keyword")],
+            &cx(&[4, 9]),
+        )
+        .unwrap()
+        .monitor;
         assert_eq!(ok.monitor_type, MonitorType::RealBrowser);
         assert_eq!(ok.target, "https://shop.example.com/");
         assert_eq!(ok.remote_browser_id, Some(4));
-        assert_eq!((ok.keyword.as_deref(), ok.browser_selector.as_deref()), (Some("Add to cart"), None));
-        assert_eq!((ok.browser_wait.as_str(), ok.browser_viewport.as_str(), ok.browser_js_errors), ("load", "desktop", false));
+        assert_eq!(
+            (ok.keyword.as_deref(), ok.browser_selector.as_deref()),
+            (Some("Add to cart"), None)
+        );
+        assert_eq!(
+            (
+                ok.browser_wait.as_str(),
+                ok.browser_viewport.as_str(),
+                ok.browser_js_errors
+            ),
+            ("load", "desktop", false)
+        );
         assert_eq!(ok.auth_method, "none");
     }
 
@@ -161,9 +243,18 @@ mod tests {
         assert!(errors.contains_key("remote_browser_id"), "{errors:?}");
         let errors = run(&[("remote_browser_id", "7")], &cx(&[4])).unwrap_err();
         assert!(errors.contains_key("remote_browser_id"));
-        assert_eq!(run(&[("remote_browser_id", "9")], &cx(&[4, 9])).unwrap().monitor.remote_browser_id, Some(9));
+        assert_eq!(
+            run(&[("remote_browser_id", "9")], &cx(&[4, 9]))
+                .unwrap()
+                .monitor
+                .remote_browser_id,
+            Some(9)
+        );
         // Imports may leave it unset when there is none yet.
-        let optional = FormContext { browser_optional: true, ..FormContext::default() };
+        let optional = FormContext {
+            browser_optional: true,
+            ..FormContext::default()
+        };
         assert_eq!(run(&[], &optional).unwrap().monitor.remote_browser_id, None);
     }
 
@@ -186,9 +277,26 @@ mod tests {
         )
         .unwrap()
         .monitor;
-        assert_eq!((ok.browser_selector.as_deref(), ok.keyword.as_deref(), ok.keyword_invert), (Some("#app .ready"), None, true));
-        assert_eq!((ok.browser_wait.as_str(), ok.browser_viewport.as_str(), ok.browser_js_errors), ("network_idle", "mobile", true));
-        assert_eq!((ok.auth_method.as_str(), ok.basic_auth_pass.as_deref()), ("basic", Some("pw")));
+        assert_eq!(
+            (
+                ok.browser_selector.as_deref(),
+                ok.keyword.as_deref(),
+                ok.keyword_invert
+            ),
+            (Some("#app .ready"), None, true)
+        );
+        assert_eq!(
+            (
+                ok.browser_wait.as_str(),
+                ok.browser_viewport.as_str(),
+                ok.browser_js_errors
+            ),
+            ("network_idle", "mobile", true)
+        );
+        assert_eq!(
+            (ok.auth_method.as_str(), ok.basic_auth_pass.as_deref()),
+            ("basic", Some("pw"))
+        );
         assert_eq!(ok.http_headers.as_deref(), Some(r#"{"X-Probe":"1"}"#));
 
         let errors = run(
@@ -203,11 +311,25 @@ mod tests {
             &cx(&[1]),
         )
         .unwrap_err();
-        for field in ["browser_selector", "browser_wait", "browser_viewport", "accepted_status_codes", "http_headers", "basic_auth_user"] {
+        for field in [
+            "browser_selector",
+            "browser_wait",
+            "browser_viewport",
+            "accepted_status_codes",
+            "http_headers",
+            "basic_auth_user",
+        ] {
             assert!(errors.contains_key(field), "{field}: {errors:?}");
         }
-        let errors = run(&[("target_browser", "ftp://x"), ("browser_check", "xpath")], &cx(&[1])).unwrap_err();
-        assert!(errors.contains_key("target") && errors.contains_key("browser_check"), "{errors:?}");
+        let errors = run(
+            &[("target_browser", "ftp://x"), ("browser_check", "xpath")],
+            &cx(&[1]),
+        )
+        .unwrap_err();
+        assert!(
+            errors.contains_key("target") && errors.contains_key("browser_check"),
+            "{errors:?}"
+        );
     }
 
     #[test]
@@ -225,8 +347,13 @@ mod tests {
         let same = browser_pairs(&[("basic_auth_user", "bot"), ("basic_auth_pass", mask)]);
         let ok = validate(&FormValues::from_pairs(&same, &[]), &stored, &cx(&[1])).unwrap();
         assert_eq!(ok.monitor.basic_auth_pass.as_deref(), Some("secret"));
-        let moved = browser_pairs(&[("target_browser", "https://evil.example/"), ("basic_auth_user", "bot"), ("basic_auth_pass", mask)]);
-        let errors = validate(&FormValues::from_pairs(&moved, &[]), &stored, &cx(&[1])).unwrap_err();
+        let moved = browser_pairs(&[
+            ("target_browser", "https://evil.example/"),
+            ("basic_auth_user", "bot"),
+            ("basic_auth_pass", mask),
+        ]);
+        let errors =
+            validate(&FormValues::from_pairs(&moved, &[]), &stored, &cx(&[1])).unwrap_err();
         assert!(errors.contains_key("basic_auth_pass"));
     }
 
@@ -244,7 +371,10 @@ mod tests {
             ..NewMonitor::default()
         };
         let v = FormValues::from_new(&m, Vec::new(), &[]);
-        assert_eq!((v.browser_check.as_str(), v.remote_browser_id.as_str()), ("selector", "3"));
+        assert_eq!(
+            (v.browser_check.as_str(), v.remote_browser_id.as_str()),
+            ("selector", "3")
+        );
         let back = validate(&v, &m, &cx(&[3])).unwrap().monitor;
         assert_eq!(back, m);
     }

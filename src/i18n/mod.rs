@@ -57,7 +57,9 @@ pub fn current_or_site() -> Lang {
 
 /// The cached site default language (English until known).
 pub fn site_default() -> Lang {
-    Lang::all().nth(usize::from(SITE_DEFAULT.load(Ordering::Relaxed))).unwrap_or_default()
+    Lang::all()
+        .nth(usize::from(SITE_DEFAULT.load(Ordering::Relaxed)))
+        .unwrap_or_default()
 }
 
 /// Updates the cached site default (done whenever settings are read).
@@ -135,7 +137,11 @@ pub fn tn(key: &'static str, n: i64) -> String {
 pub fn tn_in(lang: Lang, key: &str, n: i64) -> String {
     // A language that hasn't translated this key at all uses English's forms
     // (and English's plural rule), not a half-matching mix.
-    let forms = if catalog::get(lang, &format!("{key}.other")).is_some() { lang } else { Lang::EN };
+    let forms = if catalog::get(lang, &format!("{key}.other")).is_some() {
+        lang
+    } else {
+        Lang::EN
+    };
     let category = forms.plural_category(n).as_str();
     let text = catalog::get(forms, &format!("{key}.{category}"))
         .or_else(|| catalog::get(forms, &format!("{key}.other")))
@@ -186,16 +192,17 @@ pub fn t_or<'a>(key: &str, fallback: &'a str) -> &'a str {
 /// JSON object with the `js.*` strings for `static/app.js`
 /// (`window.VV_I18N`), safe to embed in a `<script>` element.
 pub fn js_bundle(lang: Lang) -> String {
-    let map: serde_json::Map<String, serde_json::Value> = catalog::keys_with_prefix(Lang::EN, "js.")
-        .into_iter()
-        .map(|key| {
-            let value = lookup(lang, key).unwrap_or_default();
-            (
-                key.trim_start_matches("js.").to_string(),
-                serde_json::Value::from(value),
-            )
-        })
-        .collect();
+    let map: serde_json::Map<String, serde_json::Value> =
+        catalog::keys_with_prefix(Lang::EN, "js.")
+            .into_iter()
+            .map(|key| {
+                let value = lookup(lang, key).unwrap_or_default();
+                (
+                    key.trim_start_matches("js.").to_string(),
+                    serde_json::Value::from(value),
+                )
+            })
+            .collect();
     serde_json::to_string(&map)
         .unwrap_or_else(|_| "{}".into())
         .replace("</", "<\\/")
@@ -260,7 +267,14 @@ pub trait Tr {
     fn tr1(&self, key: &'static str, name: &str, value: impl Display) -> String {
         tf(key, &[(name, &value.to_string())])
     }
-    fn tr2(&self, key: &'static str, n1: &str, v1: impl Display, n2: &str, v2: impl Display) -> String {
+    fn tr2(
+        &self,
+        key: &'static str,
+        n1: &str,
+        v1: impl Display,
+        n2: &str,
+        v2: impl Display,
+    ) -> String {
         tf(key, &[(n1, &v1.to_string()), (n2, &v2.to_string())])
     }
     #[allow(clippy::too_many_arguments)]
@@ -276,7 +290,11 @@ pub trait Tr {
     ) -> String {
         tf(
             key,
-            &[(n1, &v1.to_string()), (n2, &v2.to_string()), (n3, &v3.to_string())],
+            &[
+                (n1, &v1.to_string()),
+                (n2, &v2.to_string()),
+                (n3, &v3.to_string()),
+            ],
         )
     }
     /// Plural: `{{ trn("dash.monitor_count", rows.len()) }}`.

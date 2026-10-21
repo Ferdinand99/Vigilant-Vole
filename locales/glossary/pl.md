@@ -102,3 +102,11 @@ Kuma = Uptime Kuma `pl.json`, used only as a word list.
 - Avoid gendered forms for the viewer ("zalogowany", "wiedział"); use impersonal phrasing ("sesja pozostanie aktywna", "aby było wiadomo").
 - Certificate/domain expiry in the past: "Termin minął {n} dni temu" (gender-neutral, serves cert and domain).
 - Raw/plain text encoding: "zwykły tekst".
+
+| cron expression | wyrażenie cron | "cron" kept Latin |
+| subscriber | subskrybent | |
+| subscribe / unsubscribe | subskrybuj / wypisz się | |
+| confirm subscription | potwierdź subskrypcję | |
+| webhook subscriber | subskrybent webhook | |
+| pending (sign-up) | oczekuje | |
+| maintenance started / ended | konserwacja rozpoczęta / zakończona | |

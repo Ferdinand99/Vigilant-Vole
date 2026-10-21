@@ -117,4 +117,25 @@
   <p class="section-foot">{{ tr("integ.endpoint_off") }}</p>
   {%- endif %}
 </section>
+
+<section class="section" aria-labelledby="mcp-title">
+  {% call m::section_head(tr("integ.mcp_title"), tr("integ.mcp_sub"), "mcp-title") %}{% endcall %}
+  <div class="card stack-sm">
+    <div class="field">
+      <span class="label" id="mcp-url-label">{{ tr("integ.mcp_address") }}</span>
+      {{ m::copy_field("mcp-url", &mcp_url) }}
+    </div>
+    {% call m::card_head(tr("integ.mcp_claude_code")) %}
+      <button type="button" class="btn btn-secondary btn-sm" data-copy="#mcp-claude-code">{{ m::icon("copy") }}<span>{{ tr("common.copy") }}</span></button>
+    {% endcall %}
+    <pre class="code" dir="ltr"><code id="mcp-claude-code">{{ mcp_claude_code }}</code></pre>
+    {% call m::card_head(tr("integ.mcp_desktop")) %}
+      <button type="button" class="btn btn-secondary btn-sm" data-copy="#mcp-desktop">{{ m::icon("copy") }}<span>{{ tr("common.copy") }}</span></button>
+    {% endcall %}
+    <pre class="code" dir="ltr"><code id="mcp-desktop">{{ mcp_desktop }}</code></pre>
+    <p class="help">{{ tr("integ.mcp_desktop_help") }}</p>
+    <p class="help">{{ tr("integ.replace_1") }} <code>vv_YOUR_API_TOKEN</code> {{ tr("integ.replace_2") }} <a href="/settings/tokens">{{ tr("integ.create_token") }}</a></p>
+    {{ m::callout("info", tr("integ.mcp_safe_text"), tr("integ.mcp_safe_title")) }}
+  </div>
+</section>
 {% endblock %}

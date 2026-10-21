@@ -19,7 +19,7 @@ def test_manual_maintenance_window(admin_page: Page, admin_api: APIRequestContex
     page.goto("/maintenance")
     page.get_by_role("link", name="Schedule maintenance").first.click()
     page.get_by_label("Title").fill("Burrow upgrade")
-    page.locator("label").filter(has=page.locator('input[name="strategy"][value="manual"]')).click()
+    page.locator('select[name="strategy"]').select_option("manual")
     page.get_by_role("switch", name=re.compile("^In effect now")).check()
     page.locator("#mw-monitors label.list-row").filter(has_text="Database burrow").locator("input").check()
     page.get_by_role("button", name="Save window").click()

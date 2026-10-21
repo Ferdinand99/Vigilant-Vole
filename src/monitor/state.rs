@@ -153,7 +153,11 @@ pub fn parse_db_time(s: &str) -> Option<OffsetDateTime> {
 /// a monitor that was down stays "notified down" (no repeated Down, and an Up
 /// is only sent when it really recovers); one that was up doesn't announce
 /// "Up" after a restart.
-pub fn seed(conn: &Connection, monitor: &Monitor, now: OffsetDateTime) -> rusqlite::Result<MonitorState> {
+pub fn seed(
+    conn: &Connection,
+    monitor: &Monitor,
+    now: OffsetDateTime,
+) -> rusqlite::Result<MonitorState> {
     let id = monitor.id;
     // Newest first.
     let recent: Vec<(HeartbeatStatus, OffsetDateTime)> = {
@@ -168,7 +172,8 @@ pub fn seed(conn: &Connection, monitor: &Monitor, now: OffsetDateTime) -> rusqli
         let mut out = Vec::new();
         for row in rows {
             let (status, at) = row?;
-            if let (Some(status), Some(at)) = (HeartbeatStatus::parse(&status), parse_db_time(&at)) {
+            if let (Some(status), Some(at)) = (HeartbeatStatus::parse(&status), parse_db_time(&at))
+            {
                 out.push((status, at));
             }
         }
@@ -215,24 +220,32 @@ pub fn seed(conn: &Connection, monitor: &Monitor, now: OffsetDateTime) -> rusqli
     // Trailing failing run (newest first until the first up/maintenance).
     let failing: Vec<OffsetDateTime> = recent
         .iter()
-        .take_while(|(status, _)| matches!(status, HeartbeatStatus::Down | HeartbeatStatus::Pending))
+        .take_while(|(status, _)| {
+            matches!(status, HeartbeatStatus::Down | HeartbeatStatus::Pending)
+        })
         .map(|(_, t)| *t)
         .collect();
     s.consecutive_failures = failing.len() as i64;
     s.failing_since = failing.last().copied();
-    s.down_since = open_down.as_ref().and_then(|e| parse_db_time(&e.started_at));
+    s.down_since = open_down
+        .as_ref()
+        .and_then(|e| parse_db_time(&e.started_at));
     if s.settled == Some(HeartbeatStatus::Down) || s.notified == Some(HeartbeatStatus::Down) {
         // Already past the retry budget: the next failure is Down, not Pending.
         s.consecutive_failures = s.consecutive_failures.max(monitor.retries.max(0) + 1);
         s.failing_since = s.failing_since.or(s.down_since);
     }
     if s.notified == Some(HeartbeatStatus::Down) {
-        s.notified_down_since = s.down_since.or(s.failing_since).or(last_up_down.map(|(_, t)| t));
+        s.notified_down_since = s
+            .down_since
+            .or(s.failing_since)
+            .or(last_up_down.map(|(_, t)| t));
     }
     // Don't re-send an escalation that (most likely) already went out before the restart.
     s.escalated = monitor.escalation_minutes > 0
-        && s.down_since
-            .is_some_and(|since| now - since >= time::Duration::minutes(monitor.escalation_minutes));
+        && s.down_since.is_some_and(|since| {
+            now - since >= time::Duration::minutes(monitor.escalation_minutes)
+        });
 
     s.history = recent
         .iter()
@@ -279,7 +292,10 @@ pub fn agent_votes(
 
 /// Active children of a group with their latest local status (`None` = no
 /// heartbeat yet), ordered by name.
-pub fn group_children(conn: &Connection, group_id: i64) -> rusqlite::Result<Vec<(String, Option<HeartbeatStatus>)>> {
+pub fn group_children(
+    conn: &Connection,
+    group_id: i64,
+) -> rusqlite::Result<Vec<(String, Option<HeartbeatStatus>)>> {
     let mut stmt = conn.prepare(
         "SELECT m.name,
                 (SELECT h.status FROM heartbeats h
@@ -292,7 +308,8 @@ pub fn group_children(conn: &Connection, group_id: i64) -> rusqlite::Result<Vec<
     let rows = stmt.query_map(params![group_id], |r| {
         Ok((
             r.get::<_, String>(0)?,
-            r.get::<_, Option<String>>(1)?.and_then(|s| HeartbeatStatus::parse(&s)),
+            r.get::<_, Option<String>>(1)?
+                .and_then(|s| HeartbeatStatus::parse(&s)),
         ))
     })?;
     rows.collect()
@@ -363,7 +380,14 @@ mod tests {
         );
         beat(&conn, m.id, "up", "2026-03-10 10:00:00");
         beat(&conn, m.id, "down", "2026-03-10 10:01:00");
-        events::open(&conn, m.id, MonitorEventKind::Down, None, Some("2026-03-10 10:01:00")).unwrap();
+        events::open(
+            &conn,
+            m.id,
+            MonitorEventKind::Down,
+            None,
+            Some("2026-03-10 10:01:00"),
+        )
+        .unwrap();
         let s = seed(&conn, &m, t("2026-03-10 10:02:00")).unwrap();
         assert_eq!(s.notified, Some(HeartbeatStatus::Down));
         assert_eq!(s.settled, Some(HeartbeatStatus::Down));
@@ -400,7 +424,14 @@ mod tests {
             },
         );
         beat(&conn, m.id, "down", "2026-03-10 10:00:00");
-        events::open(&conn, m.id, MonitorEventKind::Down, None, Some("2026-03-10 10:00:00")).unwrap();
+        events::open(
+            &conn,
+            m.id,
+            MonitorEventKind::Down,
+            None,
+            Some("2026-03-10 10:00:00"),
+        )
+        .unwrap();
         assert!(seed(&conn, &m, t("2026-03-10 10:30:00")).unwrap().escalated);
         assert!(!seed(&conn, &m, t("2026-03-10 10:05:00")).unwrap().escalated);
     }
@@ -510,7 +541,10 @@ mod tests {
         let children = group_children(&conn, g.id).unwrap();
         assert_eq!(
             children,
-            vec![("a".to_string(), Some(HeartbeatStatus::Down)), ("b".to_string(), None)]
+            vec![
+                ("a".to_string(), Some(HeartbeatStatus::Down)),
+                ("b".to_string(), None)
+            ]
         );
     }
 

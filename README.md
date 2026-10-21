@@ -55,15 +55,18 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Real-browser checks** — load a page in a headless Chromium (browserless, chromedp/headless-shell) over the DevTools protocol: status, text or CSS selector, JavaScript errors, desktop or mobile viewport, and a screenshot of the last failure. The browser runs as its own container, so this image stays small — see [docs/real-browser.md](docs/real-browser.md)
 - **TLS certificate and domain expiry** warnings, configurable per monitor
 - **Groups and tags** — nest monitors under group monitors (status = worst child), colour-coded tags with values, search and filters, clone, and bulk actions: select monitors (or every one matching a filter) to pause, resume, delete or **edit them together** — remote agents, check interval and timing, notification channels and tags — also via `POST /api/v1/monitors/bulk`
-- **Maintenance windows** — manual, one-off, daily or weekly (any time zone, across midnight); monitors record *maintenance* and stay quiet
+- **Maintenance windows** — manual, one-off, daily, weekly, every N days, days of the month (including “last day”) or a **cron expression** (any time zone, across midnight and DST changes); monitors record *maintenance* and stay quiet
+
+**AI assistants**
+- **MCP server** — connect your own Claude Code, Claude Desktop or any MCP client (`POST /mcp`, Streamable HTTP, or the `vigilant-vole mcp` stdio bridge) with an API token: a read token to ask what's down and why, a write token to pause monitors, post incident updates or start maintenance. Vigilant Vole never calls an AI itself; secrets are masked and nothing can delete data — see [docs/mcp.md](docs/mcp.md)
 
 **Alerting**
-- **24 notification providers**, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
+- **40 notification providers**, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
 - **Smart alerting** — retries with a separate retry interval, upside-down mode, reminders every N down checks, **escalation** channels after N minutes down, **flap detection**, and recovery messages that say **how long it was down**
 - **Multi-location remote agents** — run checks from other networks and **only alert when agents confirm the outage**
 
 **Sharing**
-- **Status pages** — Apple-style public pages with sections, 90-day uptime bars, incidents (Markdown, pinned), scheduled maintenance, light/dark/auto theme, custom CSS, **custom domains**, logo and icon, password protection, built-in cookie-free analytics, embeddable JSON
+- **Status pages** — Apple-style public pages with sections, 90-day uptime bars, incidents (Markdown, pinned) with a status timeline of updates (investigating → identified → monitoring → resolved) and an **Atom feed** per page, scheduled maintenance, light/dark/auto theme, custom CSS, **custom domains**, logo and icon, password protection, built-in cookie-free analytics, embeddable JSON
 - **SVG badges** — status, uptime, response time and certificate expiry
 
 **Operating it**
@@ -112,15 +115,16 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Game servers | ✅ a curated set: Valve/Source games (A2S, Steam type), Minecraft Java and Bedrock, Satisfactory, FiveM/RedM, Mumble | ✅ ~360 games via GameDig |
 | Real-browser (headless Chrome) monitor | ✅ via a remote browser (CDP) | ✅ (built-in Chromium or a remote browser) |
 | HTTP auth | Basic, OAuth2 client credentials, mTLS ✅ | Basic, NTLM, mTLS, OAuth2 client credentials ✅ |
-| Notification providers | 24 native + Apprise (90+ services) | **90+ native** ✅ |
+| Notification providers | 40 native + Apprise (90+ services) | **90+ native** ✅ |
 | Reminders (resend while down) | ✅ | ✅ |
 | Escalation channels after N minutes | ✅ | ❌ |
 | Flap detection | ✅ | ❌ |
 | Multi-location checks / outage confirmation | ✅ remote agents | ❌ |
 | Status pages, custom domains, badges | ✅ | ✅ |
 | Status page logo upload, analytics, password protection | ✅ incl. built-in, cookie-free analytics | Logo and analytics ✅ · password protection ❌ |
-| Incidents | Multiple per page, pinned, history | One active incident per page |
-| Maintenance windows | Manual, once, daily, weekly | Also cron, day-of-month, every N days ✅ |
+| Incidents | Multiple per page, pinned, history, update timeline, Atom feed | One active incident per page |
+| Status page subscribers | ✅ email (double opt-in) and webhook | ❌ |
+| Maintenance windows | ✅ manual, once, daily, weekly, every N days, days of the month, cron | ✅ the same |
 | Multiple users with roles | ✅ admin / editor / viewer | ❌ single user |
 | 2FA (TOTP) | ✅ + recovery codes | ✅ |
 | REST API | ✅ full CRUD + OpenAPI | ❌ (socket.io; API keys for metrics only) |
@@ -129,6 +133,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Prometheus metrics | ✅ (Kuma-compatible names + more) | ✅ |
 | Long-range uptime after retention | ✅ daily rollups | ✅ aggregate tables in 2.0 |
 | Import from the other one | ✅ reads `kuma.db` | – |
+| MCP server for AI assistants (read/write tokens) | ✅ | ❌ |
 | Interface languages | 26 (English, Norwegian, and 24 beta languages incl. ar, he, fa, ja, ko, zh, ru, uk) | **~50 languages** ✅ |
 | Built-in Cloudflare Tunnel | ❌ | ✅ |
 
@@ -257,7 +262,7 @@ vigilant-vole agent --server <URL> --token <TOKEN> …     # remote probe agent
 vigilant-vole --version
 ```
 
-Settings → General (admins): site name, public base URL (used in notification links, push URLs and agent snippets — set it!), time zone, language, heartbeat retention (default 90 days), public badges.
+Settings → General (admins): site name, public base URL (used in notification links, push URLs, agent snippets and status page subscriptions — set it!), time zone, language, heartbeat retention (default 90 days), public badges.
 
 ## 📡 Monitor types
 
@@ -302,21 +307,22 @@ Under **Settings → Notifications**, add channels and click **Send test**. Mark
 
 | Category | Providers |
 |---|---|
-| Chat | Discord (rich embeds), Slack (Block Kit), Microsoft Teams (Adaptive Cards), Google Chat, Mattermost, Rocket.Chat, Matrix, Webex, Feishu/Lark, DingTalk |
-| Messaging | Telegram, Signal (signal-cli REST API), SMS via Twilio |
-| Push | ntfy, Pushover, Gotify, Pushbullet, Bark |
-| Email | SMTP (STARTTLS / TLS / none, HTML + text) |
-| Incident management | PagerDuty (opens and resolves), Opsgenie (creates and closes) |
+| Chat | Discord (rich embeds), Slack (Block Kit), Microsoft Teams (Adaptive Cards), Google Chat, Mattermost, Rocket.Chat, Matrix, Webex, Feishu/Lark, DingTalk, Zulip, Nextcloud Talk |
+| Messaging | Telegram, Signal (signal-cli REST API), Threema Gateway, WhatsApp (WAHA, Evolution API), SMS via Twilio, ClickSend or 46elks |
+| Push | ntfy, Pushover, Gotify, Pushbullet, Bark, Gorush |
+| Email | SMTP (STARTTLS / TLS / none, HTML + text), SendGrid, Brevo |
+| Incident management | PagerDuty and Opsgenie (open and close), SIGNL4, Squadcast, Grafana OnCall, GoAlert, Splunk On-Call, Keep |
 | Anything else | Webhook (custom method, headers and `{{placeholder}}` body template), **Apprise** (90+ services through an [Apprise API](https://github.com/caronc/apprise-api) server), Home Assistant (any notify service) |
 
 Events: down, up (with downtime), reminder, escalation, certificate expiring, domain expiring, maintenance start/end, flapping. Alerts fire on settled transitions only — a monitor in its retry grace period stays *pending* and quiet. Secrets are never sent back to the browser in full.
 
 ## 📊 Status pages and badges
 
-**Status pages** → New page. Each page has sections of monitors (drag to reorder), an overall status banner, 90-day uptime bars, optional response times and tags, incidents (Markdown, severity, pinned, history), the maintenance windows you attach, a theme (auto/light/dark), custom CSS, footer text, and an auto-refresh interval.
+**Status pages** → New page. Each page has sections of monitors (drag to reorder), an overall status banner, 90-day uptime bars, optional response times and tags, incidents (Markdown, severity, pinned, history, a timeline of updates, and an Atom feed at `/status/<slug>/feed.xml`), the maintenance windows you attach, a theme (auto/light/dark), custom CSS, footer text, and an auto-refresh interval.
 
 - **Logo and browser icon**: upload PNG, JPEG, WebP or ICO (up to 1 MB; SVG is refused) in the page's Settings tab. Files are checked by content, kept in the database (backups stay one file) and served at `/status/<slug>/logo` and `/favicon`
 - **Password protection**: give a page a password and visitors get an unlock form; the unlock lasts 30 days in that browser (a signed, `HttpOnly` cookie for that page only) and changing or removing the password signs everyone out. While locked, the live refresh, the JSON and badges of monitors that are only on protected pages stay private. Signed-in users skip the lock
+- **Subscribers** (Subscribers tab): let visitors subscribe to incidents, incident updates and maintenance by **email** (double opt-in: nothing is sent until they click the confirmation link; sent through an SMTP channel you pick) or by **webhook** (a JSON POST; only public addresses on port 80, 443 or above 1024 are accepted, never through a proxy, redirects are not followed). A webhook gets nothing until an editor **approves** it in the Subscribers tab; it then receives a `subscribed` message with its unsubscribe link, then every announcement. Subscriptions need the **Public URL** (Settings → General) or the page's custom domain: links in mails and webhooks always point there, never at whatever address a visitor used, and without either the page offers no sign-up (the tab says so). Every mail has an unsubscribe link and `List-Unsubscribe` / one-click `List-Unsubscribe-Post` headers, each subscriber gets their own message, the form answers the same whether or not an address is known, and sign-ups are rate-limited per address (per /64 for IPv6), per target and per page (100 an hour), with at most 10 webhooks per host. Unconfirmed email sign-ups expire after three days, unapproved webhooks after 14; subscribers who keep failing are dropped; only a hash of each link token is stored. The form follows a page's password lock. A page that becomes password protected keeps notifying the subscribers who already confirmed (they opted in); remove them in the tab if they shouldn't hear about it any more
 - **Analytics** (Analytics tab): built-in, cookie-free counts of views, unique visitors and referring sites with a 30-day chart — no IP addresses are stored, unique visitors use a hash whose salt changes daily, bots and signed-in users don't count. Optionally add Plausible, Umami, Matomo or Google Analytics; its script loads on that page only and the page's CSP allows exactly that provider
 
 - Public at `/status/<slug>`, or at `/` on a **custom domain** (point the domain at Vigilant Vole / your reverse proxy and set it on the page)
@@ -458,7 +464,7 @@ You get `vigilant_*` metrics (status, response time, 24h/30d uptime ratio, certi
 ## 🔒 Security
 
 - **Put it behind HTTPS.** Run a reverse proxy (Caddy, Traefik, nginx) in front and set `VV_TRUST_PROXY=1` so session cookies get `Secure` and the login rate limiter sees real client IPs. Don't set it if clients can reach the app directly.
-- **Set the public base URL** in Settings → General so links in notifications, push URLs and agent snippets are right.
+- **Set the public base URL** in Settings → General so links in notifications, push URLs and agent snippets are right. Status page subscriptions and browser-based MCP clients need it (or, for subscriptions, the page's custom domain); behind a reverse proxy, `X-Forwarded-Host`/`-Proto` only count with `VV_TRUST_PROXY`.
 - **Roles**: *viewer* (read-only), *editor* (monitors, status pages, maintenance, notifications, tags), *admin* (users, settings, tokens, agents, backup, integrations). Give people the least they need.
 - **2FA**: Settings → Security → turn on TOTP; keep the recovery codes.
 - **API tokens** are stored as SHA-256 hashes, can expire, and only work under `/api/` and `/metrics`. Prefer `read` tokens for dashboards and scrapers.
@@ -515,7 +521,7 @@ src/
 ├── db/                  # SQLite (rusqlite + deadpool), migrations, queries, daily rollups
 ├── monitor/             # scheduler, pure alerting state machine, retention, engine metrics
 │   └── checkers/        # http, tcp, ping, tailscale, dns, docker, websocket, domain (RDAP), ntp, steam, game_server, tls, smtp, redis, postgres, mysql, mqtt, kafka, rabbitmq, grpc, grpc_keyword, radius, snmp, sqlserver, mongodb, real_browser (CDP)
-├── notification/        # 24 providers behind one schema-driven registry
+├── notification/        # 40 providers behind one schema-driven registry
 ├── agent/               # remote probe agent + its wire protocol
 ├── discovery.rs         # Docker label discovery
 ├── maintenance.rs       # maintenance window evaluation
@@ -535,13 +541,14 @@ A `Scheduler` runs one `tokio` task per active monitor under a global concurrenc
 Done:
 
 - [x] Public status pages, custom domains, incidents, badges
+- [x] Incident update timeline, Atom feed and status page subscribers (email, webhook)
 - [x] Maintenance windows
 - [x] TLS certificate and domain expiry checks
 - [x] Push/heartbeat monitors
 - [x] Multi-user, roles, 2FA, API tokens
 - [x] Tags and monitor groups
 - [x] Monitor pause/resume, clone, bulk actions
-- [x] 30 monitor types, 24 notification providers + Apprise
+- [x] 30 monitor types, 40 notification providers + Apprise
 - [x] Real-browser monitors with failure screenshots (external headless Chromium)
 - [x] Escalation, reminders, flap detection
 - [x] Remote agents with outage confirmation
@@ -549,17 +556,16 @@ Done:
 - [x] Uptime Kuma importer, Prometheus metrics
 - [x] Docker label discovery
 - [x] Static Linux binaries (x86_64, aarch64), systemd installer and a Proxmox LXC script
+- [x] Multi-arch images (amd64, arm64) on GHCR, automated releases
+- [x] MCP server for AI assistants, "Copy for AI" API reference
 - [x] 26 UI languages (24 beta), including right-to-left (ar, he, fa) and CJK (ja, ko, zh-CN, zh-TW)
 
 Ideas, not promises:
 
 - [ ] More monitor types: more game servers (TeamSpeak 3, Quake 3, Terraria/TShock, DayZ)
-- [ ] Status page subscribers (email/webhook)
-- [ ] Incident update timelines
 - [ ] MariaDB/PostgreSQL as an alternative storage backend
 - [ ] More interface languages (contributions welcome — see `locales/`)
 - [ ] NTLM HTTP authentication
-- [ ] Published multi-arch images
 
 ## 📄 License
 

@@ -43,10 +43,41 @@ const SEEN_MAX: usize = 500_000;
 /// User agents that are crawlers, previews, monitors or scripts.
 pub fn is_bot(user_agent: &str) -> bool {
     const MARKERS: &[&str] = &[
-        "bot", "crawl", "spider", "slurp", "curl", "wget", "python", "httpclient", "http-client", "okhttp", "java/",
-        "go-http", "headless", "lighthouse", "pagespeed", "preview", "facebookexternalhit", "embedly", "monitor",
-        "uptime", "pingdom", "statuscake", "axios", "node-fetch", "undici", "scrapy", "phantomjs", "selenium",
-        "puppeteer", "playwright", "feedfetcher", "vigilant-vole", "libwww", "postman", "insomnia",
+        "bot",
+        "crawl",
+        "spider",
+        "slurp",
+        "curl",
+        "wget",
+        "python",
+        "httpclient",
+        "http-client",
+        "okhttp",
+        "java/",
+        "go-http",
+        "headless",
+        "lighthouse",
+        "pagespeed",
+        "preview",
+        "facebookexternalhit",
+        "embedly",
+        "monitor",
+        "uptime",
+        "pingdom",
+        "statuscake",
+        "axios",
+        "node-fetch",
+        "undici",
+        "scrapy",
+        "phantomjs",
+        "selenium",
+        "puppeteer",
+        "playwright",
+        "feedfetcher",
+        "vigilant-vole",
+        "libwww",
+        "postman",
+        "insomnia",
     ];
     let ua = user_agent.trim().to_ascii_lowercase();
     ua.is_empty() || !ua.starts_with("mozilla/") || MARKERS.iter().any(|m| ua.contains(m))
@@ -54,12 +85,17 @@ pub fn is_bot(user_agent: &str) -> bool {
 
 /// Browser prefetches and prerenders aren't views.
 fn is_prefetch(headers: &HeaderMap) -> bool {
-    ["purpose", "sec-purpose", "x-purpose", "x-moz"].iter().any(|h| {
-        headers
-            .get(*h)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.to_ascii_lowercase().contains("prefetch") || v.to_ascii_lowercase().contains("prerender"))
-    })
+    ["purpose", "sec-purpose", "x-purpose", "x-moz"]
+        .iter()
+        .any(|h| {
+            headers
+                .get(*h)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| {
+                    v.to_ascii_lowercase().contains("prefetch")
+                        || v.to_ascii_lowercase().contains("prerender")
+                })
+        })
 }
 
 /// The referring site's host, unless it's this site (or not a web page).
@@ -71,7 +107,11 @@ pub fn referrer_domain(referer: Option<&str>, own_host: Option<&str>) -> Option<
     let host = url.host_str()?.trim_end_matches('.').to_ascii_lowercase();
     let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
     let own = own_host.map(|h| {
-        let h = h.rsplit_once(':').map_or(h, |(h, _)| h).trim_end_matches('.').to_ascii_lowercase();
+        let h = h
+            .rsplit_once(':')
+            .map_or(h, |(h, _)| h)
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
         h.strip_prefix("www.").map(str::to_string).unwrap_or(h)
     });
     if host.is_empty() || host.len() > 253 || own.as_deref() == Some(host.as_str()) {
@@ -100,7 +140,13 @@ static DAILY: LazyLock<Mutex<Daily>> = LazyLock::new(|| {
 
 /// `sha256(salt ‖ scope ‖ page ‖ ip ‖ ua)`, truncated. `scope` keeps app
 /// instances (tests) apart.
-fn visitor_hash(salt: &[u8; 32], scope: &str, page_id: i64, ip: Option<IpAddr>, ua: &str) -> [u8; 16] {
+fn visitor_hash(
+    salt: &[u8; 32],
+    scope: &str,
+    page_id: i64,
+    ip: Option<IpAddr>,
+    ua: &str,
+) -> [u8; 16] {
     let mut h = Sha256::new();
     h.update(salt);
     h.update(scope.as_bytes());
@@ -116,7 +162,13 @@ fn visitor_hash(salt: &[u8; 32], scope: &str, page_id: i64, ip: Option<IpAddr>, 
 
 /// Records a visitor for `day`: `(first visit today, the day just rolled over)`.
 /// A new day gets a fresh random salt and forgets every hash of the old one.
-fn mark_visitor(day: &str, scope: &str, page_id: i64, ip: Option<IpAddr>, ua: &str) -> (bool, bool) {
+fn mark_visitor(
+    day: &str,
+    scope: &str,
+    page_id: i64,
+    ip: Option<IpAddr>,
+    ua: &str,
+) -> (bool, bool) {
     let mut d = DAILY.lock().unwrap_or_else(|e| e.into_inner());
     let rotated = d.day != day;
     if rotated {
@@ -132,15 +184,26 @@ fn mark_visitor(day: &str, scope: &str, page_id: i64, ip: Option<IpAddr>, ua: &s
 }
 
 fn utc_today() -> jiff::civil::Date {
-    jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date()
+    jiff::Timestamp::now()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date()
 }
 
 /// Counts a full view of `page` if it should count. Never fails the request.
-pub async fn count_view(state: &AppState, page: &StatusPage, headers: &HeaderMap, peer: Option<std::net::SocketAddr>, logged_in: bool) {
+pub async fn count_view(
+    state: &AppState,
+    page: &StatusPage,
+    headers: &HeaderMap,
+    peer: Option<std::net::SocketAddr>,
+    logged_in: bool,
+) {
     if !page.analytics.enabled || !page.published || logged_in || is_prefetch(headers) {
         return;
     }
-    let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or_default();
+    let ua = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
     if is_bot(ua) {
         return;
     }
@@ -151,13 +214,18 @@ pub async fn count_view(state: &AppState, page: &StatusPage, headers: &HeaderMap
     let (new_visitor, rotated) = mark_visitor(&day, &scope, page.id, ip, ua);
     let new_visitor = new_visitor && page.analytics.unique;
     let own_host = headers.get(header::HOST).and_then(|v| v.to_str().ok());
-    let referrer = referrer_domain(headers.get(header::REFERER).and_then(|v| v.to_str().ok()), own_host);
+    let referrer = referrer_domain(
+        headers.get(header::REFERER).and_then(|v| v.to_str().ok()),
+        own_host,
+    );
     let page_id = page.id;
     let result = state
         .with_conn(move |c| {
             extras::record_view(c, page_id, &day, new_visitor, referrer.as_deref())?;
             if rotated {
-                let keep = crate::db::settings::load(c)?.retention_days.max(MIN_RETENTION_DAYS);
+                let keep = crate::db::settings::load(c)?
+                    .retention_days
+                    .max(MIN_RETENTION_DAYS);
                 let cutoff = today.saturating_sub(jiff::Span::new().days(keep));
                 extras::prune_views(c, &cutoff.to_string())?;
             }
@@ -186,10 +254,22 @@ pub fn snippet(page: &StatusPage) -> Option<Snippet> {
     let a = &page.analytics;
     match a.provider {
         Provider::None => None,
-        Provider::Plausible => Some(Snippet { src: a.url.clone(), attr: "data-domain", value: a.site_id.clone() }),
-        Provider::Umami => Some(Snippet { src: a.url.clone(), attr: "data-website-id", value: a.site_id.clone() }),
+        Provider::Plausible => Some(Snippet {
+            src: a.url.clone(),
+            attr: "data-domain",
+            value: a.site_id.clone(),
+        }),
+        Provider::Umami => Some(Snippet {
+            src: a.url.clone(),
+            attr: "data-website-id",
+            value: a.site_id.clone(),
+        }),
         Provider::Matomo | Provider::Google => Some(Snippet {
-            src: format!("/status/{}/analytics.js?v={}", page.slug, short_hash(&format!("{}|{}", a.site_id, a.url))),
+            src: format!(
+                "/status/{}/analytics.js?v={}",
+                page.slug,
+                short_hash(&format!("{}|{}", a.site_id, a.url))
+            ),
             attr: "",
             value: String::new(),
         }),
@@ -245,19 +325,33 @@ pub fn setup_script(a: &Analytics) -> Option<String> {
 }
 
 /// `GET /status/{slug}/analytics.js`.
-pub async fn analytics_js(State(state): State<AppState>, jar: SignedCookieJar, Path(slug): Path<String>) -> ApiResult<Response> {
+pub async fn analytics_js(
+    State(state): State<AppState>,
+    jar: SignedCookieJar,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
     let page = state
         .with_conn(move |c| db_pages::get_by_slug(c, &slug))
         .await?
         .ok_or(ApiError::NotFound)?;
-    if !page.published && crate::api::auth::session_user(&state, &jar).await?.is_none() {
+    if !page.published
+        && crate::api::auth::session_user(&state, &jar)
+            .await?
+            .is_none()
+    {
         return Err(ApiError::NotFound);
     }
     let js = setup_script(&page.analytics).ok_or(ApiError::NotFound)?;
     let mut resp = (StatusCode::OK, js).into_response();
     let h = resp.headers_mut();
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/javascript; charset=utf-8"));
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=300"));
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/javascript; charset=utf-8"),
+    );
+    h.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=300"),
+    );
     Ok(resp)
 }
 
@@ -348,12 +442,15 @@ pub fn load_stats(conn: &rusqlite::Connection, page_id: i64) -> rusqlite::Result
 mod tests {
     use super::*;
 
-    const FIREFOX: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0";
+    const FIREFOX: &str =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0";
 
     #[test]
     fn bots_scripts_and_monitors_are_excluded() {
         assert!(!is_bot(FIREFOX));
-        assert!(!is_bot("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1"));
+        assert!(!is_bot(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1"
+        ));
         for ua in [
             "",
             "curl/8.4.0",
@@ -373,14 +470,30 @@ mod tests {
     fn prefetches_dont_count() {
         let mut h = HeaderMap::new();
         assert!(!is_prefetch(&h));
-        h.insert("sec-purpose", HeaderValue::from_static("prefetch;prerender"));
+        h.insert(
+            "sec-purpose",
+            HeaderValue::from_static("prefetch;prerender"),
+        );
         assert!(is_prefetch(&h));
     }
 
     #[test]
     fn referrers_are_foreign_domains_only() {
-        assert_eq!(referrer_domain(Some("https://www.News.example/a?b"), Some("status.acme.test")).as_deref(), Some("news.example"));
-        assert_eq!(referrer_domain(Some("https://status.acme.test/x"), Some("status.acme.test:443")), None);
+        assert_eq!(
+            referrer_domain(
+                Some("https://www.News.example/a?b"),
+                Some("status.acme.test")
+            )
+            .as_deref(),
+            Some("news.example")
+        );
+        assert_eq!(
+            referrer_domain(
+                Some("https://status.acme.test/x"),
+                Some("status.acme.test:443")
+            ),
+            None
+        );
         assert_eq!(referrer_domain(Some("android-app://com.slack"), None), None);
         assert_eq!(referrer_domain(Some("not a url"), None), None);
         assert_eq!(referrer_domain(None, None), None);
@@ -392,13 +505,25 @@ mod tests {
         let ip: Option<IpAddr> = "203.0.113.7".parse().ok();
         let (first, _) = mark_visitor("2001-01-01", scope, 1, ip, FIREFOX);
         assert!(first);
-        assert!(!mark_visitor("2001-01-01", scope, 1, ip, FIREFOX).0, "same visitor, same day");
-        assert!(mark_visitor("2001-01-01", scope, 2, ip, FIREFOX).0, "another page counts separately");
-        assert!(mark_visitor("2001-01-01", scope, 1, ip, "Mozilla/5.0 other").0, "another browser is another visitor");
+        assert!(
+            !mark_visitor("2001-01-01", scope, 1, ip, FIREFOX).0,
+            "same visitor, same day"
+        );
+        assert!(
+            mark_visitor("2001-01-01", scope, 2, ip, FIREFOX).0,
+            "another page counts separately"
+        );
+        assert!(
+            mark_visitor("2001-01-01", scope, 1, ip, "Mozilla/5.0 other").0,
+            "another browser is another visitor"
+        );
         let (again, rotated) = mark_visitor("2001-01-02", scope, 1, ip, FIREFOX);
         assert!(again && rotated, "a new day forgets yesterday's visitors");
         // Same inputs, different salt → unlinkable hashes.
-        assert_ne!(visitor_hash(&[1; 32], scope, 1, ip, FIREFOX), visitor_hash(&[2; 32], scope, 1, ip, FIREFOX));
+        assert_ne!(
+            visitor_hash(&[1; 32], scope, 1, ip, FIREFOX),
+            visitor_hash(&[2; 32], scope, 1, ip, FIREFOX)
+        );
     }
 
     #[test]
@@ -411,16 +536,29 @@ mod tests {
             ..Analytics::default()
         };
         let policy = csp(&a).unwrap();
-        assert!(policy.contains("script-src 'self' https://plausible.io;"), "{policy}");
-        assert!(policy.contains("connect-src 'self' https://plausible.io;"), "{policy}");
+        assert!(
+            policy.contains("script-src 'self' https://plausible.io;"),
+            "{policy}"
+        );
+        assert!(
+            policy.contains("connect-src 'self' https://plausible.io;"),
+            "{policy}"
+        );
         assert!(policy.contains("img-src 'self' data:;"), "{policy}");
         assert!(!policy.contains("googletagmanager"));
-        assert!(!policy.contains("unsafe-eval") && !policy.contains("script-src 'self' 'unsafe-inline'"));
+        assert!(
+            !policy.contains("unsafe-eval")
+                && !policy.contains("script-src 'self' 'unsafe-inline'")
+        );
     }
 
     #[test]
     fn setup_scripts_encode_values() {
-        let ga = Analytics { provider: Provider::Google, site_id: "G-ABCDEF12".into(), ..Analytics::default() };
+        let ga = Analytics {
+            provider: Provider::Google,
+            site_id: "G-ABCDEF12".into(),
+            ..Analytics::default()
+        };
         let js = setup_script(&ga).unwrap();
         assert!(js.contains("gtag('config', \"G-ABCDEF12\")"));
         assert!(js.contains("https://www.googletagmanager.com/gtag/js?id="));
@@ -439,7 +577,11 @@ mod tests {
     #[test]
     fn chart_scales_to_the_peak() {
         let days: Vec<DayViews> = (1..=30)
-            .map(|i| DayViews { day: format!("2026-10-{i:02}"), views: if i == 30 { 10 } else { 0 }, visitors: 0 })
+            .map(|i| DayViews {
+                day: format!("2026-10-{i:02}"),
+                views: if i == 30 { 10 } else { 0 },
+                visitors: 0,
+            })
             .collect();
         let c = chart(&days);
         assert!(c.line.starts_with("0.0,120.0"));

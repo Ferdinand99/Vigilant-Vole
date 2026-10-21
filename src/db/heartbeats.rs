@@ -33,7 +33,13 @@ pub fn insert(
     conn.execute(
         "INSERT INTO heartbeats (monitor_id, agent_id, status, response_time_ms, message)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![monitor_id, agent_id, status.as_str(), response_time_ms, message],
+        params![
+            monitor_id,
+            agent_id,
+            status.as_str(),
+            response_time_ms,
+            message
+        ],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -68,7 +74,10 @@ pub fn list_page(
            AND (?2 IS NULL OR (checked_at, id) < (SELECT checked_at, id FROM heartbeats WHERE id = ?2))
          ORDER BY checked_at DESC, id DESC LIMIT ?3"
     ))?;
-    let rows = stmt.query_map(params![monitor_id, before_id, limit.clamp(1, 500)], row_to_heartbeat)?;
+    let rows = stmt.query_map(
+        params![monitor_id, before_id, limit.clamp(1, 500)],
+        row_to_heartbeat,
+    )?;
     rows.collect()
 }
 
@@ -162,7 +171,14 @@ mod tests {
         (conn, id)
     }
 
-    fn insert_at(conn: &Connection, id: i64, agent: Option<i64>, status: &str, ms: Option<i64>, at: &str) {
+    fn insert_at(
+        conn: &Connection,
+        id: i64,
+        agent: Option<i64>,
+        status: &str,
+        ms: Option<i64>,
+        at: &str,
+    ) {
         conn.execute(
             "INSERT INTO heartbeats (monitor_id, agent_id, status, response_time_ms, checked_at) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![id, agent, status, ms, at],
@@ -195,8 +211,15 @@ mod tests {
         assert_eq!(second[0].response_time_ms, Some(14));
         let third = list_page(&conn, id, second.last().map(|h| h.id), 10).unwrap();
         assert_eq!(third.len(), 5);
-        assert!(list_page(&conn, id, third.last().map(|h| h.id), 10).unwrap().is_empty());
-        assert_eq!(latest_local(&conn, id).unwrap().unwrap().response_time_ms, Some(24));
+        assert!(
+            list_page(&conn, id, third.last().map(|h| h.id), 10)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            latest_local(&conn, id).unwrap().unwrap().response_time_ms,
+            Some(24)
+        );
     }
 
     #[test]
@@ -204,7 +227,14 @@ mod tests {
         let (conn, id) = setup();
         // Inserted newest first (e.g. an import): pages must still be by time.
         for minute in (0..30).rev() {
-            insert_at(&conn, id, None, "up", Some(minute), &format!("2026-01-01 00:{minute:02}:00"));
+            insert_at(
+                &conn,
+                id,
+                None,
+                "up",
+                Some(minute),
+                &format!("2026-01-01 00:{minute:02}:00"),
+            );
         }
         let first = list_page(&conn, id, None, 10).unwrap();
         assert_eq!(first[0].response_time_ms, Some(29));
@@ -227,7 +257,10 @@ mod tests {
         insert_at(&conn, id, None, "up", Some(5), "2025-12-31 23:59:59");
         let b = chart_buckets(&conn, id, start, 60).unwrap();
         assert_eq!(b.len(), 3);
-        assert_eq!((b[0].index, b[0].avg_ms, b[0].total, b[0].down), (0, Some(200.0), 2, 0));
+        assert_eq!(
+            (b[0].index, b[0].avg_ms, b[0].total, b[0].down),
+            (0, Some(200.0), 2, 0)
+        );
         assert_eq!((b[1].index, b[1].avg_ms, b[1].down), (2, None, 1));
         assert_eq!((b[2].index, b[2].maintenance), (3, 1));
     }
@@ -239,11 +272,24 @@ mod tests {
         let austin = agent(&conn, "austin");
         let _idle = agent(&conn, "idle");
         insert_at(&conn, id, Some(berlin), "down", None, "2026-01-01 00:00:00");
-        insert_at(&conn, id, Some(berlin), "up", Some(40), "2026-01-01 00:01:00");
+        insert_at(
+            &conn,
+            id,
+            Some(berlin),
+            "up",
+            Some(40),
+            "2026-01-01 00:01:00",
+        );
         insert_at(&conn, id, Some(austin), "down", None, "2026-01-01 00:00:30");
         let r = agent_results(&conn, id).unwrap();
         assert_eq!(r.len(), 2);
-        assert_eq!((r[0].agent_name.as_str(), r[0].status), ("austin", HeartbeatStatus::Down));
-        assert_eq!((r[1].agent_name.as_str(), r[1].response_time_ms), ("Berlin", Some(40)));
+        assert_eq!(
+            (r[0].agent_name.as_str(), r[0].status),
+            ("austin", HeartbeatStatus::Down)
+        );
+        assert_eq!(
+            (r[1].agent_name.as_str(), r[1].response_time_ms),
+            ("Berlin", Some(40))
+        );
     }
 }

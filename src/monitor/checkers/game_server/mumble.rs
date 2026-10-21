@@ -15,12 +15,22 @@ pub fn ping(ident: u64) -> [u8; 12] {
 
 pub(super) fn parse_pong(buf: &[u8], ident: u64) -> Verdict<Status> {
     if buf.len() < 24 {
-        return Verdict::Done(Err(format!("Not a Mumble ping reply ({} bytes)", buf.len())));
+        return Verdict::Done(Err(format!(
+            "Not a Mumble ping reply ({} bytes)",
+            buf.len()
+        )));
     }
     if buf[4..12] != ident.to_be_bytes() {
         return Verdict::Ignore;
     }
-    let word = |at: usize| u64::from(u32::from_be_bytes([buf[at], buf[at + 1], buf[at + 2], buf[at + 3]]));
+    let word = |at: usize| {
+        u64::from(u32::from_be_bytes([
+            buf[at],
+            buf[at + 1],
+            buf[at + 2],
+            buf[at + 3],
+        ]))
+    };
     Verdict::Done(Ok(Status {
         product: format!("Mumble {}.{}.{}", buf[1], buf[2], buf[3]),
         players: Some((word(12), word(16))),
@@ -31,5 +41,8 @@ pub(super) fn parse_pong(buf: &[u8], ident: u64) -> Verdict<Status> {
 
 pub async fn query(target: &Target, timeout: Duration) -> Result<(Status, i64), String> {
     let ident = super::nonce();
-    udp_exchange(&target.host, target.port, &ping(ident), timeout, |buf| parse_pong(buf, ident)).await
+    udp_exchange(&target.host, target.port, &ping(ident), timeout, |buf| {
+        parse_pong(buf, ident)
+    })
+    .await
 }

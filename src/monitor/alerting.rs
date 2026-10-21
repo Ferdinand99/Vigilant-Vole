@@ -171,7 +171,12 @@ fn notify(
 }
 
 /// Applies one observation to `prev`. See the module docs for the rules.
-pub fn evaluate(prev: &MonitorState, obs: &Observation, cfg: &AlertConfig, now: OffsetDateTime) -> Decision {
+pub fn evaluate(
+    prev: &MonitorState,
+    obs: &Observation,
+    cfg: &AlertConfig,
+    now: OffsetDateTime,
+) -> Decision {
     let mut s = prev.clone();
     let mut actions = Vec::new();
 
@@ -205,7 +210,10 @@ pub fn evaluate(prev: &MonitorState, obs: &Observation, cfg: &AlertConfig, now: 
         s.escalated = false;
         s.history.clear();
         s.stable_checks = 0;
-        let message = obs.message.clone().or_else(|| Some("Under maintenance".into()));
+        let message = obs
+            .message
+            .clone()
+            .or_else(|| Some("Under maintenance".into()));
         return finish(s, HeartbeatStatus::Maintenance, message, actions, now);
     }
     if s.settled == Some(HeartbeatStatus::Maintenance) {
@@ -223,7 +231,9 @@ pub fn evaluate(prev: &MonitorState, obs: &Observation, cfg: &AlertConfig, now: 
         (other, _) => other,
     };
     let mut message = match (obs.raw(), cfg.upside_down, &obs.message) {
-        (HeartbeatStatus::Up, true, Some(m)) => Some(format!("Upside-down mode: check succeeded ({m})")),
+        (HeartbeatStatus::Up, true, Some(m)) => {
+            Some(format!("Upside-down mode: check succeeded ({m})"))
+        }
         (HeartbeatStatus::Up, true, None) => Some("Upside-down mode: check succeeded".into()),
         (_, _, m) => m.clone(),
     };
@@ -347,24 +357,43 @@ pub fn evaluate(prev: &MonitorState, obs: &Observation, cfg: &AlertConfig, now: 
                 s.checks_since_notice += 1;
                 if s.checks_since_notice >= cfg.resend_interval {
                     s.checks_since_notice = 0;
-                    notify(&mut actions, EventKind::Reminder, false, message.clone(), None);
+                    notify(
+                        &mut actions,
+                        EventKind::Reminder,
+                        false,
+                        message.clone(),
+                        None,
+                    );
                 }
             }
             if cfg.escalation_minutes > 0
                 && !s.escalated
                 && s.down_since.is_some_and(|since| {
-                    elapsed(since, now) >= Duration::from_secs(cfg.escalation_minutes.unsigned_abs() * 60)
+                    elapsed(since, now)
+                        >= Duration::from_secs(cfg.escalation_minutes.unsigned_abs() * 60)
                 })
             {
                 s.escalated = true;
-                notify(&mut actions, EventKind::Escalation, true, message.clone(), None);
+                notify(
+                    &mut actions,
+                    EventKind::Escalation,
+                    true,
+                    message.clone(),
+                    None,
+                );
             }
         }
         HeartbeatStatus::Up => {
             if s.notified == Some(HeartbeatStatus::Down) {
                 if !muted {
                     let downtime = s.notified_down_since.map(|since| elapsed(since, now));
-                    notify(&mut actions, EventKind::Up, false, message.clone(), downtime);
+                    notify(
+                        &mut actions,
+                        EventKind::Up,
+                        false,
+                        message.clone(),
+                        downtime,
+                    );
                     if was_escalated {
                         notify(&mut actions, EventKind::Up, true, message.clone(), downtime);
                     }
@@ -423,7 +452,9 @@ fn unconfirmed_by_agents(cfg: &AlertConfig, votes: Option<AgentVotes>) -> Option
 /// Status of a group from its active children's latest statuses: down >
 /// pending > up; only-maintenance → maintenance. Children without any
 /// heartbeat yet are ignored; `None` when no child has a status.
-pub fn aggregate_group(children: &[(String, Option<HeartbeatStatus>)]) -> Option<(HeartbeatStatus, String)> {
+pub fn aggregate_group(
+    children: &[(String, Option<HeartbeatStatus>)],
+) -> Option<(HeartbeatStatus, String)> {
     let known: Vec<(&str, HeartbeatStatus)> = children
         .iter()
         .filter_map(|(name, status)| status.map(|s| (name.as_str(), s)))
@@ -432,12 +463,21 @@ pub fn aggregate_group(children: &[(String, Option<HeartbeatStatus>)]) -> Option
         return None;
     }
     let names_with = |wanted: HeartbeatStatus| -> Vec<&str> {
-        known.iter().filter(|(_, s)| *s == wanted).map(|(n, _)| *n).collect()
+        known
+            .iter()
+            .filter(|(_, s)| *s == wanted)
+            .map(|(n, _)| *n)
+            .collect()
     };
     let total = known.len();
     let list = |names: &[&str]| {
         const SHOWN: usize = 5;
-        let mut text = names.iter().take(SHOWN).copied().collect::<Vec<_>>().join(", ");
+        let mut text = names
+            .iter()
+            .take(SHOWN)
+            .copied()
+            .collect::<Vec<_>>()
+            .join(", ");
         if names.len() > SHOWN {
             text.push_str(&format!(" and {} more", names.len() - SHOWN));
         }
@@ -467,7 +507,10 @@ pub fn aggregate_group(children: &[(String, Option<HeartbeatStatus>)]) -> Option
         };
         return Some((HeartbeatStatus::Up, text));
     }
-    Some((HeartbeatStatus::Maintenance, "All monitors in maintenance".into()))
+    Some((
+        HeartbeatStatus::Maintenance,
+        "All monitors in maintenance".into(),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -536,7 +579,11 @@ mod tests {
 
     /// Runs a sequence of raw statuses one minute apart; returns the final
     /// state and every decision.
-    fn run(start: MonitorState, cfg: &AlertConfig, seq: &[HeartbeatStatus]) -> (MonitorState, Vec<Decision>) {
+    fn run(
+        start: MonitorState,
+        cfg: &AlertConfig,
+        seq: &[HeartbeatStatus],
+    ) -> (MonitorState, Vec<Decision>) {
         let mut state = start;
         let mut out = Vec::new();
         for (i, status) in seq.iter().enumerate() {
@@ -550,7 +597,11 @@ mod tests {
     fn kinds(decisions: &[Decision]) -> Vec<(EventKind, bool)> {
         decisions
             .iter()
-            .flat_map(|d| d.notices().map(|n| (n.kind, n.escalation)).collect::<Vec<_>>())
+            .flat_map(|d| {
+                d.notices()
+                    .map(|n| (n.kind, n.escalation))
+                    .collect::<Vec<_>>()
+            })
             .collect()
     }
 
@@ -594,7 +645,10 @@ mod tests {
 
     #[test]
     fn retries_record_pending_before_down() {
-        let c = AlertConfig { retries: 2, ..cfg() };
+        let c = AlertConfig {
+            retries: 2,
+            ..cfg()
+        };
         let (_, ds) = run(up_state(), &c, &[Down, Down, Down]);
         let statuses: Vec<_> = ds.iter().map(|d| d.status).collect();
         assert_eq!(statuses, [Pending, Pending, Down]);
@@ -604,7 +658,10 @@ mod tests {
 
     #[test]
     fn recovery_within_retries_is_silent() {
-        let c = AlertConfig { retries: 2, ..cfg() };
+        let c = AlertConfig {
+            retries: 2,
+            ..cfg()
+        };
         let (_, ds) = run(up_state(), &c, &[Down, Up]);
         assert!(kinds(&ds).is_empty());
         assert!(ds.iter().all(|d| d.actions.is_empty()));
@@ -612,7 +669,10 @@ mod tests {
 
     #[test]
     fn outage_starts_at_first_failed_check() {
-        let c = AlertConfig { retries: 2, ..cfg() };
+        let c = AlertConfig {
+            retries: 2,
+            ..cfg()
+        };
         let (state, _) = run(up_state(), &c, &[Down, Down, Down]);
         assert_eq!(state.down_since, Some(at(0)));
     }
@@ -641,7 +701,10 @@ mod tests {
         };
         let (_, ds) = run(MonitorState::default(), &c, &[Up, Down]);
         assert_eq!(ds[0].status, Down);
-        assert_eq!(ds[0].message.as_deref(), Some("Upside-down mode: check succeeded"));
+        assert_eq!(
+            ds[0].message.as_deref(),
+            Some("Upside-down mode: check succeeded")
+        );
         assert_eq!(ds[1].status, Up);
     }
 
@@ -654,13 +717,19 @@ mod tests {
 
     #[test]
     fn raw_pending_is_recorded_as_is_and_leaves_state_alone() {
-        let c = AlertConfig { retries: 1, ..cfg() };
+        let c = AlertConfig {
+            retries: 1,
+            ..cfg()
+        };
         let (before, _) = run(up_state(), &c, &[Down]); // one retry used
         let d = evaluate(&before, &obs(Pending), &c, at(5));
         assert_eq!(d.status, Pending);
         assert!(d.actions.is_empty());
         assert_eq!(d.state.consecutive_failures, before.consecutive_failures);
-        assert_eq!((d.state.settled, d.state.notified), (before.settled, before.notified));
+        assert_eq!(
+            (d.state.settled, d.state.notified),
+            (before.settled, before.notified)
+        );
         assert_eq!(d.state.history, before.history);
     }
 
@@ -679,7 +748,10 @@ mod tests {
     fn pending_does_not_interrupt_a_down_streak_or_resend_down() {
         let (down, _) = run(up_state(), &cfg(), &[Down]);
         let (_, ds) = run(down, &cfg(), &[Pending, Down]);
-        assert!(kinds(&ds).is_empty(), "still the same outage: no second Down");
+        assert!(
+            kinds(&ds).is_empty(),
+            "still the same outage: no second Down"
+        );
     }
 
     #[test]
@@ -708,7 +780,10 @@ mod tests {
                 (EventKind::Reminder, false)
             ]
         );
-        assert_eq!(ds[2].notices().next().map(|n| n.kind), Some(EventKind::Reminder));
+        assert_eq!(
+            ds[2].notices().next().map(|n| n.kind),
+            Some(EventKind::Reminder)
+        );
     }
 
     #[test]
@@ -724,8 +799,14 @@ mod tests {
             ..cfg()
         };
         let (_, ds) = run(up_state(), &c, &[Down; 7]);
-        assert_eq!(kinds(&ds), [(EventKind::Down, false), (EventKind::Escalation, true)]);
-        assert_eq!(ds[3].notices().next().map(|n| n.kind), Some(EventKind::Escalation));
+        assert_eq!(
+            kinds(&ds),
+            [(EventKind::Down, false), (EventKind::Escalation, true)]
+        );
+        assert_eq!(
+            ds[3].notices().next().map(|n| n.kind),
+            Some(EventKind::Escalation)
+        );
     }
 
     #[test]
@@ -735,7 +816,10 @@ mod tests {
             ..cfg()
         };
         let (_, ds) = run(up_state(), &c, &[Down, Down, Up]);
-        assert_eq!(kinds(&ds[2..]), [(EventKind::Up, false), (EventKind::Up, true)]);
+        assert_eq!(
+            kinds(&ds[2..]),
+            [(EventKind::Up, false), (EventKind::Up, true)]
+        );
     }
 
     #[test]
@@ -804,7 +888,10 @@ mod tests {
         o.maintenance = true;
         let d1 = evaluate(&up_state(), &o, &cfg(), at(0));
         let d2 = evaluate(&d1.state, &obs(Down), &cfg(), at(1));
-        assert_eq!(d2.notices().map(|n| n.kind).collect::<Vec<_>>(), [EventKind::Down]);
+        assert_eq!(
+            d2.notices().map(|n| n.kind).collect::<Vec<_>>(),
+            [EventKind::Down]
+        );
     }
 
     #[test]
@@ -965,7 +1052,10 @@ mod tests {
             ..test_monitor()
         };
         let c = AlertConfig::for_monitor(&m);
-        assert_eq!((c.retries, c.upside_down, c.confirm_with_agents), (0, false, false));
+        assert_eq!(
+            (c.retries, c.upside_down, c.confirm_with_agents),
+            (0, false, false)
+        );
     }
 
     fn test_monitor() -> Monitor {
@@ -1037,7 +1127,9 @@ mod tests {
 
     // -- groups --------------------------------------------------------------
 
-    fn children(list: &[(&str, Option<HeartbeatStatus>)]) -> Vec<(String, Option<HeartbeatStatus>)> {
+    fn children(
+        list: &[(&str, Option<HeartbeatStatus>)],
+    ) -> Vec<(String, Option<HeartbeatStatus>)> {
         list.iter().map(|(n, s)| (n.to_string(), *s)).collect()
     }
 
@@ -1056,7 +1148,10 @@ mod tests {
     #[test]
     fn group_up_ignores_maintenance_and_unknown_children() {
         let c = children(&[("a", Some(Up)), ("b", Some(Maintenance)), ("c", None)]);
-        assert_eq!(aggregate_group(&c), Some((Up, "1 up, 1 in maintenance".into())));
+        assert_eq!(
+            aggregate_group(&c),
+            Some((Up, "1 up, 1 in maintenance".into()))
+        );
     }
 
     #[test]
@@ -1143,13 +1238,21 @@ mod tests {
         );
         let notified_at_zero = t0() + time::Duration::hours(1);
         assert_eq!(
-            expiry_due(expires, Some(notified_at_zero), 14, t0() + time::Duration::days(5)),
+            expiry_due(
+                expires,
+                Some(notified_at_zero),
+                14,
+                t0() + time::Duration::days(5)
+            ),
             None
         );
     }
 
     #[test]
     fn expiry_outside_window_is_quiet() {
-        assert_eq!(expiry_due(t0() + time::Duration::days(60), None, 14, t0()), None);
+        assert_eq!(
+            expiry_due(t0() + time::Duration::days(60), None, 14, t0()),
+            None
+        );
     }
 }

@@ -51,8 +51,7 @@ pub fn card(event: &NotificationEvent) -> Value {
         "msteams": { "width": "Full" },
     });
     if let Some(url) = &event.url {
-        card["actions"] =
-            json!([{ "type": "Action.OpenUrl", "title": crate::i18n::t("msg.view_monitor"), "url": url }]);
+        card["actions"] = json!([{ "type": "Action.OpenUrl", "title": crate::i18n::t("msg.view_monitor"), "url": url }]);
     }
     card
 }

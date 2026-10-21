@@ -30,8 +30,9 @@ use sha2::{Digest, Sha256};
 
 use super::{ApiError, ApiResult, AppState, HtmlTemplate, PageCtx, flash};
 use crate::agent::protocol::{
-    AgentInfo, MAX_BATCH, MAX_MESSAGE_CHARS, MAX_RESULT_AGE_SECS, MONITORS_PATH, MonitorsResponse, NAME_HEADER,
-    POLL_SECONDS, RESULTS_PATH, Rejected, ResultItem, ResultsResponse, VERSION_HEADER, parse_db,
+    AgentInfo, MAX_BATCH, MAX_MESSAGE_CHARS, MAX_RESULT_AGE_SECS, MONITORS_PATH, MonitorsResponse,
+    NAME_HEADER, POLL_SECONDS, RESULTS_PATH, Rejected, ResultItem, ResultsResponse, VERSION_HEADER,
+    parse_db,
 };
 use crate::auth::{CurrentUser, Role};
 use crate::db::agents::{self as db_agents, Agent};
@@ -46,7 +47,8 @@ const RATE_LIMIT: u32 = 120;
 const RATE_WINDOW: Duration = Duration::from_secs(60);
 
 /// Fixed-window request counters per agent id: `(window start, requests)`.
-static AGENT_RATE: LazyLock<Mutex<HashMap<i64, (Instant, u32)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static AGENT_RATE: LazyLock<Mutex<HashMap<i64, (Instant, u32)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Counts a request for `agent_id`; `Some(wait)` once it is over budget.
 fn rate_limited(agent_id: i64, now: Instant) -> Option<Duration> {
@@ -56,7 +58,8 @@ fn rate_limited(agent_id: i64, now: Instant) -> Option<Duration> {
         *entry = (now, 0);
     }
     entry.1 = entry.1.saturating_add(1);
-    (entry.1 > RATE_LIMIT).then(|| RATE_WINDOW.saturating_sub(now.saturating_duration_since(entry.0)))
+    (entry.1 > RATE_LIMIT)
+        .then(|| RATE_WINDOW.saturating_sub(now.saturating_duration_since(entry.0)))
 }
 const MAX_NAME_CHARS: usize = 80;
 const MAX_LOCATION_CHARS: usize = 80;
@@ -82,17 +85,36 @@ pub fn public_router() -> Router<AppState> {
 // ---------------------------------------------------------------------------
 
 /// Public URL of this server: the `base_url` setting, else derived from the
-/// request (`X-Forwarded-Proto`/`Host`).
+/// request (`Host`, and `X-Forwarded-Host`/`-Proto` only behind a trusted
+/// proxy, `VV_TRUST_PROXY`).
 pub fn public_base_url(settings: &Settings, headers: &HeaderMap) -> String {
-    if let Some(base) = settings.base_url.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+    base_url_from(settings, headers, crate::auth::session::trust_proxy())
+}
+
+fn base_url_from(settings: &Settings, headers: &HeaderMap, trust_proxy: bool) -> String {
+    if let Some(base) = settings
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+    {
         return base.trim_end_matches('/').to_string();
     }
-    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).map(str::trim);
-    let host = header("x-forwarded-host")
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+    };
+    // Anybody can send X-Forwarded-*; only a proxy we trust sets them for real.
+    let forwarded = |name: &str| trust_proxy.then(|| header(name)).flatten();
+    let host = forwarded("x-forwarded-host")
+        .and_then(|h| h.split(',').next())
+        .map(str::trim)
         .or_else(|| header("host"))
         .filter(|h| !h.is_empty())
         .unwrap_or("localhost:3001");
-    let proto = header("x-forwarded-proto")
+    let proto = forwarded("x-forwarded-proto")
         .and_then(|p| p.split(',').next())
         .map(str::trim)
         .filter(|p| *p == "https" || *p == "http")
@@ -118,8 +140,13 @@ pub struct AuthedAgent(pub Agent);
 impl FromRequestParts<AppState> for AuthedAgent {
     type Rejection = Response;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let agent = authenticate_agent(parts, state).await.map_err(IntoResponse::into_response)?;
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let agent = authenticate_agent(parts, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
         if let Some(wait) = rate_limited(agent.id, Instant::now()) {
             tracing::warn!(agent_id = agent.id, "agent over its request budget");
             let retry = wait.as_secs().max(1).to_string();
@@ -175,13 +202,18 @@ async fn agent_monitors(
     AuthedAgent(agent): AuthedAgent,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
-    let mut monitors = state.with_conn(|c| db_agents::list_agent_monitors(c)).await?;
+    let mut monitors = state
+        .with_conn(|c| db_agents::list_agent_monitors(c))
+        .await?;
     for m in &mut monitors {
         m.push_token = None;
     }
     // Old agents can't read monitor types they don't know (and would skip
     // OAuth2/mTLS): only send what this agent's version can run.
-    let version = headers.get(VERSION_HEADER).and_then(|v| v.to_str().ok()).map(str::trim);
+    let version = headers
+        .get(VERSION_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim);
     let total = monitors.len();
     monitors.retain(|m| crate::agent::protocol::agent_can_run(m, version));
     if monitors.len() < total {
@@ -222,7 +254,10 @@ fn warn_held_back(agent_id: i64, version: Option<&str>, count: usize) {
     let version = version.unwrap_or_default().to_string();
     let first = WARNED
         .lock()
-        .map(|mut w| w.get_or_insert_with(HashSet::new).insert((agent_id, version.clone())))
+        .map(|mut w| {
+            w.get_or_insert_with(HashSet::new)
+                .insert((agent_id, version.clone()))
+        })
         .unwrap_or(true);
     if first {
         tracing::warn!(
@@ -245,12 +280,19 @@ async fn agent_results(
     if items.len() > MAX_BATCH {
         return Ok((
             StatusCode::PAYLOAD_TOO_LARGE,
-            Json(serde_json::json!({ "error": format!("at most {MAX_BATCH} results per request") })),
+            Json(
+                serde_json::json!({ "error": format!("at most {MAX_BATCH} results per request") }),
+            ),
         )
             .into_response());
     }
-    let monitors = state.with_conn(|c| db_agents::list_agent_monitors(c)).await?;
-    let intervals: HashMap<i64, i64> = monitors.iter().map(|m| (m.id, m.interval_seconds)).collect();
+    let monitors = state
+        .with_conn(|c| db_agents::list_agent_monitors(c))
+        .await?;
+    let intervals: HashMap<i64, i64> = monitors
+        .iter()
+        .map(|m| (m.id, m.interval_seconds))
+        .collect();
     let now = time::OffsetDateTime::now_utc();
 
     // At most one accepted result per monitor per batch: the newest valid
@@ -269,7 +311,10 @@ async fn agent_results(
         match validate_result(&item, &intervals, now) {
             Ok(outcome) => {
                 seen.insert(item.monitor_id);
-                state.scheduler.ingest_external(item.monitor_id, outcome, Some(agent.id)).await;
+                state
+                    .scheduler
+                    .ingest_external(item.monitor_id, outcome, Some(agent.id))
+                    .await;
                 accepted += 1;
             }
             Err(reason) => rejected.push(Rejected {
@@ -280,7 +325,12 @@ async fn agent_results(
     }
     rejected.reverse();
     if !rejected.is_empty() {
-        tracing::debug!(agent_id = agent.id, accepted, rejected = rejected.len(), "agent results partly rejected");
+        tracing::debug!(
+            agent_id = agent.id,
+            accepted,
+            rejected = rejected.len(),
+            "agent results partly rejected"
+        );
     }
     Ok(Json(ResultsResponse { accepted, rejected }).into_response())
 }
@@ -376,7 +426,13 @@ struct CreateForm {
 pub fn snippets(server: &str, token: &str, name: &str) -> (String, String, String) {
     let slug: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .split('-')
         .filter(|s| !s.is_empty())
@@ -407,7 +463,12 @@ async fn render_page(
     name_error: String,
 ) -> ApiResult<(SignedCookieJar, Response)> {
     let (list, agent_monitors) = state
-        .with_conn(|c| Ok((db_agents::list_agents(c)?, db_agents::count_agent_monitors(c)?)))
+        .with_conn(|c| {
+            Ok((
+                db_agents::list_agents(c)?,
+                db_agents::count_agent_monitors(c)?,
+            ))
+        })
         .await?;
     let agents = list
         .into_iter()
@@ -423,7 +484,15 @@ async fn render_page(
             reporting: s.reporting_monitors,
         })
         .collect();
-    let (ctx, jar) = PageCtx::build(state, Some(user), jar, crate::i18n::t("nav.agents"), "settings", "agents").await;
+    let (ctx, jar) = PageCtx::build(
+        state,
+        Some(user),
+        jar,
+        crate::i18n::t("nav.agents"),
+        "settings",
+        "agents",
+    )
+    .await;
     let page = AgentsTemplate {
         ctx,
         agents,
@@ -442,7 +511,15 @@ async fn agents_page(
     jar: SignedCookieJar,
 ) -> ApiResult<(SignedCookieJar, Response)> {
     user.require(Role::Admin)?;
-    render_page(&state, &user, &jar, None, CreateForm::default(), String::new()).await
+    render_page(
+        &state,
+        &user,
+        &jar,
+        None,
+        CreateForm::default(),
+        String::new(),
+    )
+    .await
 }
 
 async fn create_agent(
@@ -459,7 +536,10 @@ async fn create_agent(
         let error = if name.is_empty() {
             crate::i18n::t("agents.err_name").to_string()
         } else {
-            crate::i18n::tf("agents.err_name_long", &[("max", &MAX_NAME_CHARS.to_string())])
+            crate::i18n::tf(
+                "agents.err_name_long",
+                &[("max", &MAX_NAME_CHARS.to_string())],
+            )
         };
         return render_page(&state, &user, &jar, None, form, error).await;
     }
@@ -473,10 +553,24 @@ async fn create_agent(
     tracing::info!(agent_id = id, user = %user.username, "remote agent created");
     let settings = state.settings().await?;
     let shown = shown_token(&settings, &headers, &name, plain, false);
-    render_page(&state, &user, &jar, Some(shown), CreateForm::default(), String::new()).await
+    render_page(
+        &state,
+        &user,
+        &jar,
+        Some(shown),
+        CreateForm::default(),
+        String::new(),
+    )
+    .await
 }
 
-fn shown_token(settings: &Settings, headers: &HeaderMap, name: &str, token: String, rotated: bool) -> ShownToken {
+fn shown_token(
+    settings: &Settings,
+    headers: &HeaderMap,
+    name: &str,
+    token: String,
+    rotated: bool,
+) -> ShownToken {
     let server = public_base_url(settings, headers);
     let (docker_run, compose, binary) = snippets(&server, &token, name);
     ShownToken {
@@ -512,7 +606,15 @@ async fn rotate_agent(
     tracing::info!(agent_id = id, user = %user.username, "remote agent token rotated");
     let settings = state.settings().await?;
     let shown = shown_token(&settings, &headers, &agent.name, plain, true);
-    render_page(&state, &user, &jar, Some(shown), CreateForm::default(), String::new()).await
+    render_page(
+        &state,
+        &user,
+        &jar,
+        Some(shown),
+        CreateForm::default(),
+        String::new(),
+    )
+    .await
 }
 
 async fn set_agent_active(
@@ -524,13 +626,20 @@ async fn set_agent_active(
 ) -> ApiResult<(SignedCookieJar, Redirect)> {
     user.require(Role::Admin)?;
     // Lenient body parsing: the "Disable" form posts no fields at all.
-    let active = url::form_urlencoded::parse(body.as_bytes()).any(|(k, v)| k == "active" && v == "true");
-    let found = state.with_conn(move |c| db_agents::set_active(c, id, active)).await?;
+    let active =
+        url::form_urlencoded::parse(body.as_bytes()).any(|(k, v)| k == "active" && v == "true");
+    let found = state
+        .with_conn(move |c| db_agents::set_active(c, id, active))
+        .await?;
     if !found {
         return Err(ApiError::NotFound);
     }
     tracing::info!(agent_id = id, active, user = %user.username, "remote agent toggled");
-    let msg = if active { crate::i18n::t("agents.enabled") } else { crate::i18n::t("agents.disabled") };
+    let msg = if active {
+        crate::i18n::t("agents.enabled")
+    } else {
+        crate::i18n::t("agents.disabled")
+    };
     Ok((flash(jar, "success", msg), Redirect::to("/settings/agents")))
 }
 
@@ -540,19 +649,21 @@ async fn delete_agent(
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
     user.require(Role::Admin)?;
-    let found = state.with_conn(move |c| db_agents::delete_agent(c, id)).await?;
+    let found = state
+        .with_conn(move |c| db_agents::delete_agent(c, id))
+        .await?;
     if !found {
         return Err(ApiError::NotFound);
     }
     tracing::info!(agent_id = id, user = %user.username, "remote agent deleted");
     state.notify_update();
     let mut response = StatusCode::OK.into_response();
-    response
-        .headers_mut()
-        .insert("hx-trigger", toast_trigger(crate::i18n::t("agents.deleted"), "success"));
+    response.headers_mut().insert(
+        "hx-trigger",
+        toast_trigger(crate::i18n::t("agents.deleted"), "success"),
+    );
     Ok(response)
 }
-
 
 #[cfg(test)]
 pub(crate) mod test_support {
@@ -629,7 +740,13 @@ mod tests {
                     ..NewMonitor::default()
                 };
                 let on = db_monitors::insert_monitor(c, &base)?;
-                let off = db_monitors::insert_monitor(c, &NewMonitor { run_on_agents: false, ..base })?;
+                let off = db_monitors::insert_monitor(
+                    c,
+                    &NewMonitor {
+                        run_on_agents: false,
+                        ..base
+                    },
+                )?;
                 Ok((t.token, agent_id, on, off))
             })
             .await
@@ -678,8 +795,9 @@ mod tests {
     async fn agent_heartbeats(state: &AppState, agent_id: i64) -> Vec<(i64, String)> {
         state
             .with_conn(move |c| {
-                let mut stmt =
-                    c.prepare("SELECT monitor_id, status FROM heartbeats WHERE agent_id = ?1 ORDER BY id")?;
+                let mut stmt = c.prepare(
+                    "SELECT monitor_id, status FROM heartbeats WHERE agent_id = ?1 ORDER BY id",
+                )?;
                 let rows = stmt.query_map([agent_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
                 rows.collect()
             })
@@ -692,14 +810,25 @@ mod tests {
         let f = fixture("127.0.0.1:1").await;
         let (status, _, _) = send(&f.state, get_monitors(None).body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
-        let (status, _, _) = send(&f.state, get_monitors(Some("vva_nope")).body(Body::empty()).unwrap()).await;
+        let (status, _, _) = send(
+            &f.state,
+            get_monitors(Some("vva_nope")).body(Body::empty()).unwrap(),
+        )
+        .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
         let (status, _, _) = send(&f.state, post_results("vva_nope", &serde_json::json!([]))).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
 
         let id = f.agent_id;
-        f.state.with_conn(move |c| db_agents::set_active(c, id, false)).await.unwrap();
-        let (status, _, _) = send(&f.state, get_monitors(Some(&f.token)).body(Body::empty()).unwrap()).await;
+        f.state
+            .with_conn(move |c| db_agents::set_active(c, id, false))
+            .await
+            .unwrap();
+        let (status, _, _) = send(
+            &f.state,
+            get_monitors(Some(&f.token)).body(Body::empty()).unwrap(),
+        )
+        .await;
         assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
@@ -716,8 +845,16 @@ mod tests {
         assert_eq!(list.agent.id, f.agent_id);
         let ids: Vec<i64> = list.monitors.iter().map(|m| m.id).collect();
         assert_eq!(ids, vec![f.agent_monitor]);
-        assert_eq!(list.monitors[0].basic_auth_pass.as_deref(), Some("monitor-secret"));
-        let etag = headers.get(header::ETAG).unwrap().to_str().unwrap().to_string();
+        assert_eq!(
+            list.monitors[0].basic_auth_pass.as_deref(),
+            Some("monitor-secret")
+        );
+        let etag = headers
+            .get(header::ETAG)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
 
         let req = get_monitors(Some(&f.token))
             .header(header::IF_NONE_MATCH, &etag)
@@ -728,7 +865,12 @@ mod tests {
         assert!(body.is_empty());
 
         let id = f.agent_id;
-        let agent = f.state.with_conn(move |c| db_agents::get_agent(c, id)).await.unwrap().unwrap();
+        let agent = f
+            .state
+            .with_conn(move |c| db_agents::get_agent(c, id))
+            .await
+            .unwrap()
+            .unwrap();
         assert!(agent.last_seen_at.is_some());
         assert_eq!(agent.version.as_deref(), Some("9.9.9"));
     }
@@ -739,10 +881,19 @@ mod tests {
         let (pg, oauth, mtls) = f
             .state
             .with_conn(|c| {
-                let on = |m: NewMonitor| NewMonitor { run_on_agents: true, interval_seconds: 60, ..m };
+                let on = |m: NewMonitor| NewMonitor {
+                    run_on_agents: true,
+                    interval_seconds: 60,
+                    ..m
+                };
                 let pg = db_monitors::insert_monitor(
                     c,
-                    &on(NewMonitor { name: "pg".into(), monitor_type: MonitorType::Postgres, target: "postgres://db/app".into(), ..NewMonitor::default() }),
+                    &on(NewMonitor {
+                        name: "pg".into(),
+                        monitor_type: MonitorType::Postgres,
+                        target: "postgres://db/app".into(),
+                        ..NewMonitor::default()
+                    }),
                 )?;
                 let oauth = db_monitors::insert_monitor(
                     c,
@@ -780,7 +931,9 @@ mod tests {
             async move {
                 let (status, _, body) = send(&state, req.body(Body::empty()).unwrap()).await;
                 assert_eq!(status, StatusCode::OK);
-                serde_json::from_str::<MonitorsResponse>(&body).unwrap().monitors
+                serde_json::from_str::<MonitorsResponse>(&body)
+                    .unwrap()
+                    .monitors
             }
         };
         for old in [None, Some("0.0.9")] {
@@ -793,8 +946,17 @@ mod tests {
         assert_eq!(ids, vec![f.agent_monitor, pg, oauth, mtls]);
         // The agent runs the check itself, so it gets the settings it needs.
         let by_id = |id: i64| list.iter().find(|m| m.id == id).unwrap();
-        assert_eq!(by_id(oauth).oauth_client_secret.as_deref(), Some("client-secret-value"));
-        assert_eq!((by_id(mtls).tls_client_cert.as_deref(), by_id(mtls).tls_client_key.as_deref()), (Some("CERT"), Some("KEY")));
+        assert_eq!(
+            by_id(oauth).oauth_client_secret.as_deref(),
+            Some("client-secret-value")
+        );
+        assert_eq!(
+            (
+                by_id(mtls).tls_client_cert.as_deref(),
+                by_id(mtls).tls_client_key.as_deref()
+            ),
+            (Some("CERT"), Some("KEY"))
+        );
     }
 
     #[tokio::test]
@@ -849,7 +1011,11 @@ mod tests {
         let wait = rate_limited(-7, t + Duration::from_secs(10)).unwrap();
         assert_eq!(wait, Duration::from_secs(50));
         assert_eq!(rate_limited(-8, t), None, "other agents are unaffected");
-        assert_eq!(rate_limited(-7, t + RATE_WINDOW), None, "a new window starts over");
+        assert_eq!(
+            rate_limited(-7, t + RATE_WINDOW),
+            None,
+            "a new window starts over"
+        );
     }
 
     #[tokio::test]
@@ -860,7 +1026,11 @@ mod tests {
             .collect();
         let (status, _, _) = send(&f.state, post_results(&f.token, &serde_json::json!(many))).await;
         assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
-        let (status, _, _) = send(&f.state, post_results(&f.token, &serde_json::json!({"x": 1}))).await;
+        let (status, _, _) = send(
+            &f.state,
+            post_results(&f.token, &serde_json::json!({"x": 1})),
+        )
+        .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(agent_heartbeats(&f.state, f.agent_id).await.is_empty());
     }
@@ -892,7 +1062,15 @@ mod tests {
         let server = serve(&f.state).await;
         let client = agent::Client::new(&args(&server, &f.token)).unwrap();
         let summary = agent::run_once(&client, 4).await.unwrap();
-        assert_eq!((summary.checked, summary.up, summary.accepted, summary.rejected), (1, 1, 1, 0));
+        assert_eq!(
+            (
+                summary.checked,
+                summary.up,
+                summary.accepted,
+                summary.rejected
+            ),
+            (1, 1, 1, 0)
+        );
         assert_eq!(summary.agent, "Probe");
         assert_eq!(
             agent_heartbeats(&f.state, f.agent_id).await,
@@ -920,7 +1098,11 @@ mod tests {
         stop_tx.send(true).unwrap();
         handle.await.unwrap().unwrap();
         assert!(!seen.is_empty(), "agent results never arrived");
-        assert!(seen.iter().all(|(id, s)| *id == f.agent_monitor && s == "up"), "{seen:?}");
+        assert!(
+            seen.iter()
+                .all(|(id, s)| *id == f.agent_monitor && s == "up"),
+            "{seen:?}"
+        );
         drop(target);
     }
 
@@ -939,21 +1121,41 @@ mod tests {
         let mut s = Settings::default();
         let mut h = HeaderMap::new();
         h.insert("host", HeaderValue::from_static("vv.local:3001"));
-        assert_eq!(public_base_url(&s, &h), "http://vv.local:3001");
+        assert_eq!(base_url_from(&s, &h, true), "http://vv.local:3001");
         h.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-        assert_eq!(public_base_url(&s, &h), "https://vv.local:3001");
+        h.insert(
+            "x-forwarded-host",
+            HeaderValue::from_static("status.proxy.example, inner"),
+        );
+        assert_eq!(base_url_from(&s, &h, true), "https://status.proxy.example");
         s.base_url = Some("https://status.example.com/".into());
-        assert_eq!(public_base_url(&s, &h), "https://status.example.com");
+        assert_eq!(base_url_from(&s, &h, true), "https://status.example.com");
+    }
+
+    #[test]
+    fn forwarded_headers_are_ignored_without_a_trusted_proxy() {
+        let s = Settings::default();
+        let mut h = HeaderMap::new();
+        h.insert("host", HeaderValue::from_static("vv.local:3001"));
+        h.insert("x-forwarded-proto", HeaderValue::from_static("https"));
+        h.insert("x-forwarded-host", HeaderValue::from_static("evil.example"));
+        assert_eq!(base_url_from(&s, &h, false), "http://vv.local:3001");
     }
 
     #[test]
     fn snippets_include_server_and_token() {
         let (run, compose, bin) = snippets("https://s.example", "vva_x", "Frankfurt probe");
         assert!(run.contains("--name vigilant-vole-agent-frankfurt-probe"));
-        assert!(run.contains("-e VV_AGENT_SERVER=https://s.example") && run.contains("-e VV_AGENT_TOKEN=vva_x"));
+        assert!(
+            run.contains("-e VV_AGENT_SERVER=https://s.example")
+                && run.contains("-e VV_AGENT_TOKEN=vva_x")
+        );
         // Never on the command line, where `ps` would show it.
         assert!(!run.contains("--token") && !bin.contains("--token"));
         assert!(compose.contains("VV_AGENT_TOKEN=vva_x") && compose.contains("command: agent"));
-        assert_eq!(bin, "VV_AGENT_TOKEN=vva_x vigilant-vole agent --server https://s.example");
+        assert_eq!(
+            bin,
+            "VV_AGENT_TOKEN=vva_x vigilant-vole agent --server https://s.example"
+        );
     }
 }

@@ -192,11 +192,14 @@ const CONNECT_STAGGER: Duration = Duration::from_millis(250);
 /// black-holed address never does); the first connection wins and the
 /// others are dropped. The caller's timeout bounds the whole thing. `Err` =
 /// the last address that failed and its error.
-pub async fn connect_any(addrs: &[SocketAddr]) -> Result<(tokio::net::TcpStream, SocketAddr), (SocketAddr, std::io::Error)> {
+pub async fn connect_any(
+    addrs: &[SocketAddr],
+) -> Result<(tokio::net::TcpStream, SocketAddr), (SocketAddr, std::io::Error)> {
     use futures_util::StreamExt as _;
     use futures_util::stream::FuturesUnordered;
 
-    let attempt = |addr: SocketAddr| async move { (addr, tokio::net::TcpStream::connect(addr).await) };
+    let attempt =
+        |addr: SocketAddr| async move { (addr, tokio::net::TcpStream::connect(addr).await) };
     let mut rest = addrs.iter().copied();
     let mut running = FuturesUnordered::new();
     running.extend(rest.next().map(attempt));
@@ -215,7 +218,10 @@ pub async fn connect_any(addrs: &[SocketAddr]) -> Result<(tokio::net::TcpStream,
     }
     Err(last.unwrap_or_else(|| {
         let none = SocketAddr::from(([0, 0, 0, 0], 0));
-        (none, std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, "no addresses"))
+        (
+            none,
+            std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, "no addresses"),
+        )
     }))
 }
 
@@ -373,7 +379,11 @@ mod tests {
         let (_, used) = connect_any(&addrs).await.unwrap();
         assert_eq!(used, SocketAddr::from(([127, 0, 0, 1], port)));
         // Not after waiting out a slow refusal from `::1` (about 2 s on Windows).
-        assert!(start.elapsed() < Duration::from_millis(1500), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() < Duration::from_millis(1500),
+            "{:?}",
+            start.elapsed()
+        );
     }
 
     #[tokio::test]
@@ -383,8 +393,15 @@ mod tests {
         let open = listener.local_addr().unwrap();
         let silent = SocketAddr::from(([10, 255, 255, 1], open.port()));
         let start = Instant::now();
-        let (_, used) = tokio::time::timeout(Duration::from_secs(5), connect_any(&[silent, open])).await.unwrap().unwrap();
+        let (_, used) = tokio::time::timeout(Duration::from_secs(5), connect_any(&[silent, open]))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(used, open);
-        assert!(start.elapsed() < Duration::from_secs(2), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            start.elapsed()
+        );
     }
 }

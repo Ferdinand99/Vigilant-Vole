@@ -22,6 +22,7 @@
   {%- endif %}
   {%- if !v.page.is_protected() %}
   <link rel="alternate" type="application/json" href="/api/status-page/{{ v.page.slug }}">
+  <link rel="alternate" type="application/atom+xml" title="{{ tr("pub.feed") }}" href="/status/{{ v.page.slug }}/feed.xml">
   {%- endif %}
   {%- if let Some(s) = analytics %}
   <script defer src="{{ s.src }}"{% if !s.attr.is_empty() %} {{ s.attr }}="{{ s.value }}"{% endif %}></script>
@@ -56,6 +57,12 @@
 <div class="stack stack-xs">
   {%- if !v.footer_html.is_empty() %}
   <div>{{ v.footer_html|safe }}</div>
+  {%- endif %}
+  {%- if !v.page.is_protected() %}
+  <p><a href="/status/{{ v.page.slug }}/feed.xml" rel="alternate" type="application/atom+xml">{{ tr("pub.feed") }}</a>
+  {%- if v.subscribe %} · <a href="/status/{{ v.page.slug }}/subscribe">{{ tr("sub.link") }}</a>{% endif %}</p>
+  {%- else if v.subscribe %}
+  <p><a href="/status/{{ v.page.slug }}/subscribe">{{ tr("sub.link") }}</a></p>
   {%- endif %}
   {%- if v.page.show_powered_by %}
   <p>{{ tr("common.powered_by") }} <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a></p>

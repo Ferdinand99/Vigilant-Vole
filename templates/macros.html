@@ -11,6 +11,27 @@
 -#}
 
 {#- An icon from /static/icons.svg. cls adds classes, e.g. "icon-sm". -#}
+{#- Timeline of an incident's updates (newest first), public pages and editor. -#}
+{% macro incident_updates(updates, manage_url = "") -%}
+{%- if !updates.is_empty() %}
+<ol class="incident-updates">
+  {%- for u in updates %}
+  <li class="incident-update status-update-{{ u.status }}">
+    <div class="incident-update-head"><strong class="incident-update-status">{{ u.label }}</strong><time class="incident-update-time" datetime="{{ u.posted_at }}">{{ u.time }}</time>
+      {%- if !manage_url.is_empty() %}
+      <button type="button" class="btn btn-icon btn-plain btn-sm" hx-delete="{{ manage_url }}/{{ u.id }}" hx-swap="none"
+        hx-confirm="{{ tr("inc.update_delete_q") }}" data-confirm-message="{{ tr("inc.update_delete_msg") }}" aria-label="{{ tr("common.delete") }}">{{ icon("trash") }}</button>
+      {%- endif %}
+    </div>
+    {%- if !u.body_html.is_empty() %}
+    <div class="incident-update-body prose">{{ u.body_html|safe }}</div>
+    {%- endif %}
+  </li>
+  {%- endfor %}
+</ol>
+{%- endif %}
+{%- endmacro %}
+
 {% macro icon(name, cls = "") -%}
 <svg class="icon{% if !cls.is_empty() %} {{ cls }}{% endif %}" aria-hidden="true"><use href="/static/icons.svg#{{ name }}"></use></svg>
 {%- endmacro %}

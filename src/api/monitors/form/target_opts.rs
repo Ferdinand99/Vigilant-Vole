@@ -17,17 +17,48 @@ struct Opt {
 }
 
 const SNMP: &[Opt] = &[
-    Opt { key: "version", field: "snmp_version", choices: &["1", "2c", "3"], default: "2c" },
-    Opt { key: "auth", field: "snmp_auth", choices: &["md5", "sha", "sha224", "sha256", "sha384", "sha512"], default: "sha" },
-    Opt { key: "priv", field: "snmp_priv", choices: &["des", "aes", "aes192", "aes256"], default: "aes" },
+    Opt {
+        key: "version",
+        field: "snmp_version",
+        choices: &["1", "2c", "3"],
+        default: "2c",
+    },
+    Opt {
+        key: "auth",
+        field: "snmp_auth",
+        choices: &["md5", "sha", "sha224", "sha256", "sha384", "sha512"],
+        default: "sha",
+    },
+    Opt {
+        key: "priv",
+        field: "snmp_priv",
+        choices: &["des", "aes", "aes192", "aes256"],
+        default: "aes",
+    },
 ];
-const TAILSCALE: &[Opt] = &[Opt { key: "type", field: "tailscale_type", choices: &["disco", "tsmp", "icmp"], default: "disco" }];
+const TAILSCALE: &[Opt] = &[Opt {
+    key: "type",
+    field: "tailscale_type",
+    choices: &["disco", "tsmp", "icmp"],
+    default: "disco",
+}];
 
 /// SNMPv3 authentication protocols as `(value, label)`.
-pub const SNMP_AUTHS: &[(&str, &str)] =
-    &[("md5", "MD5"), ("sha", "SHA-1"), ("sha224", "SHA-224"), ("sha256", "SHA-256"), ("sha384", "SHA-384"), ("sha512", "SHA-512")];
+pub const SNMP_AUTHS: &[(&str, &str)] = &[
+    ("md5", "MD5"),
+    ("sha", "SHA-1"),
+    ("sha224", "SHA-224"),
+    ("sha256", "SHA-256"),
+    ("sha384", "SHA-384"),
+    ("sha512", "SHA-512"),
+];
 /// SNMPv3 privacy protocols as `(value, label)`.
-pub const SNMP_PRIVS: &[(&str, &str)] = &[("des", "DES"), ("aes", "AES-128"), ("aes192", "AES-192"), ("aes256", "AES-256")];
+pub const SNMP_PRIVS: &[(&str, &str)] = &[
+    ("des", "DES"),
+    ("aes", "AES-128"),
+    ("aes192", "AES-192"),
+    ("aes256", "AES-256"),
+];
 
 fn opts(kind: MonitorType) -> &'static [Opt] {
     match kind {
@@ -52,7 +83,10 @@ fn canonical(key: &str, value: &str) -> String {
 
 fn query_key(segment: &str) -> String {
     let key = segment.split('=').next().unwrap_or_default();
-    url::form_urlencoded::parse(key.as_bytes()).next().map(|(k, _)| k.to_ascii_lowercase()).unwrap_or_default()
+    url::form_urlencoded::parse(key.as_bytes())
+        .next()
+        .map(|(k, _)| k.to_ascii_lowercase())
+        .unwrap_or_default()
 }
 
 /// Splits `target` at its query: `(before, segments)`.
@@ -64,7 +98,11 @@ fn split_query(target: &str) -> (&str, Vec<&str>) {
 }
 
 fn join(base: &str, segments: &[String]) -> String {
-    if segments.is_empty() { base.to_string() } else { format!("{base}?{}", segments.join("&")) }
+    if segments.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", segments.join("&"))
+    }
 }
 
 /// A stored target as the form shows it: the target without the options it
@@ -76,13 +114,21 @@ pub fn split(kind: MonitorType, target: &str) -> (String, Vec<(String, String)>)
         return (target.to_string(), Vec::new());
     }
     let (base, segments) = split_query(target);
-    let mut values: Vec<(String, String)> = opts.iter().map(|o| (o.field.to_string(), o.default.to_string())).collect();
+    let mut values: Vec<(String, String)> = opts
+        .iter()
+        .map(|o| (o.field.to_string(), o.default.to_string()))
+        .collect();
     let mut kept = Vec::new();
     for segment in segments {
         let key = query_key(segment);
-        let value = url::form_urlencoded::parse(segment.as_bytes()).next().map(|(_, v)| v.into_owned()).unwrap_or_default();
+        let value = url::form_urlencoded::parse(segment.as_bytes())
+            .next()
+            .map(|(_, v)| v.into_owned())
+            .unwrap_or_default();
         match opts.iter().position(|o| o.key == key) {
-            Some(i) if opts[i].choices.contains(&canonical(&key, &value).as_str()) => values[i].1 = canonical(&key, &value),
+            Some(i) if opts[i].choices.contains(&canonical(&key, &value).as_str()) => {
+                values[i].1 = canonical(&key, &value)
+            }
             _ => kept.push(segment.to_string()),
         }
     }
@@ -91,12 +137,21 @@ pub fn split(kind: MonitorType, target: &str) -> (String, Vec<(String, String)>)
 
 /// The option fields the form submitted (none for a raw API-style post).
 pub fn read(kind: MonitorType, p: &Pairs) -> Vec<(String, String)> {
-    opts(kind).iter().filter_map(|o| p.raw(o.field).map(|v| (o.field.to_string(), v.trim().to_string()))).collect()
+    opts(kind)
+        .iter()
+        .filter_map(|o| {
+            p.raw(o.field)
+                .map(|v| (o.field.to_string(), v.trim().to_string()))
+        })
+        .collect()
 }
 
 /// The submitted value of `field` (`None` when not submitted).
 fn value<'a>(values: &'a [(String, String)], field: &str) -> Option<&'a str> {
-    values.iter().find(|(f, _)| f == field).map(|(_, v)| v.as_str())
+    values
+        .iter()
+        .find(|(f, _)| f == field)
+        .map(|(_, v)| v.as_str())
 }
 
 /// `target` with the submitted options in its query (replacing what the
@@ -109,11 +164,16 @@ pub fn merge(kind: MonitorType, target: &str, values: &[(String, String)]) -> St
         return target.to_string();
     }
     let (base, segments) = split_query(target.trim());
-    let managed = |key: &str| opts.iter().any(|o| o.key == key && value(values, o.field).is_some());
+    let managed = |key: &str| {
+        opts.iter()
+            .any(|o| o.key == key && value(values, o.field).is_some())
+    };
     let mut out: Vec<String> = Vec::new();
     let v3 = value(values, "snmp_version").is_some_and(|v| canonical("version", v) == "3");
     for o in opts {
-        let Some(v) = value(values, o.field) else { continue };
+        let Some(v) = value(values, o.field) else {
+            continue;
+        };
         let v = canonical(o.key, v);
         let write = match o.key {
             "auth" | "priv" => v3,
@@ -121,10 +181,19 @@ pub fn merge(kind: MonitorType, target: &str, values: &[(String, String)]) -> St
             _ => true,
         };
         if write && !v.is_empty() {
-            out.push(format!("{}={}", o.key, url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>()));
+            out.push(format!(
+                "{}={}",
+                o.key,
+                url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>()
+            ));
         }
     }
-    out.extend(segments.into_iter().filter(|s| !managed(&query_key(s))).map(str::to_string));
+    out.extend(
+        segments
+            .into_iter()
+            .filter(|s| !managed(&query_key(s)))
+            .map(str::to_string),
+    );
     join(base, &out)
 }
 
@@ -132,7 +201,11 @@ pub fn merge(kind: MonitorType, target: &str, values: &[(String, String)]) -> St
 /// password isn't set).
 pub fn drop_keys(target: &str, keys: &[&str]) -> String {
     let (base, segments) = split_query(target);
-    let kept: Vec<String> = segments.into_iter().filter(|s| !keys.contains(&query_key(s).as_str())).map(str::to_string).collect();
+    let kept: Vec<String> = segments
+        .into_iter()
+        .filter(|s| !keys.contains(&query_key(s).as_str()))
+        .map(str::to_string)
+        .collect();
     join(base, &kept)
 }
 
@@ -142,7 +215,10 @@ pub fn drop_keys(target: &str, keys: &[&str]) -> String {
 /// [`MIN_PASSWORD_LEN`](checkers::snmp::MIN_PASSWORD_LEN) characters, and
 /// keeps a protocol in the target only when its password is set.
 pub fn snmp_security(m: &mut NewMonitor, e: &mut Errors) {
-    let Some(opts) = checkers::endpoint::parse(MonitorType::Snmp, &m.target).ok().and_then(|ep| checkers::snmp::options(&ep).ok()) else {
+    let Some(opts) = checkers::endpoint::parse(MonitorType::Snmp, &m.target)
+        .ok()
+        .and_then(|ep| checkers::snmp::options(&ep).ok())
+    else {
         return; // the target's error is reported already
     };
     if opts.version != checkers::snmp::Version::V3 {
@@ -151,15 +227,30 @@ pub fn snmp_security(m: &mut NewMonitor, e: &mut Errors) {
         return;
     }
     if m.basic_auth_user.is_none() {
-        e.insert("basic_auth_user", crate::i18n::t("validation.snmp_user").into());
+        e.insert(
+            "basic_auth_user",
+            crate::i18n::t("validation.snmp_user").into(),
+        );
     }
     if m.secret.is_some() && m.basic_auth_pass.is_none() {
-        e.insert("secret", crate::i18n::t("validation.snmp_priv_needs_auth").into());
+        e.insert(
+            "secret",
+            crate::i18n::t("validation.snmp_priv_needs_auth").into(),
+        );
     }
     let min = checkers::snmp::MIN_PASSWORD_LEN;
-    for (field, pw) in [("basic_auth_pass", &m.basic_auth_pass), ("secret", &m.secret)] {
+    for (field, pw) in [
+        ("basic_auth_pass", &m.basic_auth_pass),
+        ("secret", &m.secret),
+    ] {
         if pw.as_deref().is_some_and(|pw| pw.chars().count() < min) {
-            e.insert(field, crate::i18n::tf("validation.snmp_password_short", &[("min", &min.to_string())]));
+            e.insert(
+                field,
+                crate::i18n::tf(
+                    "validation.snmp_password_short",
+                    &[("min", &min.to_string())],
+                ),
+            );
         }
     }
     let unused: &[&str] = match (&m.basic_auth_pass, &m.secret) {
@@ -175,7 +266,11 @@ impl super::FormValues {
     /// `snmp_priv`, `tailscale_type`); its default when unset.
     pub fn opt(&self, field: &str) -> &str {
         value(&self.target_opts, field).unwrap_or_else(|| {
-            [SNMP, TAILSCALE].iter().flat_map(|o| o.iter()).find(|o| o.field == field).map_or("", |o| o.default)
+            [SNMP, TAILSCALE]
+                .iter()
+                .flat_map(|o| o.iter())
+                .find(|o| o.field == field)
+                .map_or("", |o| o.default)
         })
     }
 }
@@ -200,46 +295,110 @@ mod tests {
     use super::*;
 
     fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
-        list.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        list.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
     fn stored_targets_split_into_target_and_choices() {
-        let (t, o) = split(MonitorType::Snmp, "snmp://r.local/1.3.6.1.2.1.1.5.0?version=3&auth=SHA-256&priv=aes&context=vlan5");
+        let (t, o) = split(
+            MonitorType::Snmp,
+            "snmp://r.local/1.3.6.1.2.1.1.5.0?version=3&auth=SHA-256&priv=aes&context=vlan5",
+        );
         assert_eq!(t, "snmp://r.local/1.3.6.1.2.1.1.5.0?context=vlan5");
-        assert_eq!(o, pairs(&[("snmp_version", "3"), ("snmp_auth", "sha256"), ("snmp_priv", "aes")]));
+        assert_eq!(
+            o,
+            pairs(&[
+                ("snmp_version", "3"),
+                ("snmp_auth", "sha256"),
+                ("snmp_priv", "aes")
+            ])
+        );
         let (t, o) = split(MonitorType::Snmp, "router");
-        assert_eq!((t.as_str(), o[0].1.as_str(), o[1].1.as_str()), ("router", "2c", "sha"));
+        assert_eq!(
+            (t.as_str(), o[0].1.as_str(), o[1].1.as_str()),
+            ("router", "2c", "sha")
+        );
         // Unknown values stay visible in the target.
         let (t, o) = split(MonitorType::Snmp, "router?version=4");
         assert_eq!((t.as_str(), o[0].1.as_str()), ("router?version=4", "2c"));
         let (t, o) = split(MonitorType::TailscalePing, "nas?type=TSMP");
-        assert_eq!((t, o), ("nas".to_string(), pairs(&[("tailscale_type", "tsmp")])));
-        assert_eq!(split(MonitorType::Redis, "redis://x?db=1"), ("redis://x?db=1".to_string(), Vec::new()));
+        assert_eq!(
+            (t, o),
+            ("nas".to_string(), pairs(&[("tailscale_type", "tsmp")]))
+        );
+        assert_eq!(
+            split(MonitorType::Redis, "redis://x?db=1"),
+            ("redis://x?db=1".to_string(), Vec::new())
+        );
     }
 
     #[test]
     fn choices_merge_back_into_the_target() {
-        let v3 = pairs(&[("snmp_version", "3"), ("snmp_auth", "sha512"), ("snmp_priv", "aes256")]);
-        assert_eq!(merge(MonitorType::Snmp, "r.local?context=x", &v3), "r.local?version=3&auth=sha512&priv=aes256&context=x");
+        let v3 = pairs(&[
+            ("snmp_version", "3"),
+            ("snmp_auth", "sha512"),
+            ("snmp_priv", "aes256"),
+        ]);
+        assert_eq!(
+            merge(MonitorType::Snmp, "r.local?context=x", &v3),
+            "r.local?version=3&auth=sha512&priv=aes256&context=x"
+        );
         // The choices replace what the typed target says.
-        assert_eq!(merge(MonitorType::Snmp, "r.local?version=1&auth=md5", &v3), "r.local?version=3&auth=sha512&priv=aes256");
-        let v2 = pairs(&[("snmp_version", "2c"), ("snmp_auth", "sha512"), ("snmp_priv", "aes256")]);
-        assert_eq!(merge(MonitorType::Snmp, "r.local/1.3.6.1.2.1.1.3.0", &v2), "r.local/1.3.6.1.2.1.1.3.0?version=2c");
+        assert_eq!(
+            merge(MonitorType::Snmp, "r.local?version=1&auth=md5", &v3),
+            "r.local?version=3&auth=sha512&priv=aes256"
+        );
+        let v2 = pairs(&[
+            ("snmp_version", "2c"),
+            ("snmp_auth", "sha512"),
+            ("snmp_priv", "aes256"),
+        ]);
+        assert_eq!(
+            merge(MonitorType::Snmp, "r.local/1.3.6.1.2.1.1.3.0", &v2),
+            "r.local/1.3.6.1.2.1.1.3.0?version=2c"
+        );
         // Nothing submitted (API-style posts): the target as typed.
-        assert_eq!(merge(MonitorType::Snmp, "r.local?version=3&auth=md5", &[]), "r.local?version=3&auth=md5");
-        assert_eq!(merge(MonitorType::TailscalePing, "nas", &pairs(&[("tailscale_type", "disco")])), "nas");
-        assert_eq!(merge(MonitorType::TailscalePing, "nas?type=icmp", &pairs(&[("tailscale_type", "tsmp")])), "nas?type=tsmp");
-        assert_eq!(drop_keys("r?version=3&auth=sha&priv=aes&context=x", &["priv"]), "r?version=3&auth=sha&context=x");
+        assert_eq!(
+            merge(MonitorType::Snmp, "r.local?version=3&auth=md5", &[]),
+            "r.local?version=3&auth=md5"
+        );
+        assert_eq!(
+            merge(
+                MonitorType::TailscalePing,
+                "nas",
+                &pairs(&[("tailscale_type", "disco")])
+            ),
+            "nas"
+        );
+        assert_eq!(
+            merge(
+                MonitorType::TailscalePing,
+                "nas?type=icmp",
+                &pairs(&[("tailscale_type", "tsmp")])
+            ),
+            "nas?type=tsmp"
+        );
+        assert_eq!(
+            drop_keys("r?version=3&auth=sha&priv=aes&context=x", &["priv"]),
+            "r?version=3&auth=sha&context=x"
+        );
         assert_eq!(drop_keys("r?auth=sha", &["auth", "priv"]), "r");
     }
 
     fn submit(base: &NewMonitor, list: &[(&str, &str)]) -> Result<super::super::Validated, Errors> {
-        let mut pairs: Vec<(String, String)> =
-            [("name", "Mon"), ("interval_seconds", "60"), ("timeout_seconds", "10"), ("retries", "0"), ("resend_interval", "0"), ("escalation_minutes", "0")]
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect();
+        let mut pairs: Vec<(String, String)> = [
+            ("name", "Mon"),
+            ("interval_seconds", "60"),
+            ("timeout_seconds", "10"),
+            ("retries", "0"),
+            ("resend_interval", "0"),
+            ("escalation_minutes", "0"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
         pairs.extend(list.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         let v = super::super::FormValues::from_pairs(&Pairs(pairs), &[]);
         super::super::validate(&v, base, &super::super::FormContext::default())
@@ -263,39 +422,117 @@ mod tests {
         )
         .unwrap()
         .monitor;
-        assert_eq!(ok.target, "core.local/1.3.6.1.2.1.1.5.0?version=3&auth=sha256&priv=aes256");
-        assert_eq!((ok.basic_auth_user.as_deref(), ok.basic_auth_pass.as_deref(), ok.secret.as_deref()), (Some("watcher"), Some("authpass123"), Some("privpass123")));
+        assert_eq!(
+            ok.target,
+            "core.local/1.3.6.1.2.1.1.5.0?version=3&auth=sha256&priv=aes256"
+        );
+        assert_eq!(
+            (
+                ok.basic_auth_user.as_deref(),
+                ok.basic_auth_pass.as_deref(),
+                ok.secret.as_deref()
+            ),
+            (Some("watcher"), Some("authpass123"), Some("privpass123"))
+        );
 
         // authNoPriv keeps only the authentication protocol; noAuthNoPriv neither.
-        let auth_only = [("monitor_type", "snmp"), ("target_snmp", "core.local"), ("snmp_version", "3"), ("snmp_auth", "md5"), ("snmp_priv", "des"), ("basic_auth_user", "w"), ("basic_auth_pass", "authpass123")];
-        assert_eq!(submit(&new, &auth_only).unwrap().monitor.target, "core.local?version=3&auth=md5");
-        let none = [("monitor_type", "snmp"), ("target_snmp", "core.local"), ("snmp_version", "3"), ("snmp_auth", "md5"), ("snmp_priv", "des"), ("basic_auth_user", "w")];
-        assert_eq!(submit(&new, &none).unwrap().monitor.target, "core.local?version=3");
+        let auth_only = [
+            ("monitor_type", "snmp"),
+            ("target_snmp", "core.local"),
+            ("snmp_version", "3"),
+            ("snmp_auth", "md5"),
+            ("snmp_priv", "des"),
+            ("basic_auth_user", "w"),
+            ("basic_auth_pass", "authpass123"),
+        ];
+        assert_eq!(
+            submit(&new, &auth_only).unwrap().monitor.target,
+            "core.local?version=3&auth=md5"
+        );
+        let none = [
+            ("monitor_type", "snmp"),
+            ("target_snmp", "core.local"),
+            ("snmp_version", "3"),
+            ("snmp_auth", "md5"),
+            ("snmp_priv", "des"),
+            ("basic_auth_user", "w"),
+        ];
+        assert_eq!(
+            submit(&new, &none).unwrap().monitor.target,
+            "core.local?version=3"
+        );
 
         // v2c drops the v3 credentials and keeps the community.
-        let v2 = submit(&new, &[("monitor_type", "snmp"), ("target_snmp", "core.local"), ("snmp_version", "2c"), ("basic_auth_user", "w"), ("secret", "private")]).unwrap().monitor;
-        assert_eq!((v2.target.as_str(), v2.basic_auth_user.as_deref(), v2.secret.as_deref()), ("core.local?version=2c", None, Some("private")));
+        let v2 = submit(
+            &new,
+            &[
+                ("monitor_type", "snmp"),
+                ("target_snmp", "core.local"),
+                ("snmp_version", "2c"),
+                ("basic_auth_user", "w"),
+                ("secret", "private"),
+            ],
+        )
+        .unwrap()
+        .monitor;
+        assert_eq!(
+            (
+                v2.target.as_str(),
+                v2.basic_auth_user.as_deref(),
+                v2.secret.as_deref()
+            ),
+            ("core.local?version=2c", None, Some("private"))
+        );
 
         // The edit form shows the target without the choices.
         let shown = super::super::FormValues::from_new(&ok, Vec::new(), &[]);
-        assert_eq!((shown.target.as_str(), shown.opt("snmp_version"), shown.opt("snmp_auth"), shown.opt("snmp_priv")), ("core.local/1.3.6.1.2.1.1.5.0", "3", "sha256", "aes256"));
+        assert_eq!(
+            (
+                shown.target.as_str(),
+                shown.opt("snmp_version"),
+                shown.opt("snmp_auth"),
+                shown.opt("snmp_priv")
+            ),
+            ("core.local/1.3.6.1.2.1.1.5.0", "3", "sha256", "aes256")
+        );
     }
 
     #[test]
     fn snmpv3_form_errors_and_secret_reentry() {
         let new = NewMonitor::default();
         let v3 = |extra: &[(&'static str, &'static str)]| {
-            let mut list = vec![("monitor_type", "snmp"), ("target_snmp", "core.local"), ("snmp_version", "3"), ("snmp_auth", "sha"), ("snmp_priv", "aes")];
+            let mut list = vec![
+                ("monitor_type", "snmp"),
+                ("target_snmp", "core.local"),
+                ("snmp_version", "3"),
+                ("snmp_auth", "sha"),
+                ("snmp_priv", "aes"),
+            ];
             list.extend_from_slice(extra);
             list
         };
         let e = submit(&new, &v3(&[])).unwrap_err();
         assert!(e.contains_key("basic_auth_user"), "{e:?}");
-        let e = submit(&new, &v3(&[("basic_auth_user", "w"), ("secret", "privpass123")])).unwrap_err();
+        let e = submit(
+            &new,
+            &v3(&[("basic_auth_user", "w"), ("secret", "privpass123")]),
+        )
+        .unwrap_err();
         assert!(e.contains_key("secret"), "{e:?}");
-        let e = submit(&new, &v3(&[("basic_auth_user", "w"), ("basic_auth_pass", "short")])).unwrap_err();
+        let e = submit(
+            &new,
+            &v3(&[("basic_auth_user", "w"), ("basic_auth_pass", "short")]),
+        )
+        .unwrap_err();
         assert!(e.contains_key("basic_auth_pass"), "{e:?}");
-        let e = submit(&new, &[("monitor_type", "snmp"), ("target_snmp", "core.local?version=4")]).unwrap_err();
+        let e = submit(
+            &new,
+            &[
+                ("monitor_type", "snmp"),
+                ("target_snmp", "core.local?version=4"),
+            ],
+        )
+        .unwrap_err();
         assert!(e.contains_key("target"), "{e:?}");
 
         // A stored v3 monitor: the masked passwords stay while the device stays…
@@ -308,31 +545,108 @@ mod tests {
             ..NewMonitor::default()
         };
         let mask = crate::notification::SECRET_MASK;
-        let kept = submit(&stored, &v3(&[("basic_auth_user", "w"), ("basic_auth_pass", mask), ("secret", mask)])).unwrap().monitor;
-        assert_eq!((kept.basic_auth_pass.as_deref(), kept.secret.as_deref()), (Some("authpass123"), Some("privpass123")));
+        let kept = submit(
+            &stored,
+            &v3(&[
+                ("basic_auth_user", "w"),
+                ("basic_auth_pass", mask),
+                ("secret", mask),
+            ]),
+        )
+        .unwrap()
+        .monitor;
+        assert_eq!(
+            (kept.basic_auth_pass.as_deref(), kept.secret.as_deref()),
+            (Some("authpass123"), Some("privpass123"))
+        );
         // …but not for another host, nor when going back to v2c (the community travels in the clear).
-        let moved = [("monitor_type", "snmp"), ("target_snmp", "evil.example"), ("snmp_version", "3"), ("snmp_auth", "sha"), ("snmp_priv", "aes"), ("basic_auth_user", "w"), ("basic_auth_pass", mask), ("secret", mask)];
-        assert!(submit(&stored, &moved).unwrap_err().contains_key("basic_auth_pass"));
-        let downgraded = [("monitor_type", "snmp"), ("target_snmp", "core.local"), ("snmp_version", "2c"), ("secret", mask)];
-        assert!(submit(&stored, &downgraded).unwrap_err().contains_key("secret"));
+        let moved = [
+            ("monitor_type", "snmp"),
+            ("target_snmp", "evil.example"),
+            ("snmp_version", "3"),
+            ("snmp_auth", "sha"),
+            ("snmp_priv", "aes"),
+            ("basic_auth_user", "w"),
+            ("basic_auth_pass", mask),
+            ("secret", mask),
+        ];
+        assert!(
+            submit(&stored, &moved)
+                .unwrap_err()
+                .contains_key("basic_auth_pass")
+        );
+        let downgraded = [
+            ("monitor_type", "snmp"),
+            ("target_snmp", "core.local"),
+            ("snmp_version", "2c"),
+            ("secret", mask),
+        ];
+        assert!(
+            submit(&stored, &downgraded)
+                .unwrap_err()
+                .contains_key("secret")
+        );
     }
 
     #[test]
     fn tailscale_form_stores_the_ping_type() {
         let new = NewMonitor::default();
-        let m = submit(&new, &[("monitor_type", "tailscale_ping"), ("target_tailscale", "nas"), ("tailscale_type", "tsmp")]).unwrap().monitor;
-        assert_eq!((m.monitor_type, m.target.as_str()), (MonitorType::TailscalePing, "nas?type=tsmp"));
-        let m = submit(&new, &[("monitor_type", "tailscale_ping"), ("target_tailscale", "100.64.0.5"), ("tailscale_type", "disco")]).unwrap().monitor;
+        let m = submit(
+            &new,
+            &[
+                ("monitor_type", "tailscale_ping"),
+                ("target_tailscale", "nas"),
+                ("tailscale_type", "tsmp"),
+            ],
+        )
+        .unwrap()
+        .monitor;
+        assert_eq!(
+            (m.monitor_type, m.target.as_str()),
+            (MonitorType::TailscalePing, "nas?type=tsmp")
+        );
+        let m = submit(
+            &new,
+            &[
+                ("monitor_type", "tailscale_ping"),
+                ("target_tailscale", "100.64.0.5"),
+                ("tailscale_type", "disco"),
+            ],
+        )
+        .unwrap()
+        .monitor;
         assert_eq!(m.target, "100.64.0.5");
-        let e = submit(&new, &[("monitor_type", "tailscale_ping"), ("target_tailscale", "https://nas")]).unwrap_err();
+        let e = submit(
+            &new,
+            &[
+                ("monitor_type", "tailscale_ping"),
+                ("target_tailscale", "https://nas"),
+            ],
+        )
+        .unwrap_err();
         assert!(e.contains_key("target"), "{e:?}");
-        let shown = super::super::FormValues::from_new(&NewMonitor { monitor_type: MonitorType::TailscalePing, target: "nas?type=icmp".into(), ..NewMonitor::default() }, Vec::new(), &[]);
-        assert_eq!((shown.target.as_str(), shown.opt("tailscale_type")), ("nas", "icmp"));
+        let shown = super::super::FormValues::from_new(
+            &NewMonitor {
+                monitor_type: MonitorType::TailscalePing,
+                target: "nas?type=icmp".into(),
+                ..NewMonitor::default()
+            },
+            Vec::new(),
+            &[],
+        );
+        assert_eq!(
+            (shown.target.as_str(), shown.opt("tailscale_type")),
+            ("nas", "icmp")
+        );
     }
 
     #[test]
     fn split_then_merge_keeps_the_meaning() {
-        for target in ["snmp://r.local:1161/1.3.6.1.2.1.1.1.0?version=3&auth=md5&priv=des", "r.local?version=1", "r.local?version=2c&context=a%20b"] {
+        for target in [
+            "snmp://r.local:1161/1.3.6.1.2.1.1.1.0?version=3&auth=md5&priv=des",
+            "r.local?version=1",
+            "r.local?version=2c&context=a%20b",
+        ] {
             let (t, o) = split(MonitorType::Snmp, target);
             assert_eq!(merge(MonitorType::Snmp, &t, &o), target, "{target}");
         }

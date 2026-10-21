@@ -1,0 +1,116 @@
+{% extends "public_layout.html" %}
+{% import "macros.html" as m %}
+{#- Subscribe / confirm / unsubscribe pages of a status page. Needs `page`, `mode`, `error`, `email`, `webhook`, `target`, `token`. -#}
+
+{% block icons %}
+  {%- if let Some(src) = page.favicon_url() %}
+  <link rel="icon" href="{{ src }}">
+  {%- else %}
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  {%- endif %}
+{% endblock %}
+
+{% block head %}
+  <meta name="robots" content="noindex">
+  {#- The token in the URL never leaves the site, but same-origin POSTs keep
+      their Origin header ("no-referrer" makes browsers send `Origin: null`,
+      which the CSRF check refuses). -#}
+  <meta name="referrer" content="same-origin">
+{% endblock %}
+
+{% block header %}
+<div class="public-brand">
+  {%- if let Some(src) = page.logo_url() %}
+  <img class="public-logo" src="{{ src }}" alt="{{ page.title }}" height="44">
+  {%- endif %}
+  <h1 class="public-title">{{ page.title }}</h1>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="auth-card public-lock" aria-labelledby="sub-title">
+  {%- if mode == "form" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("bell") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.title") }}</h2>
+    <p class="auth-sub">{{ tr1("sub.sub", "page", page.title) }}</p>
+  </div>
+  {%- if let Some(err) = error %}
+  {{ m::callout("danger", err) }}
+  {%- endif %}
+  <form class="form" method="post" action="/status/{{ page.slug }}/subscribe">
+    {%- if email %}
+    <div class="field">
+      <label class="label" for="f-email">{{ tr("sub.email_label") }}</label>
+      <input id="f-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" {% if !webhook %}required autofocus{% endif %}>
+    </div>
+    {%- endif %}
+    {%- if webhook %}
+    <div class="field">
+      <label class="label" for="f-webhook">{{ tr("sub.webhook_label") }}</label>
+      <input id="f-webhook" name="webhook" type="url" inputmode="url" maxlength="2048" placeholder="https://example.com/hook…" {% if !email %}required autofocus{% endif %}>
+      <p class="help">{{ tr("sub.webhook_help") }}</p>
+    </div>
+    {%- endif %}
+    <div class="sub-trap" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+    <button type="submit" class="btn btn-primary btn-block">{{ m::icon("bell") }}<span>{{ tr("sub.submit") }}</span></button>
+  </form>
+  {%- else if mode == "sent" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("mail") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.sent_title") }}</h2>
+    <p class="auth-sub">{{ tr("sub.sent_body") }}</p>
+  </div>
+  {%- else if mode == "review" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("clock") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.review_title") }}</h2>
+    <p class="auth-sub">{{ tr("sub.review_body") }}</p>
+  </div>
+  {%- else if mode == "confirm" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("bell") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.confirm_title") }}</h2>
+    <p class="auth-sub">{{ tr2("sub.confirm_page_body", "page", page.title, "target", target) }}</p>
+  </div>
+  <form class="form" method="post" action="/status/{{ page.slug }}/subscribe/confirm/{{ token }}">
+    <button type="submit" class="btn btn-primary btn-block">{{ m::icon("check") }}<span>{{ tr("sub.confirm_button") }}</span></button>
+  </form>
+  {%- else if mode == "confirmed" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("check") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.confirmed_title") }}</h2>
+    <p class="auth-sub">{{ tr1("sub.confirmed_body", "page", page.title) }}</p>
+  </div>
+  {%- else if mode == "unsubscribe" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("bell") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.unsub_title") }}</h2>
+    <p class="auth-sub">{{ tr2("sub.unsub_body", "page", page.title, "target", target) }}</p>
+  </div>
+  <form class="form" method="post" action="/status/{{ page.slug }}/subscribe/unsubscribe/{{ token }}">
+    <button type="submit" class="btn btn-primary btn-block"><span>{{ tr("sub.unsubscribe") }}</span></button>
+  </form>
+  {%- else if mode == "unsubscribed" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("check") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.unsub_done_title") }}</h2>
+    <p class="auth-sub">{{ tr("sub.unsub_done") }}</p>
+  </div>
+  {%- else %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("alert") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.invalid_title") }}</h2>
+    {%- if let Some(err) = error %}<p class="auth-sub">{{ err }}</p>{% endif %}
+  </div>
+  {%- endif %}
+  <p class="auth-foot"><a href="/status/{{ page.slug }}">{{ tr("sub.back") }}</a></p>
+</section>
+{% endblock %}
+
+{% block footer %}
+{%- if page.show_powered_by %}
+<p>{{ tr("common.powered_by") }} <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a></p>
+{%- endif %}
+{% endblock %}

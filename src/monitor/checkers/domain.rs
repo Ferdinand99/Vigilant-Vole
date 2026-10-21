@@ -223,7 +223,7 @@ pub fn outcome_for(domain: &str, record: &DomainRecord, now_unix: i64) -> CheckO
 fn http() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        crate::tls_roots::http_client()
             .user_agent(crate::server::USER_AGENT)
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
@@ -605,7 +605,9 @@ mod tests {
         use futures_util::stream;
         // An endless reply: refused once it passes the cap, never buffered whole.
         let app = axum::Router::new().fallback(|| async {
-            Body::from_stream(stream::repeat_with(|| Ok::<_, std::io::Error>(vec![b' '; 64 * 1024])))
+            Body::from_stream(stream::repeat_with(|| {
+                Ok::<_, std::io::Error>(vec![b' '; 64 * 1024])
+            }))
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -614,11 +616,18 @@ mod tests {
         });
         let client = reqwest::Client::new();
         let base = format!("http://{addr}/rdap/");
-        let err = tokio::time::timeout(Duration::from_secs(10), lookup_domain(&client, &base, "example.com"))
-            .await
-            .unwrap()
-            .unwrap_err();
-        assert!(!err.permanent && err.message.contains("1 MB"), "{}", err.message);
+        let err = tokio::time::timeout(
+            Duration::from_secs(10),
+            lookup_domain(&client, &base, "example.com"),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert!(
+            !err.permanent && err.message.contains("1 MB"),
+            "{}",
+            err.message
+        );
     }
 
     #[tokio::test]

@@ -102,3 +102,10 @@ Plurals: one / few / many / other (other = genitive singular, e.g. `{n} мони
 | headless | headless | kept in English with Chromium |
 | viewport | размер окна | options «Компьютер» / «Телефон» |
 | network idle | простой сети | |
+| cron expression | выражение cron | "cron" kept Latin |
+| subscriber | подписчик | |
+| subscribe / unsubscribe | подписаться / отписаться | |
+| confirm subscription | подтвердить подписку | |
+| webhook subscriber | подписчик по вебхуку | |
+| pending (sign-up) | ожидание | как в статусах |
+| maintenance started / ended | обслуживание началось / завершено | |

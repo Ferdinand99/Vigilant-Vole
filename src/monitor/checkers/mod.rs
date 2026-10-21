@@ -183,7 +183,8 @@ pub(crate) mod test_support {
                     if tcp.write_all(reply).await.is_err() || tcp.shutdown().await.is_err() {
                         return;
                     }
-                    let drain = async { while matches!(tcp.read(&mut buf).await, Ok(n) if n > 0) {} };
+                    let drain =
+                        async { while matches!(tcp.read(&mut buf).await, Ok(n) if n > 0) {} };
                     let _ = tokio::time::timeout(Duration::from_secs(10), drain).await;
                 });
             }

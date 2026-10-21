@@ -25,7 +25,10 @@ use crate::auth::{CurrentUser, Role};
 use crate::db::incidents::{self as db_incidents, Incident, NewIncident};
 use crate::db::models::MonitorType;
 use crate::db::status_pages::extras::{self as page_extras, Analytics, Provider};
-use crate::db::status_pages::{self as db_pages, NewStatusPage, Section, StatusPage, StatusPageSummary};
+use crate::db::status_pages::{
+    self as db_pages, NewStatusPage, Section, StatusPage, StatusPageSummary,
+};
+use crate::db::subscribers as db_subscribers;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -35,18 +38,64 @@ pub fn router() -> Router<AppState> {
         .route("/status-pages/{id}/edit", get(edit).post(save_settings))
         .route("/status-pages/{id}/order", post(save_order))
         .route("/status-pages/{id}/sections", post(add_section))
-        .route("/status-pages/{id}/sections/{sid}", post(rename_section).delete(delete_section))
+        .route(
+            "/status-pages/{id}/sections/{sid}",
+            post(rename_section).delete(delete_section),
+        )
         .route("/status-pages/{id}/sections/{sid}/picker", get(picker))
-        .route("/status-pages/{id}/sections/{sid}/monitors", post(add_monitors))
-        .route("/status-pages/{id}/sections/{sid}/monitors/{mid}", delete(remove_monitor))
-        .route("/status-pages/{id}/incidents", get(incidents).post(create_incident))
-        .route("/status-pages/{id}/incidents/{iid}", post(update_incident).delete(delete_incident))
-        .route("/status-pages/{id}/incidents/{iid}/edit", get(incident_form))
-        .route("/status-pages/{id}/incidents/{iid}/resolve", post(resolve_incident))
-        .route("/status-pages/{id}/incidents/{iid}/reopen", post(reopen_incident))
+        .route(
+            "/status-pages/{id}/sections/{sid}/monitors",
+            post(add_monitors),
+        )
+        .route(
+            "/status-pages/{id}/sections/{sid}/monitors/{mid}",
+            delete(remove_monitor),
+        )
+        .route(
+            "/status-pages/{id}/incidents",
+            get(incidents).post(create_incident),
+        )
+        .route(
+            "/status-pages/{id}/incidents/{iid}",
+            post(update_incident).delete(delete_incident),
+        )
+        .route(
+            "/status-pages/{id}/incidents/{iid}/edit",
+            get(incident_form),
+        )
+        .route(
+            "/status-pages/{id}/incidents/{iid}/updates",
+            post(post_incident_update),
+        )
+        .route(
+            "/status-pages/{id}/incidents/{iid}/updates/{uid}",
+            delete(delete_incident_update),
+        )
+        .route(
+            "/status-pages/{id}/incidents/{iid}/resolve",
+            post(resolve_incident),
+        )
+        .route(
+            "/status-pages/{id}/incidents/{iid}/reopen",
+            post(reopen_incident),
+        )
         .route("/status-pages/{id}/analytics", post(save_analytics))
+        .route(
+            "/status-pages/{id}/subscribers",
+            get(subscribers).post(save_subscribers),
+        )
+        .route(
+            "/status-pages/{id}/subscribers/{sid}",
+            delete(remove_subscriber),
+        )
+        .route(
+            "/status-pages/{id}/subscribers/{sid}/approve",
+            post(approve_subscriber),
+        )
         .merge(super::public_status::assets::editor_routes())
-        .layer(axum::middleware::from_fn(super::public_status::invalidate_after_writes))
+        .layer(axum::middleware::from_fn(
+            super::public_status::invalidate_after_writes,
+        ))
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +114,8 @@ pub fn toast_trigger(message: &str, kind: &str, close_sheet: bool) -> HeaderValu
     if close_sheet {
         v["vv:close-sheet"] = serde_json::Value::Bool(true);
     }
-    HeaderValue::from_str(&ascii_json(&v.to_string())).unwrap_or_else(|_| HeaderValue::from_static("{}"))
+    HeaderValue::from_str(&ascii_json(&v.to_string()))
+        .unwrap_or_else(|_| HeaderValue::from_static("{}"))
 }
 
 /// Escapes every non-ASCII character of a JSON text as `\uXXXX`, so it fits
@@ -171,7 +221,11 @@ pub fn build_picker(
             checked: is_checked || is_disabled,
             disabled: is_disabled,
         };
-        if is_checked { first.push(item) } else { rest.push(item) }
+        if is_checked {
+            first.push(item)
+        } else {
+            rest.push(item)
+        }
     }
     first.extend(rest);
     first.truncate(200.max(checked.len()));
@@ -193,9 +247,21 @@ struct ListTemplate {
     pages: Vec<StatusPageSummary>,
 }
 
-async fn list(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar) -> ApiResult<impl IntoResponse> {
+async fn list(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+) -> ApiResult<impl IntoResponse> {
     let pages = state.with_conn(|c| db_pages::list(c)).await?;
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("nav.status_pages"), "status-pages", "").await;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("nav.status_pages"),
+        "status-pages",
+        "",
+    )
+    .await;
     Ok((jar, HtmlTemplate(ListTemplate { ctx, pages })))
 }
 
@@ -220,9 +286,21 @@ struct NewTemplate {
     slug_error: String,
 }
 
-async fn new_form(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar) -> ApiResult<impl IntoResponse> {
+async fn new_form(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("sp.new"), "status-pages", "").await;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("sp.new"),
+        "status-pages",
+        "",
+    )
+    .await;
     Ok((
         jar,
         HtmlTemplate(NewTemplate {
@@ -256,7 +334,10 @@ async fn create(
     } else if title.chars().count() > 120 {
         title_error = crate::i18n::t("sp.err_title_long").into();
     }
-    let mut slug_error = db_pages::validate_slug(&slug).err().map(str::to_string).unwrap_or_default();
+    let mut slug_error = db_pages::validate_slug(&slug)
+        .err()
+        .map(str::to_string)
+        .unwrap_or_default();
     let candidate = NewStatusPage {
         slug: slug.clone(),
         title: title.clone(),
@@ -285,7 +366,15 @@ async fn create(
             if title_error.is_empty() && slug_error.is_empty() {
                 slug_error = crate::i18n::t("sp.err_slug_taken").into();
             }
-            let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("sp.new"), "status-pages", "").await;
+            let (ctx, jar) = PageCtx::build(
+                &state,
+                Some(&user),
+                &jar,
+                crate::i18n::t("sp.new"),
+                "status-pages",
+                "",
+            )
+            .await;
             let tpl = NewTemplate {
                 ctx,
                 title,
@@ -420,7 +509,10 @@ struct SettingsInput {
 }
 
 fn footer_too_long() -> String {
-    crate::i18n::tf("sp.err_footer_long", &[("max", &crate::i18n::fmt_int(db_pages::FOOTER_MAX as i64))])
+    crate::i18n::tf(
+        "sp.err_footer_long",
+        &[("max", &crate::i18n::fmt_int(db_pages::FOOTER_MAX as i64))],
+    )
 }
 
 /// Every `Host` the request arrived under (`Host`, `X-Forwarded-Host`).
@@ -492,7 +584,10 @@ fn validate_settings(input: SettingsInput) -> (SettingsForm, Option<NewStatusPag
         _ => {
             f.refresh_error = crate::i18n::tf(
                 "sp.err_refresh",
-                &[("min", &db_pages::REFRESH_MIN.to_string()), ("max", &db_pages::REFRESH_MAX.to_string())],
+                &[
+                    ("min", &db_pages::REFRESH_MIN.to_string()),
+                    ("max", &db_pages::REFRESH_MAX.to_string()),
+                ],
             );
             60
         }
@@ -668,8 +763,16 @@ async fn render_edit(
     let with_stats = tab == "analytics";
     let (sections, settings, stats) = state
         .with_conn(move |c| {
-            let stats = if with_stats { super::public_status::analytics::load_stats(c, id)? } else { Default::default() };
-            Ok((db_pages::sections(c, id)?, crate::db::settings::load(c)?, stats))
+            let stats = if with_stats {
+                super::public_status::analytics::load_stats(c, id)?
+            } else {
+                Default::default()
+            };
+            Ok((
+                db_pages::sections(c, id)?,
+                crate::db::settings::load(c)?,
+                stats,
+            ))
         })
         .await?;
     let base = base_url(settings.base_url.clone(), headers);
@@ -695,7 +798,15 @@ async fn render_edit(
             }
         })
         .collect();
-    let (ctx, jar) = PageCtx::build(state, Some(user), &jar, crate::i18n::tf("monitor_form.edit_heading", &[("name", &page.title)]), "status-pages", "").await;
+    let (ctx, jar) = PageCtx::build(
+        state,
+        Some(user),
+        &jar,
+        crate::i18n::tf("monitor_form.edit_heading", &[("name", &page.title)]),
+        "status-pages",
+        "",
+    )
+    .await;
     let form = form.unwrap_or_else(|| SettingsForm::from_page(&page));
     let aform = aform.unwrap_or_else(|| AnalyticsForm::from_settings(&page.analytics));
     let assets_html = if tab == "settings" {
@@ -716,7 +827,10 @@ async fn render_edit(
             assets_html,
             stats,
             aform,
-            providers: Provider::ALL.iter().map(|p| (p.as_str(), p.label())).collect(),
+            providers: Provider::ALL
+                .iter()
+                .map(|p| (p.as_str(), p.label()))
+                .collect(),
         }),
     ))
 }
@@ -751,11 +865,27 @@ async fn save_analytics(
     let page = load_page(&state, id).await?;
     let (form, valid) = validate_analytics(input);
     if let Some(a) = valid {
-        state.with_conn(move |c| page_extras::set_analytics(c, id, &a)).await?;
+        state
+            .with_conn(move |c| page_extras::set_analytics(c, id, &a))
+            .await?;
         let jar = flash(jar, "success", crate::i18n::t("spx.analytics_saved"));
-        return Ok((jar, Redirect::to(&format!("/status-pages/{id}/edit?tab=analytics"))).into_response());
+        return Ok((
+            jar,
+            Redirect::to(&format!("/status-pages/{id}/edit?tab=analytics")),
+        )
+            .into_response());
     }
-    let (jar, tpl) = render_edit(&state, &user, jar, &headers, page, "analytics", None, Some(form)).await?;
+    let (jar, tpl) = render_edit(
+        &state,
+        &user,
+        jar,
+        &headers,
+        page,
+        "analytics",
+        None,
+        Some(form),
+    )
+    .await?;
     Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, tpl).into_response())
 }
 
@@ -778,7 +908,9 @@ async fn save_settings(
         } else if form.new_password.is_empty() {
             page_extras::PasswordChange::Keep
         } else {
-            page_extras::PasswordChange::Set(crate::auth::hash_password_async(std::mem::take(&mut form.new_password)).await?)
+            page_extras::PasswordChange::Set(
+                crate::auth::hash_password_async(std::mem::take(&mut form.new_password)).await?,
+            )
         };
         let saved = state
             .with_conn(move |c| {
@@ -798,7 +930,14 @@ async fn save_settings(
                     return Ok(Err("domain"));
                 }
                 db_pages::update(c, id, &new)?;
-                page_extras::apply_extras(c, id, &page_extras::ExtrasChange { password, ..Default::default() })?;
+                page_extras::apply_extras(
+                    c,
+                    id,
+                    &page_extras::ExtrasChange {
+                        password,
+                        ..Default::default()
+                    },
+                )?;
                 Ok(Ok(()))
             })
             .await?;
@@ -806,7 +945,11 @@ async fn save_settings(
             Ok(()) => {
                 super::public_status::invalidate_domains();
                 let jar = flash(jar, "success", crate::i18n::t("sp.saved"));
-                return Ok((jar, Redirect::to(&format!("/status-pages/{id}/edit?tab=settings"))).into_response());
+                return Ok((
+                    jar,
+                    Redirect::to(&format!("/status-pages/{id}/edit?tab=settings")),
+                )
+                    .into_response());
             }
             Err("slug") => form.slug_error = crate::i18n::t("sp.err_slug_taken").into(),
             Err("self") => form.domain_error = crate::i18n::t("sp.err_domain_self").into(),
@@ -815,7 +958,17 @@ async fn save_settings(
     }
     form.new_password.clear();
     form.has_password = page.is_protected();
-    let (jar, tpl) = render_edit(&state, &user, jar, &headers, page, "settings", Some(form), None).await?;
+    let (jar, tpl) = render_edit(
+        &state,
+        &user,
+        jar,
+        &headers,
+        page,
+        "settings",
+        Some(form),
+        None,
+    )
+    .await?;
     Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, tpl).into_response())
 }
 
@@ -887,12 +1040,27 @@ async fn add_section(
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
     let pairs = form_pairs(&body);
-    let raw = pairs.iter().find(|(k, _)| k == "name").map(|(_, v)| v.as_str()).unwrap_or("");
+    let raw = pairs
+        .iter()
+        .find(|(k, _)| k == "name")
+        .map(|(_, v)| v.as_str())
+        .unwrap_or("");
     let name = clean_section_name(raw)?;
-    let name = if name.is_empty() { crate::i18n::t("sp.new_section").to_string() } else { name };
+    let name = if name.is_empty() {
+        crate::i18n::t("sp.new_section").to_string()
+    } else {
+        name
+    };
     load_page(&state, id).await?;
-    state.with_conn(move |c| db_pages::add_section(c, id, &name)).await?;
-    Ok(with_trigger(sections_response(&state, id).await?, crate::i18n::t("sp.section_added"), "success", false))
+    state
+        .with_conn(move |c| db_pages::add_section(c, id, &name))
+        .await?;
+    Ok(with_trigger(
+        sections_response(&state, id).await?,
+        crate::i18n::t("sp.section_added"),
+        "success",
+        false,
+    ))
 }
 
 async fn rename_section(
@@ -911,10 +1079,18 @@ async fn rename_section(
         .map(|(_, v)| v.as_str())
         .unwrap_or("");
     let name = clean_section_name(raw)?;
-    if !state.with_conn(move |c| db_pages::rename_section(c, id, sid, &name)).await? {
+    if !state
+        .with_conn(move |c| db_pages::rename_section(c, id, sid, &name))
+        .await?
+    {
         return Err(ApiError::NotFound);
     }
-    Ok(with_trigger(StatusCode::OK.into_response(), crate::i18n::t("sp.section_renamed"), "success", false))
+    Ok(with_trigger(
+        StatusCode::OK.into_response(),
+        crate::i18n::t("sp.section_renamed"),
+        "success",
+        false,
+    ))
 }
 
 async fn delete_section(
@@ -923,10 +1099,18 @@ async fn delete_section(
     Path((id, sid)): Path<(i64, i64)>,
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
-    if !state.with_conn(move |c| db_pages::delete_section(c, id, sid)).await? {
+    if !state
+        .with_conn(move |c| db_pages::delete_section(c, id, sid))
+        .await?
+    {
         return Err(ApiError::NotFound);
     }
-    Ok(with_trigger(sections_response(&state, id).await?, crate::i18n::t("sp.section_deleted"), "success", false))
+    Ok(with_trigger(
+        sections_response(&state, id).await?,
+        crate::i18n::t("sp.section_deleted"),
+        "success",
+        false,
+    ))
 }
 
 #[derive(Template)]
@@ -947,7 +1131,11 @@ async fn picker(
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
     let pairs = form_pairs(query.unwrap_or_default().as_bytes());
-    let q = pairs.iter().find(|(k, _)| k == "q").map(|(_, v)| v.clone()).unwrap_or_default();
+    let q = pairs
+        .iter()
+        .find(|(k, _)| k == "q")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
     let list_only = pairs.iter().any(|(k, _)| k == "list");
     let checked: Vec<i64> = pairs
         .iter()
@@ -962,7 +1150,10 @@ async fn picker(
                 .find(|s| s.id == sid)
                 .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
             let existing: Vec<i64> = section.monitors.iter().map(|m| m.monitor_id).collect();
-            Ok((section.name, build_picker(c, "sp-picker-list", &q, &checked, &existing)?))
+            Ok((
+                section.name,
+                build_picker(c, "sp-picker-list", &q, &checked, &existing)?,
+            ))
         })
         .await?;
     Ok(HtmlTemplate(PickerTemplate {
@@ -997,7 +1188,12 @@ async fn add_monitors(
         n => crate::i18n::tn("sp.added_monitors", n as i64),
     };
     state.notify_update();
-    Ok(with_trigger(sections_response(&state, id).await?, &msg, "success", true))
+    Ok(with_trigger(
+        sections_response(&state, id).await?,
+        &msg,
+        "success",
+        true,
+    ))
 }
 
 async fn remove_monitor(
@@ -1006,10 +1202,18 @@ async fn remove_monitor(
     Path((id, sid, mid)): Path<(i64, i64, i64)>,
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
-    if !state.with_conn(move |c| db_pages::remove_monitor(c, id, sid, mid)).await? {
+    if !state
+        .with_conn(move |c| db_pages::remove_monitor(c, id, sid, mid))
+        .await?
+    {
         return Err(ApiError::NotFound);
     }
-    Ok(with_trigger(sections_response(&state, id).await?, crate::i18n::t("sp.monitor_removed"), "success", false))
+    Ok(with_trigger(
+        sections_response(&state, id).await?,
+        crate::i18n::t("sp.monitor_removed"),
+        "success",
+        false,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1042,6 +1246,9 @@ struct IncidentRow {
     incident: Incident,
     body_html: String,
     meta: String,
+    updates: Vec<super::public_status::UpdateView>,
+    /// Base of the update endpoints for this incident.
+    updates_url: String,
 }
 
 #[derive(Template)]
@@ -1095,18 +1302,23 @@ async fn incidents(
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
-    let (page, list, settings) = state
+    let (page, list, mut timelines, settings) = state
         .with_conn(move |c| {
             let page = db_pages::get(c, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
-            Ok((page, db_incidents::list_for_page(c, id)?, crate::db::settings::load(c)?))
+            let list = db_incidents::list_for_page(c, id)?;
+            let ids: Vec<i64> = list.iter().map(|i| i.id).collect();
+            let timelines = db_incidents::updates_for(c, &ids)?;
+            Ok((page, list, timelines, crate::db::settings::load(c)?))
         })
         .await?;
     let tz = super::public_status::site_tz(&settings.timezone);
     let incidents = list
         .into_iter()
         .map(|i| {
-            let mut meta =
-                crate::i18n::tf("inc.posted", &[("when", &super::public_status::fmt_local(&i.created_at, &tz))]);
+            let mut meta = crate::i18n::tf(
+                "inc.posted",
+                &[("when", &super::public_status::fmt_local(&i.created_at, &tz))],
+            );
             if let Some(r) = &i.resolved_at {
                 meta.push_str(" · ");
                 meta.push_str(&crate::i18n::tf(
@@ -1114,14 +1326,38 @@ async fn incidents(
                     &[("when", &super::public_status::fmt_local(r, &tz))],
                 ));
             }
+            let updates = timelines
+                .remove(&i.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|u| super::public_status::UpdateView {
+                    id: u.id,
+                    label: u.status_label(),
+                    time: super::public_status::fmt_local(&u.created_at, &tz),
+                    body_html: super::public_status::markdown::render(&u.body),
+                    status: u.status,
+                    posted_at: u.created_at,
+                    body: u.body,
+                })
+                .collect();
             IncidentRow {
                 body_html: super::public_status::markdown::render(&i.body),
                 meta,
+                updates,
+                updates_url: format!("/status-pages/{id}/incidents/{}/updates", i.id),
                 incident: i,
             }
         })
         .collect();
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, format!("{} · {}", crate::i18n::t("sp.incidents"), page.title), "status-pages", "").await;
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        format!("{} · {}", crate::i18n::t("sp.incidents"), page.title),
+        "status-pages",
+        "",
+    )
+    .await;
     Ok((
         jar,
         HtmlTemplate(IncidentsTemplate {
@@ -1157,8 +1393,11 @@ async fn create_incident(
         }
     };
     load_page(&state, id).await?;
-    state.with_conn(move |c| db_incidents::insert(c, id, &new)).await?;
+    let iid = state
+        .with_conn(move |c| db_incidents::insert(c, id, &new))
+        .await?;
     state.notify_update();
+    crate::subscribers::announce_incident(&state, id, iid, crate::subscribers::Kind::Incident);
     let jar = flash(jar, "success", crate::i18n::t("inc.posted_flash"));
     Ok((jar, Redirect::to(&back)).into_response())
 }
@@ -1202,7 +1441,10 @@ async fn update_incident(
             return Ok((jar, Redirect::to(&back)).into_response());
         }
     };
-    if !state.with_conn(move |c| db_incidents::update(c, id, iid, &new)).await? {
+    if !state
+        .with_conn(move |c| db_incidents::update(c, id, iid, &new))
+        .await?
+    {
         return Err(ApiError::NotFound);
     }
     state.notify_update();
@@ -1210,7 +1452,13 @@ async fn update_incident(
     Ok((jar, Redirect::to(&back)).into_response())
 }
 
-async fn set_resolved(state: &AppState, jar: SignedCookieJar, id: i64, iid: i64, resolved: bool) -> ApiResult<Response> {
+async fn set_resolved(
+    state: &AppState,
+    jar: SignedCookieJar,
+    id: i64,
+    iid: i64,
+    resolved: bool,
+) -> ApiResult<Response> {
     if !state
         .with_conn(move |c| db_incidents::set_resolved(c, id, iid, resolved))
         .await?
@@ -1218,10 +1466,17 @@ async fn set_resolved(state: &AppState, jar: SignedCookieJar, id: i64, iid: i64,
         return Err(ApiError::NotFound);
     }
     state.notify_update();
+    if resolved {
+        crate::subscribers::announce_incident(state, id, iid, crate::subscribers::Kind::Resolved);
+    }
     let jar = flash(
         jar,
         "success",
-        if resolved { crate::i18n::t("inc.resolved_flash") } else { crate::i18n::t("inc.reopened") },
+        if resolved {
+            crate::i18n::t("inc.resolved_flash")
+        } else {
+            crate::i18n::t("inc.reopened")
+        },
     );
     Ok(hx_refresh(jar))
 }
@@ -1246,6 +1501,97 @@ async fn reopen_incident(
     set_resolved(&state, jar, id, iid, false).await
 }
 
+#[derive(Debug, Deserialize)]
+struct UpdateInput {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    body: String,
+}
+
+/// Longest update text, in characters.
+const UPDATE_MAX: usize = 5_000;
+
+/// Validates an update: a known status and some text.
+fn validate_update(input: UpdateInput) -> Result<(String, String), ApiError> {
+    let status = input.status.trim().to_string();
+    if !db_incidents::UPDATE_STATUSES.contains(&status.as_str()) {
+        return Err(ApiError::bad_request(crate::i18n::t(
+            "inc.err_update_status",
+        )));
+    }
+    let body = input.body.trim().to_string();
+    if body.is_empty() {
+        return Err(ApiError::bad_request(crate::i18n::t("inc.err_update_body")));
+    }
+    if body.chars().count() > UPDATE_MAX {
+        return Err(ApiError::bad_request(crate::i18n::tf(
+            "inc.err_update_long",
+            &[("max", &crate::i18n::fmt_int(UPDATE_MAX as i64))],
+        )));
+    }
+    Ok((status, body))
+}
+
+async fn post_incident_update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, iid)): Path<(i64, i64)>,
+    Form(input): Form<UpdateInput>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    let back = format!("/status-pages/{id}/incidents#incident-{iid}");
+    let (status, body) = match validate_update(input) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(
+                (flash(jar, "error", e.public_message()), Redirect::to(&back)).into_response(),
+            );
+        }
+    };
+    let kind = if status == "resolved" {
+        crate::subscribers::Kind::Resolved
+    } else {
+        crate::subscribers::Kind::Update
+    };
+    if state
+        .with_conn(move |c| db_incidents::add_update(c, id, iid, &status, &body))
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound);
+    }
+    state.notify_update();
+    crate::subscribers::announce_incident(&state, id, iid, kind);
+    Ok((
+        flash(jar, "success", crate::i18n::t("inc.update_posted")),
+        Redirect::to(&back),
+    )
+        .into_response())
+}
+
+async fn delete_incident_update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, iid, uid)): Path<(i64, i64, i64)>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    if !state
+        .with_conn(move |c| db_incidents::delete_update(c, id, iid, uid))
+        .await?
+    {
+        return Err(ApiError::NotFound);
+    }
+    state.notify_update();
+    Ok(hx_refresh(flash(
+        jar,
+        "success",
+        crate::i18n::t("inc.update_deleted"),
+    )))
+}
+
 async fn delete_incident(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -1253,7 +1599,10 @@ async fn delete_incident(
     Path((id, iid)): Path<(i64, i64)>,
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
-    if !state.with_conn(move |c| db_incidents::delete(c, id, iid)).await? {
+    if !state
+        .with_conn(move |c| db_incidents::delete(c, id, iid))
+        .await?
+    {
         return Err(ApiError::NotFound);
     }
     state.notify_update();
@@ -1314,7 +1663,11 @@ mod tests {
             analytics_site_id: id.into(),
             analytics_url: url.into(),
         };
-        let (_, a) = validate_analytics(input("plausible", "example.com", "https://plausible.io/js/script.js"));
+        let (_, a) = validate_analytics(input(
+            "plausible",
+            "example.com",
+            "https://plausible.io/js/script.js",
+        ));
         let a = a.unwrap();
         assert_eq!((a.provider, a.unique), (Provider::Plausible, false));
         let (form, a) = validate_analytics(input("umami", "nope", "http://x.test/s.js"));
@@ -1392,4 +1745,201 @@ mod tests {
         assert_eq!(parsed["vv:toast"]["message"], "Saved “x” ✓ 😀");
         assert_eq!(parsed["vv:close-sheet"], true);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Subscribers
+// ---------------------------------------------------------------------------
+
+#[derive(Template)]
+#[template(path = "status_page_subscribers.html")]
+struct SubscribersTemplate {
+    ctx: PageCtx,
+    page: StatusPage,
+    tab: &'static str,
+    settings: db_subscribers::Settings,
+    /// Active email channels: (id, name, selected).
+    channels: Vec<(i64, String, bool)>,
+    rows: Vec<SubscriberRow>,
+    /// Links in messages have no address to point at (no public URL and no
+    /// custom domain), so the page offers no subscriptions.
+    base_missing: bool,
+    /// The viewer can open Settings → General.
+    is_admin: bool,
+}
+
+struct SubscriberRow {
+    id: i64,
+    target: String,
+    kind_label: &'static str,
+    confirmed: bool,
+    /// A webhook waiting for an editor's approval.
+    awaiting: bool,
+    created: String,
+}
+
+async fn subscribers(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+) -> ApiResult<impl IntoResponse> {
+    user.require(Role::Editor)?;
+    let (page, settings, channels, list, site) = state
+        .with_conn(move |c| {
+            let page = db_pages::get(c, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            let channels: Vec<(i64, String)> = crate::db::notifications::list_channels(c)?
+                .into_iter()
+                .filter(|ch| ch.active && ch.kind == "email")
+                .map(|ch| (ch.id, ch.name))
+                .collect();
+            Ok((
+                page,
+                db_subscribers::settings(c, id)?,
+                channels,
+                db_subscribers::list(c, id)?,
+                crate::db::settings::load(c)?,
+            ))
+        })
+        .await?;
+    let base_missing = crate::subscribers::link_base(site.base_url.as_deref(), &page).is_none();
+    let channels = channels
+        .into_iter()
+        .map(|(cid, name)| (cid, name, settings.channel_id == Some(cid)))
+        .collect();
+    let tz = super::public_status::site_tz(&site.timezone);
+    let rows = list
+        .into_iter()
+        .map(|s| SubscriberRow {
+            kind_label: if s.kind == "email" {
+                crate::i18n::t("sub.type_email")
+            } else {
+                crate::i18n::t("sub.type_webhook")
+            },
+            confirmed: s.is_confirmed(),
+            awaiting: s.awaits_approval(),
+            created: super::public_status::fmt_local(&s.created_at, &tz),
+            id: s.id,
+            target: s.target,
+        })
+        .collect();
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        format!("{} · {}", crate::i18n::t("sub.tab"), page.title),
+        "status-pages",
+        "",
+    )
+    .await;
+    Ok((
+        jar,
+        HtmlTemplate(SubscribersTemplate {
+            ctx,
+            page,
+            tab: "subscribers",
+            settings,
+            channels,
+            rows,
+            base_missing,
+            is_admin: user.is_admin(),
+        }),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct SubscribersInput {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    channel_id: String,
+    #[serde(default)]
+    webhooks: bool,
+}
+
+async fn save_subscribers(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+    Form(input): Form<SubscribersInput>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    load_page(&state, id).await?;
+    let settings = db_subscribers::Settings {
+        enabled: input.enabled,
+        channel_id: input.channel_id.trim().parse().ok(),
+        webhooks: input.webhooks,
+    };
+    // Only an email channel can send the mails.
+    let valid = match settings.channel_id {
+        Some(cid) => state
+            .with_conn(move |c| crate::db::notifications::get_channel(c, cid))
+            .await?
+            .is_some_and(|ch| ch.kind == "email"),
+        None => true,
+    };
+    let back = format!("/status-pages/{id}/subscribers");
+    if !valid {
+        let jar = flash(jar, "error", crate::i18n::t("sub.err_channel"));
+        return Ok((jar, Redirect::to(&back)).into_response());
+    }
+    state
+        .with_conn(move |c| db_subscribers::set_settings(c, id, &settings))
+        .await?;
+    state.notify_update();
+    Ok((
+        flash(jar, "success", crate::i18n::t("sub.saved")),
+        Redirect::to(&back),
+    )
+        .into_response())
+}
+
+/// Approves a webhook sign-up; the webhook then gets a "subscribed" message
+/// with its unsubscribe link.
+async fn approve_subscriber(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, sid)): Path<(i64, i64)>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    if state
+        .with_conn(move |c| db_subscribers::approve(c, id, sid))
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound);
+    }
+    let bg = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::subscribers::send_welcome(&bg, id, sid).await {
+            tracing::warn!(page = id, subscriber = sid, error = %e, "webhook welcome failed");
+        }
+    });
+    Ok(hx_refresh(flash(
+        jar,
+        "success",
+        crate::i18n::t("sub.approved"),
+    )))
+}
+
+async fn remove_subscriber(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, sid)): Path<(i64, i64)>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    if !state
+        .with_conn(move |c| db_subscribers::delete(c, id, sid))
+        .await?
+    {
+        return Err(ApiError::NotFound);
+    }
+    Ok(hx_refresh(flash(
+        jar,
+        "success",
+        crate::i18n::t("sub.removed"),
+    )))
 }

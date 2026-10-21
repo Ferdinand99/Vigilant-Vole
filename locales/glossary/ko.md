@@ -106,3 +106,5 @@ Counts: no plural forms; `모니터 {n}개`. Standard loanword spellings (모니
 | Tailscale peer | Tailscale 피어 | |
 | MOTD | MOTD | kept |
 | replica set | 레플리카 세트 | rarely used; `replicaSet` stays Latin |
+| cron expression | Cron 표현식 | "cron" kept Latin |
+- subscriber: 구독자; subscribe / unsubscribe: 구독 / 구독 취소; confirm subscription: 구독 확인; webhook subscriber: 웹훅 구독자; pending (sign-up): 대기 중; maintenance started / ended: 점검 시작 / 점검 종료.

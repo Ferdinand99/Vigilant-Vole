@@ -54,10 +54,16 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 fn check(config: &Value) -> Vec<FieldError> {
     let mut errors = Vec::new();
     if num(config, "retry").is_some_and(|r| r < 30) {
-        errors.push(field_error("retry", crate::i18n::t("notif.err_pushover_retry")));
+        errors.push(field_error(
+            "retry",
+            crate::i18n::t("notif.err_pushover_retry"),
+        ));
     }
     if num(config, "expire").is_some_and(|e| !(1..=10_800).contains(&e)) {
-        errors.push(field_error("expire", crate::i18n::t("notif.err_pushover_expire")));
+        errors.push(field_error(
+            "expire",
+            crate::i18n::t("notif.err_pushover_expire"),
+        ));
     }
     errors
 }

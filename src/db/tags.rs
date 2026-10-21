@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 
 /// Palette names understood by `.tag-{color}` in the stylesheet, in picker order.
 pub const PALETTE: &[&str] = &[
-    "red", "orange", "yellow", "green", "mint", "teal", "cyan", "blue", "indigo", "purple", "pink", "brown", "gray",
+    "red", "orange", "yellow", "green", "mint", "teal", "cyan", "blue", "indigo", "purple", "pink",
+    "brown", "gray",
 ];
 
 /// Colour used when none (or an unknown one) is given.
@@ -69,7 +70,11 @@ fn nearest_palette(hex: &str) -> Option<&'static str> {
         let v = |i: usize, len: usize| u8::from_str_radix(&s[i..i + len], 16).ok();
         match s.len() {
             6 => Some((v(0, 2)? as f64, v(2, 2)? as f64, v(4, 2)? as f64)),
-            3 => Some((v(0, 1)? as f64 * 17.0, v(1, 1)? as f64 * 17.0, v(2, 1)? as f64 * 17.0)),
+            3 => Some((
+                v(0, 1)? as f64 * 17.0,
+                v(1, 1)? as f64 * 17.0,
+                v(2, 1)? as f64 * 17.0,
+            )),
             _ => None,
         }
     };
@@ -119,7 +124,8 @@ fn row_to_tag(row: &Row) -> rusqlite::Result<Tag> {
 
 /// Every tag, alphabetically (case-insensitive).
 pub fn list_tags(conn: &Connection) -> rusqlite::Result<Vec<Tag>> {
-    let mut stmt = conn.prepare("SELECT id, name, color FROM tags ORDER BY name COLLATE NOCASE, id")?;
+    let mut stmt =
+        conn.prepare("SELECT id, name, color FROM tags ORDER BY name COLLATE NOCASE, id")?;
     let rows = stmt.query_map([], row_to_tag)?;
     rows.collect()
 }
@@ -141,8 +147,12 @@ pub fn list_tags_with_counts(conn: &Connection) -> rusqlite::Result<Vec<TagWithC
 }
 
 pub fn get_tag(conn: &Connection, id: i64) -> rusqlite::Result<Option<Tag>> {
-    conn.query_row("SELECT id, name, color FROM tags WHERE id = ?1", params![id], row_to_tag)
-        .optional()
+    conn.query_row(
+        "SELECT id, name, color FROM tags WHERE id = ?1",
+        params![id],
+        row_to_tag,
+    )
+    .optional()
 }
 
 /// Case-insensitive lookup by name.
@@ -224,7 +234,9 @@ pub fn tags_by_monitor(conn: &Connection) -> rusqlite::Result<HashMap<i64, Vec<M
          ORDER BY t.name COLLATE NOCASE, t.id",
     )?;
     let mut map: HashMap<i64, Vec<MonitorTag>> = HashMap::new();
-    let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>("monitor_id")?, row_to_monitor_tag(row)?)))?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>("monitor_id")?, row_to_monitor_tag(row)?))
+    })?;
     for row in rows {
         let (monitor_id, tag) = row?;
         map.entry(monitor_id).or_default().push(tag);
@@ -233,8 +245,15 @@ pub fn tags_by_monitor(conn: &Connection) -> rusqlite::Result<HashMap<i64, Vec<M
 }
 
 /// Replaces a monitor's tags with `tags` (`(tag_id, value)`; duplicates keep the last value).
-pub fn set_monitor_tags(conn: &Connection, monitor_id: i64, tags: &[(i64, String)]) -> rusqlite::Result<()> {
-    conn.execute("DELETE FROM monitor_tags WHERE monitor_id = ?1", params![monitor_id])?;
+pub fn set_monitor_tags(
+    conn: &Connection,
+    monitor_id: i64,
+    tags: &[(i64, String)],
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM monitor_tags WHERE monitor_id = ?1",
+        params![monitor_id],
+    )?;
     let mut stmt = conn.prepare(
         "INSERT INTO monitor_tags (monitor_id, tag_id, value) VALUES (?1, ?2, ?3)
          ON CONFLICT (monitor_id, tag_id) DO UPDATE SET value = excluded.value",
@@ -325,7 +344,10 @@ mod tests {
 
         let a_tags = tags_for_monitor(&conn, a).unwrap();
         assert_eq!(a_tags.len(), 2);
-        assert_eq!((a_tags[0].name.as_str(), a_tags[0].value.as_str()), ("env", "prod"));
+        assert_eq!(
+            (a_tags[0].name.as_str(), a_tags[0].value.as_str()),
+            ("env", "prod")
+        );
         assert_eq!(tags_for_monitor(&conn, b).unwrap()[0].value, "dev");
 
         let by_monitor = tags_by_monitor(&conn).unwrap();
@@ -347,6 +369,13 @@ mod tests {
         assert!(tags_for_monitor(&conn, b).unwrap().is_empty());
         set_monitor_tags(&conn, b, &[(team, String::new())]).unwrap();
         monitors::delete_monitor(&conn, b).unwrap();
-        assert_eq!(list_tags_with_counts(&conn).unwrap().iter().map(|t| t.monitors).sum::<i64>(), 0);
+        assert_eq!(
+            list_tags_with_counts(&conn)
+                .unwrap()
+                .iter()
+                .map(|t| t.monitors)
+                .sum::<i64>(),
+            0
+        );
     }
 }

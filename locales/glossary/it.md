@@ -110,3 +110,6 @@ Termini fissati per la traduzione di Vigilant Vole. Il lessico di Uptime Kuma (i
 - Termini tecnici e nomi di prodotto invariati (HTTP, TLS, SMTP, OAuth2, JSONPath, DNS, Docker, Prometheus, ...).
 - Durate: «s», «min», «h», «g».
 - Revisione: «Region» = «Regione»; colonna agenti «Reporting» = «Monitor» (conteggio dei monitor che riportano); «API docs» = «Riferimento API», come il titolo della pagina.
+
+- cron expression: espressione cron (the word "cron" stays Latin).
+- subscriber: iscritto; subscribe / unsubscribe: iscriviti / annulla iscrizione; confirm subscription: conferma iscrizione; webhook subscriber: iscritto via webhook; pending (sign-up): In attesa; maintenance started / ended: manutenzione iniziata / terminata.

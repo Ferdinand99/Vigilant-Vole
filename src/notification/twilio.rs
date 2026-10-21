@@ -36,7 +36,10 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 fn check(config: &Value) -> Vec<FieldError> {
     let mut errors = Vec::new();
     if opt(config, "account_sid").is_some_and(|s| !s.starts_with("AC")) {
-        errors.push(field_error("account_sid", crate::i18n::t("notif.err_twilio_sid")));
+        errors.push(field_error(
+            "account_sid",
+            crate::i18n::t("notif.err_twilio_sid"),
+        ));
     }
     if let Some(bad) = list(config, "to").into_iter().find(|n| !n.starts_with('+')) {
         errors.push(field_error(

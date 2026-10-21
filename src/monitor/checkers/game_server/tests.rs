@@ -29,36 +29,97 @@ fn assert_up(out: &CheckOutcome) -> String {
 #[test]
 fn targets_pick_the_game_and_its_default_port() {
     for (target, game, host, port, explicit) in [
-        ("minecraft://mc.example.com", Game::Minecraft, "mc.example.com", 25565, false),
-        ("Minecraft://mc.example.com:25570", Game::Minecraft, "mc.example.com", 25570, true),
-        ("bedrock://10.0.0.5", Game::Bedrock, "10.0.0.5", 19132, false),
-        ("satisfactory://factory.lan:15777", Game::Satisfactory, "factory.lan", 15777, true),
-        ("fivem://[2001:db8::7]", Game::FiveM, "2001:db8::7", 30120, false),
-        (" mumble://voice.example.org ", Game::Mumble, "voice.example.org", 64738, false),
+        (
+            "minecraft://mc.example.com",
+            Game::Minecraft,
+            "mc.example.com",
+            25565,
+            false,
+        ),
+        (
+            "Minecraft://mc.example.com:25570",
+            Game::Minecraft,
+            "mc.example.com",
+            25570,
+            true,
+        ),
+        (
+            "bedrock://10.0.0.5",
+            Game::Bedrock,
+            "10.0.0.5",
+            19132,
+            false,
+        ),
+        (
+            "satisfactory://factory.lan:15777",
+            Game::Satisfactory,
+            "factory.lan",
+            15777,
+            true,
+        ),
+        (
+            "fivem://[2001:db8::7]",
+            Game::FiveM,
+            "2001:db8::7",
+            30120,
+            false,
+        ),
+        (
+            " mumble://voice.example.org ",
+            Game::Mumble,
+            "voice.example.org",
+            64738,
+            false,
+        ),
     ] {
         let t = parse_target(target).unwrap();
-        assert_eq!((t.game, t.host.as_str(), t.port, t.explicit_port), (game, host, port, explicit), "{target}");
+        assert_eq!(
+            (t.game, t.host.as_str(), t.port, t.explicit_port),
+            (game, host, port, explicit),
+            "{target}"
+        );
     }
 }
 
 #[test]
 fn bad_targets_are_explained() {
     assert!(parse_target("").unwrap_err().contains("empty"));
-    assert!(parse_target("mc.example.com:25565").unwrap_err().contains("minecraft://"));
+    assert!(
+        parse_target("mc.example.com:25565")
+            .unwrap_err()
+            .contains("minecraft://")
+    );
     let err = parse_target("csgo://1.2.3.4").unwrap_err();
     assert!(err.contains("Steam type") && err.contains("csgo"), "{err}");
-    assert!(parse_target("minecraft://mc.example.com/world").unwrap_err().contains("no path"));
-    assert!(parse_target("minecraft://op:pw@mc.example.com").unwrap_err().contains("credentials"));
+    assert!(
+        parse_target("minecraft://mc.example.com/world")
+            .unwrap_err()
+            .contains("no path")
+    );
+    assert!(
+        parse_target("minecraft://op:pw@mc.example.com")
+            .unwrap_err()
+            .contains("credentials")
+    );
     assert!(parse_target("minecraft://").is_err());
     let ep = endpoint("fivem://rp.example.com").unwrap();
-    assert_eq!((ep.host.as_str(), ep.port, ep.tls), ("rp.example.com", 30120, false));
+    assert_eq!(
+        (ep.host.as_str(), ep.port, ep.tls),
+        ("rp.example.com", 30120, false)
+    );
 }
 
 #[test]
 fn section_codes_and_whitespace_are_removed() {
-    assert_eq!(strip_section_codes("§aA §lVole§r  SMP\n§7Since 2011"), "A Vole SMP Since 2011");
+    assert_eq!(
+        strip_section_codes("§aA §lVole§r  SMP\n§7Since 2011"),
+        "A Vole SMP Since 2011"
+    );
     assert_eq!(strip_section_codes("trailing §"), "trailing");
-    assert_eq!(fivem::strip_caret_codes("^1Red ^7Vole^9 RP ^ x"), "Red Vole RP ^ x");
+    assert_eq!(
+        fivem::strip_caret_codes("^1Red ^7Vole^9 RP ^ x"),
+        "Red Vole RP ^ x"
+    );
 }
 
 #[test]
@@ -86,17 +147,40 @@ fn chat_components_are_walked_in_order() {
 #[test]
 fn java_status_json_is_parsed() {
     let s = minecraft::parse_status(r#"{"version":{"name":"1.21.4","protocol":769},"players":{"max":100,"online":12,"sample":[]},"description":{"text":"§aA Vole SMP"},"favicon":"data:image/png;base64,AA=="}"#.as_bytes()).unwrap();
-    assert_eq!((s.product.as_str(), s.players, s.name.as_str()), ("Minecraft 1.21.4", Some((12, 100)), "A Vole SMP"));
-    assert_eq!(describe(Game::Minecraft, &s), "Minecraft 1.21.4 · 12/100 players · A Vole SMP");
-    let proxy = minecraft::parse_status(r#"{"version":{"name":"§cVelocity 3.4.0"},"description":"hub"}"#.as_bytes()).unwrap();
-    assert_eq!((proxy.product.as_str(), proxy.players), ("Velocity 3.4.0", None));
+    assert_eq!(
+        (s.product.as_str(), s.players, s.name.as_str()),
+        ("Minecraft 1.21.4", Some((12, 100)), "A Vole SMP")
+    );
+    assert_eq!(
+        describe(Game::Minecraft, &s),
+        "Minecraft 1.21.4 · 12/100 players · A Vole SMP"
+    );
+    let proxy = minecraft::parse_status(
+        r#"{"version":{"name":"§cVelocity 3.4.0"},"description":"hub"}"#.as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(
+        (proxy.product.as_str(), proxy.players),
+        ("Velocity 3.4.0", None)
+    );
     assert!(minecraft::parse_status(b"[1]").is_err());
-    assert!(minecraft::parse_status(b"not json").unwrap_err().contains("JSON"));
+    assert!(
+        minecraft::parse_status(b"not json")
+            .unwrap_err()
+            .contains("JSON")
+    );
 }
 
 #[test]
 fn varints_round_trip() {
-    for (v, bytes) in [(0u32, vec![0x00]), (1, vec![0x01]), (127, vec![0x7F]), (128, vec![0x80, 0x01]), (25565, vec![0xDD, 0xC7, 0x01]), (u32::MAX, vec![0xFF, 0xFF, 0xFF, 0xFF, 0x0F])] {
+    for (v, bytes) in [
+        (0u32, vec![0x00]),
+        (1, vec![0x01]),
+        (127, vec![0x7F]),
+        (128, vec![0x80, 0x01]),
+        (25565, vec![0xDD, 0xC7, 0x01]),
+        (u32::MAX, vec![0xFF, 0xFF, 0xFF, 0xFF, 0x0F]),
+    ] {
         let mut out = Vec::new();
         minecraft::write_varint(v, &mut out);
         assert_eq!(out, bytes, "{v}");
@@ -122,18 +206,39 @@ fn status_request_matches_the_protocol() {
 fn srv_answers_pick_priority_then_weight() {
     let rec = |p, w, h: &str, port| (p, w, h.to_string(), port);
     assert_eq!(minecraft::pick_srv(&[]), None);
-    assert_eq!(minecraft::pick_srv(&[rec(0, 0, ".", 0)]), None, "\".\" means no service");
-    let picked = minecraft::pick_srv(&[rec(10, 5, "b.example.", 25570), rec(5, 1, "a.example.", 25566), rec(5, 9, "c.example.", 25567)]);
+    assert_eq!(
+        minecraft::pick_srv(&[rec(0, 0, ".", 0)]),
+        None,
+        "\".\" means no service"
+    );
+    let picked = minecraft::pick_srv(&[
+        rec(10, 5, "b.example.", 25570),
+        rec(5, 1, "a.example.", 25566),
+        rec(5, 9, "c.example.", 25567),
+    ]);
     assert_eq!(picked, Some(("c.example".into(), 25567)));
 }
 
 #[test]
 fn describe_skips_what_is_missing() {
-    let s = Status { product: "Mumble 1.5.735".into(), players: Some((3, 50)), name: String::new(), detail: None };
+    let s = Status {
+        product: "Mumble 1.5.735".into(),
+        players: Some((3, 50)),
+        name: String::new(),
+        detail: None,
+    };
     assert_eq!(describe(Game::Mumble, &s), "Mumble 1.5.735 · 3/50 users");
-    let s = Status { product: "Satisfactory build 1".into(), players: None, name: "x".repeat(100), detail: Some("playing".into()) };
+    let s = Status {
+        product: "Satisfactory build 1".into(),
+        players: None,
+        name: "x".repeat(100),
+        detail: Some("playing".into()),
+    };
     let msg = describe(Game::Satisfactory, &s);
-    assert_eq!(msg, format!("Satisfactory build 1 · playing · {}…", "x".repeat(80)));
+    assert_eq!(
+        msg,
+        format!("Satisfactory build 1 · playing · {}…", "x".repeat(80))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +271,9 @@ async fn java_server(pong: bool, reply: Option<Vec<u8>>) -> SocketAddr {
                 if tcp.read_exact(&mut got).await.is_err() || got != want {
                     return;
                 }
-                let _ = tcp.write_all(&reply.unwrap_or_else(|| status_packet(JAVA_STATUS))).await;
+                let _ = tcp
+                    .write_all(&reply.unwrap_or_else(|| status_packet(JAVA_STATUS)))
+                    .await;
                 let mut ping = [0u8; 10];
                 if pong && tcp.read_exact(&mut ping).await.is_ok() && ping[..2] == [9, 0x01] {
                     let _ = tcp.write_all(&ping).await;
@@ -183,7 +290,10 @@ async fn java_server(pong: bool, reply: Option<Vec<u8>>) -> SocketAddr {
 async fn java_server_list_ping() {
     let addr = java_server(true, None).await;
     let out = run(&game(&format!("minecraft://{addr}"))).await;
-    assert_eq!(assert_up(&out), "Minecraft 1.21.4 · 12/100 players · A Vole SMP");
+    assert_eq!(
+        assert_up(&out),
+        "Minecraft 1.21.4 · 12/100 players · A Vole SMP"
+    );
     assert!(out.response_time_ms.is_some());
 }
 
@@ -194,7 +304,10 @@ async fn java_without_pong_uses_the_status_round_trip() {
     m.timeout_seconds = 2;
     let start = Instant::now();
     let out = run(&m).await;
-    assert_eq!(assert_up(&out), "Minecraft 1.21.4 · 12/100 players · A Vole SMP");
+    assert_eq!(
+        assert_up(&out),
+        "Minecraft 1.21.4 · 12/100 players · A Vole SMP"
+    );
     assert!(start.elapsed() < Duration::from_secs(2));
 }
 
@@ -207,7 +320,11 @@ async fn java_keyword_matches_the_motd() {
     m.keyword = Some("Creative".into());
     let out = run(&m).await;
     assert_eq!(out.status, HeartbeatStatus::Down);
-    assert!(out.message.unwrap().starts_with("Server name doesn't contain \"Creative\": Minecraft 1.21.4"));
+    assert!(
+        out.message
+            .unwrap()
+            .starts_with("Server name doesn't contain \"Creative\": Minecraft 1.21.4")
+    );
     m.keyword_invert = true;
     assert_up(&run(&m).await);
     // The keyword looks at the name, not the version or the player count.
@@ -226,11 +343,17 @@ async fn java_failures_are_explained() {
     let out = run(&game(&format!("minecraft://{wrong}"))).await;
     assert!(out.message.unwrap().contains("packet 0x05"));
 
-    let http = crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+    let http =
+        crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+            .await;
     let out = run(&game(&format!("minecraft://{http}"))).await;
     assert_eq!(out.status, HeartbeatStatus::Down, "{:?}", out.message);
 
-    let closed = TcpListener::bind("127.0.0.1:0").await.unwrap().local_addr().unwrap();
+    let closed = TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap()
+        .local_addr()
+        .unwrap();
     let out = run(&game(&format!("minecraft://{closed}"))).await;
     assert!(out.message.unwrap().contains("failed"));
 }
@@ -277,21 +400,38 @@ async fn bedrock_unconnected_ping() {
     })
     .await;
     let out = run(&game(&format!("bedrock://{addr}"))).await;
-    assert_eq!(assert_up(&out), "Bedrock 1.21.50 · 3/10 players · Vole Bedrock");
+    assert_eq!(
+        assert_up(&out),
+        "Bedrock 1.21.50 · 3/10 players · Vole Bedrock"
+    );
 }
 
 #[test]
 fn bedrock_replies_are_checked() {
     let nonce = 7u64;
     let ok = bedrock_pong(&nonce.to_be_bytes(), "MCEE;Class;1;1.21.0;x;y");
-    let Verdict::Done(Ok(s)) = bedrock::parse_pong(&ok, nonce) else { panic!("expected a status") };
-    assert_eq!((s.product.as_str(), s.players, s.name.as_str()), ("Minecraft Education 1.21.0", None, "Class"));
+    let Verdict::Done(Ok(s)) = bedrock::parse_pong(&ok, nonce) else {
+        panic!("expected a status")
+    };
+    assert_eq!(
+        (s.product.as_str(), s.players, s.name.as_str()),
+        ("Minecraft Education 1.21.0", None, "Class")
+    );
     assert!(matches!(bedrock::parse_pong(&ok, 8), Verdict::Ignore));
     let mut bad_magic = ok.clone();
     bad_magic[20] ^= 1;
-    assert!(matches!(bedrock::parse_pong(&bad_magic, nonce), Verdict::Done(Err(_))));
-    assert!(matches!(bedrock::parse_pong(&ok[..40], nonce), Verdict::Done(Err(_))));
-    assert!(matches!(bedrock::parse_pong(b"\x1c short", nonce), Verdict::Done(Err(_))));
+    assert!(matches!(
+        bedrock::parse_pong(&bad_magic, nonce),
+        Verdict::Done(Err(_))
+    ));
+    assert!(matches!(
+        bedrock::parse_pong(&ok[..40], nonce),
+        Verdict::Done(Err(_))
+    ));
+    assert!(matches!(
+        bedrock::parse_pong(b"\x1c short", nonce),
+        Verdict::Done(Err(_))
+    ));
     assert!(bedrock::parse_status("MCPE;too;few").is_err());
 }
 
@@ -312,18 +452,25 @@ fn satisfactory_reply(req: &[u8], state: u8, name: &str) -> Vec<u8> {
 #[tokio::test]
 async fn satisfactory_lightweight_query() {
     let addr = udp_server(|req| {
-        assert_eq!((req.len(), &req[..4], req[12]), (13, &[0xD5, 0xF6, 0, 1][..], 1));
+        assert_eq!(
+            (req.len(), &req[..4], req[12]),
+            (13, &[0xD5, 0xF6, 0, 1][..], 1)
+        );
         vec![satisfactory_reply(req, 3, "Vole Works")]
     })
     .await;
     let out = run(&game(&format!("satisfactory://{addr}"))).await;
-    assert_eq!(assert_up(&out), "Satisfactory build 365306 · playing · Vole Works");
+    assert_eq!(
+        assert_up(&out),
+        "Satisfactory build 365306 · playing · Vole Works"
+    );
 
     let offline = udp_server(|req| vec![satisfactory_reply(req, 0, "x")]).await;
     let out = run(&game(&format!("satisfactory://{offline}"))).await;
     assert!(out.message.unwrap().contains("offline"));
 
-    let truncated = udp_server(|req| vec![satisfactory_reply(req, 3, "Vole Works")[..25].to_vec()]).await;
+    let truncated =
+        udp_server(|req| vec![satisfactory_reply(req, 3, "Vole Works")[..25].to_vec()]).await;
     let out = run(&game(&format!("satisfactory://{truncated}"))).await;
     assert!(out.message.unwrap().contains("Truncated"));
 }
@@ -337,7 +484,9 @@ async fn satisfactory_api(port: u16) {
         while let Ok((tcp, _)) = listener.accept().await {
             let acceptor = acceptor.clone();
             tokio::spawn(async move {
-                let Ok(mut tls) = acceptor.accept(tcp).await else { return };
+                let Ok(mut tls) = acceptor.accept(tcp).await else {
+                    return;
+                };
                 let mut req = Vec::new();
                 let mut buf = [0u8; 4096];
                 while !req.ends_with(b"}") {
@@ -347,12 +496,20 @@ async fn satisfactory_api(port: u16) {
                     }
                 }
                 let text = String::from_utf8_lossy(&req).to_ascii_lowercase();
-                assert!(text.starts_with("post /api/v1 ") && text.contains(r#""function":"queryserverstate""#), "{text}");
+                assert!(
+                    text.starts_with("post /api/v1 ")
+                        && text.contains(r#""function":"queryserverstate""#),
+                    "{text}"
+                );
                 let body = r#"{"data":{"serverGameState":{"activeSessionName":"Vole","numConnectedPlayers":2,"playerLimit":4,"techTier":3}}}"#;
                 let reply = if text.contains("authorization: bearer good") {
-                    format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
                 } else {
-                    "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                    "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        .to_string()
                 };
                 let _ = tls.write_all(reply.as_bytes()).await;
                 let _ = tls.shutdown().await;
@@ -369,10 +526,16 @@ async fn satisfactory_api_token_adds_the_player_count() {
     // Generous: a loaded test machine makes the TLS handshake slow.
     m.timeout_seconds = 20;
     m.secret = Some("good".into());
-    assert_eq!(assert_up(&run(&m).await), "Satisfactory build 365306 · playing · 2/4 players · Vole Works");
+    assert_eq!(
+        assert_up(&run(&m).await),
+        "Satisfactory build 365306 · playing · 2/4 players · Vole Works"
+    );
     m.secret = Some("wrong".into());
     let msg = assert_up(&run(&m).await);
-    assert!(msg.contains("players unknown (HTTPS API: HTTP 401 (check the API token))"), "{msg}");
+    assert!(
+        msg.contains("players unknown (HTTPS API: HTTP 401 (check the API token))"),
+        "{msg}"
+    );
 }
 
 #[tokio::test]
@@ -389,7 +552,10 @@ async fn mumble_ping() {
     .await;
     let out = run(&game(&format!("mumble://{addr}"))).await;
     assert_eq!(assert_up(&out), "Mumble 1.5.7 · 3/100 users");
-    assert!(matches!(mumble::parse_pong(&[0; 10], 1), Verdict::Done(Err(_))));
+    assert!(matches!(
+        mumble::parse_pong(&[0; 10], 1),
+        Verdict::Done(Err(_))
+    ));
     assert!(matches!(mumble::parse_pong(&[0; 24], 1), Verdict::Ignore));
 }
 
@@ -439,9 +605,19 @@ async fn fxserver(with_dynamic: bool) -> SocketAddr {
     });
     let mut app = axum::Router::new()
         .route("/info.json", get(move || async move { axum::Json(info) }))
-        .route("/players.json", get(|| async { axum::Json(json!([{"name": "a"}, {"name": "b"}])) }));
+        .route(
+            "/players.json",
+            get(|| async { axum::Json(json!([{"name": "a"}, {"name": "b"}])) }),
+        );
     if with_dynamic {
-        app = app.route("/dynamic.json", get(|| async { axum::Json(json!({"clients": 12, "hostname": "^1Vole^7 Roleplay", "sv_maxclients": "64"})) }));
+        app = app.route(
+            "/dynamic.json",
+            get(|| async {
+                axum::Json(
+                    json!({"clients": 12, "hostname": "^1Vole^7 Roleplay", "sv_maxclients": "64"}),
+                )
+            }),
+        );
     }
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -452,9 +628,15 @@ async fn fxserver(with_dynamic: bool) -> SocketAddr {
 #[tokio::test]
 async fn fivem_info_and_dynamic() {
     let addr = fxserver(true).await;
-    assert_eq!(assert_up(&run(&game(&format!("fivem://{addr}"))).await), "FiveM build 7290 · 12/64 players · Vole Roleplay");
+    assert_eq!(
+        assert_up(&run(&game(&format!("fivem://{addr}"))).await),
+        "FiveM build 7290 · 12/64 players · Vole Roleplay"
+    );
     let addr = fxserver(false).await;
-    assert_eq!(assert_up(&run(&game(&format!("fivem://{addr}"))).await), "FiveM build 7290 · 2/48 players · Vole RP");
+    assert_eq!(
+        assert_up(&run(&game(&format!("fivem://{addr}"))).await),
+        "FiveM build 7290 · 2/48 players · Vole RP"
+    );
 }
 
 #[tokio::test]
@@ -469,10 +651,24 @@ async fn fivem_needs_an_fxserver() {
 
 #[test]
 fn fivem_products() {
-    assert_eq!(fivem::product(&json!({"vars": {"gamename": "rdr3"}, "server": "FXServer-master v1.0.0.1491 linux"})).unwrap(), "RedM build 1491");
-    assert_eq!(fivem::product(&json!({"server": "something else"})).unwrap(), "FiveM");
+    assert_eq!(
+        fivem::product(
+            &json!({"vars": {"gamename": "rdr3"}, "server": "FXServer-master v1.0.0.1491 linux"})
+        )
+        .unwrap(),
+        "RedM build 1491"
+    );
+    assert_eq!(
+        fivem::product(&json!({"server": "something else"})).unwrap(),
+        "FiveM"
+    );
     assert!(fivem::product(&json!({"hello": 1})).is_err());
-    assert_eq!(satisfactory::players_of(&json!({"data": {"serverGameState": {"numConnectedPlayers": 1, "playerLimit": 4}}})), Some((1, 4)));
+    assert_eq!(
+        satisfactory::players_of(
+            &json!({"data": {"serverGameState": {"numConnectedPlayers": 1, "playerLimit": 4}}})
+        ),
+        Some((1, 4))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -482,11 +678,24 @@ fn fivem_products() {
 #[tokio::test]
 #[ignore = "needs internet"]
 async fn live_public_servers() {
-    for target in ["minecraft://mc.hypixel.net", "minecraft://play.cubecraft.net:25565", "bedrock://play.cubecraft.net", "bedrock://geo.hivebedrock.network"] {
+    for target in [
+        "minecraft://mc.hypixel.net",
+        "minecraft://play.cubecraft.net:25565",
+        "bedrock://play.cubecraft.net",
+        "bedrock://geo.hivebedrock.network",
+    ] {
         let mut m = game(target);
         m.timeout_seconds = 10;
         let out = run(&m).await;
-        println!("{target}: {:?} {:?} ms {:?}", out.status, out.response_time_ms, out.message);
-        assert_eq!(out.status, HeartbeatStatus::Up, "{target}: {:?}", out.message);
+        println!(
+            "{target}: {:?} {:?} ms {:?}",
+            out.status, out.response_time_ms, out.message
+        );
+        assert_eq!(
+            out.status,
+            HeartbeatStatus::Up,
+            "{target}: {:?}",
+            out.message
+        );
     }
 }

@@ -94,3 +94,11 @@
 - Maiúscula inicial só em frases; meses e dias em minúscula.
 - Ortografia: Acordo Ortográfico de 1990, vocabulário europeu (ecrã, ficheiro, utilizador, definições, eliminar, aceder, palavra-passe, partilhar, registo, separador).
 - Nomes de produtos, termos técnicos, flags, variáveis e URLs ficam em inglês.
+
+| cron expression | expressão cron | "cron" kept Latin |
+| subscriber | subscritor | |
+| subscribe / unsubscribe | subscrever / cancelar subscrição | |
+| confirm subscription | confirmar subscrição | |
+| webhook subscriber | subscritor por webhook | |
+| pending (sign-up) | pendente | |
+| maintenance started / ended | manutenção iniciada / concluída | |

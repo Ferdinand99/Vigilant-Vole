@@ -109,7 +109,8 @@ pub fn rollup(conn: &Connection, now: &str) -> rusqlite::Result<usize> {
             params![from, now],
         )?;
     }
-    let yesterday: String = conn.query_row("SELECT date(?1, '-1 day')", params![now], |r| r.get(0))?;
+    let yesterday: String =
+        conn.query_row("SELECT date(?1, '-1 day')", params![now], |r| r.get(0))?;
     settings::set(conn, WATERMARK_KEY, &yesterday)?;
     Ok(upserted)
 }
@@ -117,7 +118,11 @@ pub fn rollup(conn: &Connection, now: &str) -> rusqlite::Result<usize> {
 /// Deletes up to `batch` local or agent heartbeats checked before `cutoff`
 /// (a UTC day `YYYY-MM-DD` or timestamp). Call repeatedly until it returns 0;
 /// small batches keep each write lock short.
-pub fn delete_heartbeats_before(conn: &Connection, cutoff: &str, batch: i64) -> rusqlite::Result<usize> {
+pub fn delete_heartbeats_before(
+    conn: &Connection,
+    cutoff: &str,
+    batch: i64,
+) -> rusqlite::Result<usize> {
     conn.execute(
         "DELETE FROM heartbeats WHERE id IN (
              SELECT id FROM heartbeats WHERE checked_at < ?1 LIMIT ?2
@@ -129,12 +134,21 @@ pub fn delete_heartbeats_before(conn: &Connection, cutoff: &str, batch: i64) -> 
 /// Per-day stats for the last `days` days (oldest → newest, always exactly
 /// `days` entries, the last one being today so far). Days without data have
 /// zero counts and `uptime_pct: None`.
-pub fn daily_uptime(conn: &Connection, monitor_id: i64, days: i64) -> rusqlite::Result<Vec<DayStat>> {
+pub fn daily_uptime(
+    conn: &Connection,
+    monitor_id: i64,
+    days: i64,
+) -> rusqlite::Result<Vec<DayStat>> {
     daily_uptime_at(conn, monitor_id, days, &now_text(conn)?)
 }
 
 /// [`daily_uptime`] relative to an explicit `now` (UTC `YYYY-MM-DD HH:MM:SS`).
-pub fn daily_uptime_at(conn: &Connection, monitor_id: i64, days: i64, now: &str) -> rusqlite::Result<Vec<DayStat>> {
+pub fn daily_uptime_at(
+    conn: &Connection,
+    monitor_id: i64,
+    days: i64,
+    now: &str,
+) -> rusqlite::Result<Vec<DayStat>> {
     let days = days.clamp(1, MAX_DAYS);
     let span = format!("-{} days", days - 1);
     let day_list: Vec<String> = {
@@ -166,7 +180,11 @@ pub fn daily_uptime_at(conn: &Connection, monitor_id: i64, days: i64, now: &str)
     }
     {
         let live_from: String = match &wm {
-            Some(wm) => conn.query_row("SELECT max(?1, date(?2, '+1 day'))", params![first, wm], |r| r.get(0))?,
+            Some(wm) => conn.query_row(
+                "SELECT max(?1, date(?2, '+1 day'))",
+                params![first, wm],
+                |r| r.get(0),
+            )?,
             None => first,
         };
         let mut stmt = conn.prepare(
@@ -223,7 +241,12 @@ pub fn uptime_pct(conn: &Connection, monitor_id: i64, days: i64) -> rusqlite::Re
 }
 
 /// [`uptime_pct`] relative to an explicit `now` (UTC `YYYY-MM-DD HH:MM:SS`).
-pub fn uptime_pct_at(conn: &Connection, monitor_id: i64, days: i64, now: &str) -> rusqlite::Result<Option<f64>> {
+pub fn uptime_pct_at(
+    conn: &Connection,
+    monitor_id: i64,
+    days: i64,
+    now: &str,
+) -> rusqlite::Result<Option<f64>> {
     let days = days.clamp(1, MAX_DAYS);
     let span = format!("-{days} days");
     let (window_start, first_full_day): (String, String) = conn.query_row(
@@ -302,7 +325,11 @@ mod tests {
         .unwrap();
     }
 
-    fn daily_row(conn: &Connection, id: i64, day: &str) -> Option<(i64, i64, i64, i64, Option<f64>)> {
+    fn daily_row(
+        conn: &Connection,
+        id: i64,
+        day: &str,
+    ) -> Option<(i64, i64, i64, i64, Option<f64>)> {
         conn.query_row(
             "SELECT up_count, down_count, pending_count, maintenance_count, avg_response_ms
              FROM heartbeat_daily WHERE monitor_id = ?1 AND day = ?2",
@@ -324,7 +351,10 @@ mod tests {
         beat(&conn, id, "maintenance", None, "2026-03-08 05:00:00");
         agent_beat(&conn, id, "down", "2026-03-08 06:00:00");
         rollup(&conn, NOW).unwrap();
-        assert_eq!(daily_row(&conn, id, "2026-03-08"), Some((2, 1, 1, 1, Some(200.0))));
+        assert_eq!(
+            daily_row(&conn, id, "2026-03-08"),
+            Some((2, 1, 1, 1, Some(200.0)))
+        );
     }
 
     #[test]
@@ -346,7 +376,10 @@ mod tests {
         rollup(&conn, "2026-03-09 23:30:00").unwrap(); // watermark = 03-08, 03-09 partial
         beat(&conn, id, "down", None, "2026-03-09 23:50:00");
         rollup(&conn, "2026-03-10 00:30:00").unwrap();
-        assert_eq!(daily_row(&conn, id, "2026-03-09").map(|r| (r.0, r.1)), Some((1, 1)));
+        assert_eq!(
+            daily_row(&conn, id, "2026-03-09").map(|r| (r.0, r.1)),
+            Some((1, 1))
+        );
     }
 
     #[test]

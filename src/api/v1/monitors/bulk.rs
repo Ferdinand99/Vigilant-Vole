@@ -8,8 +8,8 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use serde_json::{Map, Value, json};
 
-use super::MonitorFilter;
 use super::super::{Body, V1Error, V1Result, json_ok};
+use super::MonitorFilter;
 use crate::api::AppState;
 use crate::api::monitors::bulk_edit::{self, BulkEdit, ChannelEdit, NewTag};
 use crate::api::monitors::form::{self, Errors};
@@ -36,11 +36,16 @@ fn unknown_keys(obj: &Map<String, Value>, known: &[&str], prefix: &str) -> V1Res
         .filter(|k| !known.contains(&k.as_str()))
         .map(|k| (format!("{prefix}{k}"), format!("Unknown field “{k}”.")))
         .collect();
-    if unknown.is_empty() { Ok(()) } else { Err(V1Error::validation("", unknown)) }
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(V1Error::validation("", unknown))
+    }
 }
 
 fn object<'a>(v: &'a Value, field: &str) -> V1Result<&'a Map<String, Value>> {
-    v.as_object().ok_or_else(|| V1Error::field(field, "Send a JSON object."))
+    v.as_object()
+        .ok_or_else(|| V1Error::field(field, "Send a JSON object."))
 }
 
 fn list<'a>(v: Option<&'a Value>, field: &str) -> V1Result<&'a [Value]> {
@@ -75,16 +80,33 @@ fn number(
 
 /// `{"id": 3}`, `{"name": "Ops"}`, `3` or `"Ops"` → a channel id.
 fn channel_ref(v: &Value, channels: &[NotificationChannel], field: &str) -> V1Result<(i64, bool)> {
-    let escalation = v.get("escalation").and_then(Value::as_bool).unwrap_or(false);
+    let escalation = v
+        .get("escalation")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let found = match v {
-        Value::Number(n) => n.as_i64().and_then(|id| channels.iter().find(|c| c.id == id)),
-        Value::String(name) => channels.iter().find(|c| c.name.eq_ignore_ascii_case(name.trim())),
-        Value::Object(o) => match (o.get("id").and_then(Value::as_i64), o.get("name").and_then(Value::as_str)) {
+        Value::Number(n) => n
+            .as_i64()
+            .and_then(|id| channels.iter().find(|c| c.id == id)),
+        Value::String(name) => channels
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(name.trim())),
+        Value::Object(o) => match (
+            o.get("id").and_then(Value::as_i64),
+            o.get("name").and_then(Value::as_str),
+        ) {
             (Some(id), _) => channels.iter().find(|c| c.id == id),
-            (None, Some(name)) => channels.iter().find(|c| c.name.eq_ignore_ascii_case(name.trim())),
+            (None, Some(name)) => channels
+                .iter()
+                .find(|c| c.name.eq_ignore_ascii_case(name.trim())),
             _ => return Err(V1Error::field(field, "Each channel needs an id or a name.")),
         },
-        _ => return Err(V1Error::field(field, "Each channel is an id, a name or an object.")),
+        _ => {
+            return Err(V1Error::field(
+                field,
+                "Each channel is an id, a name or an object.",
+            ));
+        }
     };
     found
         .map(|c| (c.id, escalation))
@@ -96,12 +118,18 @@ fn parse_channels(v: &Value, channels: &[NotificationChannel]) -> V1Result<Chann
     unknown_keys(obj, &["add", "remove", "replace"], "set.channels.")?;
     let refs = |key: &str| -> V1Result<Vec<(i64, bool)>> {
         let field = format!("set.channels.{key}");
-        list(obj.get(key), &field)?.iter().map(|c| channel_ref(c, channels, &field)).collect()
+        list(obj.get(key), &field)?
+            .iter()
+            .map(|c| channel_ref(c, channels, &field))
+            .collect()
     };
     let given = |key: &str| obj.get(key).is_some_and(|v| !v.is_null());
     if given("replace") {
         if given("add") || given("remove") {
-            return Err(V1Error::field("set.channels", "Use replace on its own, or add and remove."));
+            return Err(V1Error::field(
+                "set.channels",
+                "Use replace on its own, or add and remove.",
+            ));
         }
         return Ok(ChannelEdit::Replace(refs("replace")?));
     }
@@ -109,7 +137,10 @@ fn parse_channels(v: &Value, channels: &[NotificationChannel]) -> V1Result<Chann
     Ok(if add.is_empty() && remove.is_empty() {
         ChannelEdit::Unchanged
     } else {
-        ChannelEdit::Change { add, remove: remove.into_iter().map(|(id, _)| id).collect() }
+        ChannelEdit::Change {
+            add,
+            remove: remove.into_iter().map(|(id, _)| id).collect(),
+        }
     })
 }
 
@@ -117,10 +148,17 @@ fn parse_channels(v: &Value, channels: &[NotificationChannel]) -> V1Result<Chann
 fn find_tag<'a>(v: &Value, tags: &'a [Tag]) -> Option<&'a Tag> {
     match v {
         Value::Number(n) => n.as_i64().and_then(|id| tags.iter().find(|t| t.id == id)),
-        Value::String(name) => tags.iter().find(|t| t.name.eq_ignore_ascii_case(name.trim())),
-        Value::Object(o) => match (o.get("id").and_then(Value::as_i64), o.get("name").and_then(Value::as_str)) {
+        Value::String(name) => tags
+            .iter()
+            .find(|t| t.name.eq_ignore_ascii_case(name.trim())),
+        Value::Object(o) => match (
+            o.get("id").and_then(Value::as_i64),
+            o.get("name").and_then(Value::as_str),
+        ) {
             (Some(id), _) => tags.iter().find(|t| t.id == id),
-            (None, Some(name)) => tags.iter().find(|t| t.name.eq_ignore_ascii_case(name.trim())),
+            (None, Some(name)) => tags
+                .iter()
+                .find(|t| t.name.eq_ignore_ascii_case(name.trim())),
             _ => None,
         },
         _ => None,
@@ -132,11 +170,17 @@ fn parse_tags(v: &Value, tags: &[Tag], edit: &mut BulkEdit, e: &mut Errors) -> V
     unknown_keys(obj, &["add", "remove", "clear"], "set.tags.")?;
     edit.tags.clear = flag(obj.get("clear"), "set.tags.clear")?.unwrap_or(false);
     for t in list(obj.get("remove"), "set.tags.remove")? {
-        let tag = find_tag(t, tags).ok_or_else(|| V1Error::field("set.tags.remove", format!("No tag {t}.")))?;
+        let tag = find_tag(t, tags)
+            .ok_or_else(|| V1Error::field("set.tags.remove", format!("No tag {t}.")))?;
         edit.tags.remove.push(tag.id);
     }
     for t in list(obj.get("add"), "set.tags.add")? {
-        let value = t.get("value").and_then(Value::as_str).unwrap_or_default().trim().to_string();
+        let value = t
+            .get("value")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         if let Some(msg) = form::tag_value_error(&value) {
             e.insert("set.tags.add", msg);
         }
@@ -146,16 +190,26 @@ fn parse_tags(v: &Value, tags: &[Tag], edit: &mut BulkEdit, e: &mut Errors) -> V
         }
         let name = match t {
             Value::String(name) => name.trim(),
-            Value::Object(o) if o.get("id").is_none() => o.get("name").and_then(Value::as_str).unwrap_or_default().trim(),
+            Value::Object(o) if o.get("id").is_none() => o
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim(),
             _ => return Err(V1Error::field("set.tags.add", format!("No tag {t}."))),
         };
         if name.is_empty() {
-            return Err(V1Error::field("set.tags.add", "Each tag needs a name or an id."));
+            return Err(V1Error::field(
+                "set.tags.add",
+                "Each tag needs a name or an id.",
+            ));
         }
         if let Some(msg) = form::tag_name_error(name) {
             e.insert("set.tags.add", msg);
         }
-        let color = t.get("color").and_then(Value::as_str).unwrap_or(db_tags::DEFAULT_COLOR);
+        let color = t
+            .get("color")
+            .and_then(Value::as_str)
+            .unwrap_or(db_tags::DEFAULT_COLOR);
         edit.tags.create.push(NewTag {
             name: name.to_string(),
             color: db_tags::normalize_color(color).to_string(),
@@ -174,7 +228,11 @@ fn parse_set(v: &Value, channels: &[NotificationChannel], tags: &[Tag]) -> V1Res
         run_on_agents: flag(obj.get("run_on_agents"), "set.run_on_agents")?,
         confirm_with_agents: flag(obj.get("confirm_with_agents"), "set.confirm_with_agents")?,
         interval: number(obj.get("interval_seconds"), &mut e, form::check_interval),
-        retry_interval: number(obj.get("retry_interval_seconds"), &mut e, form::check_retry_interval),
+        retry_interval: number(
+            obj.get("retry_interval_seconds"),
+            &mut e,
+            form::check_retry_interval,
+        ),
         timeout: number(obj.get("timeout_seconds"), &mut e, form::check_timeout),
         retries: number(obj.get("retries"), &mut e, form::check_retries),
         ..BulkEdit::default()
@@ -191,12 +249,24 @@ fn parse_set(v: &Value, channels: &[NotificationChannel], tags: &[Tag]) -> V1Res
     if !e.is_empty() {
         let fields = e
             .into_iter()
-            .map(|(k, v)| (if k.starts_with("set.") { k.to_string() } else { format!("set.{k}") }, v))
+            .map(|(k, v)| {
+                (
+                    if k.starts_with("set.") {
+                        k.to_string()
+                    } else {
+                        format!("set.{k}")
+                    },
+                    v,
+                )
+            })
             .collect();
         return Err(V1Error::validation("", fields));
     }
     if edit.is_empty() {
-        return Err(V1Error::field("set", "Choose at least one setting to change."));
+        return Err(V1Error::field(
+            "set",
+            "Choose at least one setting to change.",
+        ));
     }
     Ok(edit)
 }
@@ -210,13 +280,17 @@ enum Selection {
 fn parse_selection(ids: Option<Value>, filter: Option<Value>) -> V1Result<Selection> {
     match (ids, filter) {
         (Some(_), Some(_)) => Err(V1Error::field("ids", "Send ids or filter, not both.")),
-        (None, None) => Err(V1Error::field("ids", "Send the monitor ids, or a filter ({} selects every monitor).")),
+        (None, None) => Err(V1Error::field(
+            "ids",
+            "Send the monitor ids, or a filter ({} selects every monitor).",
+        )),
         (Some(ids), None) => serde_json::from_value::<Vec<i64>>(ids)
             .map(Selection::Ids)
             .map_err(|_| V1Error::field("ids", "Send a list of monitor ids.")),
         (None, Some(filter)) => {
-            let filter: MonitorFilter = serde_json::from_value(filter)
-                .map_err(|e| V1Error::field("filter", format!("Use status, type, tag and q ({e}).")))?;
+            let filter: MonitorFilter = serde_json::from_value(filter).map_err(|e| {
+                V1Error::field("filter", format!("Use status, type, tag and q ({e})."))
+            })?;
             filter.check("filter.")?;
             Ok(Selection::Filter(filter))
         }
@@ -224,12 +298,20 @@ fn parse_selection(ids: Option<Value>, filter: Option<Value>) -> V1Result<Select
 }
 
 /// `POST /api/v1/monitors/bulk`.
-pub(super) async fn bulk(state: axum::extract::State<AppState>, user: CurrentUser, Body(body): Body<Value>) -> V1Result<Response> {
+pub(super) async fn bulk(
+    state: axum::extract::State<AppState>,
+    user: CurrentUser,
+    Body(body): Body<Value>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     let Value::Object(mut body) = body else {
         return Err(V1Error::bad_request("Send a JSON object."));
     };
-    let (ids, filter, set) = (body.remove("ids"), body.remove("filter"), body.remove("set"));
+    let (ids, filter, set) = (
+        body.remove("ids"),
+        body.remove("filter"),
+        body.remove("set"),
+    );
     unknown_keys(&body, &[], "")?;
     let selection = parse_selection(ids, filter)?;
     let set = set.ok_or_else(|| V1Error::field("set", "Say what to change in set."))?;
@@ -246,7 +328,15 @@ pub(super) async fn bulk(state: axum::extract::State<AppState>, user: CurrentUse
                     let tags = db_tags::tags_by_monitor(c)?;
                     db_monitors::list_monitors_with_status(c)?
                         .into_iter()
-                        .filter(|row| filter.matches(&row.monitor, row.status, tags.get(&row.monitor.id).map(Vec::as_slice).unwrap_or_default()))
+                        .filter(|row| {
+                            filter.matches(
+                                &row.monitor,
+                                row.status,
+                                tags.get(&row.monitor.id)
+                                    .map(Vec::as_slice)
+                                    .unwrap_or_default(),
+                            )
+                        })
                         .map(|row| row.monitor.id)
                         .collect()
                 }
@@ -260,6 +350,13 @@ pub(super) async fn bulk(state: axum::extract::State<AppState>, user: CurrentUse
     }
     state.notify_update();
     tracing::info!(user = %user.username, updated = outcome.updated.len(), skipped = outcome.skipped.len(), "bulk edit via API");
-    let skipped: Vec<Value> = outcome.skipped.iter().map(|(id, s)| json!({ "id": id, "reason": s.code() })).collect();
-    Ok(json_ok(&HeaderMap::new(), &json!({ "updated": outcome.updated.len(), "skipped": skipped })))
+    let skipped: Vec<Value> = outcome
+        .skipped
+        .iter()
+        .map(|(id, s)| json!({ "id": id, "reason": s.code() }))
+        .collect();
+    Ok(json_ok(
+        &HeaderMap::new(),
+        &json!({ "updated": outcome.updated.len(), "skipped": skipped }),
+    ))
 }

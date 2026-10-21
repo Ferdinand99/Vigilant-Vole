@@ -39,12 +39,20 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/settings/backup", get(page))
         .route("/settings/backup/database", get(download_database))
-        .route("/settings/backup/import/preview", post(import_preview).layer(DefaultBodyLimit::max(MAX_DOC_UPLOAD)))
+        .route(
+            "/settings/backup/import/preview",
+            post(import_preview).layer(DefaultBodyLimit::max(MAX_DOC_UPLOAD)),
+        )
         .route("/settings/backup/import/apply", post(import_apply))
-        .route("/settings/backup/kuma/preview", post(kuma_preview).layer(DefaultBodyLimit::max(MAX_DB_UPLOAD)))
+        .route(
+            "/settings/backup/kuma/preview",
+            post(kuma_preview).layer(DefaultBodyLimit::max(MAX_DB_UPLOAD)),
+        )
         .route(
             "/settings/backup/restore",
-            post(restore_upload).delete(restore_cancel).layer(DefaultBodyLimit::max(MAX_DB_UPLOAD)),
+            post(restore_upload)
+                .delete(restore_cancel)
+                .layer(DefaultBodyLimit::max(MAX_DB_UPLOAD)),
         )
 }
 
@@ -60,10 +68,15 @@ struct Pending {
     label: String,
 }
 
-static PENDING: LazyLock<Mutex<HashMap<String, Pending>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static PENDING: LazyLock<Mutex<HashMap<String, Pending>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn random_token(len: usize) -> String {
-    rand::rng().sample_iter(&Alphanumeric).take(len).map(char::from).collect()
+    rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
 }
 
 fn stash(user_id: i64, doc: Document, mode: Mode, label: String) -> String {
@@ -71,10 +84,25 @@ fn stash(user_id: i64, doc: Document, mode: Mode, label: String) -> String {
     if let Ok(mut map) = PENDING.lock() {
         map.retain(|_, p| p.created.elapsed() < PENDING_TTL);
         while map.len() >= 20 {
-            let Some(oldest) = map.iter().min_by_key(|(_, p)| p.created).map(|(k, _)| k.clone()) else { break };
+            let Some(oldest) = map
+                .iter()
+                .min_by_key(|(_, p)| p.created)
+                .map(|(k, _)| k.clone())
+            else {
+                break;
+            };
             map.remove(&oldest);
         }
-        map.insert(token.clone(), Pending { user_id, created: Instant::now(), doc, mode, label });
+        map.insert(
+            token.clone(),
+            Pending {
+                user_id,
+                created: Instant::now(),
+                doc,
+                mode,
+                label,
+            },
+        );
     }
     token
 }
@@ -106,14 +134,33 @@ fn restore_path(state: &AppState) -> PathBuf {
     data_dir(state).join(RESTORE_PENDING_FILE)
 }
 
-async fn page(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar) -> ApiResult<Response> {
+async fn page(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+) -> ApiResult<Response> {
     user.require_admin()?;
-    let monitor_count = state.with_conn(|c| c.query_row("SELECT COUNT(*) FROM monitors", [], |r| r.get(0))).await?;
+    let monitor_count = state
+        .with_conn(|c| c.query_row("SELECT COUNT(*) FROM monitors", [], |r| r.get(0)))
+        .await?;
     let db_size = std::fs::metadata(state.config.db_path())
         .map(|m| crate::api::settings::format_bytes(i64::try_from(m.len()).unwrap_or(i64::MAX)))
         .unwrap_or_else(|_| "—".into());
-    let (ctx, jar) = PageCtx::build(&state, Some(&user), &jar, crate::i18n::t("nav.backup"), "settings", "backup").await;
-    let tpl = BackupTemplate { ctx, restore_pending: restore_path(&state).exists(), monitor_count, db_size };
+    let (ctx, jar) = PageCtx::build(
+        &state,
+        Some(&user),
+        &jar,
+        crate::i18n::t("nav.backup"),
+        "settings",
+        "backup",
+    )
+    .await;
+    let tpl = BackupTemplate {
+        ctx,
+        restore_pending: restore_path(&state).exists(),
+        monitor_count,
+        db_size,
+    };
     Ok((jar, HtmlTemplate(tpl)).into_response())
 }
 
@@ -140,7 +187,10 @@ fn tmp_dir(state: &AppState) -> std::io::Result<PathBuf> {
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             let ours = name.starts_with("snapshot-") || name.starts_with("upload-");
-            let stale = e.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|age| age > STALE_TMP));
+            let stale = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > STALE_TMP));
             if ours && stale {
                 let _ = std::fs::remove_file(e.path());
             }
@@ -149,29 +199,40 @@ fn tmp_dir(state: &AppState) -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-async fn download_database(State(state): State<AppState>, user: CurrentUser) -> ApiResult<Response> {
+async fn download_database(
+    State(state): State<AppState>,
+    user: CurrentUser,
+) -> ApiResult<Response> {
     user.require_admin()?;
     let dir = tmp_dir(&state).map_err(ApiError::internal)?;
     let path = dir.join(format!("snapshot-{}.db", random_token(12)));
     let target = path.to_string_lossy().into_owned();
     // VACUUM INTO writes a consistent, compacted copy while the app keeps running.
-    state.with_conn(move |c| c.execute("VACUUM INTO ?1", [&target]).map(|_| ())).await?;
-    let file = tokio::fs::File::open(&path).await.map_err(ApiError::internal)?;
+    state
+        .with_conn(move |c| c.execute("VACUUM INTO ?1", [&target]).map(|_| ()))
+        .await?;
+    let file = tokio::fs::File::open(&path)
+        .await
+        .map_err(ApiError::internal)?;
     let len = file.metadata().await.map(|m| m.len()).ok();
     let guard = TempFile(path);
-    let stream = futures_util::stream::unfold((file, Some(guard)), |(mut file, guard)| async move {
-        use tokio::io::AsyncReadExt;
-        guard.as_ref()?;
-        let mut buf = vec![0u8; 64 * 1024];
-        match file.read(&mut buf).await {
-            Ok(0) => None, // guard drops here: the snapshot is deleted
-            Ok(n) => {
-                buf.truncate(n);
-                Some((Ok::<_, std::io::Error>(axum::body::Bytes::from(buf)), (file, guard)))
+    let stream =
+        futures_util::stream::unfold((file, Some(guard)), |(mut file, guard)| async move {
+            use tokio::io::AsyncReadExt;
+            guard.as_ref()?;
+            let mut buf = vec![0u8; 64 * 1024];
+            match file.read(&mut buf).await {
+                Ok(0) => None, // guard drops here: the snapshot is deleted
+                Ok(n) => {
+                    buf.truncate(n);
+                    Some((
+                        Ok::<_, std::io::Error>(axum::body::Bytes::from(buf)),
+                        (file, guard),
+                    ))
+                }
+                Err(e) => Some((Err(e), (file, None))),
             }
-            Err(e) => Some((Err(e), (file, None))),
-        }
-    });
+        });
     let now = time::OffsetDateTime::now_utc();
     let name = format!(
         "vigilant-vole-backup-{:04}{:02}{:02}-{:02}{:02}.db",
@@ -184,7 +245,10 @@ async fn download_database(State(state): State<AppState>, user: CurrentUser) -> 
     tracing::info!(user = %user.username, "database backup downloaded");
     let mut res = HttpBody::from_stream(stream).into_response();
     let h = res.headers_mut();
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/vnd.sqlite3"));
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/vnd.sqlite3"),
+    );
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
         h.insert(header::CONTENT_DISPOSITION, v);
@@ -267,7 +331,13 @@ impl PlanPartial {
         }
     }
 
-    fn from_plan(plan: &Plan, token: String, label: String, skipped: Vec<Skipped>, warnings: Vec<String>) -> Self {
+    fn from_plan(
+        plan: &Plan,
+        token: String,
+        label: String,
+        skipped: Vec<Skipped>,
+        warnings: Vec<String>,
+    ) -> Self {
         let s = plan.summary();
         let view = |i: &config_io::PlanItem| ItemView {
             action: i.action,
@@ -282,15 +352,29 @@ impl PlanPartial {
         let mut warn = plan.warnings.clone();
         warn.extend(warnings);
         PlanPartial {
-            token: if plan.is_ok() && plan.has_changes() { token } else { String::new() },
+            token: if plan.is_ok() && plan.has_changes() {
+                token
+            } else {
+                String::new()
+            },
             label,
             mode: plan.mode.as_str(),
             create: s.create,
             update: s.update,
             delete: s.delete,
             unchanged: s.unchanged,
-            changes: plan.items.iter().filter(|i| !matches!(i.action, Action::Unchanged)).map(view).collect(),
-            same: plan.items.iter().filter(|i| matches!(i.action, Action::Unchanged)).map(view).collect(),
+            changes: plan
+                .items
+                .iter()
+                .filter(|i| !matches!(i.action, Action::Unchanged))
+                .map(view)
+                .collect(),
+            same: plan
+                .items
+                .iter()
+                .filter(|i| matches!(i.action, Action::Unchanged))
+                .map(view)
+                .collect(),
             errors: plan
                 .errors
                 .iter()
@@ -330,7 +414,12 @@ struct Upload {
     file_name: String,
 }
 
-async fn read_upload(state: &AppState, mut mp: Multipart, file_field: &str, to: Option<PathBuf>) -> Result<Upload, String> {
+async fn read_upload(
+    state: &AppState,
+    mut mp: Multipart,
+    file_field: &str,
+    to: Option<PathBuf>,
+) -> Result<Upload, String> {
     let mut up = Upload::default();
     loop {
         let field = match mp.next_field().await {
@@ -346,17 +435,23 @@ async fn read_upload(state: &AppState, mut mp: Multipart, file_field: &str, to: 
             let file_name = field.file_name().unwrap_or_default().to_string();
             let path = match &to {
                 Some(p) => p.clone(),
-                None => tmp_dir(state).map_err(|e| e.to_string())?.join(format!("upload-{}", random_token(12))),
+                None => tmp_dir(state)
+                    .map_err(|e| e.to_string())?
+                    .join(format!("upload-{}", random_token(12))),
             };
             let guard = TempFile(path.clone());
-            let mut out = tokio::fs::File::create(&path).await.map_err(|e| format!("Can’t store the upload: {e}"))?;
+            let mut out = tokio::fs::File::create(&path)
+                .await
+                .map_err(|e| format!("Can’t store the upload: {e}"))?;
             let mut field = field;
             let mut total = 0usize;
             loop {
                 match field.chunk().await {
                     Ok(Some(bytes)) => {
                         total += bytes.len();
-                        out.write_all(&bytes).await.map_err(|e| format!("Can’t store the upload: {e}"))?;
+                        out.write_all(&bytes)
+                            .await
+                            .map_err(|e| format!("Can’t store the upload: {e}"))?;
                     }
                     Ok(None) => break,
                     Err(e) => return Err(format!("The upload failed: {}", e.body_text())),
@@ -368,7 +463,10 @@ async fn read_upload(state: &AppState, mut mp: Multipart, file_field: &str, to: 
                 up.file_name = file_name;
             }
         } else {
-            let text = field.text().await.map_err(|e| format!("The upload failed: {}", e.body_text()))?;
+            let text = field
+                .text()
+                .await
+                .map_err(|e| format!("The upload failed: {}", e.body_text()))?;
             up.fields.insert(name, text);
         }
     }
@@ -379,37 +477,68 @@ async fn read_upload(state: &AppState, mut mp: Multipart, file_field: &str, to: 
 // Config import
 // ---------------------------------------------------------------------------
 
-async fn import_preview(State(state): State<AppState>, user: CurrentUser, mp: Multipart) -> ApiResult<Response> {
+async fn import_preview(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    mp: Multipart,
+) -> ApiResult<Response> {
     user.require_admin()?;
     let up = match read_upload(&state, mp, "file", None).await {
         Ok(u) => u,
         Err(msg) => return Ok(partial(PlanPartial::problem(msg))),
     };
-    let mode = Mode::parse(up.fields.get("mode").map(String::as_str).unwrap_or("merge")).unwrap_or_default();
+    let mode = Mode::parse(up.fields.get("mode").map(String::as_str).unwrap_or("merge"))
+        .unwrap_or_default();
     let (text, label) = match &up.file {
         Some(f) => {
             let meta = std::fs::metadata(&f.0).map(|m| m.len()).unwrap_or(0);
             if meta > super::config::MAX_DOCUMENT_BYTES as u64 {
-                return Ok(partial(PlanPartial::problem(crate::i18n::t("backup.err_too_large"))));
+                return Ok(partial(PlanPartial::problem(crate::i18n::t(
+                    "backup.err_too_large",
+                ))));
             }
             match std::fs::read_to_string(&f.0) {
-                Ok(t) => (t, if up.file_name.is_empty() { crate::i18n::t("backup.uploaded_file").to_string() } else { up.file_name.clone() }),
-                Err(_) => return Ok(partial(PlanPartial::problem(crate::i18n::t("backup.err_not_text")))),
+                Ok(t) => (
+                    t,
+                    if up.file_name.is_empty() {
+                        crate::i18n::t("backup.uploaded_file").to_string()
+                    } else {
+                        up.file_name.clone()
+                    },
+                ),
+                Err(_) => {
+                    return Ok(partial(PlanPartial::problem(crate::i18n::t(
+                        "backup.err_not_text",
+                    ))));
+                }
             }
         }
-        None => (up.fields.get("document").cloned().unwrap_or_default(), crate::i18n::t("backup.pasted").to_string()),
+        None => (
+            up.fields.get("document").cloned().unwrap_or_default(),
+            crate::i18n::t("backup.pasted").to_string(),
+        ),
     };
     if text.trim().is_empty() {
-        return Ok(partial(PlanPartial::problem(crate::i18n::t("backup.err_nothing"))));
+        return Ok(partial(PlanPartial::problem(crate::i18n::t(
+            "backup.err_nothing",
+        ))));
     }
     let doc = match config_io::parse_document(&text) {
         Ok(d) => d,
         Err(msg) => return Ok(partial(PlanPartial::problem(msg))),
     };
     let planned = doc.clone();
-    let plan = state.with_conn(move |c| config_io::plan(c, &planned, mode)).await?;
+    let plan = state
+        .with_conn(move |c| config_io::plan(c, &planned, mode))
+        .await?;
     let token = stash(user.id, doc, mode, label.clone());
-    Ok(partial(PlanPartial::from_plan(&plan, token, label, Vec::new(), Vec::new())))
+    Ok(partial(PlanPartial::from_plan(
+        &plan,
+        token,
+        label,
+        Vec::new(),
+        Vec::new(),
+    )))
 }
 
 #[derive(Debug, Deserialize)]
@@ -420,10 +549,17 @@ struct ApplyForm {
     confirm: bool,
 }
 
-async fn import_apply(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, axum::Form(form): axum::Form<ApplyForm>) -> ApiResult<Response> {
+async fn import_apply(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    axum::Form(form): axum::Form<ApplyForm>,
+) -> ApiResult<Response> {
     user.require_admin()?;
     let Some(pending) = take(&form.token, user.id) else {
-        return Ok(partial(PlanPartial::problem(crate::i18n::t("backup.err_expired"))));
+        return Ok(partial(PlanPartial::problem(crate::i18n::t(
+            "backup.err_expired",
+        ))));
     };
     if pending.mode == Mode::Replace && !form.confirm {
         let token = stash(user.id, pending.doc, pending.mode, pending.label);
@@ -446,7 +582,13 @@ async fn import_apply(State(state): State<AppState>, user: CurrentUser, jar: Sig
             let jar = flash(jar, "success", msg);
             Ok((jar, [("hx-refresh", "true")], StatusCode::OK).into_response())
         }
-        Err(ImportError::Invalid(plan)) => Ok(partial(PlanPartial::from_plan(&plan, String::new(), pending.label, Vec::new(), Vec::new()))),
+        Err(ImportError::Invalid(plan)) => Ok(partial(PlanPartial::from_plan(
+            &plan,
+            String::new(),
+            pending.label,
+            Vec::new(),
+            Vec::new(),
+        ))),
         Err(ImportError::Api(e)) => Err(e),
     }
 }
@@ -455,17 +597,25 @@ async fn import_apply(State(state): State<AppState>, user: CurrentUser, jar: Sig
 // Uptime Kuma
 // ---------------------------------------------------------------------------
 
-async fn kuma_preview(State(state): State<AppState>, user: CurrentUser, mp: Multipart) -> ApiResult<Response> {
+async fn kuma_preview(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    mp: Multipart,
+) -> ApiResult<Response> {
     user.require_admin()?;
     let up = match read_upload(&state, mp, "file", None).await {
         Ok(u) => u,
         Err(msg) => return Ok(partial(PlanPartial::problem(msg))),
     };
     let Some(file) = up.file else {
-        return Ok(partial(PlanPartial::problem(crate::i18n::t("backup.err_kuma_nothing"))));
+        return Ok(partial(PlanPartial::problem(crate::i18n::t(
+            "backup.err_kuma_nothing",
+        ))));
     };
     let path = file.0.clone();
-    let read = tokio::task::spawn_blocking(move || kuma_import::read_file(&path)).await.map_err(ApiError::internal)?;
+    let read = tokio::task::spawn_blocking(move || kuma_import::read_file(&path))
+        .await
+        .map_err(ApiError::internal)?;
     drop(file);
     let mut import = match read {
         Ok(i) => i,
@@ -483,17 +633,30 @@ async fn kuma_preview(State(state): State<AppState>, user: CurrentUser, mp: Mult
         crate::i18n::t("backup.kuma_json").to_string()
     };
     let token = stash(user.id, import.doc.clone(), Mode::Merge, label.clone());
-    Ok(partial(PlanPartial::from_plan(&plan, token, label, import.skipped, import.warnings)))
+    Ok(partial(PlanPartial::from_plan(
+        &plan,
+        token,
+        label,
+        import.skipped,
+        import.warnings,
+    )))
 }
 
 // ---------------------------------------------------------------------------
 // Restore on next start
 // ---------------------------------------------------------------------------
 
-async fn restore_upload(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar, mp: Multipart) -> ApiResult<Response> {
+async fn restore_upload(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    mp: Multipart,
+) -> ApiResult<Response> {
     user.require_admin()?;
     // Uploaded under a random name; only a validated file becomes the pending restore.
-    let part = tmp_dir(&state).map_err(ApiError::internal)?.join(format!("upload-{}", random_token(12)));
+    let part = tmp_dir(&state)
+        .map_err(ApiError::internal)?
+        .join(format!("upload-{}", random_token(12)));
     let up = match read_upload(&state, mp, "file", Some(part.clone())).await {
         Ok(u) => u,
         Err(msg) => return Ok(toast_error(&msg)),
@@ -502,7 +665,9 @@ async fn restore_upload(State(state): State<AppState>, user: CurrentUser, jar: S
         return Ok(toast_error(crate::i18n::t("backup.err_no_file")));
     };
     let path = file.0.clone();
-    let checked = tokio::task::spawn_blocking(move || config_io::validate_backup_db(&path)).await.map_err(ApiError::internal)?;
+    let checked = tokio::task::spawn_blocking(move || config_io::validate_backup_db(&path))
+        .await
+        .map_err(ApiError::internal)?;
     let monitors = match checked {
         Ok(n) => n,
         Err(msg) => return Ok(toast_error(&msg)),
@@ -511,11 +676,19 @@ async fn restore_upload(State(state): State<AppState>, user: CurrentUser, jar: S
     std::fs::rename(&file.0, &target).map_err(ApiError::internal)?;
     std::mem::forget(file); // renamed: nothing left to delete
     tracing::warn!(user = %user.username, monitors, "database restore scheduled for the next start");
-    let jar = flash(jar, "success", crate::i18n::tf("backup.checked", &[("n", &monitors.to_string())]));
+    let jar = flash(
+        jar,
+        "success",
+        crate::i18n::tf("backup.checked", &[("n", &monitors.to_string())]),
+    );
     Ok((jar, [("hx-refresh", "true")], StatusCode::OK).into_response())
 }
 
-async fn restore_cancel(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar) -> ApiResult<Response> {
+async fn restore_cancel(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+) -> ApiResult<Response> {
     user.require_admin()?;
     let path = restore_path(&state);
     if path.exists() {
@@ -526,7 +699,8 @@ async fn restore_cancel(State(state): State<AppState>, user: CurrentUser, jar: S
 }
 
 fn toast_error(message: &str) -> Response {
-    let trigger = serde_json::json!({ "vv:toast": { "message": message, "kind": "error" } }).to_string();
+    let trigger =
+        serde_json::json!({ "vv:toast": { "message": message, "kind": "error" } }).to_string();
     // Header values must be ASCII; escape the rest as JSON \u sequences.
     let ascii: String = trigger
         .chars()
@@ -535,7 +709,10 @@ fn toast_error(message: &str) -> Response {
                 vec![c]
             } else {
                 let mut buf = [0u16; 2];
-                c.encode_utf16(&mut buf).iter().flat_map(|u| format!("\\u{u:04x}").chars().collect::<Vec<_>>()).collect()
+                c.encode_utf16(&mut buf)
+                    .iter()
+                    .flat_map(|u| format!("\\u{u:04x}").chars().collect::<Vec<_>>())
+                    .collect()
             }
         })
         .collect();
@@ -545,4 +722,3 @@ fn toast_error(message: &str) -> Response {
     }
     res
 }
-

@@ -52,7 +52,9 @@ fn tlv(tag: u8, body: &[u8]) -> Vec<u8> {
 
 fn encode_int(v: i64) -> Vec<u8> {
     let mut bytes = v.to_be_bytes().to_vec();
-    while bytes.len() > 1 && ((bytes[0] == 0 && bytes[1] & 0x80 == 0) || (bytes[0] == 0xFF && bytes[1] & 0x80 != 0)) {
+    while bytes.len() > 1
+        && ((bytes[0] == 0 && bytes[1] & 0x80 == 0) || (bytes[0] == 0xFF && bytes[1] & 0x80 != 0))
+    {
         bytes.remove(0);
     }
     tlv(INTEGER, &bytes)
@@ -63,10 +65,16 @@ pub fn encode_oid(text: &str) -> Result<Vec<u8>, String> {
     let arcs: Vec<u64> = text
         .trim_start_matches('.')
         .split('.')
-        .map(|a| a.parse::<u64>().map_err(|_| format!("\"{}\" is not a valid OID", util::truncate(text, 60))))
+        .map(|a| {
+            a.parse::<u64>()
+                .map_err(|_| format!("\"{}\" is not a valid OID", util::truncate(text, 60)))
+        })
         .collect::<Result<_, _>>()?;
     if arcs.len() < 2 || arcs[0] > 2 || (arcs[0] < 2 && arcs[1] >= 40) || arcs.len() > 128 {
-        return Err(format!("\"{}\" is not a valid OID", util::truncate(text, 60)));
+        return Err(format!(
+            "\"{}\" is not a valid OID",
+            util::truncate(text, 60)
+        ));
     }
     let mut out = Vec::new();
     for arc in std::iter::once(arcs[0] * 40 + arcs[1]).chain(arcs[2..].iter().copied()) {
@@ -98,13 +106,30 @@ fn decode_oid(bytes: &[u8]) -> String {
             value = 0;
         }
     }
-    arcs.iter().map(u64::to_string).collect::<Vec<_>>().join(".")
+    arcs.iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 fn get_request(version: i64, community: &str, request_id: i32, oid: &[u8]) -> Vec<u8> {
     let varbind = tlv(SEQUENCE, &[tlv(OID, oid), tlv(NULL, &[])].concat());
-    let pdu = [encode_int(i64::from(request_id)), encode_int(0), encode_int(0), tlv(SEQUENCE, &varbind)].concat();
-    tlv(SEQUENCE, &[encode_int(version), tlv(OCTET_STRING, community.as_bytes()), tlv(GET_REQUEST, &pdu)].concat())
+    let pdu = [
+        encode_int(i64::from(request_id)),
+        encode_int(0),
+        encode_int(0),
+        tlv(SEQUENCE, &varbind),
+    ]
+    .concat();
+    tlv(
+        SEQUENCE,
+        &[
+            encode_int(version),
+            tlv(OCTET_STRING, community.as_bytes()),
+            tlv(GET_REQUEST, &pdu),
+        ]
+        .concat(),
+    )
 }
 
 /// One BER element: `(tag, content, rest)`.
@@ -118,7 +143,12 @@ fn read_tlv(b: &[u8]) -> Option<(u8, &[u8], &[u8])> {
         if n == 0 || n > 3 || rest.len() < n {
             return None;
         }
-        (rest[..n].iter().fold(0usize, |acc, b| acc << 8 | usize::from(*b)), &rest[n..])
+        (
+            rest[..n]
+                .iter()
+                .fold(0usize, |acc, b| acc << 8 | usize::from(*b)),
+            &rest[n..],
+        )
     };
     (rest.len() >= len).then(|| (tag, &rest[..len], &rest[len..]))
 }
@@ -154,12 +184,21 @@ fn describe(tag: u8, content: &[u8]) -> Value {
             _ => hex::encode(content),
         }),
         OID => Some(decode_oid(content)),
-        0x40 if content.len() == 4 => Some(format!("{}.{}.{}.{}", content[0], content[1], content[2], content[3])),
+        0x40 if content.len() == 4 => Some(format!(
+            "{}.{}.{}.{}",
+            content[0], content[1], content[2], content[3]
+        )),
         0x41 | 0x42 | 0x46 => Some(decode_uint(content).to_string()),
         0x43 => {
             let ticks = decode_uint(content);
             let secs = ticks / 100;
-            Some(format!("{ticks} ({}d {:02}:{:02}:{:02})", secs / 86_400, secs / 3600 % 24, secs / 60 % 60, secs % 60))
+            Some(format!(
+                "{ticks} ({}d {:02}:{:02}:{:02})",
+                secs / 86_400,
+                secs / 3600 % 24,
+                secs / 60 % 60,
+                secs % 60
+            ))
         }
         NULL => Some("null".into()),
         0x80..=0x82 => return Value::Missing,
@@ -241,11 +280,22 @@ pub struct Options {
 
 /// Reads `version`, `auth`, `priv` and `context` from the target's query.
 pub fn options(ep: &Endpoint) -> Result<Options, String> {
-    let version = match ep.query("version").unwrap_or("2c").trim().to_ascii_lowercase().as_str() {
+    let version = match ep
+        .query("version")
+        .unwrap_or("2c")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "1" | "v1" => Version::V1,
         "2c" | "2" | "v2c" => Version::V2c,
         "3" | "v3" => Version::V3,
-        other => return Err(format!("Unsupported SNMP version \"{}\" (use 1, 2c or 3)", util::truncate(other, 10))),
+        other => {
+            return Err(format!(
+                "Unsupported SNMP version \"{}\" (use 1, 2c or 3)",
+                util::truncate(other, 10)
+            ));
+        }
     };
     let auth = match ep.query("auth").filter(|a| !a.trim().is_empty()) {
         None => usm::Auth::Sha1,
@@ -255,16 +305,28 @@ pub fn options(ep: &Endpoint) -> Result<Options, String> {
     };
     let privacy = match ep.query("priv").filter(|p| !p.trim().is_empty()) {
         None => usm::Priv::Aes128,
-        Some(p) => usm::Priv::parse(p)
-            .ok_or_else(|| format!("Unknown SNMPv3 privacy protocol \"{}\" (use des, aes, aes192 or aes256)", util::truncate(p, 20)))?,
+        Some(p) => usm::Priv::parse(p).ok_or_else(|| {
+            format!(
+                "Unknown SNMPv3 privacy protocol \"{}\" (use des, aes, aes192 or aes256)",
+                util::truncate(p, 20)
+            )
+        })?,
     };
     let context = ep.query("context").unwrap_or_default().to_string();
-    Ok(Options { version, auth, privacy, context })
+    Ok(Options {
+        version,
+        auth,
+        privacy,
+        context,
+    })
 }
 
 /// Whether `target` asks for SNMPv3 (agents older than 0.3.0 can't run it).
 pub fn is_v3(target: &str) -> bool {
-    endpoint::parse(MonitorType::Snmp, target).is_ok_and(|ep| ep.query("version").is_some_and(|v| matches!(v.trim(), "3" | "v3" | "V3")))
+    endpoint::parse(MonitorType::Snmp, target).is_ok_and(|ep| {
+        ep.query("version")
+            .is_some_and(|v| matches!(v.trim(), "3" | "v3" | "V3"))
+    })
 }
 
 /// The v3 user and passwords from the monitor's credential fields.
@@ -276,10 +338,20 @@ pub fn credentials(monitor: &Monitor, opts: &Options) -> Result<usm::Credentials
     if priv_pw.is_some() && auth_pw.is_none() {
         return Err("A privacy password needs an authentication password too (SNMPv3 doesn't encrypt without authentication)".into());
     }
-    if [&auth_pw, &priv_pw].into_iter().flatten().any(|pw| pw.chars().count() < MIN_PASSWORD_LEN) {
-        return Err(format!("SNMPv3 passwords have at least {MIN_PASSWORD_LEN} characters"));
+    if [&auth_pw, &priv_pw]
+        .into_iter()
+        .flatten()
+        .any(|pw| pw.chars().count() < MIN_PASSWORD_LEN)
+    {
+        return Err(format!(
+            "SNMPv3 passwords have at least {MIN_PASSWORD_LEN} characters"
+        ));
     }
-    Ok(usm::Credentials { user, auth: auth_pw.map(|pw| (opts.auth, pw)), privacy: priv_pw.map(|pw| (opts.privacy, pw)) })
+    Ok(usm::Credentials {
+        user,
+        auth: auth_pw.map(|pw| (opts.auth, pw)),
+        privacy: priv_pw.map(|pw| (opts.privacy, pw)),
+    })
 }
 
 /// Sends `packet` and waits for the answer `accept` recognises (`None`: not
@@ -319,17 +391,35 @@ async fn exchange<T>(
 }
 
 /// A v1/v2c GET: the value and the round trip in ms.
-async fn get_community(socket: &UdpSocket, version: Version, community: &str, oid: &[u8], timeout: Duration, peer: &str) -> Result<(Value, i64), String> {
+async fn get_community(
+    socket: &UdpSocket,
+    version: Version,
+    community: &str,
+    oid: &[u8],
+    timeout: Duration,
+    peer: &str,
+) -> Result<(Value, i64), String> {
     let request_id = i32::from(rand::random::<u16>()) + 1;
-    let packet = get_request(if version == Version::V1 { 0 } else { 1 }, community, request_id, oid);
+    let packet = get_request(
+        if version == Version::V1 { 0 } else { 1 },
+        community,
+        request_id,
+        oid,
+    );
     let start = Instant::now();
     // Two tries share the timeout: a lost datagram shouldn't mean "down".
     let per_try = (timeout / 2).max(Duration::from_millis(500)).min(timeout);
-    let answer = exchange(socket, &packet, per_try, start + timeout, |reply| match parse_response(reply, request_id) {
-        // A stray datagram (old try, wrong id): keep listening.
-        Err(e) if e == "Not an SNMP answer" => None,
-        parsed => Some(parsed),
-    })
+    let answer = exchange(
+        socket,
+        &packet,
+        per_try,
+        start + timeout,
+        |reply| match parse_response(reply, request_id) {
+            // A stray datagram (old try, wrong id): keep listening.
+            Err(e) if e == "Not an SNMP answer" => None,
+            parsed => Some(parsed),
+        },
+    )
     .await?;
     let ms = util::elapsed_ms(start);
     match answer {
@@ -343,23 +433,51 @@ async fn get_community(socket: &UdpSocket, version: Version, community: &str, oi
 
 /// A v3 GET: engine discovery, then the request at the credentials' level
 /// (once more after a time-window resync). The value and the GET's round trip.
-async fn get_v3(socket: &UdpSocket, creds: &usm::Credentials, context: &str, oid: &[u8], timeout: Duration, peer: &str) -> Result<(Value, i64), String> {
+async fn get_v3(
+    socket: &UdpSocket,
+    creds: &usm::Credentials,
+    context: &str,
+    oid: &[u8],
+    timeout: Duration,
+    peer: &str,
+) -> Result<(Value, i64), String> {
     let start = Instant::now();
     // Leave the engine's own timeout a moment, so this message wins.
     let deadline = start + timeout.mul_f64(0.95);
     let per_try = (timeout / 4).max(Duration::from_millis(500)).min(timeout);
-    let ids = || (i32::from(rand::random::<u16>()) + 1, i32::from(rand::random::<u16>()) + 1);
+    let ids = || {
+        (
+            i32::from(rand::random::<u16>()) + 1,
+            i32::from(rand::random::<u16>()) + 1,
+        )
+    };
     let accept = |msg_id: i32, keys: Option<&usm::Keys>| {
         let keys = keys.cloned();
-        move |reply: &[u8]| (usm::msg_id(reply) == Some(i64::from(msg_id))).then(|| usm::parse(reply, keys.as_ref()))
+        move |reply: &[u8]| {
+            (usm::msg_id(reply) == Some(i64::from(msg_id)))
+                .then(|| usm::parse(reply, keys.as_ref()))
+        }
     };
 
     let (msg_id, request_id) = ids();
-    let discovered = exchange(socket, &usm::discovery(msg_id, request_id), per_try, deadline, accept(msg_id, None))
-        .await?
-        .ok_or_else(|| format!("No SNMPv3 answer from {peer} within {} (SNMP off, blocked, or no SNMPv3 there?)", util::format_secs(timeout)))??;
+    let discovered = exchange(
+        socket,
+        &usm::discovery(msg_id, request_id),
+        per_try,
+        deadline,
+        accept(msg_id, None),
+    )
+    .await?
+    .ok_or_else(|| {
+        format!(
+            "No SNMPv3 answer from {peer} within {} (SNMP off, blocked, or no SNMPv3 there?)",
+            util::format_secs(timeout)
+        )
+    })??;
     if discovered.pdu_tag != usm::REPORT || discovered.engine.id.is_empty() {
-        return Err("The device didn't answer the SNMPv3 engine discovery with its engine ID".into());
+        return Err(
+            "The device didn't answer the SNMPv3 engine discovery with its engine ID".into(),
+        );
     }
     let keys = creds.keys(&discovered.engine.id);
     let mut engine = discovered.engine;
@@ -376,14 +494,24 @@ async fn get_v3(socket: &UdpSocket, creds: &usm::Credentials, context: &str, oid
             oid: Some(oid),
             salt: rand::random(),
         };
-        let reply = exchange(socket, &usm::build(&request), per_try, deadline, accept(msg_id, Some(&keys))).await?;
+        let reply = exchange(
+            socket,
+            &usm::build(&request),
+            per_try,
+            deadline,
+            accept(msg_id, Some(&keys)),
+        )
+        .await?;
         let Some(reply) = reply else {
             let why = if keys.encrypts() {
                 ": with a privacy password set, that usually means it (or the privacy protocol) is wrong"
             } else {
                 ""
             };
-            return Err(format!("{peer} answered the SNMPv3 discovery but not the request within {}{why}", util::format_secs(timeout)));
+            return Err(format!(
+                "{peer} answered the SNMPv3 discovery but not the request within {}{why}",
+                util::format_secs(timeout)
+            ));
         };
         let reply = reply?;
         if reply.pdu_tag == usm::REPORT {
@@ -391,11 +519,19 @@ async fn get_v3(socket: &UdpSocket, creds: &usm::Credentials, context: &str, oid
             match usm::report_reason(&oid) {
                 Some(usm::ReportReason::NotInTimeWindow) if attempt == 0 => {
                     // The engine's clock moved (or it rebooted): take its time and retry.
-                    engine = usm::Engine { id: engine.id, ..reply.engine };
+                    engine = usm::Engine {
+                        id: engine.id,
+                        ..reply.engine
+                    };
                     continue;
                 }
                 Some(reason) => return Err(reason.message(&creds.user)),
-                None => return Err(format!("The device answered with an SNMPv3 report ({})", util::truncate(&oid, 60))),
+                None => {
+                    return Err(format!(
+                        "The device answered with an SNMPv3 report ({})",
+                        util::truncate(&oid, 60)
+                    ));
+                }
             }
         }
         if reply.pdu_tag != GET_RESPONSE {
@@ -433,7 +569,11 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         },
         _ => None,
     };
-    let oid_text = if ep.path.is_empty() { DEFAULT_OID } else { ep.path.as_str() };
+    let oid_text = if ep.path.is_empty() {
+        DEFAULT_OID
+    } else {
+        ep.path.as_str()
+    };
     let oid = match encode_oid(oid_text) {
         Ok(o) => o,
         Err(e) => return CheckOutcome::down(e),
@@ -443,33 +583,61 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Err(e) => return CheckOutcome::down(e),
     };
     let timeout = super::timeout_of(monitor);
-    let socket = match UdpSocket::bind(if addr.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }).await {
+    let socket = match UdpSocket::bind(if addr.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    })
+    .await
+    {
         Ok(s) => s,
-        Err(e) => return CheckOutcome::down(format!("Can't open a UDP socket: {}", util::tidy_io_error(&e))),
+        Err(e) => {
+            return CheckOutcome::down(format!(
+                "Can't open a UDP socket: {}",
+                util::tidy_io_error(&e)
+            ));
+        }
     };
     if let Err(e) = socket.connect(addr).await {
-        return CheckOutcome::down(format!("Can't reach {}:{}: {}", addr.ip(), ep.port, util::tidy_io_error(&e)));
+        return CheckOutcome::down(format!(
+            "Can't reach {}:{}: {}",
+            addr.ip(),
+            ep.port,
+            util::tidy_io_error(&e)
+        ));
     }
     let peer = format!("{}:{}", addr.ip(), ep.port);
     let answer = match &creds {
         Some(creds) => get_v3(&socket, creds, &opts.context, &oid, timeout, &peer).await,
         None => {
-            let community = monitor.secret.as_deref().filter(|c| !c.is_empty()).unwrap_or("public");
+            let community = monitor
+                .secret
+                .as_deref()
+                .filter(|c| !c.is_empty())
+                .unwrap_or("public");
             get_community(&socket, opts.version, community, &oid, timeout, &peer).await
         }
     };
     let (value, ms) = match answer {
         Err(e) => return CheckOutcome::down(e),
-        Ok((Value::Missing, _)) => return CheckOutcome::down(format!("The device has no value for {oid_text}")),
+        Ok((Value::Missing, _)) => {
+            return CheckOutcome::down(format!("The device has no value for {oid_text}"));
+        }
         Ok((Value::Text(t), ms)) => (t, ms),
     };
     let shown = util::truncate(&value, 120);
     match monitor.keyword.as_deref().filter(|k| !k.is_empty()) {
-        Some(keyword) if value.contains(keyword) == monitor.keyword_invert => CheckOutcome::down(format!(
-            "{oid_text} = {shown}: {} \"{}\"",
-            if monitor.keyword_invert { "contains" } else { "doesn't contain" },
-            util::truncate(keyword, 40)
-        )),
+        Some(keyword) if value.contains(keyword) == monitor.keyword_invert => {
+            CheckOutcome::down(format!(
+                "{oid_text} = {shown}: {} \"{}\"",
+                if monitor.keyword_invert {
+                    "contains"
+                } else {
+                    "doesn't contain"
+                },
+                util::truncate(keyword, 40)
+            ))
+        }
         _ => CheckOutcome::up(ms).with_message(format!("{oid_text} = {shown}")),
     }
 }

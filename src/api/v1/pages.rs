@@ -6,7 +6,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -22,14 +22,48 @@ use crate::db::status_pages::{self as db_pages, StatusPage};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/status-pages", get(list).post(create))
-        .route("/status-pages/{id}", get(show).put(update).patch(update).delete(remove))
+        .route(
+            "/status-pages/{id}",
+            get(show).put(update).patch(update).delete(remove),
+        )
         .route("/status-pages/{id}/sections", put(set_sections))
-        .route("/status-pages/{id}/incidents", get(list_incidents).post(create_incident))
+        .route(
+            "/status-pages/{id}/incidents",
+            get(list_incidents).post(create_incident),
+        )
         .route(
             "/status-pages/{id}/incidents/{iid}",
-            get(show_incident).put(update_incident).patch(update_incident).delete(delete_incident),
+            get(show_incident)
+                .put(update_incident)
+                .patch(update_incident)
+                .delete(delete_incident),
         )
-        .layer(axum::middleware::from_fn(crate::api::public_status::invalidate_after_writes))
+        .route(
+            "/status-pages/{id}/incidents/{iid}/updates",
+            get(list_updates).post(post_update),
+        )
+        .route(
+            "/status-pages/{id}/incidents/{iid}/updates/{uid}",
+            axum::routing::delete(delete_update),
+        )
+        .route(
+            "/status-pages/{id}/subscription",
+            get(show_subscription)
+                .put(set_subscription)
+                .patch(set_subscription),
+        )
+        .route("/status-pages/{id}/subscribers", get(list_subscribers))
+        .route(
+            "/status-pages/{id}/subscribers/{sid}",
+            axum::routing::delete(delete_subscriber),
+        )
+        .route(
+            "/status-pages/{id}/subscribers/{sid}/approve",
+            post(approve_subscriber),
+        )
+        .layer(axum::middleware::from_fn(
+            crate::api::public_status::invalidate_after_writes,
+        ))
 }
 
 fn page_json(conn: &Connection, p: &StatusPage) -> rusqlite::Result<Value> {
@@ -68,7 +102,11 @@ async fn load(state: &AppState, id: i64) -> V1Result<Value> {
         .ok_or_else(V1Error::not_found)
 }
 
-async fn list(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap) -> V1Result<Response> {
+async fn list(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+) -> V1Result<Response> {
     let data = state
         .with_conn(|c| {
             let mut out = Vec::new();
@@ -82,10 +120,18 @@ async fn list(State(state): State<AppState>, _user: CurrentUser, headers: Header
             Ok(out)
         })
         .await?;
-    Ok(json_ok(&headers, &json!({ "data": data, "next_cursor": null })))
+    Ok(json_ok(
+        &headers,
+        &json!({ "data": data, "next_cursor": null }),
+    ))
 }
 
-async fn show(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id(id): Id<i64>) -> V1Result<Response> {
+async fn show(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
     Ok(json_ok(&headers, &load(&state, id).await?))
 }
 
@@ -179,7 +225,10 @@ fn sections_of(list: &[SectionIn]) -> V1Result<Vec<(String, Vec<i64>)>> {
         .map(|s| {
             let name = s.name.trim().to_string();
             if name.chars().count() > 80 {
-                return Err(V1Error::field("sections", "Keep section names to 80 characters or fewer."));
+                return Err(V1Error::field(
+                    "sections",
+                    "Keep section names to 80 characters or fewer.",
+                ));
             }
             let mut ids = s.monitor_ids.clone();
             let mut seen = std::collections::HashSet::new();
@@ -209,25 +258,38 @@ fn save(
         Err(errors) => return Ok(Err(V1Error::fields(errors))),
     };
     if db_pages::slug_taken(conn, &page.slug, id)? {
-        return Ok(Err(V1Error::conflict("Another page already uses this slug.")));
+        return Ok(Err(V1Error::conflict(
+            "Another page already uses this slug.",
+        )));
     }
     if let Some(d) = &page.custom_domain {
         let base_url = crate::db::settings::load(conn)?.base_url;
         let hosts: Vec<&str> = hosts.iter().map(String::as_str).collect();
         if db_pages::is_own_host(d, base_url.as_deref(), &hosts) {
-            return Ok(Err(V1Error::field("custom_domain", crate::i18n::t("sp.err_domain_self"))));
+            return Ok(Err(V1Error::field(
+                "custom_domain",
+                crate::i18n::t("sp.err_domain_self"),
+            )));
         }
     }
     if let Some(d) = &page.custom_domain
         && db_pages::domain_taken(conn, d, id)?
     {
-        return Ok(Err(V1Error::conflict("Another page already uses this domain.")));
+        return Ok(Err(V1Error::conflict(
+            "Another page already uses this domain.",
+        )));
     }
     if let Some(list) = sections {
-        let all: Vec<i64> = list.iter().flat_map(|(_, ids)| ids.iter().copied()).collect();
+        let all: Vec<i64> = list
+            .iter()
+            .flat_map(|(_, ids)| ids.iter().copied())
+            .collect();
         let existing = crate::db::monitors::existing_ids(conn, &all)?;
         if let Some(bad) = all.iter().find(|id| !existing.contains(id)) {
-            return Ok(Err(V1Error::field("sections", format!("No monitor with id {bad}."))));
+            return Ok(Err(V1Error::field(
+                "sections",
+                format!("No monitor with id {bad}."),
+            )));
         }
     }
     let tx = conn.transaction()?;
@@ -259,7 +321,12 @@ fn save(
             )?;
             let id = tx.last_insert_rowid();
             if sections.is_none() {
-                config_io::write_sections(&tx, id, &[("Services".into(), Vec::new())], &HashMap::new())?;
+                config_io::write_sections(
+                    &tx,
+                    id,
+                    &[("Services".into(), Vec::new())],
+                    &HashMap::new(),
+                )?;
             }
             id
         }
@@ -289,7 +356,12 @@ fn request_hosts(headers: &HeaderMap) -> Vec<String> {
         .collect()
 }
 
-async fn create(State(state): State<AppState>, user: CurrentUser, headers: HeaderMap, Body(input): Body<PageIn>) -> V1Result<Response> {
+async fn create(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+    Body(input): Body<PageIn>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     let mut base = doc_of(&StatusPage {
         id: 0,
@@ -324,25 +396,45 @@ async fn create(State(state): State<AppState>, user: CurrentUser, headers: Heade
     let page = config_io::validate_page(&doc).map_err(V1Error::fields)?;
     let sections = input.sections.as_deref().map(sections_of).transpose()?;
     let hosts = request_hosts(&headers);
-    let id = state.with_conn(move |c| save(c, None, &page, sections.as_deref(), &hosts, &doc)).await??;
+    let id = state
+        .with_conn(move |c| save(c, None, &page, sections.as_deref(), &hosts, &doc))
+        .await??;
     changed(&state);
     tracing::info!(user = %user.username, page_id = id, "status page created via API");
-    Ok(created(format!("/api/v1/status-pages/{id}"), &load(&state, id).await?))
+    Ok(created(
+        format!("/api/v1/status-pages/{id}"),
+        &load(&state, id).await?,
+    ))
 }
 
-async fn update(State(state): State<AppState>, user: CurrentUser, headers: HeaderMap, Id(id): Id<i64>, Body(input): Body<PageIn>) -> V1Result<Response> {
+async fn update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+    Id(id): Id<i64>,
+    Body(input): Body<PageIn>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
-    let current = state.with_conn(move |c| db_pages::get(c, id)).await?.ok_or_else(V1Error::not_found)?;
+    let current = state
+        .with_conn(move |c| db_pages::get(c, id))
+        .await?
+        .ok_or_else(V1Error::not_found)?;
     let doc = merge(&input, doc_of(&current));
     let page = config_io::validate_page(&doc).map_err(V1Error::fields)?;
     let sections = input.sections.as_deref().map(sections_of).transpose()?;
     let hosts = request_hosts(&headers);
-    state.with_conn(move |c| save(c, Some(id), &page, sections.as_deref(), &hosts, &doc)).await??;
+    state
+        .with_conn(move |c| save(c, Some(id), &page, sections.as_deref(), &hosts, &doc))
+        .await??;
     changed(&state);
     Ok(json_ok(&HeaderMap::new(), &load(&state, id).await?))
 }
 
-async fn remove(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>) -> V1Result<Response> {
+async fn remove(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     if !state.with_conn(move |c| db_pages::delete(c, id)).await? {
         return Err(V1Error::not_found());
@@ -352,13 +444,23 @@ async fn remove(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64
 }
 
 /// `PUT /status-pages/{id}/sections` — replace the layout.
-async fn set_sections(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>, Body(list): Body<Vec<SectionIn>>) -> V1Result<Response> {
+async fn set_sections(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+    Body(list): Body<Vec<SectionIn>>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
-    let current = state.with_conn(move |c| db_pages::get(c, id)).await?.ok_or_else(V1Error::not_found)?;
+    let current = state
+        .with_conn(move |c| db_pages::get(c, id))
+        .await?
+        .ok_or_else(V1Error::not_found)?;
     let page = current.to_new();
     let doc = doc_of(&current);
     let sections = sections_of(&list)?;
-    state.with_conn(move |c| save(c, Some(id), &page, Some(&sections), &[], &doc)).await??;
+    state
+        .with_conn(move |c| save(c, Some(id), &page, Some(&sections), &[], &doc))
+        .await??;
     changed(&state);
     Ok(json_ok(&HeaderMap::new(), &load(&state, id).await?))
 }
@@ -384,38 +486,190 @@ fn validate_incident(input: &IncidentIn, base: NewIncident) -> V1Result<NewIncid
         return Err(V1Error::field("title", "Give the incident a title."));
     }
     if title.chars().count() > 200 {
-        return Err(V1Error::field("title", "Keep the title to 200 characters or fewer."));
+        return Err(V1Error::field(
+            "title",
+            "Keep the title to 200 characters or fewer.",
+        ));
     }
     let body = input.body.clone().unwrap_or(base.body);
     if body.len() > 20_000 {
-        return Err(V1Error::field("body", "Keep the update under 20,000 characters."));
+        return Err(V1Error::field(
+            "body",
+            "Keep the update under 20,000 characters.",
+        ));
     }
     let severity = input.severity.clone().unwrap_or(base.severity);
     if !db_incidents::SEVERITIES.contains(&severity.as_str()) {
-        return Err(V1Error::field("severity", "Use info, warning, danger or success."));
+        return Err(V1Error::field(
+            "severity",
+            "Use info, warning, danger or success.",
+        ));
     }
-    Ok(NewIncident { title, body: body.trim().to_string(), severity, pinned: input.pinned.unwrap_or(base.pinned) })
+    Ok(NewIncident {
+        title,
+        body: body.trim().to_string(),
+        severity,
+        pinned: input.pinned.unwrap_or(base.pinned),
+    })
 }
 
 async fn page_exists(state: &AppState, id: i64) -> V1Result<()> {
-    state.with_conn(move |c| db_pages::get(c, id)).await?.map(|_| ()).ok_or_else(V1Error::not_found)
+    state
+        .with_conn(move |c| db_pages::get(c, id))
+        .await?
+        .map(|_| ())
+        .ok_or_else(V1Error::not_found)
 }
 
-async fn list_incidents(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id(id): Id<i64>) -> V1Result<Response> {
+async fn list_incidents(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
     page_exists(&state, id).await?;
-    let data = state.with_conn(move |c| db_incidents::list_for_page(c, id)).await?;
-    Ok(json_ok(&headers, &json!({ "data": data, "next_cursor": null })))
+    let data = state
+        .with_conn(move |c| db_incidents::list_for_page(c, id))
+        .await?;
+    Ok(json_ok(
+        &headers,
+        &json!({ "data": data, "next_cursor": null }),
+    ))
 }
 
-async fn show_incident(State(state): State<AppState>, _user: CurrentUser, headers: HeaderMap, Id((id, iid)): Id<(i64, i64)>) -> V1Result<Response> {
-    let incident = state.with_conn(move |c| db_incidents::get(c, id, iid)).await?.ok_or_else(V1Error::not_found)?;
-    Ok(json_ok(&headers, &incident))
+async fn show_incident(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+    Id((id, iid)): Id<(i64, i64)>,
+) -> V1Result<Response> {
+    let (incident, updates) = state
+        .with_conn(move |c| match db_incidents::get(c, id, iid)? {
+            Some(i) => db_incidents::list_updates(c, iid).map(|u| Some((i, u))),
+            None => Ok(None),
+        })
+        .await?
+        .ok_or_else(V1Error::not_found)?;
+    let mut value = serde_json::to_value(&incident).unwrap_or_else(|_| json!({}));
+    value["updates"] = serde_json::to_value(&updates).unwrap_or_else(|_| json!([]));
+    Ok(json_ok(&headers, &value))
 }
 
-async fn create_incident(State(state): State<AppState>, user: CurrentUser, Id(id): Id<i64>, Body(input): Body<IncidentIn>) -> V1Result<Response> {
+#[derive(Debug, Deserialize)]
+struct UpdateIn {
+    status: Option<String>,
+    body: Option<String>,
+}
+
+async fn list_updates(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+    Id((id, iid)): Id<(i64, i64)>,
+) -> V1Result<Response> {
+    let updates = state
+        .with_conn(move |c| match db_incidents::get(c, id, iid)? {
+            Some(_) => db_incidents::list_updates(c, iid).map(Some),
+            None => Ok(None),
+        })
+        .await?
+        .ok_or_else(V1Error::not_found)?;
+    Ok(json_ok(
+        &headers,
+        &json!({ "data": updates, "next_cursor": null }),
+    ))
+}
+
+async fn post_update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id((id, iid)): Id<(i64, i64)>,
+    Body(input): Body<UpdateIn>,
+) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    let status = input
+        .status
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    if !db_incidents::UPDATE_STATUSES.contains(&status.as_str()) {
+        return Err(V1Error::field(
+            "status",
+            "Use investigating, identified, monitoring or resolved.",
+        ));
+    }
+    let body = input
+        .body
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    if body.is_empty() {
+        return Err(V1Error::field("body", "Write what changed."));
+    }
+    if body.chars().count() > 5_000 {
+        return Err(V1Error::field(
+            "body",
+            "Keep the update to 5,000 characters or fewer.",
+        ));
+    }
+    let update = state
+        .with_conn(
+            move |c| match db_incidents::add_update(c, id, iid, &status, &body)? {
+                Some(uid) => Ok(db_incidents::list_updates(c, iid)?
+                    .into_iter()
+                    .find(|u| u.id == uid)),
+                None => Ok(None),
+            },
+        )
+        .await?
+        .ok_or_else(V1Error::not_found)?;
+    state.notify_update();
+    let kind = if update.status == "resolved" {
+        crate::subscribers::Kind::Resolved
+    } else {
+        crate::subscribers::Kind::Update
+    };
+    crate::subscribers::announce_incident(&state, id, iid, kind);
+    Ok(created(
+        format!(
+            "/api/v1/status-pages/{id}/incidents/{iid}/updates/{}",
+            update.id
+        ),
+        &update,
+    ))
+}
+
+async fn delete_update(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id((id, iid, uid)): Id<(i64, i64, i64)>,
+) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    if !state
+        .with_conn(move |c| db_incidents::delete_update(c, id, iid, uid))
+        .await?
+    {
+        return Err(V1Error::not_found());
+    }
+    state.notify_update();
+    Ok(no_content())
+}
+
+async fn create_incident(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+    Body(input): Body<IncidentIn>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
     page_exists(&state, id).await?;
-    let base = NewIncident { severity: "info".into(), pinned: true, ..NewIncident::default() };
+    let base = NewIncident {
+        severity: "info".into(),
+        pinned: true,
+        ..NewIncident::default()
+    };
     let new = validate_incident(&input, base)?;
     let resolved = input.resolved.unwrap_or(false);
     let incident = state
@@ -429,13 +683,38 @@ async fn create_incident(State(state): State<AppState>, user: CurrentUser, Id(id
         .await?
         .ok_or_else(|| V1Error::internal("incident vanished after insert"))?;
     state.notify_update();
-    Ok(created(format!("/api/v1/status-pages/{id}/incidents/{}", incident.id), &incident))
+    if !incident.is_resolved() {
+        crate::subscribers::announce_incident(
+            &state,
+            id,
+            incident.id,
+            crate::subscribers::Kind::Incident,
+        );
+    }
+    Ok(created(
+        format!("/api/v1/status-pages/{id}/incidents/{}", incident.id),
+        &incident,
+    ))
 }
 
-async fn update_incident(State(state): State<AppState>, user: CurrentUser, Id((id, iid)): Id<(i64, i64)>, Body(input): Body<IncidentIn>) -> V1Result<Response> {
+async fn update_incident(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id((id, iid)): Id<(i64, i64)>,
+    Body(input): Body<IncidentIn>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
-    let current = state.with_conn(move |c| db_incidents::get(c, id, iid)).await?.ok_or_else(V1Error::not_found)?;
-    let base = NewIncident { title: current.title, body: current.body, severity: current.severity, pinned: current.pinned };
+    let current = state
+        .with_conn(move |c| db_incidents::get(c, id, iid))
+        .await?
+        .ok_or_else(V1Error::not_found)?;
+    let was_resolved = current.is_resolved();
+    let base = NewIncident {
+        title: current.title,
+        body: current.body,
+        severity: current.severity,
+        pinned: current.pinned,
+    };
     let new = validate_incident(&input, base)?;
     let resolved = input.resolved;
     let incident = state
@@ -449,14 +728,152 @@ async fn update_incident(State(state): State<AppState>, user: CurrentUser, Id((i
         .await?
         .ok_or_else(V1Error::not_found)?;
     state.notify_update();
+    if incident.is_resolved() && !was_resolved {
+        crate::subscribers::announce_incident(&state, id, iid, crate::subscribers::Kind::Resolved);
+    }
     Ok(json_ok(&HeaderMap::new(), &incident))
 }
 
-async fn delete_incident(State(state): State<AppState>, user: CurrentUser, Id((id, iid)): Id<(i64, i64)>) -> V1Result<Response> {
+async fn delete_incident(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id((id, iid)): Id<(i64, i64)>,
+) -> V1Result<Response> {
     user.require(Role::Editor)?;
-    if !state.with_conn(move |c| db_incidents::delete(c, id, iid)).await? {
+    if !state
+        .with_conn(move |c| db_incidents::delete(c, id, iid))
+        .await?
+    {
         return Err(V1Error::not_found());
     }
     state.notify_update();
+    Ok(no_content())
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions
+// ---------------------------------------------------------------------------
+
+fn subscription_json(s: &crate::db::subscribers::Settings) -> Value {
+    json!({ "enabled": s.enabled, "channel_id": s.channel_id, "webhooks": s.webhooks })
+}
+
+async fn show_subscription(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    headers: HeaderMap,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
+    page_exists(&state, id).await?;
+    let s = state
+        .with_conn(move |c| crate::db::subscribers::settings(c, id))
+        .await?;
+    Ok(json_ok(&headers, &subscription_json(&s)))
+}
+
+#[derive(Debug, Deserialize)]
+struct SubscriptionIn {
+    enabled: Option<bool>,
+    /// An email notification channel's id; `null` removes it.
+    #[serde(default, deserialize_with = "double_option")]
+    channel_id: Option<Option<i64>>,
+    webhooks: Option<bool>,
+}
+
+fn double_option<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<i64>>, D::Error> {
+    Option::<i64>::deserialize(d).map(Some)
+}
+
+async fn set_subscription(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id(id): Id<i64>,
+    Body(input): Body<SubscriptionIn>,
+) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    page_exists(&state, id).await?;
+    let mut s = state
+        .with_conn(move |c| crate::db::subscribers::settings(c, id))
+        .await?;
+    if let Some(v) = input.enabled {
+        s.enabled = v;
+    }
+    if let Some(v) = input.webhooks {
+        s.webhooks = v;
+    }
+    if let Some(channel) = input.channel_id {
+        if let Some(cid) = channel {
+            let is_email = state
+                .with_conn(move |c| crate::db::notifications::get_channel(c, cid))
+                .await?
+                .is_some_and(|ch| ch.kind == "email");
+            if !is_email {
+                return Err(V1Error::field(
+                    "channel_id",
+                    "Use the id of an email notification channel.",
+                ));
+            }
+        }
+        s.channel_id = channel;
+    }
+    state
+        .with_conn(move |c| crate::db::subscribers::set_settings(c, id, &s))
+        .await?;
+    state.notify_update();
+    Ok(json_ok(&HeaderMap::new(), &subscription_json(&s)))
+}
+
+async fn list_subscribers(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+    Id(id): Id<i64>,
+) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    page_exists(&state, id).await?;
+    let data = state
+        .with_conn(move |c| crate::db::subscribers::list(c, id))
+        .await?;
+    Ok(json_ok(
+        &headers,
+        &json!({ "data": data, "next_cursor": null }),
+    ))
+}
+
+/// Approves a webhook sign-up (webhooks are never confirmed by their link).
+async fn approve_subscriber(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+    Id((id, sid)): Id<(i64, i64)>,
+) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    let Some(sub) = state
+        .with_conn(move |c| crate::db::subscribers::approve(c, id, sid))
+        .await?
+    else {
+        return Err(V1Error::not_found());
+    };
+    let bg = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::subscribers::send_welcome(&bg, id, sid).await {
+            tracing::warn!(page = id, subscriber = sid, error = %e, "webhook welcome failed");
+        }
+    });
+    Ok(json_ok(&headers, &json!(sub)))
+}
+
+async fn delete_subscriber(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Id((id, sid)): Id<(i64, i64)>,
+) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    if !state
+        .with_conn(move |c| crate::db::subscribers::delete(c, id, sid))
+        .await?
+    {
+        return Err(V1Error::not_found());
+    }
     Ok(no_content())
 }

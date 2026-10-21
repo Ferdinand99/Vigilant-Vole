@@ -13,7 +13,7 @@ pub struct MaintenanceWindow {
     pub id: i64,
     pub title: String,
     pub description: String,
-    /// "manual" | "once" | "daily" | "weekly".
+    /// "manual" | "once" | "daily" | "weekly" | "interval" | "monthly" | "cron".
     pub strategy: String,
     /// Manual: "in maintenance right now". Scheduled: enabled (not paused).
     pub active: bool,
@@ -25,6 +25,14 @@ pub struct MaintenanceWindow {
     pub weekdays: Option<String>,
     pub time_from: Option<String>,
     pub time_to: Option<String>,
+    /// Interval: run every this many days, counted from the first date (`start_at`).
+    pub interval_days: Option<i64>,
+    /// Monthly: days of the month, e.g. "1,15,-1" (negative = from the end).
+    pub month_days: Option<String>,
+    /// Cron: five-field expression, evaluated in `timezone`.
+    pub cron: Option<String>,
+    /// Cron: how long each occurrence lasts.
+    pub duration_minutes: Option<i64>,
     pub timezone: String,
     /// Recurring occurrences that started before this were ended early.
     pub skip_until: Option<String>,
@@ -46,13 +54,17 @@ pub struct NewWindow {
     pub weekdays: Option<String>,
     pub time_from: Option<String>,
     pub time_to: Option<String>,
+    pub interval_days: Option<i64>,
+    pub month_days: Option<String>,
+    pub cron: Option<String>,
+    pub duration_minutes: Option<i64>,
     pub timezone: String,
     pub monitor_ids: Vec<i64>,
     pub status_page_ids: Vec<i64>,
 }
 
 const COLUMNS: &str = "id, title, description, strategy, active, start_at, end_at, weekdays, time_from, time_to, \
-                       timezone, skip_until, created_at";
+                       interval_days, month_days, cron, duration_minutes, timezone, skip_until, created_at";
 
 pub fn row_to_window(row: &Row) -> rusqlite::Result<MaintenanceWindow> {
     Ok(MaintenanceWindow {
@@ -66,6 +78,10 @@ pub fn row_to_window(row: &Row) -> rusqlite::Result<MaintenanceWindow> {
         weekdays: row.get("weekdays")?,
         time_from: row.get("time_from")?,
         time_to: row.get("time_to")?,
+        interval_days: row.get("interval_days")?,
+        month_days: row.get("month_days")?,
+        cron: row.get("cron")?,
+        duration_minutes: row.get("duration_minutes")?,
         timezone: row.get("timezone")?,
         skip_until: row.get("skip_until")?,
         created_at: row.get("created_at")?,
@@ -73,20 +89,27 @@ pub fn row_to_window(row: &Row) -> rusqlite::Result<MaintenanceWindow> {
 }
 
 pub fn list(conn: &Connection) -> rusqlite::Result<Vec<MaintenanceWindow>> {
-    let mut stmt = conn.prepare(&format!("SELECT {COLUMNS} FROM maintenance_windows ORDER BY id DESC"))?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM maintenance_windows ORDER BY id DESC"
+    ))?;
     let rows = stmt.query_map([], row_to_window)?;
     rows.collect()
 }
 
 /// Windows that may be in effect (manual ones switched on, scheduled ones not paused).
 pub fn list_enabled(conn: &Connection) -> rusqlite::Result<Vec<MaintenanceWindow>> {
-    let mut stmt = conn.prepare(&format!("SELECT {COLUMNS} FROM maintenance_windows WHERE active = 1"))?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM maintenance_windows WHERE active = 1"
+    ))?;
     let rows = stmt.query_map([], row_to_window)?;
     rows.collect()
 }
 
 /// Enabled windows linked to a status page.
-pub fn list_for_status_page(conn: &Connection, status_page_id: i64) -> rusqlite::Result<Vec<MaintenanceWindow>> {
+pub fn list_for_status_page(
+    conn: &Connection,
+    status_page_id: i64,
+) -> rusqlite::Result<Vec<MaintenanceWindow>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS} FROM maintenance_windows
          WHERE active = 1 AND id IN (SELECT maintenance_id FROM maintenance_status_pages WHERE status_page_id = ?1)
@@ -109,8 +132,9 @@ pub fn insert(conn: &mut Connection, w: &NewWindow) -> rusqlite::Result<i64> {
     let tx = conn.transaction()?;
     tx.execute(
         "INSERT INTO maintenance_windows
-             (title, description, strategy, active, start_at, end_at, weekdays, time_from, time_to, timezone)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             (title, description, strategy, active, start_at, end_at, weekdays, time_from, time_to, timezone,
+              interval_days, month_days, cron, duration_minutes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             w.title,
             w.description,
@@ -121,7 +145,11 @@ pub fn insert(conn: &mut Connection, w: &NewWindow) -> rusqlite::Result<i64> {
             w.weekdays,
             w.time_from,
             w.time_to,
-            w.timezone
+            w.timezone,
+            w.interval_days,
+            w.month_days,
+            w.cron,
+            w.duration_minutes
         ],
     )?;
     let id = tx.last_insert_rowid();
@@ -136,7 +164,8 @@ pub fn update(conn: &mut Connection, id: i64, w: &NewWindow) -> rusqlite::Result
     let tx = conn.transaction()?;
     let n = tx.execute(
         "UPDATE maintenance_windows SET title = ?2, description = ?3, strategy = ?4, active = ?5, start_at = ?6,
-             end_at = ?7, weekdays = ?8, time_from = ?9, time_to = ?10, timezone = ?11, skip_until = NULL
+             end_at = ?7, weekdays = ?8, time_from = ?9, time_to = ?10, timezone = ?11, interval_days = ?12,
+             month_days = ?13, cron = ?14, duration_minutes = ?15, skip_until = NULL
          WHERE id = ?1",
         params![
             id,
@@ -149,14 +178,24 @@ pub fn update(conn: &mut Connection, id: i64, w: &NewWindow) -> rusqlite::Result
             w.weekdays,
             w.time_from,
             w.time_to,
-            w.timezone
+            w.timezone,
+            w.interval_days,
+            w.month_days,
+            w.cron,
+            w.duration_minutes
         ],
     )?;
     if n == 0 {
         return Ok(false);
     }
-    tx.execute("DELETE FROM maintenance_monitors WHERE maintenance_id = ?1", params![id])?;
-    tx.execute("DELETE FROM maintenance_status_pages WHERE maintenance_id = ?1", params![id])?;
+    tx.execute(
+        "DELETE FROM maintenance_monitors WHERE maintenance_id = ?1",
+        params![id],
+    )?;
+    tx.execute(
+        "DELETE FROM maintenance_status_pages WHERE maintenance_id = ?1",
+        params![id],
+    )?;
     write_links(&tx, id, w)?;
     tx.commit()?;
     Ok(true)
@@ -191,14 +230,23 @@ pub fn set_active(conn: &Connection, id: i64, active: bool) -> rusqlite::Result<
     )? > 0)
 }
 
-pub fn set_times(conn: &Connection, id: i64, start_at: Option<&str>, end_at: Option<&str>) -> rusqlite::Result<bool> {
+pub fn set_times(
+    conn: &Connection,
+    id: i64,
+    start_at: Option<&str>,
+    end_at: Option<&str>,
+) -> rusqlite::Result<bool> {
     Ok(conn.execute(
         "UPDATE maintenance_windows SET start_at = ?2, end_at = ?3 WHERE id = ?1",
         params![id, start_at, end_at],
     )? > 0)
 }
 
-pub fn set_skip_until(conn: &Connection, id: i64, skip_until: Option<&str>) -> rusqlite::Result<bool> {
+pub fn set_skip_until(
+    conn: &Connection,
+    id: i64,
+    skip_until: Option<&str>,
+) -> rusqlite::Result<bool> {
     Ok(conn.execute(
         "UPDATE maintenance_windows SET skip_until = ?2 WHERE id = ?1",
         params![id, skip_until],
@@ -206,8 +254,9 @@ pub fn set_skip_until(conn: &Connection, id: i64, skip_until: Option<&str>) -> r
 }
 
 pub fn monitor_ids(conn: &Connection, maintenance_id: i64) -> rusqlite::Result<Vec<i64>> {
-    let mut stmt =
-        conn.prepare_cached("SELECT monitor_id FROM maintenance_monitors WHERE maintenance_id = ?1 ORDER BY monitor_id")?;
+    let mut stmt = conn.prepare_cached(
+        "SELECT monitor_id FROM maintenance_monitors WHERE maintenance_id = ?1 ORDER BY monitor_id",
+    )?;
     let rows = stmt.query_map(params![maintenance_id], |r| r.get(0))?;
     rows.collect()
 }
@@ -229,7 +278,8 @@ pub fn all_monitor_links(conn: &Connection) -> rusqlite::Result<Vec<(i64, i64)>>
 
 /// `(child_id, parent_id)` for every monitor inside a group.
 pub fn group_edges(conn: &Connection) -> rusqlite::Result<Vec<(i64, i64)>> {
-    let mut stmt = conn.prepare_cached("SELECT id, parent_id FROM monitors WHERE parent_id IS NOT NULL")?;
+    let mut stmt =
+        conn.prepare_cached("SELECT id, parent_id FROM monitors WHERE parent_id IS NOT NULL")?;
     let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
     rows.collect()
 }
@@ -301,5 +351,128 @@ mod tests {
         let id = insert(&mut conn, &window("w", vec![a])).unwrap();
         monitors::delete_monitor(&conn, a).unwrap();
         assert!(monitor_ids(&conn, id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn migration_0100_keeps_windows_and_links_and_allows_the_new_strategies() {
+        // A database as the previous release left it, with a window linked to a monitor.
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::CONNECTION_PRAGMAS).unwrap();
+        crate::db::prepare_tracking(&conn).unwrap();
+        for (name, sql) in crate::db::embedded_migrations()
+            .into_iter()
+            .filter(|(n, _)| n.as_str() < "0100_")
+        {
+            crate::db::apply_one(&mut conn, &name, &sql).unwrap();
+        }
+        let m = monitor(&conn, "a");
+        conn.execute(
+            "INSERT INTO maintenance_windows (id, title, strategy, weekdays, time_from, time_to, timezone, skip_until)
+             VALUES (7, 'Weekly', 'weekly', '1,3', '22:00', '23:00', 'Europe/Oslo', '2026-01-01 00:00:00')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO maintenance_monitors (maintenance_id, monitor_id) VALUES (7, ?1)",
+            params![m],
+        )
+        .unwrap();
+        assert!(
+            conn.execute(
+                "INSERT INTO maintenance_windows (title, strategy) VALUES ('x', 'cron')",
+                []
+            )
+            .is_err(),
+            "the old table does not know cron"
+        );
+        let ran = crate::db::apply_migrations(&mut conn).unwrap();
+        assert_eq!(
+            ran.iter().filter(|n| n.starts_with("0100_")).count(),
+            1,
+            "{ran:?}"
+        );
+
+        let old = get(&conn, 7).unwrap().unwrap();
+        assert_eq!(
+            (
+                old.strategy.as_str(),
+                old.weekdays.as_deref(),
+                old.timezone.as_str()
+            ),
+            ("weekly", Some("1,3"), "Europe/Oslo")
+        );
+        assert_eq!(old.skip_until.as_deref(), Some("2026-01-01 00:00:00"));
+        assert_eq!(
+            (
+                old.interval_days,
+                old.month_days,
+                old.cron,
+                old.duration_minutes
+            ),
+            (None, None, None, None)
+        );
+        assert_eq!(
+            monitor_ids(&conn, 7).unwrap(),
+            vec![m],
+            "links survive the rebuild"
+        );
+
+        // The new strategies are accepted and round-trip.
+        let mut conn = conn;
+        for (strategy, w) in [
+            (
+                "interval",
+                NewWindow {
+                    interval_days: Some(3),
+                    start_at: Some("2026-10-01 00:00:00".into()),
+                    time_from: Some("01:00".into()),
+                    time_to: Some("02:00".into()),
+                    ..window("i", vec![])
+                },
+            ),
+            (
+                "monthly",
+                NewWindow {
+                    month_days: Some("1,-1".into()),
+                    time_from: Some("01:00".into()),
+                    time_to: Some("02:00".into()),
+                    ..window("m", vec![])
+                },
+            ),
+            (
+                "cron",
+                NewWindow {
+                    cron: Some("0 2 * * 0".into()),
+                    duration_minutes: Some(90),
+                    ..window("c", vec![m])
+                },
+            ),
+        ] {
+            let id = insert(
+                &mut conn,
+                &NewWindow {
+                    strategy: strategy.into(),
+                    ..w.clone()
+                },
+            )
+            .unwrap();
+            let back = get(&conn, id).unwrap().unwrap();
+            assert_eq!(back.strategy, strategy);
+            assert_eq!(
+                (
+                    back.interval_days,
+                    back.month_days,
+                    back.cron,
+                    back.duration_minutes
+                ),
+                (w.interval_days, w.month_days, w.cron, w.duration_minutes)
+            );
+        }
+        // Deleting a monitor still cascades to the rebuilt table's links.
+        monitors::delete_monitor(&conn, m).unwrap();
+        assert!(monitor_ids(&conn, 7).unwrap().is_empty());
+        // And a fresh database ends in the same shape.
+        let all = crate::db::apply_migrations(&mut Connection::open_in_memory().unwrap()).unwrap();
+        assert!(all.iter().any(|n| n.starts_with("0100_")));
     }
 }

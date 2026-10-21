@@ -13,7 +13,7 @@ pub const USER_AGENT: &str = concat!("VigilantVole/", env!("CARGO_PKG_VERSION"))
 
 /// Build the shared outbound HTTP client.
 pub fn build_http_client() -> reqwest::Client {
-    reqwest::Client::builder()
+    crate::tls_roots::http_client()
         .user_agent(USER_AGENT)
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
@@ -23,6 +23,7 @@ pub fn build_http_client() -> reqwest::Client {
 
 /// Run the web server until it is stopped (Ctrl-C / SIGTERM).
 pub async fn run(config: Config) {
+    crate::tls_roots::init();
     std::fs::create_dir_all(&config.data_dir).expect("failed to create data dir");
     // Swap in a backup uploaded via Settings → Backup before the DB is opened.
     crate::config_io::apply_pending_restore(&config.data_dir);
@@ -66,10 +67,13 @@ pub async fn run(config: Config) {
         .expect("failed to bind listener");
     tracing::info!("vigilant-vole listening on {bind_addr}");
     // Connect info lets the login rate limiter key on the peer address.
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("server error");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .expect("server error");
     scheduler.shutdown().await;
 }
 

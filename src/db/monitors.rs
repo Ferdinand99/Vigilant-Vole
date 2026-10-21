@@ -1,6 +1,8 @@
 use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
 
-use super::models::{Heartbeat, HeartbeatStatus, Monitor, MonitorType, MonitorWithStatus, NewMonitor};
+use super::models::{
+    Heartbeat, HeartbeatStatus, Monitor, MonitorType, MonitorWithStatus, NewMonitor,
+};
 
 /// Every column of `monitors`, in one place. Use with [`row_to_monitor`]
 /// (which reads by column name, so extra columns may follow).
@@ -325,7 +327,11 @@ fn parse_recent(raw: Option<String>) -> Vec<Option<HeartbeatStatus>> {
 }
 
 /// Oldest-first local heartbeats for a single monitor (agent results excluded).
-pub fn list_recent_heartbeats(conn: &Connection, monitor_id: i64, limit: i64) -> rusqlite::Result<Vec<Heartbeat>> {
+pub fn list_recent_heartbeats(
+    conn: &Connection,
+    monitor_id: i64,
+    limit: i64,
+) -> rusqlite::Result<Vec<Heartbeat>> {
     let mut stmt = conn.prepare(
         "SELECT id, monitor_id, agent_id, status, response_time_ms, message, checked_at FROM (
              SELECT id, monitor_id, agent_id, status, response_time_ms, message, checked_at
@@ -334,13 +340,20 @@ pub fn list_recent_heartbeats(conn: &Connection, monitor_id: i64, limit: i64) ->
              LIMIT ?2
          ) ORDER BY checked_at ASC, id ASC",
     )?;
-    let rows = stmt.query_map(params![monitor_id, limit], super::heartbeats::row_to_heartbeat)?;
+    let rows = stmt.query_map(
+        params![monitor_id, limit],
+        super::heartbeats::row_to_heartbeat,
+    )?;
     rows.collect()
 }
 
 /// Uptime percentage over a window, e.g. `modifier = "-7 days"`. `None` when
 /// there's no heartbeat history in that window yet.
-pub fn uptime_since(conn: &Connection, monitor_id: i64, modifier: &str) -> rusqlite::Result<Option<f64>> {
+pub fn uptime_since(
+    conn: &Connection,
+    monitor_id: i64,
+    modifier: &str,
+) -> rusqlite::Result<Option<f64>> {
     conn.query_row(
         "SELECT CASE WHEN COUNT(*) = 0 THEN NULL
                      ELSE ROUND(100.0 * SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) / COUNT(*), 1)
@@ -455,7 +468,10 @@ pub fn expiry_records(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Ve
             issuer: r.get(2)?,
             expires_at: r.get(3)?,
             checked_at: r.get(4)?,
-            days_left: r.get::<_, Option<f64>>(5)?.map(|d| d.floor() as i64).unwrap_or(0),
+            days_left: r
+                .get::<_, Option<f64>>(5)?
+                .map(|d| d.floor() as i64)
+                .unwrap_or(0),
         })
     })?;
     rows.collect()
@@ -536,7 +552,8 @@ mod tests {
     fn dashboard_query_maps_monitor_and_status() {
         let conn = test_conn();
         let id = insert_monitor(&conn, &full_monitor()).unwrap();
-        crate::db::heartbeats::insert(&conn, id, None, HeartbeatStatus::Up, Some(42), None).unwrap();
+        crate::db::heartbeats::insert(&conn, id, None, HeartbeatStatus::Up, Some(42), None)
+            .unwrap();
         let list = list_monitors_with_status(&conn).unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].monitor.name, "API");
@@ -566,8 +583,10 @@ mod tests {
             [],
         )
         .unwrap();
-        crate::db::heartbeats::insert(&conn, id, None, HeartbeatStatus::Up, Some(10), None).unwrap();
-        crate::db::heartbeats::insert(&conn, id, Some(7), HeartbeatStatus::Down, None, None).unwrap();
+        crate::db::heartbeats::insert(&conn, id, None, HeartbeatStatus::Up, Some(10), None)
+            .unwrap();
+        crate::db::heartbeats::insert(&conn, id, Some(7), HeartbeatStatus::Down, None, None)
+            .unwrap();
         let row = &list_monitors_with_status(&conn).unwrap()[0];
         assert_eq!(row.status, Some(HeartbeatStatus::Up));
         assert_eq!(row.uptime_24h, Some(100.0));
@@ -587,7 +606,10 @@ mod tests {
 
         assert_eq!(existing_ids(&conn, &[c, 999, a, c]).unwrap(), vec![c, a]);
         // a is already paused, so only b and c change.
-        assert_eq!(set_active_many(&conn, &[a, b, c, b], false).unwrap(), vec![b, c]);
+        assert_eq!(
+            set_active_many(&conn, &[a, b, c, b], false).unwrap(),
+            vec![b, c]
+        );
         assert_eq!(list_active_monitors(&conn).unwrap().len(), 0);
         assert_eq!(set_active_many(&conn, &[a], true).unwrap(), vec![a]);
 
@@ -603,7 +625,11 @@ mod tests {
         let sub = named(&conn, "sub", Some(root), MonitorType::Group);
         let leaf = named(&conn, "leaf", Some(sub), MonitorType::Http);
         let other = named(&conn, "other", Some(root), MonitorType::Tcp);
-        let names: Vec<String> = children(&conn, root).unwrap().into_iter().map(|m| m.name).collect();
+        let names: Vec<String> = children(&conn, root)
+            .unwrap()
+            .into_iter()
+            .map(|m| m.name)
+            .collect();
         assert_eq!(names, vec!["other", "sub"]);
         let mut desc = descendant_ids(&conn, root).unwrap();
         desc.sort_unstable();
@@ -619,7 +645,14 @@ mod tests {
         let conn = test_conn();
         let id = named(&conn, "m", None, MonitorType::Push);
         assert!(set_push_token(&conn, id, Some("abc")).unwrap());
-        assert_eq!(get_monitor(&conn, id).unwrap().unwrap().push_token.as_deref(), Some("abc"));
+        assert_eq!(
+            get_monitor(&conn, id)
+                .unwrap()
+                .unwrap()
+                .push_token
+                .as_deref(),
+            Some("abc")
+        );
         conn.execute(
             "INSERT INTO monitor_expiry (monitor_id, kind, subject, issuer, expires_at)
              VALUES (?1, 'cert', 'CN=x', 'R3', datetime('now', '+10 days', '+1 hour'))",
@@ -651,13 +684,27 @@ mod tests {
         };
         let id = insert_monitor(&conn, &m).unwrap();
         assert_eq!(get_monitor(&conn, id).unwrap().unwrap().to_new(), m);
-        let off = NewMonitor { auth_method: "none".into(), oauth_client_secret: None, ..m.clone() };
+        let off = NewMonitor {
+            auth_method: "none".into(),
+            oauth_client_secret: None,
+            ..m.clone()
+        };
         update_monitor(&conn, id, &off).unwrap();
         assert_eq!(get_monitor(&conn, id).unwrap().unwrap().to_new(), off);
         // New monitors default to no authentication.
-        let plain = insert_monitor(&conn, &NewMonitor { name: "Plain".into(), ..NewMonitor::default() }).unwrap();
+        let plain = insert_monitor(
+            &conn,
+            &NewMonitor {
+                name: "Plain".into(),
+                ..NewMonitor::default()
+            },
+        )
+        .unwrap();
         let plain = get_monitor(&conn, plain).unwrap().unwrap();
-        assert_eq!((plain.auth_method.as_str(), plain.oauth_client_auth.as_str()), ("none", "client_secret_basic"));
+        assert_eq!(
+            (plain.auth_method.as_str(), plain.oauth_client_auth.as_str()),
+            ("none", "client_secret_basic")
+        );
     }
 
     #[test]
@@ -669,7 +716,8 @@ mod tests {
              INSERT INTO monitors (id, basic_auth_user) VALUES (1, 'bot'), (2, NULL), (3, '');",
         )
         .unwrap();
-        conn.execute_batch(include_str!("../../migrations/0096_http_auth.sql")).unwrap();
+        conn.execute_batch(include_str!("../../migrations/0096_http_auth.sql"))
+            .unwrap();
         let methods: Vec<String> = conn
             .prepare("SELECT auth_method FROM monitors ORDER BY id")
             .unwrap()
@@ -678,7 +726,13 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(methods, ["basic", "none", "none"]);
-        let style: String = conn.query_row("SELECT oauth_client_auth FROM monitors WHERE id = 2", [], |r| r.get(0)).unwrap();
+        let style: String = conn
+            .query_row(
+                "SELECT oauth_client_auth FROM monitors WHERE id = 2",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(style, "client_secret_basic");
     }
 }

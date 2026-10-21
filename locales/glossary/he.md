@@ -100,3 +100,6 @@ Right-to-left. Technical terms and product names stay in Latin script.
 - No sentence case issue (no capitals). Mixed-script strings keep Latin terms as written.
 - Plurals: one (exactly 1), two (exactly 2), other.
 - Dates: `20 באוקטובר 2026`; durations short (שנ׳, דק׳, שע׳, ימים).
+
+- cron expression: ביטוי cron (the word "cron" stays Latin).
+- subscriber: מנוי (pl. מנויים); subscribe / unsubscribe: הרשמה / ביטול מנוי; confirm subscription: אישור המנוי; webhook subscriber: מנוי Webhook; pending (sign-up): ממתין; maintenance started / ended: התחזוקה החלה / הסתיימה.

@@ -106,3 +106,11 @@ Vigilant Vole 界面翻译所用术语。每个术语只定一种译法，全文
 - 产品名、协议和技术术语保持原文（HTTP、TLS、DNS、Docker、Prometheus 等）。
 - 无复数形式，`{n}` 后接量词：个（监控项、渠道、标签、用户、令牌、探针）、次（检查）、天、条（事件）。
 - 日期：`2026年10月20日`；星期短 `周一`，长 `星期一`；24 小时制。
+
+| cron expression | Cron 表达式 | "cron" kept Latin |
+| subscriber | 订阅者 | |
+| subscribe / unsubscribe | 订阅 / 取消订阅 | |
+| confirm subscription | 确认订阅 | |
+| webhook subscriber | Webhook 订阅者 | |
+| pending (sign-up) | 待定 | 同状态“待定” |
+| maintenance started / ended | 维护已开始 / 已结束 | |

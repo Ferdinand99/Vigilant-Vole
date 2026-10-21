@@ -304,11 +304,15 @@ Incidents are not part of the document (post them in the UI or with `POST /api/v
 |---|---|---|---|
 | `title` | string | – | Required. |
 | `description` | string | `""` | Markdown, shown on status pages. |
-| `strategy` | string | – | `manual`, `once`, `daily`, `weekly`. |
+| `strategy` | string | – | `manual`, `once`, `daily`, `weekly`, `interval` (every N days), `monthly` (days of the month) or `cron`. |
 | `active` | bool | `true` | Manual: in maintenance right now. Scheduled: enabled. |
-| `start_at` / `end_at` | string | – | `once`: UTC `YYYY-MM-DD HH:MM:SS`. For `daily`/`weekly` they optionally bound the schedule. |
+| `start_at` / `end_at` | string | – | `once`: UTC `YYYY-MM-DD HH:MM:SS`. For the repeating strategies they optionally bound the schedule; `interval` counts its days from the date of `start_at` (required). |
 | `weekdays` | string | – | `weekly`: ISO weekdays, `"1,3,5"` (Monday = 1). |
-| `time_from` / `time_to` | string | – | `daily`/`weekly`: local `HH:MM` in `timezone` (may cross midnight). |
+| `time_from` / `time_to` | string | – | `daily`/`weekly`/`interval`/`monthly`: local `HH:MM` in `timezone` (may cross midnight). |
+| `interval_days` | int | – | `interval`: repeat every this many days (1–366). |
+| `month_days` | string | – | `monthly`: days of the month, `"1,15,-1"`. Negative numbers count from the end (`-1` is the last day). A day a month doesn't have (the 31st in April) is skipped. |
+| `cron` | string | – | `cron`: five fields (minute hour day-of-month month day-of-week), evaluated in `timezone`; lists, ranges, steps, month and weekday names and `@daily`-style macros work. When both day fields are set, either matches (as in Vixie cron). |
+| `duration_minutes` | int | – | `cron`: how long each run lasts (1–44640). |
 | `timezone` | string | `UTC` | IANA name. |
 | `monitors` | list | `[]` | Monitor keys. A group covers its children. |
 | `status_pages` | list | `[]` | Slugs of status pages that show the window. |

@@ -66,10 +66,14 @@ impl PageCtx {
         nav: &'static str,
         subnav: &'static str,
     ) -> (Self, SignedCookieJar) {
-        let loaded = state.with_conn(|c| settings::get(c, settings::SITE_NAME)).await;
+        let loaded = state
+            .with_conn(|c| settings::get(c, settings::SITE_NAME))
+            .await;
         let defaults = settings::Settings::default();
         let site_name = match loaded {
-            Ok(site) => site.filter(|s| !s.trim().is_empty()).unwrap_or(defaults.site_name),
+            Ok(site) => site
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(defaults.site_name),
             Err(err) => {
                 tracing::warn!(%err, "failed to load site settings for page");
                 defaults.site_name
@@ -124,7 +128,11 @@ pub fn initials(name: &str) -> String {
     let mut words = name.split_whitespace();
     let first = words.next().and_then(|w| w.chars().next());
     let last = words.last().and_then(|w| w.chars().next());
-    let s: String = [first, last].into_iter().flatten().flat_map(char::to_uppercase).collect();
+    let s: String = [first, last]
+        .into_iter()
+        .flatten()
+        .flat_map(char::to_uppercase)
+        .collect();
     if s.is_empty() { "?".into() } else { s }
 }
 

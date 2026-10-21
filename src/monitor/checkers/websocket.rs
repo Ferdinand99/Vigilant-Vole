@@ -64,7 +64,8 @@ async fn connect(
     } else {
         None
     };
-    tokio_tungstenite::connect_async_tls_with_config(request, Some(ws_config()), true, connector).await
+    tokio_tungstenite::connect_async_tls_with_config(request, Some(ws_config()), true, connector)
+        .await
 }
 
 /// Largest message/frame accepted from a monitored server (default is 64 MiB):

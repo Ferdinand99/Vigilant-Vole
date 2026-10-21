@@ -109,3 +109,10 @@ Terms were decided once and are reused across `locales/ro.toml`. Kuma word list 
 | MOTD | MOTD | kept in English |
 | replica set | replicaSet | kept as parameter name |
 | analytics | statistici | |
+| cron expression | expresie cron | "cron" kept Latin |
+| subscriber | abonat | |
+| subscribe / unsubscribe | abonează-te / dezabonează-te | |
+| confirm subscription | confirmă abonarea | |
+| webhook subscriber | abonat prin webhook | |
+| pending (sign-up) | în așteptare | |
+| maintenance started / ended | mentenanță începută / încheiată | |

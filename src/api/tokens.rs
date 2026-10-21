@@ -24,7 +24,12 @@ use crate::db::api_tokens::{self as db_tokens, ApiToken, TokenScope};
 /// Per-user cap, so a script gone wrong can't fill the table.
 const MAX_TOKENS_PER_USER: usize = 50;
 /// Allowed expiry choices in days (`None` = never).
-const EXPIRY_CHOICES: &[(&str, Option<i64>)] = &[("30", Some(30)), ("90", Some(90)), ("365", Some(365)), ("never", None)];
+const EXPIRY_CHOICES: &[(&str, Option<i64>)] = &[
+    ("30", Some(30)),
+    ("90", Some(90)),
+    ("365", Some(365)),
+    ("never", None),
+];
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -75,19 +80,40 @@ struct TokensTemplate {
     base_url: String,
 }
 
-async fn render(state: &AppState, user: &CurrentUser, jar: SignedCookieJar, created: Option<(String, String)>) -> ApiResult<Response> {
+async fn render(
+    state: &AppState,
+    user: &CurrentUser,
+    jar: SignedCookieJar,
+    created: Option<(String, String)>,
+) -> ApiResult<Response> {
     let uid = user.id;
     let is_admin = user.is_admin();
     let (mine, all) = state
         .with_conn(move |c| {
             let mine = db_tokens::list_for_user(c, uid)?;
-            let all = if is_admin { db_tokens::list_all(c)? } else { Vec::new() };
+            let all = if is_admin {
+                db_tokens::list_all(c)?
+            } else {
+                Vec::new()
+            };
             Ok((mine, all))
         })
         .await?;
-    let others = all.into_iter().filter(|t| t.user_id != uid).map(TokenRow::from).collect();
+    let others = all
+        .into_iter()
+        .filter(|t| t.user_id != uid)
+        .map(TokenRow::from)
+        .collect();
     let base_url = state.settings().await?.base_url.unwrap_or_default();
-    let (ctx, jar) = PageCtx::build(state, Some(user), &jar, crate::i18n::t("nav.api_tokens"), "settings", "tokens").await;
+    let (ctx, jar) = PageCtx::build(
+        state,
+        Some(user),
+        &jar,
+        crate::i18n::t("nav.api_tokens"),
+        "settings",
+        "tokens",
+    )
+    .await;
     let (new_token, new_token_name) = match created {
         Some((token, name)) => (Some(token), name),
         None => (None, String::new()),
@@ -102,13 +128,18 @@ async fn render(state: &AppState, user: &CurrentUser, jar: SignedCookieJar, crea
     };
     // The page may contain a secret: keep it out of caches and history snapshots.
     let mut response = (jar, HtmlTemplate(page)).into_response();
-    response
-        .headers_mut()
-        .insert(axum::http::header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    );
     Ok(response)
 }
 
-async fn list(State(state): State<AppState>, user: CurrentUser, jar: SignedCookieJar) -> ApiResult<Response> {
+async fn list(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+) -> ApiResult<Response> {
     user.require(crate::auth::Role::Viewer)?;
     render(&state, &user, jar, None).await
 }
@@ -149,15 +180,24 @@ async fn create(
         return Ok(back(jar, "error", crate::i18n::t("tokens.err_expiry")));
     };
     let uid = user.id;
-    let count = state.with_conn(move |c| db_tokens::list_for_user(c, uid)).await?.len();
+    let count = state
+        .with_conn(move |c| db_tokens::list_for_user(c, uid))
+        .await?
+        .len();
     if count >= MAX_TOKENS_PER_USER {
         return Ok(back(jar, "error", crate::i18n::t("tokens.err_limit")));
     }
 
     let token = tokens::generate();
-    let (hash, prefix, stored_name) = (tokens::hash(&token), tokens::display_prefix(&token), name.clone());
+    let (hash, prefix, stored_name) = (
+        tokens::hash(&token),
+        tokens::display_prefix(&token),
+        name.clone(),
+    );
     state
-        .with_conn(move |c| db_tokens::insert(c, uid, &stored_name, &prefix, &hash, scope, expires_in))
+        .with_conn(move |c| {
+            db_tokens::insert(c, uid, &stored_name, &prefix, &hash, scope, expires_in)
+        })
         .await?;
     tracing::info!(user = %user.username, token = %name, scope = scope.as_str(), "API token created");
     let jar = flash(jar, "success", crate::i18n::t("tokens.created"));
@@ -183,7 +223,8 @@ async fn revoke(
 
     if headers.contains_key("hx-request") {
         let mut response = StatusCode::OK.into_response();
-        let value = super::status_pages::toast_trigger(crate::i18n::t("tokens.revoked"), "success", false);
+        let value =
+            super::status_pages::toast_trigger(crate::i18n::t("tokens.revoked"), "success", false);
         response.headers_mut().insert("hx-trigger", value);
         return Ok(response);
     }
@@ -227,7 +268,11 @@ mod tests {
             base_url: String::new(),
         };
         let html = page.render().expect("template renders");
-        assert_eq!(html.matches(r#"id="new-token""#).count(), 1, "duplicate id in tokens page");
+        assert_eq!(
+            html.matches(r#"id="new-token""#).count(),
+            1,
+            "duplicate id in tokens page"
+        );
         assert!(html.contains(r#"<dialog class="sheet" id="new-token""#));
         assert!(html.contains("vv_secret"));
     }

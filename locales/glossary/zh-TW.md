@@ -102,3 +102,10 @@ Dates: `2026年10月20日`, months `1月…12月`, durations `{n} 秒/分鐘/小
 | Tailscale peer | Tailscale 對等節點 | |
 | MOTD | MOTD | kept |
 | replica set | replicaSet | kept (URI parameter) |
+| cron expression | Cron 運算式 | "cron" kept Latin |
+| subscriber | 訂閱者 | |
+| subscribe / unsubscribe | 訂閱 / 取消訂閱 | |
+| confirm subscription | 確認訂閱 | |
+| webhook subscriber | Webhook 訂閱者 | |
+| pending (sign-up) | 待確認 | 同狀態「待確認」 |
+| maintenance started / ended | 維護已開始 / 已結束 | |

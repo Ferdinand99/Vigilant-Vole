@@ -46,7 +46,11 @@ const MAX_TOKENS: usize = 4096;
 /// monitors carry their method (migration 0096 converted the old rows) and
 /// the checker uses `monitor.auth_method` as is.
 pub fn implied_method(basic_auth_user: Option<&str>) -> &'static str {
-    if basic_auth_user.is_some_and(|u| !u.trim().is_empty()) { "basic" } else { "none" }
+    if basic_auth_user.is_some_and(|u| !u.trim().is_empty()) {
+        "basic"
+    } else {
+        "none"
+    }
 }
 
 /// Replace every given secret in `message` (empty ones are ignored).
@@ -82,12 +86,23 @@ impl fmt::Display for MtlsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MtlsError::MissingCert => f.write_str("No client certificate configured"),
-            MtlsError::CertNotPem => f.write_str("The client certificate is not PEM (expected -----BEGIN CERTIFICATE-----)"),
+            MtlsError::CertNotPem => f.write_str(
+                "The client certificate is not PEM (expected -----BEGIN CERTIFICATE-----)",
+            ),
             MtlsError::MissingKey => f.write_str("No client private key configured"),
-            MtlsError::KeyNotPem => f.write_str("The client private key is not an unencrypted PEM key"),
-            MtlsError::KeyEncrypted => f.write_str("The client private key is passphrase-protected, which is not supported"),
-            MtlsError::CaNotPem => f.write_str("The CA certificate is not PEM (expected -----BEGIN CERTIFICATE-----)"),
-            MtlsError::Rejected(why) => write!(f, "The client certificate and key can't be used together: {why}"),
+            MtlsError::KeyNotPem => {
+                f.write_str("The client private key is not an unencrypted PEM key")
+            }
+            MtlsError::KeyEncrypted => f.write_str(
+                "The client private key is passphrase-protected, which is not supported",
+            ),
+            MtlsError::CaNotPem => {
+                f.write_str("The CA certificate is not PEM (expected -----BEGIN CERTIFICATE-----)")
+            }
+            MtlsError::Rejected(why) => write!(
+                f,
+                "The client certificate and key can't be used together: {why}"
+            ),
             MtlsError::CaRejected(why) => write!(f, "The CA certificate can't be used: {why}"),
         }
     }
@@ -103,9 +118,13 @@ fn pem_problems(cert: &str, key: &str, ca: Option<&str>) -> Vec<MtlsError> {
     } else if !cert.contains(PEM_CERT) {
         out.push(MtlsError::CertNotPem);
     }
-    let is_key = ["-----BEGIN PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----"]
-        .iter()
-        .any(|marker| key.contains(marker));
+    let is_key = [
+        "-----BEGIN PRIVATE KEY-----",
+        "-----BEGIN RSA PRIVATE KEY-----",
+        "-----BEGIN EC PRIVATE KEY-----",
+    ]
+    .iter()
+    .any(|marker| key.contains(marker));
     if key.trim().is_empty() {
         out.push(MtlsError::MissingKey);
     } else if key.contains("ENCRYPTED") {
@@ -120,7 +139,10 @@ fn pem_problems(cert: &str, key: &str, ca: Option<&str>) -> Vec<MtlsError> {
 }
 
 fn check_pem(cert: &str, key: &str, ca: Option<&str>) -> Result<(), MtlsError> {
-    pem_problems(cert, key, ca).into_iter().next().map_or(Ok(()), Err)
+    pem_problems(cert, key, ca)
+        .into_iter()
+        .next()
+        .map_or(Ok(()), Err)
 }
 
 /// Adds the client identity (and the extra CA, when given) to `builder`.
@@ -133,10 +155,12 @@ pub fn apply_mtls(
     let ca = ca.map(str::trim).filter(|c| !c.is_empty());
     check_pem(cert, key, ca)?;
     let pem = format!("{}\n{}\n", cert.trim(), key.trim());
-    let identity = reqwest::Identity::from_pem(pem.as_bytes()).map_err(|e| MtlsError::Rejected(util::root_cause(&e)))?;
+    let identity = reqwest::Identity::from_pem(pem.as_bytes())
+        .map_err(|e| MtlsError::Rejected(util::root_cause(&e)))?;
     let mut builder = builder.identity(identity);
     if let Some(ca) = ca {
-        let roots = reqwest::Certificate::from_pem_bundle(ca.as_bytes()).map_err(|_| MtlsError::CaNotPem)?;
+        let roots = reqwest::Certificate::from_pem_bundle(ca.as_bytes())
+            .map_err(|_| MtlsError::CaNotPem)?;
         if roots.is_empty() {
             return Err(MtlsError::CaNotPem);
         }
@@ -158,11 +182,11 @@ pub fn mtls_problems(cert: &str, key: &str, ca: Option<&str>) -> Vec<MtlsError> 
 /// Builds a throwaway client from the material, so a bad pair is reported in
 /// the form instead of at the first check.
 pub fn validate_mtls(cert: &str, key: &str, ca: Option<&str>) -> Result<(), MtlsError> {
-    apply_mtls(reqwest::Client::builder(), cert, key, None)?
+    apply_mtls(crate::tls_roots::http_client(), cert, key, None)?
         .build()
         .map_err(|e| MtlsError::Rejected(util::root_cause(&e)))?;
     if let Some(ca) = ca.map(str::trim).filter(|c| !c.is_empty()) {
-        apply_mtls(reqwest::Client::builder(), cert, key, Some(ca))?
+        apply_mtls(crate::tls_roots::http_client(), cert, key, Some(ca))?
             .build()
             .map_err(|e| MtlsError::CaRejected(util::root_cause(&e)))?;
     }
@@ -175,7 +199,11 @@ pub fn mtls_fingerprint(monitor: &Monitor) -> Option<String> {
         return None;
     }
     let part = |s: &Option<String>| s.as_deref().unwrap_or_default().trim().to_string();
-    Some(digest(&[&part(&monitor.tls_client_cert), &part(&monitor.tls_client_key), &part(&monitor.tls_ca_cert)]))
+    Some(digest(&[
+        &part(&monitor.tls_client_cert),
+        &part(&monitor.tls_client_key),
+        &part(&monitor.tls_ca_cert),
+    ]))
 }
 
 fn digest(parts: &[&str]) -> String {
@@ -216,7 +244,8 @@ impl fmt::Debug for OAuthConfig {
 
 /// Parses a token endpoint URL (http or https with a host).
 pub fn parse_token_url(raw: &str) -> Result<Url, String> {
-    let url = Url::parse(raw.trim()).map_err(|e| format!("The OAuth2 token URL is not a valid URL: {e}"))?;
+    let url = Url::parse(raw.trim())
+        .map_err(|e| format!("The OAuth2 token URL is not a valid URL: {e}"))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none_or(str::is_empty) {
         return Err("The OAuth2 token URL must be an http or https URL".into());
     }
@@ -225,7 +254,12 @@ pub fn parse_token_url(raw: &str) -> Result<Url, String> {
 
 impl OAuthConfig {
     pub fn from_monitor(m: &Monitor) -> Result<Self, String> {
-        let text = |v: &Option<String>| v.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+        let text = |v: &Option<String>| {
+            v.as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        };
         let token_url = text(&m.oauth_token_url).ok_or("No OAuth2 token URL configured")?;
         Ok(Self {
             token_url: parse_token_url(&token_url)?,
@@ -265,7 +299,10 @@ impl OAuthConfig {
 pub fn client_secret_basic(client_id: &str, client_secret: &str) -> String {
     let enc = |s: &str| url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>();
     let raw = format!("{}:{}", enc(client_id), enc(client_secret));
-    format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(raw))
+    format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(raw)
+    )
 }
 
 /// How long to trust a token that expires in `expires_in` seconds: until
@@ -302,12 +339,22 @@ impl TokenCache {
         (e.fingerprint == fingerprint && now < e.refresh_at).then(|| e.token.clone())
     }
 
-    pub fn put(&self, monitor_id: i64, fingerprint: &str, token: &str, expires_in: Option<u64>, now: Instant) {
+    pub fn put(
+        &self,
+        monitor_id: i64,
+        fingerprint: &str,
+        token: &str,
+        expires_in: Option<u64>,
+        now: Instant,
+    ) {
         if let Ok(mut map) = self.entries.lock() {
             map.retain(|_, e| now < e.refresh_at);
             if map.len() >= MAX_TOKENS
                 && !map.contains_key(&monitor_id)
-                && let Some(first_due) = map.iter().min_by_key(|(_, e)| e.refresh_at).map(|(id, _)| *id)
+                && let Some(first_due) = map
+                    .iter()
+                    .min_by_key(|(_, e)| e.refresh_at)
+                    .map(|(id, _)| *id)
             {
                 map.remove(&first_due);
             }
@@ -342,7 +389,11 @@ pub fn forget_token(monitor_id: i64) {
 
 /// A bearer header for the monitor. The flag says whether the token came
 /// from the cache. `Err` is a complete Down message.
-pub async fn bearer(monitor: &Monitor, client: &reqwest::Client, timeout: Duration) -> Result<(HeaderValue, bool), String> {
+pub async fn bearer(
+    monitor: &Monitor,
+    client: &reqwest::Client,
+    timeout: Duration,
+) -> Result<(HeaderValue, bool), String> {
     let cfg = OAuthConfig::from_monitor(monitor)?;
     let fingerprint = cfg.fingerprint();
     if let Some(token) = cache().get(monitor.id, &fingerprint, Instant::now()) {
@@ -354,15 +405,20 @@ pub async fn bearer(monitor: &Monitor, client: &reqwest::Client, timeout: Durati
 }
 
 fn bearer_value(token: &str) -> Result<HeaderValue, String> {
-    let mut value = HeaderValue::from_str(&format!("Bearer {token}"))
-        .map_err(|_| "OAuth2 token endpoint returned an access token that can't be sent in a header".to_string())?;
+    let mut value = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| {
+        "OAuth2 token endpoint returned an access token that can't be sent in a header".to_string()
+    })?;
     value.set_sensitive(true);
     Ok(value)
 }
 
 /// Requests a new access token. Messages are final Down texts and never
 /// contain the client secret.
-async fn fetch_token(client: &reqwest::Client, cfg: &OAuthConfig, timeout: Duration) -> Result<(String, Option<u64>), String> {
+async fn fetch_token(
+    client: &reqwest::Client,
+    cfg: &OAuthConfig,
+    timeout: Duration,
+) -> Result<(String, Option<u64>), String> {
     let mut form: Vec<(&str, &str)> = vec![("grant_type", "client_credentials")];
     if let Some(scope) = &cfg.scope {
         form.push(("scope", scope));
@@ -378,12 +434,18 @@ async fn fetch_token(client: &reqwest::Client, cfg: &OAuthConfig, timeout: Durat
         form.push(("client_id", &cfg.client_id));
         form.push(("client_secret", &cfg.client_secret));
     } else {
-        let mut value = HeaderValue::from_str(&client_secret_basic(&cfg.client_id, &cfg.client_secret))
-            .map_err(|_| "OAuth2 client credentials can't be sent in a header".to_string())?;
+        let mut value =
+            HeaderValue::from_str(&client_secret_basic(&cfg.client_id, &cfg.client_secret))
+                .map_err(|_| "OAuth2 client credentials can't be sent in a header".to_string())?;
         value.set_sensitive(true);
         req = req.header(AUTHORIZATION, value);
     }
-    let fail = |why: String| redact(&format!("OAuth2 token request failed: {why}"), &cfg.secrets());
+    let fail = |why: String| {
+        redact(
+            &format!("OAuth2 token request failed: {why}"),
+            &cfg.secrets(),
+        )
+    };
 
     let resp = req.form(&form).send().await.map_err(|e| {
         let why = if e.is_timeout() {
@@ -395,7 +457,12 @@ async fn fetch_token(client: &reqwest::Client, cfg: &OAuthConfig, timeout: Durat
         fail(why.replace(cfg.token_url.as_str(), "the token URL"))
     })?;
     let status = resp.status();
-    let body = read_capped(resp).await.map_err(|e| fail(format!("reading the response failed: {}", util::root_cause(&e))))?;
+    let body = read_capped(resp).await.map_err(|e| {
+        fail(format!(
+            "reading the response failed: {}",
+            util::root_cause(&e)
+        ))
+    })?;
     let json: Option<Value> = serde_json::from_str(&body).ok();
 
     if !status.is_success() {
@@ -403,7 +470,12 @@ async fn fetch_token(client: &reqwest::Client, cfg: &OAuthConfig, timeout: Durat
             json.as_ref()
                 .and_then(|j| j.get(name))
                 .and_then(Value::as_str)
-                .map(|s| util::truncate(&s.chars().filter(|c| !c.is_control()).collect::<String>(), 120))
+                .map(|s| {
+                    util::truncate(
+                        &s.chars().filter(|c| !c.is_control()).collect::<String>(),
+                        120,
+                    )
+                })
         };
         let head = match status.canonical_reason() {
             Some(reason) => format!("HTTP {} {reason}", status.as_u16()),
@@ -421,17 +493,25 @@ async fn fetch_token(client: &reqwest::Client, cfg: &OAuthConfig, timeout: Durat
     let Some(json) = json else {
         return Err(fail("the response is not JSON".into()));
     };
-    let token = json.get("access_token").and_then(Value::as_str).filter(|t| !t.is_empty());
+    let token = json
+        .get("access_token")
+        .and_then(Value::as_str)
+        .filter(|t| !t.is_empty());
     let Some(token) = token else {
         return Err(fail("the response has no access_token".into()));
     };
     if let Some(kind) = json.get("token_type").and_then(Value::as_str)
         && !kind.eq_ignore_ascii_case("bearer")
     {
-        return Err(fail(format!("token type “{}” is not supported (Bearer only)", util::truncate(kind, 30))));
+        return Err(fail(format!(
+            "token type “{}” is not supported (Bearer only)",
+            util::truncate(kind, 30)
+        )));
     }
     let expires_in = json.get("expires_in").and_then(|v| match v {
-        Value::Number(n) => n.as_u64().or_else(|| n.as_f64().filter(|f| *f >= 0.0).map(|f| f as u64)),
+        Value::Number(n) => n
+            .as_u64()
+            .or_else(|| n.as_f64().filter(|f| *f >= 0.0).map(|f| f as u64)),
         Value::String(s) => s.trim().parse().ok(),
         _ => None,
     });
@@ -482,7 +562,9 @@ mod tests {
         // RFC 6749 §2.3.1 example shape: "id:secret" with reserved characters.
         let header = client_secret_basic("my id", "a+b/c:d");
         let b64 = header.strip_prefix("Basic ").unwrap();
-        let raw = base64::engine::general_purpose::STANDARD.decode(b64).unwrap();
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap();
         assert_eq!(String::from_utf8(raw).unwrap(), "my+id:a%2Bb%2Fc%3Ad");
     }
 
@@ -491,12 +573,24 @@ mod tests {
         let mut m = oauth_monitor();
         assert!(OAuthConfig::from_monitor(&m).is_ok());
         m.oauth_client_secret = None;
-        assert!(OAuthConfig::from_monitor(&m).unwrap_err().contains("client secret"));
+        assert!(
+            OAuthConfig::from_monitor(&m)
+                .unwrap_err()
+                .contains("client secret")
+        );
         m.oauth_client_secret = Some("x".into());
         m.oauth_token_url = Some("ftp://idp".into());
-        assert!(OAuthConfig::from_monitor(&m).unwrap_err().contains("http or https"));
+        assert!(
+            OAuthConfig::from_monitor(&m)
+                .unwrap_err()
+                .contains("http or https")
+        );
         m.oauth_token_url = None;
-        assert!(OAuthConfig::from_monitor(&m).unwrap_err().contains("token URL"));
+        assert!(
+            OAuthConfig::from_monitor(&m)
+                .unwrap_err()
+                .contains("token URL")
+        );
     }
 
     #[test]
@@ -507,7 +601,10 @@ mod tests {
 
     #[test]
     fn redact_removes_secrets() {
-        assert_eq!(redact("bad s3cr3t here", &["s3cr3t"]), "bad [redacted] here");
+        assert_eq!(
+            redact("bad s3cr3t here", &["s3cr3t"]),
+            "bad [redacted] here"
+        );
         assert_eq!(redact("nothing", &[""]), "nothing");
     }
 
@@ -517,7 +614,10 @@ mod tests {
         assert_eq!(refresh_after(Some(300)), Duration::from_secs(270));
         assert_eq!(refresh_after(Some(5)), Duration::from_secs(4));
         assert_eq!(refresh_after(Some(0)), Duration::ZERO);
-        assert_eq!(refresh_after(None), Duration::from_secs(DEFAULT_TOKEN_TTL_SECS));
+        assert_eq!(
+            refresh_after(None),
+            Duration::from_secs(DEFAULT_TOKEN_TTL_SECS)
+        );
     }
 
     #[test]
@@ -525,7 +625,10 @@ mod tests {
         let cache = TokenCache::default();
         let t0 = Instant::now();
         cache.put(1, "fp", "tok", Some(100), t0);
-        assert_eq!(cache.get(1, "fp", t0 + Duration::from_secs(80)).as_deref(), Some("tok"));
+        assert_eq!(
+            cache.get(1, "fp", t0 + Duration::from_secs(80)).as_deref(),
+            Some("tok")
+        );
         // 100 s lifetime refreshes after 90 s.
         assert_eq!(cache.get(1, "fp", t0 + Duration::from_secs(90)), None);
         assert_eq!(cache.get(2, "fp", t0), None);
@@ -567,7 +670,9 @@ mod tests {
             |c: &mut OAuthConfig| c.scope = Some("read".into()),
             |c: &mut OAuthConfig| c.audience = Some("api".into()),
             |c: &mut OAuthConfig| c.secret_in_body = true,
-            |c: &mut OAuthConfig| c.token_url = Url::parse("https://idp.example.com/other").unwrap(),
+            |c: &mut OAuthConfig| {
+                c.token_url = Url::parse("https://idp.example.com/other").unwrap()
+            },
         ] {
             let mut c = base.clone();
             edit(&mut c);
@@ -583,7 +688,10 @@ mod tests {
         assert_eq!(check_pem("hello", KEY, None), Err(MtlsError::CertNotPem));
         assert_eq!(check_pem(CERT, " ", None), Err(MtlsError::MissingKey));
         assert_eq!(check_pem(CERT, CERT, None), Err(MtlsError::KeyNotPem));
-        assert_eq!(check_pem(CERT, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nAA", None), Err(MtlsError::KeyEncrypted));
+        assert_eq!(
+            check_pem(CERT, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nAA", None),
+            Err(MtlsError::KeyEncrypted)
+        );
         assert_eq!(check_pem(CERT, KEY, Some("nope")), Err(MtlsError::CaNotPem));
         assert_eq!(check_pem(CERT, KEY, Some("")), Ok(()));
         assert_eq!(check_pem(CERT, KEY, Some(CERT)), Ok(()));
@@ -600,10 +708,13 @@ mod tests {
         assert_ne!(mtls_fingerprint(&m).unwrap(), a);
         // Whitespace around PEM text doesn't create a new client.
         m.tls_client_key = Some("k\n".into());
-        assert_eq!(mtls_fingerprint(&m), mtls_fingerprint(&{
-            let mut n = m.clone();
-            n.tls_client_key = Some("k".into());
-            n
-        }));
+        assert_eq!(
+            mtls_fingerprint(&m),
+            mtls_fingerprint(&{
+                let mut n = m.clone();
+                n.tls_client_key = Some("k".into());
+                n
+            })
+        );
     }
 }

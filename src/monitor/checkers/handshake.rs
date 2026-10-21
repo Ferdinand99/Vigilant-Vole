@@ -38,7 +38,10 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
             let ms = util::elapsed_ms(start);
             let cert = tls::peer_cert(&stream);
             let now = util::now_unix();
-            if let Some(c) = cert.as_ref().filter(|c| !monitor.ignore_tls && c.is_expired(now)) {
+            if let Some(c) = cert
+                .as_ref()
+                .filter(|c| !monitor.ignore_tls && c.is_expired(now))
+            {
                 let mut outcome = CheckOutcome::down(c.expired_message(now));
                 outcome.expiry = c.expiry_info();
                 return outcome;
@@ -48,16 +51,25 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
                 if let Some(subject) = &c.subject {
                     message.push_str(&format!(" · certificate for {subject}"));
                 }
-                message.push_str(&format!(" · {}", util::relative_days(c.not_after_unix, now)));
+                message.push_str(&format!(
+                    " · {}",
+                    util::relative_days(c.not_after_unix, now)
+                ));
             }
             let mut outcome = CheckOutcome::up(ms).with_message(message);
             outcome.expiry = cert.as_ref().and_then(CertSummary::expiry_info);
             outcome
         }
-        Ok(Err(err)) => match tls::explain_failure(&err, timeout, || tls::fetch_cert(&host, addr)).await {
-            Some(outcome) if !monitor.ignore_tls => outcome,
-            _ => CheckOutcome::down(format!("TLS handshake with {}:{port} failed: {}", addr.ip(), util::tidy_io_error(&err))),
-        },
+        Ok(Err(err)) => {
+            match tls::explain_failure(&err, timeout, || tls::fetch_cert(&host, addr)).await {
+                Some(outcome) if !monitor.ignore_tls => outcome,
+                _ => CheckOutcome::down(format!(
+                    "TLS handshake with {}:{port} failed: {}",
+                    addr.ip(),
+                    util::tidy_io_error(&err)
+                )),
+            }
+        }
         Err(_) => CheckOutcome::down(format!(
             "TLS handshake with {}:{port}: no answer within {}",
             addr.ip(),
@@ -93,7 +105,11 @@ mod tests {
         let target = format!("localhost:{}", addr.port());
         let out = check(&monitor(MonitorType::Tls, &target)).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
-        assert!(out.message.as_deref().unwrap().contains("not trusted"), "{:?}", out.message);
+        assert!(
+            out.message.as_deref().unwrap().contains("not trusted"),
+            "{:?}",
+            out.message
+        );
         assert!(out.expiry.is_some(), "the certificate is still reported");
 
         let mut m = monitor(MonitorType::Tls, &target);
@@ -119,7 +135,11 @@ mod tests {
         m.ignore_tls = true;
         let out = check(&m).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
-        assert!(out.message.unwrap().starts_with("TLS handshake with 127.0.0.1"));
+        assert!(
+            out.message
+                .unwrap()
+                .starts_with("TLS handshake with 127.0.0.1")
+        );
     }
 
     #[tokio::test]

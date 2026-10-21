@@ -72,7 +72,14 @@ INSERT INTO "group" (id, name, status_page_id, weight) VALUES (1, 'Web', 1, 2), 
 INSERT INTO monitor_group (id, monitor_id, group_id, weight) VALUES (1, 1, 1, 1), (2, 6, 1, 2), (3, 2, 2, 1), (4, 4, 2, 2);
 INSERT INTO maintenance (id, title, strategy, start_time, end_time, weekdays, timezone, active)
     VALUES (1, 'Patch night', 'recurring-weekday', '02:00', '03:30', '[0,3]', 'Europe/Oslo', 1);
-INSERT INTO maintenance (id, title, strategy, cron) VALUES (2, 'Cron thing', 'cron', '0 2 * * *');
+INSERT INTO maintenance (id, title, strategy, cron, duration, timezone) VALUES (2, 'Cron thing', 'cron', '0 2 * * 0', 90, 'Europe/Oslo');
+INSERT INTO maintenance (id, title, strategy, cron, duration) VALUES (4, 'Bad cron', 'cron', '0 0 0 0 0 0 0', 30);
+INSERT INTO maintenance (id, title, strategy, start_time, end_time, start_date, interval_day, timezone)
+    VALUES (5, 'Every third day', 'recurring-interval', '01:00', '02:00', '2026-10-01 00:00:00', 3, 'Europe/Oslo');
+INSERT INTO maintenance (id, title, strategy, start_time, end_time, days_of_month, timezone)
+    VALUES (6, 'Month end', 'recurring-day-of-month', '22:00', '23:00', '[1,15,"lastDay1","lastDay2"]', 'Europe/Oslo');
+INSERT INTO maintenance (id, title, strategy, start_time, end_time, interval_day)
+    VALUES (7, 'Interval without date', 'recurring-interval', '01:00', '02:00', 2);
 INSERT INTO maintenance (id, title, strategy, start_date, end_date, timezone)
     VALUES (3, 'Move', 'single', '2026-11-01 10:00:00', '2026-11-01 12:00:00', 'Europe/Oslo');
 INSERT INTO monitor_maintenance VALUES (1, 2, 1), (2, 3, 3);
@@ -91,7 +98,14 @@ fn kuma_db(name: &str) -> PathBuf {
 }
 
 fn monitor<'a>(import: &'a KumaImport, key: &str) -> &'a MonitorDoc {
-    import.doc.monitors.as_ref().unwrap().iter().find(|m| m.key() == key).unwrap_or_else(|| panic!("no monitor {key}"))
+    import
+        .doc
+        .monitors
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|m| m.key() == key)
+        .unwrap_or_else(|| panic!("no monitor {key}"))
 }
 
 #[test]
@@ -115,14 +129,28 @@ fn sqlite_monitors_map_to_our_types_and_options() {
     assert_eq!(o["http_body_encoding"], "json");
     assert_eq!(o["proxy_url"], "http://user:p%40ss@proxy.internal:3128");
     assert_eq!(web.tags.as_ref().unwrap().len(), 2);
-    assert_eq!(web.notifications.as_ref().unwrap().len(), 2, "Discord + Mail (Line is unsupported)");
+    assert_eq!(
+        web.notifications.as_ref().unwrap().len(),
+        2,
+        "Discord + Mail (Line is unsupported)"
+    );
 
     assert_eq!(monitor(&import, "Postgres port").monitor_type, "tcp");
     assert_eq!(monitor(&import, "Postgres port").target, "db.internal:5432");
-    assert_eq!(monitor(&import, "Postgres port").options["timeout_seconds"], 30, "timeout capped at the interval");
-    assert_eq!(monitor(&import, "Nightly job").push_token.as_deref(), Some("kumaPushTok1"));
+    assert_eq!(
+        monitor(&import, "Postgres port").options["timeout_seconds"],
+        30,
+        "timeout capped at the interval"
+    );
+    assert_eq!(
+        monitor(&import, "Nightly job").push_token.as_deref(),
+        Some("kumaPushTok1")
+    );
     let shop = monitor(&import, "Shop");
-    assert_eq!((shop.monitor_type.as_str(), &shop.options["keyword_invert"]), ("keyword", &serde_json::json!(true)));
+    assert_eq!(
+        (shop.monitor_type.as_str(), &shop.options["keyword_invert"]),
+        ("keyword", &serde_json::json!(true))
+    );
     let docker = monitor(&import, "Web container");
     assert_eq!(docker.options["docker_host"], "/var/run/docker.sock");
     assert_eq!(docker.options["active"], false);
@@ -131,14 +159,24 @@ fn sqlite_monitors_map_to_our_types_and_options() {
     // The second "Website" gets a distinct key.
     assert_eq!(monitor(&import, "Website #10").name, "Website");
     // Unsupported types are listed with a reason.
-    assert!(import.skipped.iter().any(|s| s.name == "Broker" && s.reason.contains("no connection string")));
+    assert!(
+        import
+            .skipped
+            .iter()
+            .any(|s| s.name == "Broker" && s.reason.contains("no connection string"))
+    );
 }
 
 #[test]
 fn tags_notifications_pages_and_maintenance_map() {
     let import = read_file(&kuma_db("rest")).unwrap();
     let tags = import.doc.tags.as_ref().unwrap();
-    assert_eq!(tags.iter().map(|t| (t.name.as_str(), t.color.as_str())).collect::<Vec<_>>(), [("Production", "mint"), ("Team", "red")]);
+    assert_eq!(
+        tags.iter()
+            .map(|t| (t.name.as_str(), t.color.as_str()))
+            .collect::<Vec<_>>(),
+        [("Production", "mint"), ("Team", "red")]
+    );
     let channels = import.doc.notification_channels.as_ref().unwrap();
     let mail = channels.iter().find(|c| c.name == "Mail").unwrap();
     assert_eq!(mail.kind, "email");
@@ -146,8 +184,16 @@ fn tags_notifications_pages_and_maintenance_map() {
     assert_eq!(mail.config["port"], 465);
     let discord = channels.iter().find(|c| c.name == "Discord ops").unwrap();
     assert!(discord.is_default);
-    assert_eq!(discord.config["url"], "https://discord.com/api/webhooks/1/abc");
-    assert!(import.skipped.iter().any(|s| s.kind == "notification" && s.name == "Line"));
+    assert_eq!(
+        discord.config["url"],
+        "https://discord.com/api/webhooks/1/abc"
+    );
+    assert!(
+        import
+            .skipped
+            .iter()
+            .any(|s| s.kind == "notification" && s.name == "Line")
+    );
 
     let page = &import.doc.status_pages.as_ref().unwrap()[0];
     assert_eq!(page.slug, "acme", "slugs are lowercased");
@@ -156,8 +202,15 @@ fn tags_notifications_pages_and_maintenance_map() {
     assert!(!page.show_powered_by);
     let sections = page.sections.as_ref().unwrap();
     assert_eq!(sections[0].name, "Data", "groups ordered by weight");
-    assert_eq!(sections[0].monitors, vec!["Postgres port".to_string()], "skipped monitors are dropped");
-    assert_eq!(sections[1].monitors, vec!["Website".to_string(), "Shop".to_string()]);
+    assert_eq!(
+        sections[0].monitors,
+        vec!["Postgres port".to_string()],
+        "skipped monitors are dropped"
+    );
+    assert_eq!(
+        sections[1].monitors,
+        vec!["Website".to_string(), "Shop".to_string()]
+    );
 
     let windows = import.doc.maintenance.as_ref().unwrap();
     let patch = windows.iter().find(|w| w.title == "Patch night").unwrap();
@@ -167,8 +220,66 @@ fn tags_notifications_pages_and_maintenance_map() {
     assert_eq!(patch.monitors, vec!["Postgres port".to_string()]);
     assert_eq!(patch.status_pages, vec!["acme".to_string()]);
     let once = windows.iter().find(|w| w.title == "Move").unwrap();
-    assert_eq!(once.start_at.as_deref(), Some("2026-11-01 09:00:00"), "local Oslo time converted to UTC");
-    assert!(import.skipped.iter().any(|s| s.name == "Cron thing"));
+    assert_eq!(
+        once.start_at.as_deref(),
+        Some("2026-11-01 09:00:00"),
+        "local Oslo time converted to UTC"
+    );
+    // Cron, every-N-days and day-of-month schedules come across.
+    let cron = windows.iter().find(|w| w.title == "Cron thing").unwrap();
+    assert_eq!(
+        (
+            cron.strategy.as_str(),
+            cron.cron.as_deref(),
+            cron.duration_minutes
+        ),
+        ("cron", Some("0 2 * * 0"), Some(90))
+    );
+    assert_eq!(cron.timezone, "Europe/Oslo");
+    let third = windows
+        .iter()
+        .find(|w| w.title == "Every third day")
+        .unwrap();
+    assert_eq!(
+        (third.strategy.as_str(), third.interval_days),
+        ("interval", Some(3))
+    );
+    assert_eq!(
+        third.start_at.as_deref(),
+        Some("2026-09-30 22:00:00"),
+        "the first date is Oslo local midnight"
+    );
+    assert_eq!(
+        (third.time_from.as_deref(), third.time_to.as_deref()),
+        (Some("01:00"), Some("02:00"))
+    );
+    let month = windows.iter().find(|w| w.title == "Month end").unwrap();
+    assert_eq!(
+        (month.strategy.as_str(), month.month_days.as_deref()),
+        ("monthly", Some("1,15,-1,-2"))
+    );
+    // What can't be mapped is still listed with a reason.
+    assert!(
+        import
+            .skipped
+            .iter()
+            .any(|s| s.name == "Bad cron" && s.reason.contains("cron")),
+        "{:?}",
+        import.skipped
+    );
+    assert!(
+        import
+            .skipped
+            .iter()
+            .any(|s| s.name == "Interval without date"),
+        "{:?}",
+        import.skipped
+    );
+    assert!(
+        windows
+            .iter()
+            .all(|w| w.title != "Bad cron" && w.title != "Interval without date")
+    );
 }
 
 #[test]
@@ -178,22 +289,58 @@ fn planning_skips_invalid_entries_and_applies_cleanly() {
     let plan = plan(&conn, &mut import).unwrap();
     assert!(plan.is_ok(), "{:?}", plan.errors);
     // The Slack channel without a webhook URL fails validation and is skipped, not fatal.
-    assert!(import.skipped.iter().any(|s| s.name == "Broken slack"), "{:?}", import.skipped);
-    assert_eq!(plan.action_for(config_io::KIND_MONITOR, "Website"), Some(Action::Create));
+    assert!(
+        import.skipped.iter().any(|s| s.name == "Broken slack"),
+        "{:?}",
+        import.skipped
+    );
+    assert_eq!(
+        plan.action_for(config_io::KIND_MONITOR, "Website"),
+        Some(Action::Create)
+    );
 
-    let applied = config_io::apply(&mut conn, &import.doc, Mode::Merge).unwrap().unwrap();
+    let applied = config_io::apply(&mut conn, &import.doc, Mode::Merge)
+        .unwrap()
+        .unwrap();
     assert!(!applied.monitor_ids.is_empty());
     let monitors = db_monitors::list_monitors(&conn).unwrap();
-    let push = monitors.iter().find(|m| m.name == "Nightly job").unwrap_or_else(|| panic!("{:?}", import.skipped));
-    assert_eq!(push.push_token.as_deref(), Some("kumaPushTok1"), "push URLs keep working");
-    let web = monitors.iter().find(|m| m.target == "https://example.com").unwrap();
-    assert_eq!(db_notifications::monitor_channel_links(&conn, web.id).unwrap().len(), 2);
-    assert!(monitors.iter().any(|m| m.name == "Web container" && !m.active));
+    let push = monitors
+        .iter()
+        .find(|m| m.name == "Nightly job")
+        .unwrap_or_else(|| panic!("{:?}", import.skipped));
+    assert_eq!(
+        push.push_token.as_deref(),
+        Some("kumaPushTok1"),
+        "push URLs keep working"
+    );
+    let web = monitors
+        .iter()
+        .find(|m| m.target == "https://example.com")
+        .unwrap();
+    assert_eq!(
+        db_notifications::monitor_channel_links(&conn, web.id)
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        monitors
+            .iter()
+            .any(|m| m.name == "Web container" && !m.active)
+    );
 
     // Importing again changes nothing.
     let mut again = read_file(&kuma_db("again")).unwrap();
     let second = super::plan(&conn, &mut again).unwrap();
-    assert!(!second.has_changes(), "{:?}", second.items.iter().filter(|i| i.action != Action::Unchanged).collect::<Vec<_>>());
+    assert!(
+        !second.has_changes(),
+        "{:?}",
+        second
+            .items
+            .iter()
+            .filter(|i| i.action != Action::Unchanged)
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -211,9 +358,18 @@ fn legacy_json_backup_is_read() {
     let import = read_json(json).unwrap();
     let site = monitor(&import, "Site");
     assert_eq!(site.options["upside_down"], true);
-    assert!(!site.options.contains_key("retry_interval_seconds"), "same as interval → default");
+    assert!(
+        !site.options.contains_key("retry_interval_seconds"),
+        "same as interval → default"
+    );
     assert_eq!(site.notifications.as_ref().unwrap()[0].name(), "Hook");
-    assert_eq!(site.tags.as_ref().unwrap()[0], TagRef::Full { name: "region".into(), value: "eu".into() });
+    assert_eq!(
+        site.tags.as_ref().unwrap()[0],
+        TagRef::Full {
+            name: "region".into(),
+            value: "eu".into()
+        }
+    );
     assert_eq!(import.doc.tags.as_ref().unwrap()[0].color, "blue");
     assert_eq!(monitor(&import, "Pinger").target, "192.0.2.1");
     assert!(read_json("{\"hello\": 1}").is_err());
@@ -257,27 +413,63 @@ fn kuma_auth_methods_map_to_ours() {
     let o = |name: &str| monitor(&import, name).options.clone();
 
     let basic = o("Basic");
-    assert_eq!((&basic["auth_method"], &basic["basic_auth_user"], &basic["basic_auth_pass"]), (&"basic".into(), &"bot".into(), &"pw".into()));
+    assert_eq!(
+        (
+            &basic["auth_method"],
+            &basic["basic_auth_user"],
+            &basic["basic_auth_pass"]
+        ),
+        (&"basic".into(), &"bot".into(), &"pw".into())
+    );
     assert_eq!(o("Legacy basic")["auth_method"], "basic");
 
     let oauth = o("OAuth");
     assert_eq!(oauth["auth_method"], "oauth2");
     assert_eq!(oauth["oauth_token_url"], "https://idp.example.com/token");
-    assert_eq!((&oauth["oauth_client_id"], &oauth["oauth_client_secret"]), (&"vole".into(), &"shh".into()));
-    assert_eq!((&oauth["oauth_scope"], &oauth["oauth_audience"]), (&"read write".into(), &"api".into()));
+    assert_eq!(
+        (&oauth["oauth_client_id"], &oauth["oauth_client_secret"]),
+        (&"vole".into(), &"shh".into())
+    );
+    assert_eq!(
+        (&oauth["oauth_scope"], &oauth["oauth_audience"]),
+        (&"read write".into(), &"api".into())
+    );
     assert_eq!(oauth["oauth_client_auth"], "client_secret_post");
     assert_eq!(o("OAuth basic")["oauth_client_auth"], "client_secret_basic");
 
     let mtls = o("Mtls");
     assert_eq!(mtls["auth_method"], "mtls");
-    assert_eq!((&mtls["tls_client_cert"], &mtls["tls_client_key"], &mtls["tls_ca_cert"]), (&"CERT-PEM".into(), &"KEY-PEM".into(), &"CA-PEM".into()));
+    assert_eq!(
+        (
+            &mtls["tls_client_cert"],
+            &mtls["tls_client_key"],
+            &mtls["tls_ca_cert"]
+        ),
+        (&"CERT-PEM".into(), &"KEY-PEM".into(), &"CA-PEM".into())
+    );
 
     // NTLM has no equivalent: no credentials are carried over, and it is reported.
     let ntlm = o("Ntlm");
-    assert!(!ntlm.contains_key("auth_method") && !ntlm.contains_key("basic_auth_user") && !ntlm.contains_key("basic_auth_pass"));
-    assert!(import.warnings.iter().any(|w| w.contains("Ntlm") && w.contains("NTLM")), "{:?}", import.warnings);
+    assert!(
+        !ntlm.contains_key("auth_method")
+            && !ntlm.contains_key("basic_auth_user")
+            && !ntlm.contains_key("basic_auth_pass")
+    );
+    assert!(
+        import
+            .warnings
+            .iter()
+            .any(|w| w.contains("Ntlm") && w.contains("NTLM")),
+        "{:?}",
+        import.warnings
+    );
     assert!(!o("No auth").contains_key("auth_method"));
-    assert!(!import.warnings.iter().any(|w| w.contains("shh") || w.contains("KEY-PEM")));
+    assert!(
+        !import
+            .warnings
+            .iter()
+            .any(|w| w.contains("shh") || w.contains("KEY-PEM"))
+    );
 }
 
 #[test]
@@ -305,27 +497,58 @@ fn service_monitors_map_to_ours() {
     let doc = |name: &str| monitor(&import, name);
 
     let pg = doc("PG");
-    assert_eq!((pg.monitor_type.as_str(), pg.target.as_str()), ("postgres", "postgres://db.local:5433/app?sslmode=require"));
-    assert_eq!((&pg.options["basic_auth_user"], &pg.options["basic_auth_pass"]), (&"vole".into(), &"p@ss".into()), "credentials leave the address and are decoded");
+    assert_eq!(
+        (pg.monitor_type.as_str(), pg.target.as_str()),
+        ("postgres", "postgres://db.local:5433/app?sslmode=require")
+    );
+    assert_eq!(
+        (
+            &pg.options["basic_auth_user"],
+            &pg.options["basic_auth_pass"]
+        ),
+        (&"vole".into(), &"p@ss".into()),
+        "credentials leave the address and are decoded"
+    );
     assert_eq!(doc("My").target, "mysql://maria.local:3306/shop");
     let cache = doc("Cache");
-    assert_eq!((cache.monitor_type.as_str(), cache.target.as_str()), ("redis", "rediss://cache.local:6380/2"));
-    assert!(!cache.options.contains_key("basic_auth_user") && cache.options["basic_auth_pass"] == "secret");
+    assert_eq!(
+        (cache.monitor_type.as_str(), cache.target.as_str()),
+        ("redis", "rediss://cache.local:6380/2")
+    );
+    assert!(
+        !cache.options.contains_key("basic_auth_user")
+            && cache.options["basic_auth_pass"] == "secret"
+    );
 
     let mqtt = doc("Broker");
     assert_eq!(mqtt.target, "mqtts://broker.local:8883/home/status");
-    assert_eq!((&mqtt.options["keyword"], &mqtt.options["basic_auth_user"]), (&"online".into(), &"u".into()));
+    assert_eq!(
+        (&mqtt.options["keyword"], &mqtt.options["basic_auth_user"]),
+        (&"online".into(), &"u".into())
+    );
 
     let kafka = doc("Kafka");
     assert_eq!(kafka.target, "kafka://k1:9092/orders");
     let radius = doc("Radius");
-    assert_eq!((radius.target.as_str(), &radius.options["secret"]), ("radius://radius.local:1812", &"s3".into()));
+    assert_eq!(
+        (radius.target.as_str(), &radius.options["secret"]),
+        ("radius://radius.local:1812", &"s3".into())
+    );
     let snmp = doc("Router");
-    assert_eq!(snmp.target, "snmp://router.local:161/1.3.6.1.2.1.1.3.0?version=2c");
-    assert_eq!((&snmp.options["secret"], &snmp.options["keyword"]), (&"public".into(), &"up".into()));
+    assert_eq!(
+        snmp.target,
+        "snmp://router.local:161/1.3.6.1.2.1.1.3.0?version=2c"
+    );
+    assert_eq!(
+        (&snmp.options["secret"], &snmp.options["keyword"]),
+        (&"public".into(), &"up".into())
+    );
     assert_eq!(doc("Mail").target, "mail.local:465");
     let mq = doc("MQ");
-    assert_eq!((mq.monitor_type.as_str(), mq.target.as_str()), ("http", "https://mq.local:15671/api/health/checks/alarms/"));
+    assert_eq!(
+        (mq.monitor_type.as_str(), mq.target.as_str()),
+        ("http", "https://mq.local:15671/api/health/checks/alarms/")
+    );
     assert_eq!(mq.options["auth_method"], "basic");
 
     let skipped: Vec<&str> = import.skipped.iter().map(|s| s.name.as_str()).collect();
@@ -333,8 +556,17 @@ fn service_monitors_map_to_ours() {
     for name in ["Bad conn", "Ws broker", "V3"] {
         assert!(skipped.contains(&name), "{name} is skipped: {skipped:?}");
     }
-    let warned = |name: &str| import.warnings.iter().any(|w| w.starts_with(&format!("“{name}”")));
-    assert!(warned("PG") && warned("Kafka") && warned("MQ"), "{:?}", import.warnings);
+    let warned = |name: &str| {
+        import
+            .warnings
+            .iter()
+            .any(|w| w.starts_with(&format!("“{name}”")))
+    };
+    assert!(
+        warned("PG") && warned("Kafka") && warned("MQ"),
+        "{:?}",
+        import.warnings
+    );
 }
 
 #[test]
@@ -356,18 +588,46 @@ fn mqtt_topics_survive_and_secrets_keep_their_spaces() {
     let import = read_json(json).unwrap();
     let doc = |name: &str| monitor(&import, name);
     // The topic reads back exactly as Kuma had it.
-    for (name, topic) in [("All", "home/#"), ("One", "a/+/b"), ("Odd", "sensors/100%?x")] {
+    for (name, topic) in [
+        ("All", "home/#"),
+        ("One", "a/+/b"),
+        ("Odd", "sensors/100%?x"),
+    ] {
         let target = doc(name).target.clone();
-        assert_eq!(crate::monitor::checkers::mqtt::topic(&target).as_deref(), Some(topic), "{target}");
-        assert!(crate::api::monitors::form::validate_target(crate::db::models::MonitorType::Mqtt, &target).is_ok(), "{target}");
+        assert_eq!(
+            crate::monitor::checkers::mqtt::topic(&target).as_deref(),
+            Some(topic),
+            "{target}"
+        );
+        assert!(
+            crate::api::monitors::form::validate_target(
+                crate::db::models::MonitorType::Mqtt,
+                &target
+            )
+            .is_ok(),
+            "{target}"
+        );
     }
     // Secrets are copied as stored, spaces included.
     assert_eq!(doc("All").options["basic_auth_pass"], " p w ");
     let radius = doc("Radius");
-    assert_eq!((&radius.options["basic_auth_pass"], &radius.options["secret"]), (&" rp ".into(), &" s3 ".into()));
+    assert_eq!(
+        (
+            &radius.options["basic_auth_pass"],
+            &radius.options["secret"]
+        ),
+        (&" rp ".into(), &" s3 ".into())
+    );
     assert_eq!(doc("Router").options["secret"], " public ");
     assert_eq!(doc("MQ").options["basic_auth_pass"], " guest ");
-    let mail = import.doc.notification_channels.as_ref().unwrap().iter().find(|c| c.name == "Mail").unwrap();
+    let mail = import
+        .doc
+        .notification_channels
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|c| c.name == "Mail")
+        .unwrap();
     assert_eq!(mail.config["password"], " mail pw ", "{:?}", mail.config);
 }
 
@@ -389,28 +649,91 @@ fn sqlserver_and_mongodb_connection_strings_map_to_targets_and_logins() {
     let doc = |name: &str| monitor(&import, name);
 
     let sql = doc("SQL");
-    assert_eq!((sql.monitor_type.as_str(), sql.target.as_str()), ("sqlserver", "sqlserver://db.local:1434/app?encrypt=true&trustServerCertificate=true"));
-    assert_eq!((&sql.options["basic_auth_user"], &sql.options["basic_auth_pass"]), (&"sa".into(), &" p;w ".into()), "quoted passwords keep their spaces");
+    assert_eq!(
+        (sql.monitor_type.as_str(), sql.target.as_str()),
+        (
+            "sqlserver",
+            "sqlserver://db.local:1434/app?encrypt=true&trustServerCertificate=true"
+        )
+    );
+    assert_eq!(
+        (
+            &sql.options["basic_auth_user"],
+            &sql.options["basic_auth_pass"]
+        ),
+        (&"sa".into(), &" p;w ".into()),
+        "quoted passwords keep their spaces"
+    );
     let plain = doc("SQL plain");
     assert_eq!(plain.target, "sqlserver://sql.local/My%20Db?encrypt=false");
-    assert_eq!((&plain.options["basic_auth_user"], &plain.options["basic_auth_pass"]), (&"app".into(), &"pa}ss".into()));
+    assert_eq!(
+        (
+            &plain.options["basic_auth_user"],
+            &plain.options["basic_auth_pass"]
+        ),
+        (&"app".into(), &"pa}ss".into())
+    );
 
     let mongo = doc("Mongo");
-    assert_eq!((mongo.monitor_type.as_str(), mongo.target.as_str()), ("mongodb", "mongodb://m1.local:27017,m2.local:27018/app?replicaSet=rs0&authSource=admin"));
-    assert_eq!((&mongo.options["basic_auth_user"], &mongo.options["basic_auth_pass"]), (&"vole".into(), &"p@ss ".into()));
+    assert_eq!(
+        (mongo.monitor_type.as_str(), mongo.target.as_str()),
+        (
+            "mongodb",
+            "mongodb://m1.local:27017,m2.local:27018/app?replicaSet=rs0&authSource=admin"
+        )
+    );
+    assert_eq!(
+        (
+            &mongo.options["basic_auth_user"],
+            &mongo.options["basic_auth_pass"]
+        ),
+        (&"vole".into(), &"p@ss ".into())
+    );
     let atlas = doc("Atlas");
-    assert_eq!(atlas.target, "mongodb+srv://cluster0.example.net/?retryWrites=true");
+    assert_eq!(
+        atlas.target,
+        "mongodb+srv://cluster0.example.net/?retryWrites=true"
+    );
     assert_eq!(atlas.options["basic_auth_user"], "reader");
 
     // Every imported target passes the form's validation.
     use crate::db::models::MonitorType as Kind;
-    for (name, kind) in [("SQL", Kind::SqlServer), ("SQL plain", Kind::SqlServer), ("Mongo", Kind::Mongodb), ("Atlas", Kind::Mongodb)] {
-        assert!(crate::api::monitors::form::validate_target(kind, &doc(name).target).is_ok(), "{name}");
+    for (name, kind) in [
+        ("SQL", Kind::SqlServer),
+        ("SQL plain", Kind::SqlServer),
+        ("Mongo", Kind::Mongodb),
+        ("Atlas", Kind::Mongodb),
+    ] {
+        assert!(
+            crate::api::monitors::form::validate_target(kind, &doc(name).target).is_ok(),
+            "{name}"
+        );
     }
-    let reason = |name: &str| import.skipped.iter().find(|s| s.name == name).map(|s| s.reason.clone()).unwrap_or_default();
+    let reason = |name: &str| {
+        import
+            .skipped
+            .iter()
+            .find(|s| s.name == name)
+            .map(|s| s.reason.clone())
+            .unwrap_or_default()
+    };
     assert!(reason("SQL windows").contains("Windows authentication"));
     assert!(reason("Not mongo").contains("postgres://"));
     assert!(reason("SQL none").contains("no connection string"));
-    assert!(import.warnings.iter().any(|w| w.starts_with("“SQL”") && w.contains("SELECT COUNT")), "{:?}", import.warnings);
-    assert!(import.warnings.iter().any(|w| w.starts_with("“SQL plain”") && w.contains("SQLEXPRESS")), "{:?}", import.warnings);
+    assert!(
+        import
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("“SQL”") && w.contains("SELECT COUNT")),
+        "{:?}",
+        import.warnings
+    );
+    assert!(
+        import
+            .warnings
+            .iter()
+            .any(|w| w.starts_with("“SQL plain”") && w.contains("SQLEXPRESS")),
+        "{:?}",
+        import.warnings
+    );
 }

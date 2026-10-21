@@ -101,11 +101,17 @@ impl SessionClaims {
 
     /// The same session with its idle timer slid forward to `now`.
     pub fn refreshed(&self, now: i64) -> Self {
-        Self { last_seen: now, ..*self }
+        Self {
+            last_seen: now,
+            ..*self
+        }
     }
 
     pub fn encode(&self) -> String {
-        format!("v2.{}.{}.{}.{}", self.user_id, self.version, self.last_seen, self.issued_at)
+        format!(
+            "v2.{}.{}.{}.{}",
+            self.user_id, self.version, self.last_seen, self.issued_at
+        )
     }
 
     pub fn decode(value: &str) -> Option<Self> {
@@ -118,7 +124,11 @@ impl SessionClaims {
         let version = parts.next()?.parse().ok()?;
         let last_seen = parts.next()?.parse().ok()?;
         // v1 cookies predate the absolute lifetime: count it from their last refresh.
-        let issued_at = if tag == "v2" { parts.next()?.parse().ok()? } else { last_seen };
+        let issued_at = if tag == "v2" {
+            parts.next()?.parse().ok()?
+        } else {
+            last_seen
+        };
         if parts.next().is_some() {
             return None;
         }
@@ -198,7 +208,12 @@ impl PendingLogin {
     }
 }
 
-fn base_cookie(name: &'static str, value: String, secure: bool, max_age_secs: i64) -> Cookie<'static> {
+fn base_cookie(
+    name: &'static str,
+    value: String,
+    secure: bool,
+    max_age_secs: i64,
+) -> Cookie<'static> {
     let mut cookie = Cookie::new(name, value);
     cookie.set_path("/");
     cookie.set_http_only(true);
@@ -209,11 +224,21 @@ fn base_cookie(name: &'static str, value: String, secure: bool, max_age_secs: i6
 }
 
 pub fn session_cookie(claims: &SessionClaims, secure: bool) -> Cookie<'static> {
-    base_cookie(SESSION_COOKIE, claims.encode(), secure, claims.max_age_secs())
+    base_cookie(
+        SESSION_COOKIE,
+        claims.encode(),
+        secure,
+        claims.max_age_secs(),
+    )
 }
 
 pub fn pending_cookie(pending: &PendingLogin, secure: bool) -> Cookie<'static> {
-    base_cookie(PENDING_2FA_COOKIE, pending.encode(), secure, PENDING_2FA_TTL_SECS)
+    base_cookie(
+        PENDING_2FA_COOKIE,
+        pending.encode(),
+        secure,
+        PENDING_2FA_TTL_SECS,
+    )
 }
 
 /// A cookie that, passed to `jar.remove`, deletes `name` (path must match).
@@ -239,7 +264,11 @@ pub fn is_https(headers: &HeaderMap, trust_proxy: bool) -> bool {
 /// Client IP for rate limiting. Behind a trusted proxy, the address the proxy
 /// saw (right-most `X-Forwarded-For` entry, or `X-Real-IP`); otherwise the
 /// TCP peer.
-pub fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>, trust_proxy: bool) -> Option<IpAddr> {
+pub fn client_ip(
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+    trust_proxy: bool,
+) -> Option<IpAddr> {
     if trust_proxy {
         let forwarded = header_str(headers, "x-forwarded-for")
             .and_then(|v| v.rsplit(',').next())
@@ -263,11 +292,17 @@ pub fn sanitize_next(raw: Option<&str>) -> String {
     let safe = next.starts_with('/')
         && !next.starts_with("//")
         && next.len() <= 2048
-        && !next.chars().any(|c| c == '\\' || c.is_control() || c.is_whitespace());
-    let auth_page = ["/login", "/logout", "/setup"]
-        .iter()
-        .any(|p| next == *p || next.starts_with(&format!("{p}/")) || next.starts_with(&format!("{p}?")));
-    if safe && !auth_page { next.to_string() } else { "/".into() }
+        && !next
+            .chars()
+            .any(|c| c == '\\' || c.is_control() || c.is_whitespace());
+    let auth_page = ["/login", "/logout", "/setup"].iter().any(|p| {
+        next == *p || next.starts_with(&format!("{p}/")) || next.starts_with(&format!("{p}?"))
+    });
+    if safe && !auth_page {
+        next.to_string()
+    } else {
+        "/".into()
+    }
 }
 
 #[cfg(test)]
@@ -284,7 +319,16 @@ mod tests {
 
     #[test]
     fn legacy_and_garbage_session_values_are_rejected() {
-        for v in ["7", "", "v1.7.3", "v1.7.3.1.9", "v2.7.3.1", "v2.7.3.1.2.3", "v3.7.3.1.1", "v1.x.3.1"] {
+        for v in [
+            "7",
+            "",
+            "v1.7.3",
+            "v1.7.3.1.9",
+            "v2.7.3.1",
+            "v2.7.3.1.2.3",
+            "v3.7.3.1.1",
+            "v1.x.3.1",
+        ] {
             assert_eq!(SessionClaims::decode(v), None, "{v}");
         }
     }
@@ -292,7 +336,10 @@ mod tests {
     #[test]
     fn v1_cookies_still_work_and_count_lifetime_from_their_last_refresh() {
         let c = SessionClaims::decode("v1.7.3.1000").unwrap();
-        assert_eq!((c.user_id, c.version, c.last_seen, c.issued_at), (7, 3, 1000, 1000));
+        assert_eq!(
+            (c.user_id, c.version, c.last_seen, c.issued_at),
+            (7, 3, 1000, 1000)
+        );
         assert!(c.is_live(1000 + IDLE_TIMEOUT_SECS));
         // Refreshing upgrades to v2 without resetting the lifetime.
         let up = c.refreshed(5000);
@@ -356,8 +403,14 @@ mod tests {
 
     #[test]
     fn next_keeps_same_site_paths() {
-        assert_eq!(sanitize_next(Some("/monitors/4?tab=events")), "/monitors/4?tab=events");
-        assert_eq!(sanitize_next(Some("/settings/security")), "/settings/security");
+        assert_eq!(
+            sanitize_next(Some("/monitors/4?tab=events")),
+            "/monitors/4?tab=events"
+        );
+        assert_eq!(
+            sanitize_next(Some("/settings/security")),
+            "/settings/security"
+        );
     }
 
     #[test]
@@ -408,8 +461,17 @@ mod tests {
     fn setup_token_is_only_required_when_configured() {
         assert!(setup_token_matches(None, None));
         assert!(setup_token_matches(None, Some("anything")));
-        assert!(setup_token_matches(Some("s3cret-token"), Some(" s3cret-token ")));
-        for bad in [None, Some(""), Some("s3cret"), Some("s3cret-tokeN"), Some("s3cret-token-x")] {
+        assert!(setup_token_matches(
+            Some("s3cret-token"),
+            Some(" s3cret-token ")
+        ));
+        for bad in [
+            None,
+            Some(""),
+            Some("s3cret"),
+            Some("s3cret-tokeN"),
+            Some("s3cret-token-x"),
+        ] {
             assert!(!setup_token_matches(Some("s3cret-token"), bad), "{bad:?}");
         }
     }

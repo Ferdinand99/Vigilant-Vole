@@ -39,7 +39,10 @@ struct Message {
 async fn read_message(s: &mut Stream) -> Result<Message, String> {
     let tag = s.read_u8().await.map_err(io_err)?;
     let len = s.read_i32().await.map_err(io_err)?;
-    let len = usize::try_from(len).ok().filter(|l| (4..=MAX_MESSAGE).contains(l)).ok_or("Not a PostgreSQL server (bad message)")?;
+    let len = usize::try_from(len)
+        .ok()
+        .filter(|l| (4..=MAX_MESSAGE).contains(l))
+        .ok_or("Not a PostgreSQL server (bad message)")?;
     let mut body = vec![0u8; len - 4];
     s.read_exact(&mut body).await.map_err(io_err)?;
     Ok(Message { tag, body })
@@ -73,7 +76,9 @@ fn cstr(s: &str) -> Vec<u8> {
 fn error_fields(body: &[u8]) -> (String, String) {
     let (mut code, mut message) = (String::new(), String::new());
     for field in body.split(|b| *b == 0) {
-        let Some((kind, text)) = field.split_first() else { continue };
+        let Some((kind, text)) = field.split_first() else {
+            continue;
+        };
         let text = String::from_utf8_lossy(text).into_owned();
         match kind {
             b'C' => code = text,
@@ -87,7 +92,10 @@ fn error_fields(body: &[u8]) -> (String, String) {
 fn explain(code: &str, message: &str, database: &str) -> String {
     match code {
         "28P01" => "Authentication failed: wrong user name or password".into(),
-        "3D000" => format!("The database \"{}\" does not exist", util::truncate(database, 40)),
+        "3D000" => format!(
+            "The database \"{}\" does not exist",
+            util::truncate(database, 40)
+        ),
         "57P03" => "The server is starting up".into(),
         "53300" => "The server has too many connections".into(),
         _ => format!("Server error {code}: {}", util::truncate(message, 100)),
@@ -132,7 +140,9 @@ async fn connect(
         return Ok((Box::new(tcp), None, None));
     }
     let verify = sslmode.verify(ignore_tls);
-    tcp.write_all(&SSL_REQUEST).await.map_err(|e| Failure::Down(io_err(e)))?;
+    tcp.write_all(&SSL_REQUEST)
+        .await
+        .map_err(|e| Failure::Down(io_err(e)))?;
     match tcp.read_u8().await.map_err(|e| Failure::Down(io_err(e)))? {
         b'S' => match tls::upgrade_with(tcp, &ep.host, verify, &[]).await {
             Ok(stream) => {
@@ -146,39 +156,63 @@ async fn connect(
                     (tcp.read_u8().await.ok()? == b'S').then_some(())?;
                     tls::peer_cert(&tls::upgrade(tcp, &ep.host, true).await.ok()?)
                 };
-                let outcome = conn::tls_failure_with(&err, verify == tls::Verify::None, timeout, fetch).await;
+                let outcome =
+                    conn::tls_failure_with(&err, verify == tls::Verify::None, timeout, fetch).await;
                 Err(Failure::Outcome(Box::new(outcome)))
             }
         },
         b'N' if sslmode.requires_tls() => Err(Failure::Down(sslmode.no_tls_message())),
         b'N' => Ok((Box::new(tcp), None, None)),
-        _ => Err(Failure::Down("Not a PostgreSQL server (bad reply to the TLS request)".into())),
+        _ => Err(Failure::Down(
+            "Not a PostgreSQL server (bad reply to the TLS request)".into(),
+        )),
     }
 }
 
-async fn login(s: &mut Stream, user: &str, password: Option<&str>, database: &str) -> Result<Option<String>, Failure> {
+async fn login(
+    s: &mut Stream,
+    user: &str,
+    password: Option<&str>,
+    database: &str,
+) -> Result<Option<String>, Failure> {
     let mut startup = 196_608i32.to_be_bytes().to_vec();
-    for (k, v) in [("user", user), ("database", database), ("application_name", "vigilant-vole"), ("client_encoding", "UTF8")] {
+    for (k, v) in [
+        ("user", user),
+        ("database", database),
+        ("application_name", "vigilant-vole"),
+        ("client_encoding", "UTF8"),
+    ] {
         startup.extend(cstr(k));
         startup.extend(cstr(v));
     }
     startup.push(0);
     send(s, None, &startup).await?;
 
-    let need_password = || Failure::Down("The server wants a password: set one on the monitor".into());
+    let need_password =
+        || Failure::Down("The server wants a password: set one on the monitor".into());
     let mut exchange: Option<(String, String, Vec<u8>)> = None; // (client_first_bare, nonce, expected server signature)
     let mut version = None;
     loop {
         let msg = read_message(s).await?;
         match msg.tag {
             b'R' => {
-                let kind = i32::from_be_bytes(msg.body.get(..4).and_then(|b| b.try_into().ok()).ok_or("Not a PostgreSQL server (bad auth message)")?);
+                let kind = i32::from_be_bytes(
+                    msg.body
+                        .get(..4)
+                        .and_then(|b| b.try_into().ok())
+                        .ok_or("Not a PostgreSQL server (bad auth message)")?,
+                );
                 match kind {
                     0 => {}
                     3 => send(s, Some(b'p'), &cstr(password.ok_or_else(need_password)?)).await?,
                     5 => {
-                        let salt = msg.body.get(4..8).ok_or("Not a PostgreSQL server (bad MD5 salt)")?;
-                        let inner = md5_hex(format!("{}{user}", password.ok_or_else(need_password)?).as_bytes());
+                        let salt = msg
+                            .body
+                            .get(4..8)
+                            .ok_or("Not a PostgreSQL server (bad MD5 salt)")?;
+                        let inner = md5_hex(
+                            format!("{}{user}", password.ok_or_else(need_password)?).as_bytes(),
+                        );
                         let mut data = inner.into_bytes();
                         data.extend_from_slice(salt);
                         send(s, Some(b'p'), &cstr(&format!("md5{}", md5_hex(&data)))).await?;
@@ -199,24 +233,36 @@ async fn login(s: &mut Stream, user: &str, password: Option<&str>, database: &st
                         exchange = Some((bare, nonce, Vec::new()));
                     }
                     11 => {
-                        let (bare, nonce, _) = exchange.take().ok_or("Unexpected SCRAM message from the server")?;
+                        let (bare, nonce, _) = exchange
+                            .take()
+                            .ok_or("Unexpected SCRAM message from the server")?;
                         let server_first = String::from_utf8_lossy(&msg.body[4..]).into_owned();
                         let password = password.ok_or_else(need_password)?.to_string();
                         let (b, f, n) = (bare.clone(), server_first.clone(), nonce.clone());
-                        let fin = tokio::task::spawn_blocking(move || scram::client_final(Hash::Sha256, password.as_bytes(), &b, &f, &n))
-                            .await
-                            .map_err(|_| "SCRAM computation failed".to_string())??;
+                        let fin = tokio::task::spawn_blocking(move || {
+                            scram::client_final(Hash::Sha256, password.as_bytes(), &b, &f, &n)
+                        })
+                        .await
+                        .map_err(|_| "SCRAM computation failed".to_string())??;
                         send(s, Some(b'p'), fin.message.as_bytes()).await?;
                         exchange = Some((bare, nonce, fin.server_signature));
                     }
                     12 => {
-                        let (_, _, expected) = exchange.take().ok_or("Unexpected SCRAM message from the server")?;
+                        let (_, _, expected) = exchange
+                            .take()
+                            .ok_or("Unexpected SCRAM message from the server")?;
                         let text = String::from_utf8_lossy(&msg.body[4..]).into_owned();
                         if !scram::server_final_ok(&text, &expected) {
-                            return Err("The server failed to prove it knows the password".to_string().into());
+                            return Err("The server failed to prove it knows the password"
+                                .to_string()
+                                .into());
                         }
                     }
-                    other => return Err(format!("Unsupported authentication method (code {other})").into()),
+                    other => {
+                        return Err(
+                            format!("Unsupported authentication method (code {other})").into()
+                        );
+                    }
                 }
             }
             b'E' => {
@@ -226,12 +272,18 @@ async fn login(s: &mut Stream, user: &str, password: Option<&str>, database: &st
             b'S' => {
                 let mut parts = msg.body.split(|b| *b == 0);
                 if parts.next() == Some(b"server_version") {
-                    version = parts.next().map(|v| String::from_utf8_lossy(v).into_owned());
+                    version = parts
+                        .next()
+                        .map(|v| String::from_utf8_lossy(v).into_owned());
                 }
             }
             b'Z' => return Ok(version),
             b'K' | b'N' => {}
-            _ => return Err("Not a PostgreSQL server (unexpected message)".to_string().into()),
+            _ => {
+                return Err("Not a PostgreSQL server (unexpected message)"
+                    .to_string()
+                    .into());
+            }
         }
     }
 }
@@ -263,16 +315,34 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Ok(mode) => mode,
         Err(e) => return CheckOutcome::down(e),
     };
-    let database = if ep.path.is_empty() { user } else { ep.path.as_str() };
+    let database = if ep.path.is_empty() {
+        user
+    } else {
+        ep.path.as_str()
+    };
     let timeout = super::timeout_of(monitor);
     let start = Instant::now();
     let probe = async {
-        let (mut stream, cert, tls_version) = connect(&ep, sslmode, monitor.ignore_tls, timeout).await?;
-        let version = login(&mut stream, user, monitor.basic_auth_pass.as_deref(), database).await?;
+        let (mut stream, cert, tls_version) =
+            connect(&ep, sslmode, monitor.ignore_tls, timeout).await?;
+        let version = login(
+            &mut stream,
+            user,
+            monitor.basic_auth_pass.as_deref(),
+            database,
+        )
+        .await?;
         select_one(&mut stream, database).await?;
         let ms = util::elapsed_ms(start);
         let _ = send(&mut stream, Some(b'X'), &[]).await;
-        Ok::<_, Failure>((ms, Session { version, cert, tls_version }))
+        Ok::<_, Failure>((
+            ms,
+            Session {
+                version,
+                cert,
+                tls_version,
+            },
+        ))
     };
     match tokio::time::timeout(timeout, probe).await {
         Ok(Ok((ms, session))) => {
@@ -291,10 +361,10 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::Engine as _;
-    use base64::engine::general_purpose::STANDARD as B64;
     use crate::db::models::HeartbeatStatus;
     use crate::monitor::checkers::test_support::{monitor, tls_acceptor};
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD as B64;
 
     #[derive(Clone, Copy, PartialEq)]
     enum Auth {
@@ -383,7 +453,10 @@ mod tests {
                 let good = recovered == client_key;
                 if good {
                     let server_key = Hash::Sha256.hmac(&salted, b"Server Key");
-                    let v = format!("v={}", B64.encode(Hash::Sha256.hmac(&server_key, auth_message.as_bytes())));
+                    let v = format!(
+                        "v={}",
+                        B64.encode(Hash::Sha256.hmac(&server_key, auth_message.as_bytes()))
+                    );
                     auth_request(&mut s, 12, v.as_bytes()).await;
                 }
                 good
@@ -432,7 +505,9 @@ mod tests {
                         tcp.read_exact(&mut peek).await.unwrap();
                         if tls {
                             tcp.write_all(b"S").await.unwrap();
-                            let Ok(stream) = acceptor.accept(tcp).await else { return };
+                            let Ok(stream) = acceptor.accept(tcp).await else {
+                                return;
+                            };
                             Box::new(stream)
                         } else {
                             tcp.write_all(b"N").await.unwrap();
@@ -466,7 +541,10 @@ mod tests {
             let addr = serve(auth, false).await;
             let out = check(&pg(&format!("postgres://{addr}/app"), Some("pw"))).await;
             assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-            assert_eq!(out.message.as_deref(), Some("PostgreSQL 16.2 · SELECT 1 OK"));
+            assert_eq!(
+                out.message.as_deref(),
+                Some("PostgreSQL 16.2 · SELECT 1 OK")
+            );
         }
     }
 
@@ -476,13 +554,22 @@ mod tests {
             let addr = serve(auth, false).await;
             let out = check(&pg(&format!("postgres://{addr}/app"), Some("nope"))).await;
             assert_eq!(out.status, HeartbeatStatus::Down);
-            assert_eq!(out.message.as_deref(), Some("Authentication failed: wrong user name or password"));
+            assert_eq!(
+                out.message.as_deref(),
+                Some("Authentication failed: wrong user name or password")
+            );
         }
         let addr = serve(Auth::Md5, false).await;
         let out = check(&pg(&format!("postgres://{addr}/other"), Some("pw"))).await;
-        assert_eq!(out.message.as_deref(), Some("The database \"other\" does not exist"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The database \"other\" does not exist")
+        );
         let out = check(&pg(&format!("postgres://{addr}/app"), None)).await;
-        assert_eq!(out.message.as_deref(), Some("The server wants a password: set one on the monitor"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The server wants a password: set one on the monitor")
+        );
     }
 
     #[tokio::test]
@@ -494,12 +581,19 @@ mod tests {
             let out = check(&pg(&t, Some("pw"))).await;
             assert_eq!(out.status, HeartbeatStatus::Up, "{t}: {:?}", out.message);
             assert!(out.message.unwrap().ends_with("· TLS 1.3"));
-            assert!(out.expiry.is_some(), "the certificate's expiry is still reported");
+            assert!(
+                out.expiry.is_some(),
+                "the certificate's expiry is still reported"
+            );
         }
         for mode in ["verify-ca", "verify-full"] {
             let out = check(&pg(&format!("{target}?sslmode={mode}"), Some("pw"))).await;
             assert_eq!(out.status, HeartbeatStatus::Down, "{mode}");
-            assert!(out.message.as_deref().unwrap().contains("not trusted"), "{mode}: {:?}", out.message);
+            assert!(
+                out.message.as_deref().unwrap().contains("not trusted"),
+                "{mode}: {:?}",
+                out.message
+            );
             assert!(out.expiry.is_some());
         }
 
@@ -509,17 +603,39 @@ mod tests {
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
 
         let out = check(&pg(&format!("{target}?sslmode=disable"), Some("pw"))).await;
-        assert_eq!(out.status, HeartbeatStatus::Down, "the server speaks TLS only");
+        assert_eq!(
+            out.status,
+            HeartbeatStatus::Down,
+            "the server speaks TLS only"
+        );
     }
 
     #[tokio::test]
     async fn sslmode_require_refuses_a_plain_server() {
         let addr = serve(Auth::Md5, false).await;
-        let out = check(&pg(&format!("postgres://{addr}/app?sslmode=require"), Some("pw"))).await;
-        assert_eq!(out.message.as_deref(), Some("The server doesn't support TLS (sslmode=require)"));
-        let out = check(&pg(&format!("postgres://{addr}/app?sslmode=verify-full"), Some("pw"))).await;
-        assert_eq!(out.message.as_deref(), Some("The server doesn't support TLS (sslmode=verify-full)"));
-        let out = check(&pg(&format!("postgres://{addr}/app?sslmode=allow"), Some("pw"))).await;
+        let out = check(&pg(
+            &format!("postgres://{addr}/app?sslmode=require"),
+            Some("pw"),
+        ))
+        .await;
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The server doesn't support TLS (sslmode=require)")
+        );
+        let out = check(&pg(
+            &format!("postgres://{addr}/app?sslmode=verify-full"),
+            Some("pw"),
+        ))
+        .await;
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The server doesn't support TLS (sslmode=verify-full)")
+        );
+        let out = check(&pg(
+            &format!("postgres://{addr}/app?sslmode=allow"),
+            Some("pw"),
+        ))
+        .await;
         assert!(out.message.unwrap().starts_with("Unsupported sslmode"));
     }
 
@@ -530,12 +646,18 @@ mod tests {
         m.basic_auth_user = Some("app".into());
         assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
         m.basic_auth_user = None;
-        assert_eq!(check(&m).await.message.as_deref(), Some("Enter a user name"));
+        assert_eq!(
+            check(&m).await.message.as_deref(),
+            Some("Enter a user name")
+        );
     }
 
     #[tokio::test]
     async fn other_servers_are_down() {
-        let addr = crate::monitor::checkers::test_support::foreign_server(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+        let addr = crate::monitor::checkers::test_support::foreign_server(
+            b"HTTP/1.1 400 Bad Request\r\n\r\n",
+        )
+        .await;
         let out = check(&pg(&format!("{addr}?sslmode=disable"), Some("pw"))).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Not a PostgreSQL server"));
@@ -546,7 +668,9 @@ mod tests {
     #[ignore = "needs a PostgreSQL server (VV_TEST_POSTGRES)"]
     async fn live_server() {
         let spec = std::env::var("VV_TEST_POSTGRES").expect("VV_TEST_POSTGRES");
-        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else { panic!("host:port/db,user,password") };
+        let [target, user, pass] = spec.splitn(3, ',').collect::<Vec<_>>()[..] else {
+            panic!("host:port/db,user,password")
+        };
         let mut m = pg(target, Some(pass));
         m.basic_auth_user = Some(user.into());
         m.ignore_tls = true;

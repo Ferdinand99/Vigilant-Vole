@@ -73,7 +73,11 @@ pub enum Wait {
 
 impl Wait {
     pub fn parse(s: &str) -> Self {
-        if s == "network_idle" { Wait::NetworkIdle } else { Wait::Load }
+        if s == "network_idle" {
+            Wait::NetworkIdle
+        } else {
+            Wait::Load
+        }
     }
 }
 
@@ -87,13 +91,21 @@ pub enum Viewport {
 
 impl Viewport {
     pub fn parse(s: &str) -> Self {
-        if s == "mobile" { Viewport::Mobile } else { Viewport::Desktop }
+        if s == "mobile" {
+            Viewport::Mobile
+        } else {
+            Viewport::Desktop
+        }
     }
 
     fn metrics(self) -> Value {
         match self {
-            Viewport::Desktop => json!({"width": 1280, "height": 800, "deviceScaleFactor": 1, "mobile": false}),
-            Viewport::Mobile => json!({"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": true}),
+            Viewport::Desktop => {
+                json!({"width": 1280, "height": 800, "deviceScaleFactor": 1, "mobile": false})
+            }
+            Viewport::Mobile => {
+                json!({"width": 390, "height": 844, "deviceScaleFactor": 2, "mobile": true})
+            }
         }
     }
 }
@@ -124,23 +136,38 @@ pub struct Options {
 
 impl Options {
     pub fn from_monitor(m: &Monitor) -> Result<Self, String> {
-        let url = url::Url::parse(m.target.trim()).map_err(|_| format!("Invalid URL \"{}\"", util::truncate(&m.target, 80)))?;
+        let url = url::Url::parse(m.target.trim())
+            .map_err(|_| format!("Invalid URL \"{}\"", util::truncate(&m.target, 80)))?;
         if !matches!(url.scheme(), "http" | "https") {
             return Err("Only http:// and https:// pages can be checked".into());
         }
-        let accepted = parse_status_codes(&m.accepted_status_codes).map_err(|e| format!("Accepted status codes: {e}"))?;
-        let mut headers: Vec<(String, String)> = parse_headers(m.http_headers.as_deref().unwrap_or_default())?
-            .iter()
-            .filter_map(|(k, v)| Some((k.as_str().to_string(), v.to_str().ok()?.to_string())))
-            .collect();
+        let accepted = parse_status_codes(&m.accepted_status_codes)
+            .map_err(|e| format!("Accepted status codes: {e}"))?;
+        let mut headers: Vec<(String, String)> =
+            parse_headers(m.http_headers.as_deref().unwrap_or_default())?
+                .iter()
+                .filter_map(|(k, v)| Some((k.as_str().to_string(), v.to_str().ok()?.to_string())))
+                .collect();
         if m.auth_method == "basic"
             && let Some(user) = m.basic_auth_user.as_deref().filter(|u| !u.is_empty())
         {
-            let raw = format!("{user}:{}", m.basic_auth_pass.as_deref().unwrap_or_default());
+            let raw = format!(
+                "{user}:{}",
+                m.basic_auth_pass.as_deref().unwrap_or_default()
+            );
             headers.retain(|(k, _)| !k.eq_ignore_ascii_case("authorization"));
-            headers.push(("Authorization".into(), format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(raw))));
+            headers.push((
+                "Authorization".into(),
+                format!(
+                    "Basic {}",
+                    base64::engine::general_purpose::STANDARD.encode(raw)
+                ),
+            ));
         }
-        let expect = match (m.browser_selector.as_deref().map(str::trim), m.keyword.as_deref()) {
+        let expect = match (
+            m.browser_selector.as_deref().map(str::trim),
+            m.keyword.as_deref(),
+        ) {
             (Some(sel), _) if !sel.is_empty() => Expect::Selector(sel.to_string()),
             (_, Some(k)) if !k.is_empty() => Expect::Keyword(k.to_string()),
             _ => Expect::Nothing,
@@ -165,13 +192,17 @@ impl Options {
 
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
     let Some(pool) = DB.get() else {
-        return CheckOutcome::down("Real-browser checks run on the server, which holds the remote browser settings");
+        return CheckOutcome::down(
+            "Real-browser checks run on the server, which holds the remote browser settings",
+        );
     };
     let wanted = monitor.remote_browser_id;
     let browser = match crate::db::interact(pool, move |c| db_rb::for_monitor(c, wanted)).await {
         Ok(Some(b)) => b,
         Ok(None) => return CheckOutcome::down(NO_BROWSER),
-        Err(err) => return CheckOutcome::down(format!("Couldn't read the remote browser settings: {err}")),
+        Err(err) => {
+            return CheckOutcome::down(format!("Couldn't read the remote browser settings: {err}"));
+        }
     };
     let opts = match Options::from_monitor(monitor) {
         Ok(o) => o,
@@ -183,7 +214,10 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         // off by its timeout can't cut the write off half-way.
         let (pool, id, message) = (pool.clone(), monitor.id, run.outcome.message.clone());
         tokio::spawn(async move {
-            let saved = crate::db::interact(&pool, move |c| db_rb::save_screenshot(c, id, &jpeg, "image/jpeg", message.as_deref())).await;
+            let saved = crate::db::interact(&pool, move |c| {
+                db_rb::save_screenshot(c, id, &jpeg, "image/jpeg", message.as_deref())
+            })
+            .await;
             if let Err(err) = saved {
                 tracing::warn!(monitor_id = id, %err, "couldn't store the failure screenshot");
             }
@@ -211,12 +245,24 @@ pub async fn test_connection(url: &str, timeout: Duration) -> Result<BrowserVers
     let (conn, _events) = timeout_at(deadline.into(), endpoint::connect(&target, |_, _| false))
         .await
         .map_err(|_| format!("no answer within {}", util::format_secs(timeout)))??;
-    let v = timeout_at(deadline.into(), conn.call("Browser.getVersion", Value::Null, None))
-        .await
-        .map_err(|_| "the browser didn't answer Browser.getVersion".to_string())?
-        .map_err(|e| e.to_string())?;
-    let text = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-    Ok(BrowserVersion { product: text("product"), protocol: text("protocolVersion"), user_agent: text("userAgent") })
+    let v = timeout_at(
+        deadline.into(),
+        conn.call("Browser.getVersion", Value::Null, None),
+    )
+    .await
+    .map_err(|_| "the browser didn't answer Browser.getVersion".to_string())?
+    .map_err(|e| e.to_string())?;
+    let text = |k: &str| {
+        v.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    Ok(BrowserVersion {
+        product: text("product"),
+        protocol: text("protocolVersion"),
+        user_agent: text("userAgent"),
+    })
 }
 
 /// One check's result and, when it failed, a JPEG of the page.
@@ -228,12 +274,16 @@ pub struct Run {
 
 impl Run {
     fn down(message: impl Into<String>) -> Self {
-        Run { outcome: CheckOutcome::down(message), screenshot: None }
+        Run {
+            outcome: CheckOutcome::down(message),
+            screenshot: None,
+        }
     }
 }
 
 /// Per-browser check slots, by endpoint URL.
-static SLOTS: LazyLock<Mutex<HashMap<String, Arc<Semaphore>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static SLOTS: LazyLock<Mutex<HashMap<String, Arc<Semaphore>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn slots_for(endpoint: &str) -> Arc<Semaphore> {
     SLOTS
@@ -248,9 +298,15 @@ fn slots_for(endpoint: &str) -> Arc<Semaphore> {
 /// dropped by the reader.
 fn interesting(method: &str, params: &Value) -> bool {
     match method {
-        "Page.lifecycleEvent" | "Runtime.exceptionThrown" | "Inspector.targetCrashed" | "Inspector.detached" | "Target.detachedFromTarget"
+        "Page.lifecycleEvent"
+        | "Runtime.exceptionThrown"
+        | "Inspector.targetCrashed"
+        | "Inspector.detached"
+        | "Target.detachedFromTarget"
         | "Target.targetCrashed" => true,
-        "Network.requestWillBeSent" | "Network.responseReceived" => params.get("type").and_then(Value::as_str) == Some("Document"),
+        "Network.requestWillBeSent" | "Network.responseReceived" => {
+            params.get("type").and_then(Value::as_str) == Some("Document")
+        }
         _ => false,
     }
 }
@@ -271,26 +327,52 @@ pub async fn run(endpoint: &str, opts: &Options, budget: Duration) -> Run {
     };
     let permit = match timeout_at(deadline.into(), slots_for(endpoint).acquire_owned()).await {
         Ok(Ok(p)) => p,
-        _ => return Run::down(format!("Remote browser busy: {PER_BROWSER_CHECKS} checks were already running on it")),
+        _ => {
+            return Run::down(format!(
+                "Remote browser busy: {PER_BROWSER_CHECKS} checks were already running on it"
+            ));
+        }
     };
     let unreachable = |why: String| Run::down(format!("Remote browser unreachable: {why}"));
-    let target = match timeout_at(deadline.into(), endpoint::resolve(&url, deadline.saturating_duration_since(Instant::now()))).await {
+    let target = match timeout_at(
+        deadline.into(),
+        endpoint::resolve(&url, deadline.saturating_duration_since(Instant::now())),
+    )
+    .await
+    {
         Ok(Ok(t)) => t,
         Ok(Err(e)) => return unreachable(e),
         Err(_) => return unreachable("no answer in time".into()),
     };
-    let (conn, events) = match timeout_at(deadline.into(), endpoint::connect(&target, interesting)).await {
-        Ok(Ok(c)) => c,
-        Ok(Err(e)) => return unreachable(e),
-        Err(_) => return unreachable("no answer in time".into()),
+    let (conn, events) =
+        match timeout_at(deadline.into(), endpoint::connect(&target, interesting)).await {
+            Ok(Ok(c)) => c,
+            Ok(Err(e)) => return unreachable(e),
+            Err(_) => return unreachable("no answer in time".into()),
+        };
+    let mut cleanup = Cleanup {
+        conn: Some(conn.clone()),
+        context: None,
+        target: None,
+        permit: Some(permit),
     };
-    let mut cleanup = Cleanup { conn: Some(conn.clone()), context: None, target: None, permit: Some(permit) };
     let page = match timeout_at(deadline.into(), open_page(&conn, &mut cleanup)).await {
         Ok(Ok(p)) => p,
         Ok(Err(e)) => return Run::down(format!("Remote browser error: {e}")),
         Err(_) => return Run::down("Remote browser error: it didn't open a page in time"),
     };
-    let run = drive(&conn, events, &page, opts, Deadlines { start, load: load_deadline, end: deadline }).await;
+    let run = drive(
+        &conn,
+        events,
+        &page,
+        opts,
+        Deadlines {
+            start,
+            load: load_deadline,
+            end: deadline,
+        },
+    )
+    .await;
     drop(cleanup);
     run
 }
@@ -316,20 +398,32 @@ struct Cleanup {
 
 impl Drop for Cleanup {
     fn drop(&mut self) {
-        let (Some(conn), permit) = (self.conn.take(), self.permit.take()) else { return };
+        let (Some(conn), permit) = (self.conn.take(), self.permit.take()) else {
+            return;
+        };
         let (target, context) = (self.target.take(), self.context.take());
         if target.is_none() && context.is_none() {
             return;
         }
-        let Ok(handle) = tokio::runtime::Handle::try_current() else { return };
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
         handle.spawn(async move {
             let _permit = permit;
             let close = async {
                 if let Some(t) = target {
-                    let _ = conn.call("Target.closeTarget", json!({"targetId": t}), None).await;
+                    let _ = conn
+                        .call("Target.closeTarget", json!({"targetId": t}), None)
+                        .await;
                 }
                 if let Some(c) = context {
-                    let _ = conn.call("Target.disposeBrowserContext", json!({"browserContextId": c}), None).await;
+                    let _ = conn
+                        .call(
+                            "Target.disposeBrowserContext",
+                            json!({"browserContextId": c}),
+                            None,
+                        )
+                        .await;
                 }
             };
             let _ = tokio::time::timeout(CLEANUP_TIMEOUT, close).await;
@@ -338,27 +432,45 @@ impl Drop for Cleanup {
 }
 
 fn field(v: &Value, key: &str) -> Result<String, String> {
-    v.get(key).and_then(Value::as_str).map(str::to_string).ok_or_else(|| format!("the browser's answer has no {key}"))
+    v.get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| format!("the browser's answer has no {key}"))
 }
 
 async fn open_page(conn: &Connection, cleanup: &mut Cleanup) -> Result<Page, String> {
     let ctx = conn
-        .call("Target.createBrowserContext", json!({"disposeOnDetach": true}), None)
+        .call(
+            "Target.createBrowserContext",
+            json!({"disposeOnDetach": true}),
+            None,
+        )
         .await
         .map_err(|e| e.to_string())?;
     let context_id = field(&ctx, "browserContextId")?;
     cleanup.context = Some(context_id.clone());
     let created = conn
-        .call("Target.createTarget", json!({"url": "about:blank", "browserContextId": context_id}), None)
+        .call(
+            "Target.createTarget",
+            json!({"url": "about:blank", "browserContextId": context_id}),
+            None,
+        )
         .await
         .map_err(|e| e.to_string())?;
     let target_id = field(&created, "targetId")?;
     cleanup.target = Some(target_id.clone());
     let attached = conn
-        .call("Target.attachToTarget", json!({"targetId": target_id, "flatten": true}), None)
+        .call(
+            "Target.attachToTarget",
+            json!({"targetId": target_id, "flatten": true}),
+            None,
+        )
         .await
         .map_err(|e| e.to_string())?;
-    Ok(Page { session_id: field(&attached, "sessionId")?, target_id })
+    Ok(Page {
+        session_id: field(&attached, "sessionId")?,
+        target_id,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -395,7 +507,8 @@ impl PageState {
         if ev.session_id.as_deref() != Some(page.session_id.as_str()) {
             match ev.method.as_str() {
                 "Target.detachedFromTarget" if s("sessionId") == page.session_id => {
-                    self.fatal.get_or_insert_with(|| "The browser closed the page".into());
+                    self.fatal
+                        .get_or_insert_with(|| "The browser closed the page".into());
                 }
                 "Target.targetCrashed" if s("targetId") == page.target_id => {
                     self.fatal.get_or_insert_with(|| "The page crashed".into());
@@ -423,7 +536,9 @@ impl PageState {
                     _ => {}
                 }
             }
-            "Network.requestWillBeSent" if s("frameId") == self.frame_id && s("loaderId") == self.navigation_loader => {
+            "Network.requestWillBeSent"
+                if s("frameId") == self.frame_id && s("loaderId") == self.navigation_loader =>
+            {
                 if self.request_ts.is_none() {
                     self.request_ts = p.get("timestamp").and_then(Value::as_f64);
                 }
@@ -431,8 +546,15 @@ impl PageState {
             "Network.responseReceived" if s("frameId") == self.frame_id => {
                 let r = &p["response"];
                 if let Some(status) = r.get("status").and_then(Value::as_u64) {
-                    let text = r.get("statusText").and_then(Value::as_str).unwrap_or_default().to_string();
-                    self.responses.insert(s("loaderId").to_string(), (u16::try_from(status).unwrap_or(0), text));
+                    let text = r
+                        .get("statusText")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    self.responses.insert(
+                        s("loaderId").to_string(),
+                        (u16::try_from(status).unwrap_or(0), text),
+                    );
                 }
             }
             "Runtime.exceptionThrown" => {
@@ -449,7 +571,8 @@ impl PageState {
                 self.fatal.get_or_insert_with(|| "The page crashed".into());
             }
             "Inspector.detached" => {
-                self.fatal.get_or_insert_with(|| "The browser closed the page".into());
+                self.fatal
+                    .get_or_insert_with(|| "The browser closed the page".into());
             }
             _ => {}
         }
@@ -466,7 +589,10 @@ impl PageState {
     fn load_ms(&self, nav_start: Instant) -> Option<i64> {
         match (self.request_ts, self.load_ts) {
             (Some(a), Some(b)) if b >= a => Some(((b - a) * 1000.0).round() as i64),
-            _ => self.load_at.map(|t| i64::try_from(t.saturating_duration_since(nav_start).as_millis()).unwrap_or(i64::MAX)),
+            _ => self.load_at.map(|t| {
+                i64::try_from(t.saturating_duration_since(nav_start).as_millis())
+                    .unwrap_or(i64::MAX)
+            }),
         }
     }
 }
@@ -476,7 +602,10 @@ fn secs(ms: i64) -> String {
 }
 
 fn http_status(code: u16, text: &str) -> String {
-    let reason = http::StatusCode::from_u16(code).ok().and_then(|s| s.canonical_reason()).map(str::to_string);
+    let reason = http::StatusCode::from_u16(code)
+        .ok()
+        .and_then(|s| s.canonical_reason())
+        .map(str::to_string);
     match reason.or_else(|| (!text.trim().is_empty()).then(|| text.trim().to_string())) {
         Some(r) => format!("HTTP {code} {r}"),
         None => format!("HTTP {code}"),
@@ -484,7 +613,13 @@ fn http_status(code: u16, text: &str) -> String {
 }
 
 /// Drives the page through one check.
-async fn drive(conn: &Connection, mut events: Events, page: &Page, opts: &Options, d: Deadlines) -> Run {
+async fn drive(
+    conn: &Connection,
+    mut events: Events,
+    page: &Page,
+    opts: &Options,
+    d: Deadlines,
+) -> Run {
     let session = Some(page.session_id.as_str());
     let call = |method: &'static str, params: Value| conn.call(method, params, session);
     let setup = async {
@@ -492,16 +627,32 @@ async fn drive(conn: &Connection, mut events: Events, page: &Page, opts: &Option
         call("Page.setLifecycleEventsEnabled", json!({"enabled": true})).await?;
         call("Runtime.enable", json!({})).await?;
         call("Network.enable", json!({})).await?;
-        call("Emulation.setDeviceMetricsOverride", opts.viewport.metrics()).await?;
+        call(
+            "Emulation.setDeviceMetricsOverride",
+            opts.viewport.metrics(),
+        )
+        .await?;
         if opts.viewport == Viewport::Mobile {
-            call("Emulation.setTouchEmulationEnabled", json!({"enabled": true, "maxTouchPoints": 5})).await?;
+            call(
+                "Emulation.setTouchEmulationEnabled",
+                json!({"enabled": true, "maxTouchPoints": 5}),
+            )
+            .await?;
         }
         if !opts.headers.is_empty() {
-            let headers: Map<String, Value> = opts.headers.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
+            let headers: Map<String, Value> = opts
+                .headers
+                .iter()
+                .map(|(k, v)| (k.clone(), json!(v)))
+                .collect();
             call("Network.setExtraHTTPHeaders", json!({"headers": headers})).await?;
         }
         if opts.ignore_tls {
-            call("Security.setIgnoreCertificateErrors", json!({"ignore": true})).await?;
+            call(
+                "Security.setIgnoreCertificateErrors",
+                json!({"ignore": true}),
+            )
+            .await?;
         }
         Ok::<(), CdpError>(())
     };
@@ -515,21 +666,43 @@ async fn drive(conn: &Connection, mut events: Events, page: &Page, opts: &Option
     while events.try_next().is_some() {}
 
     let nav_start = Instant::now();
-    let nav = match timeout_at(d.load.into(), call("Page.navigate", json!({"url": opts.url}))).await {
+    let nav = match timeout_at(
+        d.load.into(),
+        call("Page.navigate", json!({"url": opts.url})),
+    )
+    .await
+    {
         Ok(Ok(v)) => v,
-        Ok(Err(CdpError::Closed)) => return Run::down("Remote browser closed the connection during navigation"),
+        Ok(Err(CdpError::Closed)) => {
+            return Run::down("Remote browser closed the connection during navigation");
+        }
         Ok(Err(e)) => return Run::down(format!("Navigation failed: {e}")),
         Err(_) => {
-            let msg = format!("No response from the page within {}", util::format_secs(d.load.saturating_duration_since(d.start)));
+            let msg = format!(
+                "No response from the page within {}",
+                util::format_secs(d.load.saturating_duration_since(d.start))
+            );
             return finish_down(conn, page, msg, None, d).await;
         }
     };
-    if let Some(err) = nav.get("errorText").and_then(Value::as_str).filter(|e| !e.is_empty()) {
+    if let Some(err) = nav
+        .get("errorText")
+        .and_then(Value::as_str)
+        .filter(|e| !e.is_empty())
+    {
         return finish_down(conn, page, format!("Navigation failed: {err}"), None, d).await;
     }
     let mut st = PageState {
-        frame_id: nav.get("frameId").and_then(Value::as_str).unwrap_or(&page.target_id).to_string(),
-        loader_id: nav.get("loaderId").and_then(Value::as_str).unwrap_or_default().to_string(),
+        frame_id: nav
+            .get("frameId")
+            .and_then(Value::as_str)
+            .unwrap_or(&page.target_id)
+            .to_string(),
+        loader_id: nav
+            .get("loaderId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         ..PageState::default()
     };
     st.navigation_loader = st.loader_id.clone();
@@ -556,7 +729,11 @@ async fn drive(conn: &Connection, mut events: Events, page: &Page, opts: &Option
         return Run::down(fatal);
     }
 
-    let status = st.responses.get(&st.navigation_loader).or_else(|| st.responses.get(&st.loader_id)).cloned();
+    let status = st
+        .responses
+        .get(&st.navigation_loader)
+        .or_else(|| st.responses.get(&st.loader_id))
+        .cloned();
     if let Some((code, text)) = &status
         && !opts.accepted.contains(*code)
     {
@@ -565,7 +742,10 @@ async fn drive(conn: &Connection, mut events: Events, page: &Page, opts: &Option
     if !st.reached(opts.wait) {
         let waited = util::format_secs(d.load.saturating_duration_since(nav_start));
         let msg = match (opts.wait, load_ms) {
-            (Wait::NetworkIdle, Some(ms)) => format!("Network didn't go idle within {waited} (loaded in {})", secs(ms)),
+            (Wait::NetworkIdle, Some(ms)) => format!(
+                "Network didn't go idle within {waited} (loaded in {})",
+                secs(ms)
+            ),
             _ => format!("Page didn't finish loading within {waited}"),
         };
         return finish_down(conn, page, msg, load_ms, d).await;
@@ -577,7 +757,14 @@ async fn drive(conn: &Connection, mut events: Events, page: &Page, opts: &Option
             1 => String::new(),
             n => format!(" (+{} more)", n - 1),
         };
-        return finish_down(conn, page, format!("JavaScript error: {first}{more}"), load_ms, d).await;
+        return finish_down(
+            conn,
+            page,
+            format!("JavaScript error: {first}{more}"),
+            load_ms,
+            d,
+        )
+        .await;
     }
     let found = match evaluate(conn, page, &opts.expect, opts.invert, d.end).await {
         Ok(found) => found,
@@ -593,22 +780,40 @@ async fn drive(conn: &Connection, mut events: Events, page: &Page, opts: &Option
         message.push_str(" · ");
         message.push_str(&found);
     }
-    Run { outcome: CheckOutcome::up(ms).with_message(message), screenshot: None }
+    Run {
+        outcome: CheckOutcome::up(ms).with_message(message),
+        screenshot: None,
+    }
 }
 
 /// Captures the page for a failed check.
-async fn finish_down(conn: &Connection, page: &Page, message: String, load_ms: Option<i64>, d: Deadlines) -> Run {
+async fn finish_down(
+    conn: &Connection,
+    page: &Page,
+    message: String,
+    load_ms: Option<i64>,
+    d: Deadlines,
+) -> Run {
     let mut outcome = CheckOutcome::down(message);
     outcome.response_time_ms = load_ms;
     let screenshot = screenshot(conn, page, d.end).await;
-    Run { outcome, screenshot }
+    Run {
+        outcome,
+        screenshot,
+    }
 }
 
 async fn screenshot(conn: &Connection, page: &Page, deadline: Instant) -> Option<Vec<u8>> {
     for quality in [JPEG_QUALITY, SMALLER_JPEG_QUALITY] {
-        let shot = conn.call("Page.captureScreenshot", json!({"format": "jpeg", "quality": quality}), Some(&page.session_id));
+        let shot = conn.call(
+            "Page.captureScreenshot",
+            json!({"format": "jpeg", "quality": quality}),
+            Some(&page.session_id),
+        );
         let data = timeout_at(deadline.into(), shot).await.ok()?.ok()?;
-        let jpeg = base64::engine::general_purpose::STANDARD.decode(data.get("data")?.as_str()?).ok()?;
+        let jpeg = base64::engine::general_purpose::STANDARD
+            .decode(data.get("data")?.as_str()?)
+            .ok()?;
         if jpeg.len() <= MAX_SCREENSHOT_BYTES {
             return Some(jpeg);
         }
@@ -635,13 +840,23 @@ pub fn selector_script(selector: &str) -> String {
 }
 
 /// `Ok(Some(note))` / `Ok(None)` when it passes, `Err(down message)` when not.
-async fn evaluate(conn: &Connection, page: &Page, expect: &Expect, invert: bool, deadline: Instant) -> Result<Option<String>, String> {
+async fn evaluate(
+    conn: &Connection,
+    page: &Page,
+    expect: &Expect,
+    invert: bool,
+    deadline: Instant,
+) -> Result<Option<String>, String> {
     let script = match expect {
         Expect::Nothing => return Ok(None),
         Expect::Keyword(k) => keyword_script(k),
         Expect::Selector(s) => selector_script(s),
     };
-    let call = conn.call("Runtime.evaluate", json!({"expression": script, "returnByValue": true}), Some(&page.session_id));
+    let call = conn.call(
+        "Runtime.evaluate",
+        json!({"expression": script, "returnByValue": true}),
+        Some(&page.session_id),
+    );
     let v = match timeout_at(deadline.into(), call).await {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return Err(format!("Couldn't inspect the page: {e}")),
@@ -657,24 +872,45 @@ pub fn judge(expect: &Expect, invert: bool, value: &Value) -> Result<String, Str
         Expect::Nothing => Ok(String::new()),
         Expect::Keyword(k) => {
             let shown = util::truncate(k, 40);
-            let found = value.get("i").and_then(Value::as_i64).is_some_and(|i| i >= 0);
-            let text = |key: &str| util::snippet(value.get(key).and_then(Value::as_str).unwrap_or_default(), 80);
+            let found = value
+                .get("i")
+                .and_then(Value::as_i64)
+                .is_some_and(|i| i >= 0);
+            let text = |key: &str| {
+                util::snippet(
+                    value.get(key).and_then(Value::as_str).unwrap_or_default(),
+                    80,
+                )
+            };
             match (found, invert) {
                 (true, false) => Ok(format!("keyword \"{shown}\" found")),
                 (false, true) => Ok(format!("keyword \"{shown}\" absent, as expected")),
                 (false, false) => match text("head") {
-                    head if head.is_empty() => Err(format!("Keyword \"{shown}\" not found — the page has no text")),
-                    head => Err(format!("Keyword \"{shown}\" not found — page text starts: {head}")),
+                    head if head.is_empty() => Err(format!(
+                        "Keyword \"{shown}\" not found — the page has no text"
+                    )),
+                    head => Err(format!(
+                        "Keyword \"{shown}\" not found — page text starts: {head}"
+                    )),
                 },
-                (true, true) => Err(format!("Keyword \"{shown}\" found but should be absent — …{}", text("around"))),
+                (true, true) => Err(format!(
+                    "Keyword \"{shown}\" found but should be absent — …{}",
+                    text("around")
+                )),
             }
         }
         Expect::Selector(s) => {
             let shown = util::truncate(s, 60);
             if let Some(err) = value.get("error").and_then(Value::as_str) {
-                return Err(format!("Invalid selector {shown}: {}", util::truncate(err, 120)));
+                return Err(format!(
+                    "Invalid selector {shown}: {}",
+                    util::truncate(err, 120)
+                ));
             }
-            match (value.get("found").and_then(Value::as_bool).unwrap_or(false), invert) {
+            match (
+                value.get("found").and_then(Value::as_bool).unwrap_or(false),
+                invert,
+            ) {
                 (true, false) => Ok(format!("{shown} found")),
                 (false, true) => Ok(format!("{shown} absent, as expected")),
                 (false, false) => Err(format!("Selector {shown} not found")),

@@ -35,13 +35,16 @@
     <h2 class="form-section-title" id="sec-schedule">{{ tr("mw.schedule_section") }}</h2>
     <div class="card">
       <div class="field">
-        <span class="label" id="strategy-label">{{ tr("mw.repeats") }}</span>
-        <div class="segmented segmented-block" role="radiogroup" aria-labelledby="strategy-label">
-          <label><input type="radio" name="strategy" value="manual"{% if form.strategy == "manual" %} checked{% endif %}><span>{{ tr("mw.manual") }}</span></label>
-          <label><input type="radio" name="strategy" value="once"{% if form.strategy == "once" %} checked{% endif %}><span>{{ tr("mw.once") }}</span></label>
-          <label><input type="radio" name="strategy" value="daily"{% if form.strategy == "daily" %} checked{% endif %}><span>{{ tr("mw.daily") }}</span></label>
-          <label><input type="radio" name="strategy" value="weekly"{% if form.strategy == "weekly" %} checked{% endif %}><span>{{ tr("mw.weekly") }}</span></label>
-        </div>
+        <label class="label" for="f-strategy">{{ tr("mw.repeats") }}</label>
+        <select id="f-strategy" name="strategy">
+          <option value="manual"{% if form.strategy == "manual" %} selected{% endif %}>{{ tr("mw.manual") }}</option>
+          <option value="once"{% if form.strategy == "once" %} selected{% endif %}>{{ tr("mw.once") }}</option>
+          <option value="daily"{% if form.strategy == "daily" %} selected{% endif %}>{{ tr("mw.daily") }}</option>
+          <option value="weekly"{% if form.strategy == "weekly" %} selected{% endif %}>{{ tr("mw.weekly") }}</option>
+          <option value="interval"{% if form.strategy == "interval" %} selected{% endif %}>{{ tr("mw.interval") }}</option>
+          <option value="monthly"{% if form.strategy == "monthly" %} selected{% endif %}>{{ tr("mw.monthly") }}</option>
+          <option value="cron"{% if form.strategy == "cron" %} selected{% endif %}>{{ tr("mw.cron") }}</option>
+        </select>
       </div>
 
       <div data-show-when="strategy=manual">
@@ -74,7 +77,43 @@
         </div>
       </div>
 
-      <div class="field-row" data-show-when="strategy=daily,weekly">
+      <div class="field-row" data-show-when="strategy=interval">
+        <div class="field">
+          <label class="label" for="f-interval_days">{{ tr("mw.interval_days") }}</label>
+          <div class="input-group">
+            <input id="f-interval_days" name="interval_days" type="number" inputmode="numeric" min="1" max="366" value="{{ form.interval_days }}" autocomplete="off">
+            <span class="input-addon" aria-hidden="true">{{ tr("common.days") }}</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="label" for="f-interval_start">{{ tr("mw.first_day") }}</label>
+          <input id="f-interval_start" name="valid_from" type="date" value="{{ form.valid_from }}">
+          <p class="help">{{ tr("mw.interval_help") }}</p>
+        </div>
+      </div>
+
+      <div class="field" data-show-when="strategy=monthly">
+        <label class="label" for="f-month_days">{{ tr("mw.month_days") }}</label>
+        <input id="f-month_days" name="month_days" type="text" value="{{ form.month_days }}" placeholder="1, 15, -1" autocomplete="off" spellcheck="false" aria-describedby="f-month_days-help">
+        <p class="help" id="f-month_days-help">{{ tr("mw.month_days_help") }}</p>
+      </div>
+
+      <div class="field-row" data-show-when="strategy=cron">
+        <div class="field">
+          <label class="label" for="f-cron">{{ tr("mw.cron_expr") }}</label>
+          <input id="f-cron" name="cron" type="text" class="mono" value="{{ form.cron }}" placeholder="0 2 * * 0" autocomplete="off" autocapitalize="none" spellcheck="false" dir="ltr" aria-describedby="f-cron-help">
+          <p class="help" id="f-cron-help">{{ tr("mw.cron_help") }}</p>
+        </div>
+        <div class="field">
+          <label class="label" for="f-duration_minutes">{{ tr("mw.duration") }}</label>
+          <div class="input-group">
+            <input id="f-duration_minutes" name="duration_minutes" type="number" inputmode="numeric" min="1" value="{{ form.duration_minutes }}" placeholder="60" autocomplete="off">
+            <span class="input-addon" aria-hidden="true">{{ tr("common.min") }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row" data-show-when="strategy=daily,weekly,interval,monthly">
         <div class="field">
           <label class="label" for="f-time_from">{{ tr("mw.from") }}</label>
           <input id="f-time_from" name="time_from" type="time" value="{{ form.time_from }}">
@@ -102,11 +141,20 @@
         {%- endif %}
       </div>
 
-      <details class="disclosure" data-show-when="strategy=daily,weekly"{% if !form.valid_from.is_empty() || !form.valid_until.is_empty() %} open{% endif %}>
+      {%- if !form.next_runs.is_empty() %}
+      <div class="field" data-show-when="strategy=daily,weekly,interval,monthly,cron">
+        <span class="label">{{ tr("mw.next_runs") }}</span>
+        {%- for run in form.next_runs %}
+        <p class="help"><bdi>{{ run }}</bdi></p>
+        {%- endfor %}
+      </div>
+      {%- endif %}
+
+      <details class="disclosure" data-show-when="strategy=daily,weekly,interval,monthly,cron"{% if !form.valid_from.is_empty() || !form.valid_until.is_empty() %} open{% endif %}>
         <summary>{{ tr("mw.date_range") }} <span class="disclosure-sub">{{ tr("mw.date_range_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
         <div class="disclosure-body">
           <div class="field-row">
-            <div class="field">
+            <div class="field" data-show-when="strategy!=interval">
               <label class="label" for="f-valid_from">{{ tr("mw.first_day") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
               <input id="f-valid_from" name="valid_from" type="date" value="{{ form.valid_from }}">
             </div>

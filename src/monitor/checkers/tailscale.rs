@@ -75,7 +75,9 @@ impl Target {
             return Err("Enter the peer's machine name, MagicDNS name or Tailscale IP".into());
         }
         if peer.contains("://") || peer.contains('/') {
-            return Err("Enter just the peer's name or Tailscale IP, without a scheme or path".into());
+            return Err(
+                "Enter just the peer's name or Tailscale IP, without a scheme or path".into(),
+            );
         }
         if peer.chars().any(char::is_whitespace) {
             return Err("The peer name can't contain spaces".into());
@@ -83,16 +85,27 @@ impl Target {
         let mut kind = PingType::Disco;
         for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
             if !key.eq_ignore_ascii_case("type") {
-                return Err(format!("Unknown option \"{}\" (only type=disco, tsmp or icmp)", util::truncate(&key, 20)));
+                return Err(format!(
+                    "Unknown option \"{}\" (only type=disco, tsmp or icmp)",
+                    util::truncate(&key, 20)
+                ));
             }
             kind = match value.trim().to_ascii_lowercase().as_str() {
                 "disco" | "" => PingType::Disco,
                 "tsmp" => PingType::Tsmp,
                 "icmp" => PingType::Icmp,
-                other => return Err(format!("Unknown ping type \"{}\" (use disco, tsmp or icmp)", util::truncate(other, 20))),
+                other => {
+                    return Err(format!(
+                        "Unknown ping type \"{}\" (use disco, tsmp or icmp)",
+                        util::truncate(other, 20)
+                    ));
+                }
             };
         }
-        Ok(Target { peer: peer.trim_end_matches('.').to_string(), kind })
+        Ok(Target {
+            peer: peer.trim_end_matches('.').to_string(),
+            kind,
+        })
     }
 }
 
@@ -173,11 +186,22 @@ fn resolve(status: &Status, peer: &str) -> Result<Resolved, String> {
     let peers: Vec<&Node> = status.peer.iter().flat_map(HashMap::values).collect();
     if let Some(self_node) = &status.self_node {
         let is_self = peer.parse::<IpAddr>().map_or_else(
-            |_| [self_node.dns_name.trim_end_matches('.'), self_node.short_name(), &self_node.host_name].iter().any(|n| n.eq_ignore_ascii_case(peer)),
+            |_| {
+                [
+                    self_node.dns_name.trim_end_matches('.'),
+                    self_node.short_name(),
+                    &self_node.host_name,
+                ]
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(peer))
+            },
             |ip| self_node.ips().iter().any(|own| *own == ip.to_string()),
         );
         if is_self {
-            return Err(format!("\"{}\" is this host itself; pick another peer", util::truncate(peer, 60)));
+            return Err(format!(
+                "\"{}\" is this host itself; pick another peer",
+                util::truncate(peer, 60)
+            ));
         }
     }
     if let Ok(ip) = peer.parse::<IpAddr>() {
@@ -204,42 +228,92 @@ fn resolve(status: &Status, peer: &str) -> Result<Resolved, String> {
             found.first().copied().copied()
         })
         .ok_or_else(|| format!("No peer named \"{}\" in this tailnet (use its machine name, MagicDNS name or Tailscale IP)", util::truncate(peer, 60)))?;
-    let ip = node.ips().first().cloned().ok_or_else(|| format!("Peer \"{}\" has no Tailscale IP", node.short_name()))?;
-    Ok(Resolved { ip, name: node.short_name().to_string(), online: Some(node.online), last_seen: node.last_seen() })
+    let ip = node
+        .ips()
+        .first()
+        .cloned()
+        .ok_or_else(|| format!("Peer \"{}\" has no Tailscale IP", node.short_name()))?;
+    Ok(Resolved {
+        ip,
+        name: node.short_name().to_string(),
+        online: Some(node.online),
+        last_seen: node.last_seen(),
+    })
 }
 
 /// Why tailscaled can't ping, from its `BackendState`.
 fn backend_problem(state: &str) -> Option<String> {
     Some(match state {
         "Running" | "Starting" => return None,
-        "NeedsLogin" => "Tailscale on this host is logged out (NeedsLogin): log it in with tailscale up".into(),
-        "NeedsMachineAuth" => "Tailscale on this host waits for an admin to approve the machine (NeedsMachineAuth)".into(),
+        "NeedsLogin" => {
+            "Tailscale on this host is logged out (NeedsLogin): log it in with tailscale up".into()
+        }
+        "NeedsMachineAuth" => {
+            "Tailscale on this host waits for an admin to approve the machine (NeedsMachineAuth)"
+                .into()
+        }
         "Stopped" => "Tailscale is stopped on this host (run tailscale up)".into(),
-        other => format!("Tailscale isn't ready on this host ({})", util::truncate(if other.is_empty() { "no state" } else { other }, 40)),
+        other => format!(
+            "Tailscale isn't ready on this host ({})",
+            util::truncate(if other.is_empty() { "no state" } else { other }, 40)
+        ),
     })
 }
 
 /// Turns tailscaled's ping answer into an outcome.
-fn ping_outcome(result: &PingResult, peer: &Resolved, kind: PingType, wall_ms: i64) -> CheckOutcome {
-    let name = if result.node_name.is_empty() { peer.name.as_str() } else { result.node_name.trim_end_matches('.').split('.').next().unwrap_or(&peer.name) };
-    let ip = if result.node_ip.is_empty() { peer.ip.as_str() } else { result.node_ip.as_str() };
+fn ping_outcome(
+    result: &PingResult,
+    peer: &Resolved,
+    kind: PingType,
+    wall_ms: i64,
+) -> CheckOutcome {
+    let name = if result.node_name.is_empty() {
+        peer.name.as_str()
+    } else {
+        result
+            .node_name
+            .trim_end_matches('.')
+            .split('.')
+            .next()
+            .unwrap_or(&peer.name)
+    };
+    let ip = if result.node_ip.is_empty() {
+        peer.ip.as_str()
+    } else {
+        result.node_ip.as_str()
+    };
     if !result.err.is_empty() {
         if result.is_local_ip {
             return CheckOutcome::down(format!("{ip} is this host itself; pick another peer"));
         }
-        return CheckOutcome::down(format!("Ping to {name} ({ip}) failed: {}{}", util::truncate(&result.err, 200), offline_note(peer)));
+        return CheckOutcome::down(format!(
+            "Ping to {name} ({ip}) failed: {}{}",
+            util::truncate(&result.err, 200),
+            offline_note(peer)
+        ));
     }
     let via = if !result.peer_relay.is_empty() {
         format!("via peer relay {}", result.peer_relay)
     } else if result.derp_region_id != 0 {
-        format!("via DERP({})", if result.derp_region_code.is_empty() { result.derp_region_id.to_string() } else { result.derp_region_code.clone() })
+        format!(
+            "via DERP({})",
+            if result.derp_region_code.is_empty() {
+                result.derp_region_id.to_string()
+            } else {
+                result.derp_region_code.clone()
+            }
+        )
     } else if !result.endpoint.is_empty() {
         format!("direct via {}", result.endpoint)
     } else {
         format!("via {}", kind.api_name())
     };
     let latency = Duration::from_secs_f64(result.latency_seconds.clamp(0.0, 86_400.0));
-    let ms = if result.latency_seconds > 0.0 { i64::try_from(latency.as_millis()).unwrap_or(i64::MAX) } else { wall_ms };
+    let ms = if result.latency_seconds > 0.0 {
+        i64::try_from(latency.as_millis()).unwrap_or(i64::MAX)
+    } else {
+        wall_ms
+    };
     CheckOutcome::up(ms).with_message(format!("pong from {name} ({ip}) {via} in {ms} ms"))
 }
 
@@ -253,7 +327,10 @@ fn offline_note(peer: &Resolved) -> String {
 
 /// The socket to use: the environment's, else the first that exists.
 fn locate_socket() -> Result<String, String> {
-    if let Some(path) = std::env::var(SOCKET_ENV).ok().filter(|p| !p.trim().is_empty()) {
+    if let Some(path) = std::env::var(SOCKET_ENV)
+        .ok()
+        .filter(|p| !p.trim().is_empty())
+    {
         return Ok(path.trim().to_string());
     }
     #[cfg(windows)]
@@ -276,20 +353,33 @@ async fn call(socket: &str, method: &str, path: &str) -> Result<(u16, Vec<u8>), 
     let explain = |e: std::io::Error| {
         use std::io::ErrorKind;
         match e.kind() {
-            ErrorKind::NotFound => format!("The tailscaled socket {socket} doesn't exist (is Tailscale installed and the socket mounted?)"),
-            ErrorKind::PermissionDenied => format!("No permission to open {socket}: run with access to the socket (root, or its group)"),
-            ErrorKind::ConnectionRefused => format!("tailscaled isn't running ({socket} refuses connections)"),
-            _ => format!("Can't reach tailscaled at {socket}: {}", util::tidy_io_error(&e)),
+            ErrorKind::NotFound => format!(
+                "The tailscaled socket {socket} doesn't exist (is Tailscale installed and the socket mounted?)"
+            ),
+            ErrorKind::PermissionDenied => format!(
+                "No permission to open {socket}: run with access to the socket (root, or its group)"
+            ),
+            ErrorKind::ConnectionRefused => {
+                format!("tailscaled isn't running ({socket} refuses connections)")
+            }
+            _ => format!(
+                "Can't reach tailscaled at {socket}: {}",
+                util::tidy_io_error(&e)
+            ),
         }
     };
     #[cfg(unix)]
     {
-        let stream = tokio::net::UnixStream::connect(socket).await.map_err(explain)?;
+        let stream = tokio::net::UnixStream::connect(socket)
+            .await
+            .map_err(explain)?;
         request(stream, method, path).await
     }
     #[cfg(windows)]
     {
-        let pipe = tokio::net::windows::named_pipe::ClientOptions::new().open(socket).map_err(explain)?;
+        let pipe = tokio::net::windows::named_pipe::ClientOptions::new()
+            .open(socket)
+            .map_err(explain)?;
         request(pipe, method, path).await
     }
     #[cfg(not(any(unix, windows)))]
@@ -300,11 +390,18 @@ async fn call(socket: &str, method: &str, path: &str) -> Result<(u16, Vec<u8>), 
 }
 
 /// Minimal HTTP/1.1: one request, `Connection: close`, read to the end.
-async fn request<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S, method: &str, path: &str) -> Result<(u16, Vec<u8>), String> {
+async fn request<S: AsyncRead + AsyncWrite + Unpin>(
+    mut stream: S,
+    method: &str,
+    path: &str,
+) -> Result<(u16, Vec<u8>), String> {
     let head = format!(
         "{method} {path} HTTP/1.1\r\nHost: {LOCALAPI_HOST}\r\nUser-Agent: vigilant-vole\r\nAccept: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     );
-    stream.write_all(head.as_bytes()).await.map_err(|e| format!("Can't talk to tailscaled: {}", util::tidy_io_error(&e)))?;
+    stream
+        .write_all(head.as_bytes())
+        .await
+        .map_err(|e| format!("Can't talk to tailscaled: {}", util::tidy_io_error(&e)))?;
     let mut raw = Vec::new();
     (&mut stream)
         .take(MAX_RESPONSE + 1)
@@ -319,14 +416,24 @@ async fn request<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S, method: &str,
 
 fn parse_http(raw: &[u8]) -> Result<(u16, Vec<u8>), String> {
     let bad = || "tailscaled sent something that isn't HTTP".to_string();
-    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or_else(bad)?;
+    let split = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or_else(bad)?;
     let head = std::str::from_utf8(&raw[..split]).map_err(|_| bad())?;
     let body = &raw[split + 4..];
     let mut lines = head.split("\r\n");
-    let status = lines.next().and_then(|l| l.strip_prefix("HTTP/1.")).and_then(|l| l.get(2..5)).and_then(|c| c.parse::<u16>().ok()).ok_or_else(bad)?;
+    let status = lines
+        .next()
+        .and_then(|l| l.strip_prefix("HTTP/1."))
+        .and_then(|l| l.get(2..5))
+        .and_then(|c| c.parse::<u16>().ok())
+        .ok_or_else(bad)?;
     let (mut chunked, mut length) = (false, None);
     for line in lines {
-        let Some((name, value)) = line.split_once(':') else { continue };
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
         let value = value.trim();
         if name.eq_ignore_ascii_case("transfer-encoding") {
             chunked = value.to_ascii_lowercase().contains("chunked");
@@ -337,7 +444,9 @@ fn parse_http(raw: &[u8]) -> Result<(u16, Vec<u8>), String> {
     let body = if chunked {
         dechunk(body)?
     } else if let Some(len) = length {
-        body.get(..len).ok_or("tailscaled's answer was cut short")?.to_vec()
+        body.get(..len)
+            .ok_or("tailscaled's answer was cut short")?
+            .to_vec()
     } else {
         body.to_vec()
     };
@@ -350,13 +459,18 @@ fn dechunk(mut rest: &[u8]) -> Result<Vec<u8>, String> {
     loop {
         let end = rest.windows(2).position(|w| w == b"\r\n").ok_or_else(cut)?;
         let size_text = std::str::from_utf8(&rest[..end]).map_err(|_| cut())?;
-        let size = usize::from_str_radix(size_text.split(';').next().unwrap_or_default().trim(), 16).map_err(|_| cut())?;
+        let size =
+            usize::from_str_radix(size_text.split(';').next().unwrap_or_default().trim(), 16)
+                .map_err(|_| cut())?;
         rest = &rest[end + 2..];
         if size == 0 {
             return Ok(out);
         }
         out.extend_from_slice(rest.get(..size).ok_or_else(cut)?);
-        rest = rest.get(size..).and_then(|r| r.strip_prefix(b"\r\n")).ok_or_else(cut)?;
+        rest = rest
+            .get(size..)
+            .and_then(|r| r.strip_prefix(b"\r\n"))
+            .ok_or_else(cut)?;
     }
 }
 
@@ -366,9 +480,18 @@ fn api_error(what: &str, status: u16, body: &[u8]) -> String {
     struct ApiError {
         error: String,
     }
-    let text = serde_json::from_slice::<ApiError>(body).map(|e| e.error).unwrap_or_else(|_| String::from_utf8_lossy(body).trim().to_string());
-    let hint = if status == 403 { " (access denied: the socket's owner decides who may use it)" } else { "" };
-    format!("tailscaled refused the {what} (HTTP {status}): {}{hint}", util::truncate(&text, 160))
+    let text = serde_json::from_slice::<ApiError>(body)
+        .map(|e| e.error)
+        .unwrap_or_else(|_| String::from_utf8_lossy(body).trim().to_string());
+    let hint = if status == 403 {
+        " (access denied: the socket's owner decides who may use it)"
+    } else {
+        ""
+    };
+    format!(
+        "tailscaled refused the {what} (HTTP {status}): {}{hint}",
+        util::truncate(&text, 160)
+    )
 }
 
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
@@ -389,14 +512,23 @@ async fn check_with(socket: &str, target: &Target, timeout: Duration) -> CheckOu
     let deadline = start + timeout.mul_f64(0.95);
     let left = || deadline.saturating_duration_since(Instant::now());
 
-    let status = match tokio::time::timeout(left(), call(socket, "GET", "/localapi/v0/status")).await {
-        Err(_) => return CheckOutcome::down(format!("tailscaled at {socket} didn't answer within {}", util::format_secs(timeout))),
+    let status = match tokio::time::timeout(left(), call(socket, "GET", "/localapi/v0/status"))
+        .await
+    {
+        Err(_) => {
+            return CheckOutcome::down(format!(
+                "tailscaled at {socket} didn't answer within {}",
+                util::format_secs(timeout)
+            ));
+        }
         Ok(Err(e)) => return CheckOutcome::down(e),
         Ok(Ok((200, body))) => match serde_json::from_slice::<Status>(&body) {
             Ok(s) => s,
             Err(e) => return CheckOutcome::down(format!("Can't read tailscaled's status: {e}")),
         },
-        Ok(Ok((code, body))) => return CheckOutcome::down(api_error("status request", code, &body)),
+        Ok(Ok((code, body))) => {
+            return CheckOutcome::down(api_error("status request", code, &body));
+        }
     };
     if let Some(problem) = backend_problem(&status.backend_state) {
         return CheckOutcome::down(problem);
@@ -405,7 +537,11 @@ async fn check_with(socket: &str, target: &Target, timeout: Duration) -> CheckOu
         Ok(p) => p,
         Err(e) => return CheckOutcome::down(e),
     };
-    let path = format!("/localapi/v0/ping?ip={}&type={}", peer.ip, target.kind.api_name());
+    let path = format!(
+        "/localapi/v0/ping?ip={}&type={}",
+        peer.ip,
+        target.kind.api_name()
+    );
     let ping_start = Instant::now();
     let answer = match tokio::time::timeout(left(), call(socket, "POST", &path)).await {
         Err(_) => {
@@ -426,7 +562,11 @@ async fn check_with(socket: &str, target: &Target, timeout: Duration) -> CheckOu
             Err(e) => CheckOutcome::down(format!("Can't read tailscaled's ping answer: {e}")),
         },
         (code, body) => {
-            let mut out = CheckOutcome::down(format!("{}{}", api_error("ping", code, &body), offline_note(&peer)));
+            let mut out = CheckOutcome::down(format!(
+                "{}{}",
+                api_error("ping", code, &body),
+                offline_note(&peer)
+            ));
             // tailscaled says "Starting" while it connects: not a verdict yet.
             if status.backend_state == "Starting" {
                 out.status = HeartbeatStatus::Pending;

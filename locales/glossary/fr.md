@@ -99,3 +99,6 @@
 | MOTD | MOTD | inchangé |
 | replica set | replicaSet | paramètre d’URL, inchangé |
 | analytics | statistiques | |
+
+- cron expression: expression cron (the word "cron" stays Latin).
+- subscriber: abonné; subscribe / unsubscribe: s’abonner / se désabonner; confirm subscription: confirmer l’abonnement; webhook subscriber: abonné webhook; pending (sign-up): en attente; maintenance started / ended: maintenance commencée / terminée.

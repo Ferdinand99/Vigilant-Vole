@@ -21,7 +21,9 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
             .placeholder("https://chat.example.com/hooks/…"),
         Field::text("channel", "Channel override").placeholder("town-square…"),
         Field::text("username", "Bot name").placeholder("Vigilant Vole…"),
-        Field::url("icon_url", "Icon URL").cosmetic().placeholder("https://example.com/icon.png…"),
+        Field::url("icon_url", "Icon URL")
+            .cosmetic()
+            .placeholder("https://example.com/icon.png…"),
     ],
     transport: Transport::Http(build),
     check: None,

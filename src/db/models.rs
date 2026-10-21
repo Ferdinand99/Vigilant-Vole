@@ -172,7 +172,10 @@ impl MonitorType {
     /// True for the HTTP family (http, keyword, json_query), which share the
     /// request options (method, headers, body, auth, TLS, redirects, proxy).
     pub fn is_http_family(self) -> bool {
-        matches!(self, MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery)
+        matches!(
+            self,
+            MonitorType::Http | MonitorType::Keyword | MonitorType::JsonQuery
+        )
     }
 
     /// Types the scheduler actively probes. Push monitors are fed externally

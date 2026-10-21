@@ -70,7 +70,9 @@ async fn next_update(rx: &mut broadcast::Receiver<()>, quiet: Duration) -> bool 
 /// Renders the list as an SSE event; also returns its size in bytes.
 async fn render(state: &AppState, query: &DashQuery, can_edit: bool) -> (Event, usize) {
     let rendered = match load_dashboard_data(state, query, can_edit).await {
-        Ok(data) => MonitorListTemplate { data }.render().map_err(|e| e.to_string()),
+        Ok(data) => MonitorListTemplate { data }
+            .render()
+            .map_err(|e| e.to_string()),
         Err(err) => Err(err.to_string()),
     };
     match rendered {
@@ -99,7 +101,9 @@ struct StreamSlot;
 impl StreamSlot {
     fn acquire() -> Option<Self> {
         OPEN_STREAMS
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |n| (n < MAX_STREAMS).then_some(n + 1))
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                (n < MAX_STREAMS).then_some(n + 1)
+            })
             .ok()
             .map(|_| StreamSlot)
     }
@@ -124,7 +128,9 @@ struct Viewer {
 async fn revalidate(state: &AppState, viewer: Viewer) -> Option<bool> {
     let id = viewer.user_id;
     match state.with_conn(move |c| db_users::get_user(c, id)).await {
-        Ok(Some(u)) if u.active && u.session_version == viewer.session_version => Some(u.role.can_edit()),
+        Ok(Some(u)) if u.active && u.session_version == viewer.session_version => {
+            Some(u.role.can_edit())
+        }
         Ok(_) => None,
         Err(err) => {
             tracing::warn!(%err, "SSE: could not re-check the user; closing stream");
@@ -149,8 +155,15 @@ async fn stream_handler(
     RawQuery(raw): RawQuery,
 ) -> Response {
     let Some(slot) = StreamSlot::acquire() else {
-        tracing::warn!(max = MAX_STREAMS, "too many live-update streams; refusing a new one");
-        return (StatusCode::SERVICE_UNAVAILABLE, [(header::RETRY_AFTER, "30")]).into_response();
+        tracing::warn!(
+            max = MAX_STREAMS,
+            "too many live-update streams; refusing a new one"
+        );
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(header::RETRY_AFTER, "30")],
+        )
+            .into_response();
     };
     let id = user.id;
     let session_version = match state.with_conn(move |c| db_users::get_user(c, id)).await {
@@ -203,7 +216,10 @@ mod tests {
         }
         assert!(next_update(&mut rx, COALESCE).await);
         // Everything from the burst (including lagged messages) was drained.
-        assert!(matches!(rx.try_recv(), Err(broadcast::error::TryRecvError::Empty)));
+        assert!(matches!(
+            rx.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
         drop(tx);
         assert!(!next_update(&mut rx, COALESCE).await);
     }
@@ -248,11 +264,17 @@ mod tests {
         assert_eq!(revalidate(&state, viewer).await, Some(false));
 
         // Logout everywhere / password change bumps the version.
-        state.with_conn(move |c| db_users::bump_session_version(c, id)).await.unwrap();
+        state
+            .with_conn(move |c| db_users::bump_session_version(c, id))
+            .await
+            .unwrap();
         assert_eq!(revalidate(&state, viewer).await, None);
 
         // Unknown users end the stream too.
-        let gone = Viewer { user_id: id + 1000, ..viewer };
+        let gone = Viewer {
+            user_id: id + 1000,
+            ..viewer
+        };
         assert_eq!(revalidate(&state, gone).await, None);
     }
 

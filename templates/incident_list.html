@@ -27,6 +27,29 @@
       {%- if !row.body_html.is_empty() %}
       <div class="incident-body prose">{{ row.body_html|safe }}</div>
       {%- endif %}
+      {%- if !row.updates.is_empty() %}
+      <div class="incident-body">{{ m::incident_updates(&row.updates, row.updates_url.as_str()) }}</div>
+      {%- endif %}
+      <details class="incident-body disclosure">
+        <summary>{{ tr("inc.update_post") }}{{ m::icon("chevron-down") }}</summary>
+        <form class="form disclosure-body" method="post" action="/status-pages/{{ page.id }}/incidents/{{ row.incident.id }}/updates">
+          <div class="field">
+            <label class="label" for="upd-status-{{ row.incident.id }}">{{ tr("inc.update_status") }}</label>
+            <select id="upd-status-{{ row.incident.id }}" name="status">
+              <option value="investigating">{{ tr("inc.st_investigating") }}</option>
+              <option value="identified">{{ tr("inc.st_identified") }}</option>
+              <option value="monitoring">{{ tr("inc.st_monitoring") }}</option>
+              <option value="resolved">{{ tr("inc.st_resolved") }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" for="upd-body-{{ row.incident.id }}">{{ tr("inc.update_text") }}</label>
+            <textarea id="upd-body-{{ row.incident.id }}" name="body" rows="3" required placeholder="{{ tr("inc.update_placeholder") }}"></textarea>
+            <p class="help">{{ tr("inc.body_help") }}</p>
+          </div>
+          <div><button type="submit" class="btn btn-primary btn-sm">{{ m::icon("send") }}<span>{{ tr("inc.update_post") }}</span></button></div>
+        </form>
+      </details>
       <div class="incident-actions">
         <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#edit-incident" commandfor="edit-incident" command="show-modal"
           hx-get="/status-pages/{{ page.id }}/incidents/{{ row.incident.id }}/edit" hx-target="#edit-incident-body" hx-swap="innerHTML">{{ m::icon("pencil") }}<span>{{ tr("common.edit") }}</span></button>

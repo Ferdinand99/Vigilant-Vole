@@ -40,7 +40,8 @@ fn md5(parts: &[&[u8]]) -> [u8; 16] {
 }
 
 fn hmac_md5(secret: &[u8], data: &[u8]) -> [u8; 16] {
-    let mut mac = <Hmac<Md5> as hmac::KeyInit>::new_from_slice(secret).expect("HMAC accepts any key length");
+    let mut mac =
+        <Hmac<Md5> as hmac::KeyInit>::new_from_slice(secret).expect("HMAC accepts any key length");
     mac.update(data);
     mac.finalize().into_bytes().into()
 }
@@ -67,7 +68,12 @@ fn attribute(out: &mut Vec<u8>, kind: u8, value: &[u8]) {
 }
 
 /// An `Access-Request` (with credentials) or `Status-Server` packet.
-fn build_request(secret: &[u8], credentials: Option<(&str, &str)>, id: u8, authenticator: [u8; 16]) -> Result<Vec<u8>, String> {
+fn build_request(
+    secret: &[u8],
+    credentials: Option<(&str, &str)>,
+    id: u8,
+    authenticator: [u8; 16],
+) -> Result<Vec<u8>, String> {
     let mut attrs = Vec::new();
     let code = match credentials {
         Some((user, password)) => {
@@ -75,7 +81,11 @@ fn build_request(secret: &[u8], credentials: Option<(&str, &str)>, id: u8, authe
                 return Err("The user name or password is too long for RADIUS".into());
             }
             attribute(&mut attrs, USER_NAME, user.as_bytes());
-            attribute(&mut attrs, USER_PASSWORD, &hide_password(password.as_bytes(), secret, &authenticator));
+            attribute(
+                &mut attrs,
+                USER_PASSWORD,
+                &hide_password(password.as_bytes(), secret, &authenticator),
+            );
             ACCESS_REQUEST
         }
         None => STATUS_SERVER,
@@ -99,7 +109,12 @@ struct Reply {
     message: Option<String>,
 }
 
-fn parse_reply(packet: &[u8], secret: &[u8], id: u8, request_authenticator: &[u8; 16]) -> Result<Reply, String> {
+fn parse_reply(
+    packet: &[u8],
+    secret: &[u8],
+    id: u8,
+    request_authenticator: &[u8; 16],
+) -> Result<Reply, String> {
     if packet.len() < 20 {
         return Err("Not a RADIUS answer".into());
     }
@@ -120,11 +135,15 @@ fn parse_reply(packet: &[u8], secret: &[u8], id: u8, request_authenticator: &[u8
             return Err("Not a RADIUS answer (bad attribute)".into());
         }
         if rest[0] == REPLY_MESSAGE {
-            message = Some(String::from_utf8_lossy(&rest[2..len]).trim().to_string()).filter(|m| !m.is_empty());
+            message = Some(String::from_utf8_lossy(&rest[2..len]).trim().to_string())
+                .filter(|m| !m.is_empty());
         }
         rest = &rest[len..];
     }
-    Ok(Reply { code: packet[0], message })
+    Ok(Reply {
+        code: packet[0],
+        message,
+    })
 }
 
 pub async fn check(monitor: &Monitor) -> CheckOutcome {
@@ -135,7 +154,10 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
     let Some(secret) = monitor.secret.as_deref().filter(|s| !s.is_empty()) else {
         return CheckOutcome::down("Enter the shared secret");
     };
-    let credentials = monitor.basic_auth_user.as_deref().map(|u| (u, monitor.basic_auth_pass.as_deref().unwrap_or_default()));
+    let credentials = monitor
+        .basic_auth_user
+        .as_deref()
+        .map(|u| (u, monitor.basic_auth_pass.as_deref().unwrap_or_default()));
     let addr = match util::resolve(&ep.host, ep.port).await {
         Ok(a) => a,
         Err(e) => return CheckOutcome::down(e),
@@ -147,12 +169,28 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Err(e) => return CheckOutcome::down(e),
     };
     let timeout = super::timeout_of(monitor);
-    let socket = match UdpSocket::bind(if addr.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }).await {
+    let socket = match UdpSocket::bind(if addr.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    })
+    .await
+    {
         Ok(s) => s,
-        Err(e) => return CheckOutcome::down(format!("Can't open a UDP socket: {}", util::tidy_io_error(&e))),
+        Err(e) => {
+            return CheckOutcome::down(format!(
+                "Can't open a UDP socket: {}",
+                util::tidy_io_error(&e)
+            ));
+        }
     };
     if let Err(e) = socket.connect(addr).await {
-        return CheckOutcome::down(format!("Can't reach {}:{}: {}", addr.ip(), ep.port, util::tidy_io_error(&e)));
+        return CheckOutcome::down(format!(
+            "Can't reach {}:{}: {}",
+            addr.ip(),
+            ep.port,
+            util::tidy_io_error(&e)
+        ));
     }
     let start = Instant::now();
     let per_try = (timeout / 2).max(Duration::from_millis(500)).min(timeout);
@@ -164,10 +202,17 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         }
         match tokio::time::timeout(per_try, socket.recv(&mut buf)).await {
             Ok(Ok(n)) => {
-                answer = Some(parse_reply(&buf[..n], secret.as_bytes(), id, &authenticator));
+                answer = Some(parse_reply(
+                    &buf[..n],
+                    secret.as_bytes(),
+                    id,
+                    &authenticator,
+                ));
                 break;
             }
-            Ok(Err(e)) => return CheckOutcome::down(format!("No answer: {}", util::udp_recv_error(&e))),
+            Ok(Err(e)) => {
+                return CheckOutcome::down(format!("No answer: {}", util::udp_recv_error(&e)));
+            }
             Err(_) => {}
         }
     }
@@ -184,11 +229,18 @@ pub async fn check(monitor: &Monitor) -> CheckOutcome {
         Some(Err(e)) => return CheckOutcome::down(e),
         Some(Ok(r)) => r,
     };
-    let suffix = reply.message.as_deref().map(|m| format!(": {}", util::truncate(m, 80))).unwrap_or_default();
+    let suffix = reply
+        .message
+        .as_deref()
+        .map(|m| format!(": {}", util::truncate(m, 80)))
+        .unwrap_or_default();
     match reply.code {
         ACCESS_ACCEPT => CheckOutcome::up(ms).with_message(format!("Access-Accept{suffix}")),
-        ACCESS_CHALLENGE => CheckOutcome::up(ms).with_message(format!("Access-Challenge: the server answers{suffix}")),
-        ACCESS_REJECT => CheckOutcome::down(format!("Access-Reject: the credentials were refused{suffix}")),
+        ACCESS_CHALLENGE => CheckOutcome::up(ms)
+            .with_message(format!("Access-Challenge: the server answers{suffix}")),
+        ACCESS_REJECT => CheckOutcome::down(format!(
+            "Access-Reject: the credentials were refused{suffix}"
+        )),
         other => CheckOutcome::down(format!("Unexpected RADIUS answer (code {other})")),
     }
 }
@@ -210,7 +262,9 @@ mod tests {
             let mut buf = vec![0u8; 4096];
             let mut first = true;
             loop {
-                let Ok((n, from)) = socket.recv_from(&mut buf).await else { return };
+                let Ok((n, from)) = socket.recv_from(&mut buf).await else {
+                    return;
+                };
                 if std::mem::take(&mut first) && drop_first {
                     continue;
                 }
@@ -218,7 +272,10 @@ mod tests {
                 let authenticator: [u8; 16] = p[4..20].try_into().unwrap();
                 // Verify the Message-Authenticator with the shared secret.
                 let mut zeroed = p.clone();
-                let ma_at = zeroed.windows(2).position(|w| w == [MESSAGE_AUTHENTICATOR, 18]).unwrap();
+                let ma_at = zeroed
+                    .windows(2)
+                    .position(|w| w == [MESSAGE_AUTHENTICATOR, 18])
+                    .unwrap();
                 let given: Vec<u8> = zeroed[ma_at + 2..ma_at + 18].to_vec();
                 zeroed[ma_at + 2..ma_at + 18].fill(0);
                 if hmac_md5(SECRET.as_bytes(), &zeroed) != given[..] {
@@ -249,7 +306,11 @@ mod tests {
                         while plain.last() == Some(&0) {
                             plain.pop();
                         }
-                        if user == b"vole" && plain == b"pw" { ACCESS_ACCEPT } else { ACCESS_REJECT }
+                        if user == b"vole" && plain == b"pw" {
+                            ACCESS_ACCEPT
+                        } else {
+                            ACCESS_REJECT
+                        }
                     }
                 };
                 let mut attrs = Vec::new();
@@ -298,7 +359,10 @@ mod tests {
         assert_eq!(out.message.as_deref(), Some("Access-Accept"));
         let out = check(&radius(&addr.to_string(), Some("vole"), "nope", SECRET)).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
-        assert_eq!(out.message.as_deref(), Some("Access-Reject: the credentials were refused: Bad password"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("Access-Reject: the credentials were refused: Bad password")
+        );
     }
 
     #[tokio::test]
@@ -313,11 +377,18 @@ mod tests {
         let addr = server(false, SECRET).await;
         // The server drops requests it can't verify, so the monitor sees silence...
         let out = check(&radius(&addr.to_string(), None, "", "other")).await;
-        assert!(out.message.unwrap().starts_with("No RADIUS answer from 127.0.0.1"));
+        assert!(
+            out.message
+                .unwrap()
+                .starts_with("No RADIUS answer from 127.0.0.1")
+        );
         // ...and a server answering with a different secret fails the reply check.
         let addr = server(false, "different").await;
         let out = check(&radius(&addr.to_string(), None, "", SECRET)).await;
-        assert_eq!(out.message.as_deref(), Some("The reply failed authentication: wrong shared secret?"));
+        assert_eq!(
+            out.message.as_deref(),
+            Some("The reply failed authentication: wrong shared secret?")
+        );
     }
 
     #[tokio::test]
@@ -327,14 +398,27 @@ mod tests {
         m.timeout_seconds = 3;
         assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
         m.secret = None;
-        assert_eq!(check(&m).await.message.as_deref(), Some("Enter the shared secret"));
+        assert_eq!(
+            check(&m).await.message.as_deref(),
+            Some("Enter the shared secret")
+        );
     }
 
     #[test]
     fn garbage_is_not_an_answer() {
         let auth = [0u8; 16];
         assert!(parse_reply(&[], b"s", 1, &auth).is_err());
-        assert!(parse_reply(&[2, 1, 0xFF, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], b"s", 1, &auth).is_err());
+        assert!(
+            parse_reply(
+                &[
+                    2, 1, 0xFF, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                ],
+                b"s",
+                1,
+                &auth
+            )
+            .is_err()
+        );
         assert!(parse_reply(b"HTTP/1.1 400 Bad Request\r\n\r\n", b"s", 1, &auth).is_err());
     }
 
@@ -343,12 +427,27 @@ mod tests {
     #[ignore = "needs a RADIUS server (VV_TEST_RADIUS)"]
     async fn live_server() {
         let spec = std::env::var("VV_TEST_RADIUS").expect("VV_TEST_RADIUS");
-        let [target, user, pass, secret] = spec.splitn(4, ',').collect::<Vec<_>>()[..] else { panic!("target,user,password,secret") };
+        let [target, user, pass, secret] = spec.splitn(4, ',').collect::<Vec<_>>()[..] else {
+            panic!("target,user,password,secret")
+        };
         let out = check(&radius(target, Some(user), pass, secret)).await;
         println!("{:?}", out.message);
         assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-        println!("{:?}", check(&radius(target, Some(user), "wrong", secret)).await.message);
-        println!("{:?}", check(&radius(target, None, "", secret)).await.message);
-        println!("{:?}", check(&radius(target, Some(user), pass, "bad-secret")).await.message);
+        println!(
+            "{:?}",
+            check(&radius(target, Some(user), "wrong", secret))
+                .await
+                .message
+        );
+        println!(
+            "{:?}",
+            check(&radius(target, None, "", secret)).await.message
+        );
+        println!(
+            "{:?}",
+            check(&radius(target, Some(user), pass, "bad-secret"))
+                .await
+                .message
+        );
     }
 }

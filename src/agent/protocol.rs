@@ -71,8 +71,11 @@ pub const BATCH_0_3_SINCE: &str = "0.3.0";
 pub fn introduced_in(kind: MonitorType) -> Option<&'static str> {
     use MonitorType::*;
     match kind {
-        Http | Keyword | JsonQuery | Tcp | Ping | Dns | Push | Docker | Websocket | DomainExpiry | Ntp | Steam | Group => None,
-        Tls | Smtp | Redis | Postgres | Mysql | Mqtt | Kafka | Rabbitmq | Grpc | Radius | Snmp => Some(SERVICE_MONITORS_SINCE),
+        Http | Keyword | JsonQuery | Tcp | Ping | Dns | Push | Docker | Websocket
+        | DomainExpiry | Ntp | Steam | Group => None,
+        Tls | Smtp | Redis | Postgres | Mysql | Mqtt | Kafka | Rabbitmq | Grpc | Radius | Snmp => {
+            Some(SERVICE_MONITORS_SINCE)
+        }
         SqlServer | Mongodb => Some(BATCH_0_3_SINCE),
         TailscalePing => Some(BATCH_0_3_SINCE),
         GameServer => Some(BATCH_0_3_SINCE),
@@ -90,7 +93,8 @@ pub fn version_needed(m: &Monitor) -> Option<&'static str> {
     if m.monitor_type == MonitorType::Snmp && crate::monitor::checkers::snmp::is_v3(&m.target) {
         return Some(BATCH_0_3_SINCE);
     }
-    introduced_in(m.monitor_type).or(matches!(m.auth_method.as_str(), "oauth2" | "mtls").then_some(SERVICE_MONITORS_SINCE))
+    introduced_in(m.monitor_type)
+        .or(matches!(m.auth_method.as_str(), "oauth2" | "mtls").then_some(SERVICE_MONITORS_SINCE))
 }
 
 /// `major.minor.patch` of a version string (a `-pre` / `+build` suffix is ignored).
@@ -116,7 +120,9 @@ pub fn agent_can_run(m: &Monitor, agent_version: Option<&str>) -> bool {
         return true;
     };
     let needed = parse_version(env!("CARGO_PKG_VERSION")).map_or(needed, |own| needed.min(own));
-    agent_version.and_then(parse_version).is_some_and(|v| v >= needed)
+    agent_version
+        .and_then(parse_version)
+        .is_some_and(|v| v >= needed)
 }
 
 /// Reads the monitor list one monitor at a time: one this agent can't
@@ -125,23 +131,35 @@ pub fn agent_can_run(m: &Monitor, agent_version: Option<&str>) -> bool {
 /// that predate `auth_method` get it from their user name, as those servers
 /// meant it.
 fn read_monitors<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Monitor>, D::Error> {
-    Ok(Vec::<Value>::deserialize(d)?.into_iter().filter_map(read_monitor).collect())
+    Ok(Vec::<Value>::deserialize(d)?
+        .into_iter()
+        .filter_map(read_monitor)
+        .collect())
 }
 
 fn read_monitor(mut value: Value) -> Option<Monitor> {
     if let Value::Object(obj) = &mut value
         && !obj.contains_key("auth_method")
     {
-        let method = crate::monitor::checkers::http_auth::implied_method(obj.get("basic_auth_user").and_then(Value::as_str));
+        let method = crate::monitor::checkers::http_auth::implied_method(
+            obj.get("basic_auth_user").and_then(Value::as_str),
+        );
         obj.insert("auth_method".into(), method.into());
     }
     let id = value.get("id").and_then(Value::as_i64);
-    let kind = value.get("monitor_type").and_then(Value::as_str).unwrap_or("?").to_string();
+    let kind = value
+        .get("monitor_type")
+        .and_then(Value::as_str)
+        .unwrap_or("?")
+        .to_string();
     match serde_json::from_value::<Monitor>(value) {
         Ok(m) => Some(m),
         Err(err) => {
             static WARNED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
-            let first = WARNED.lock().map(|mut w| w.get_or_insert_with(HashSet::new).insert(kind.clone())).unwrap_or(true);
+            let first = WARNED
+                .lock()
+                .map(|mut w| w.get_or_insert_with(HashSet::new).insert(kind.clone()))
+                .unwrap_or(true);
             if first {
                 tracing::warn!(monitor_id = ?id, monitor_type = %kind, %err, "skipping a monitor this agent can't run; upgrade the agent");
             }
@@ -210,7 +228,10 @@ mod tests {
     fn db_time_round_trips() {
         let t = parse_db("2026-10-19 14:03:09").unwrap();
         assert_eq!(format_db(t), "2026-10-19 14:03:09");
-        assert_eq!(format_db(parse_db("2026-10-19T16:03:09+02:00").unwrap()), "2026-10-19 14:03:09");
+        assert_eq!(
+            format_db(parse_db("2026-10-19T16:03:09+02:00").unwrap()),
+            "2026-10-19 14:03:09"
+        );
         assert!(parse_db("yesterday").is_none());
     }
 
@@ -228,9 +249,16 @@ mod tests {
 
     #[test]
     fn unknown_monitor_types_are_skipped_not_fatal() {
-        let list = listing(serde_json::json!([monitor_json(1, "tcp"), monitor_json(2, "quantum_link"), monitor_json(3, "redis")]));
+        let list = listing(serde_json::json!([
+            monitor_json(1, "tcp"),
+            monitor_json(2, "quantum_link"),
+            monitor_json(3, "redis")
+        ]));
         let parsed: MonitorsResponse = serde_json::from_value(list).unwrap();
-        assert_eq!(parsed.monitors.iter().map(|m| m.id).collect::<Vec<_>>(), [1, 3]);
+        assert_eq!(
+            parsed.monitors.iter().map(|m| m.id).collect::<Vec<_>>(),
+            [1, 3]
+        );
     }
 
     #[test]
@@ -243,38 +271,62 @@ mod tests {
         let mut off = monitor_json(3, "http");
         off["auth_method"] = "none".into();
         off["basic_auth_user"] = "bot".into();
-        let parsed: MonitorsResponse = serde_json::from_value(listing(serde_json::json!([old, plain, off]))).unwrap();
-        let methods: Vec<&str> = parsed.monitors.iter().map(|m| m.auth_method.as_str()).collect();
+        let parsed: MonitorsResponse =
+            serde_json::from_value(listing(serde_json::json!([old, plain, off]))).unwrap();
+        let methods: Vec<&str> = parsed
+            .monitors
+            .iter()
+            .map(|m| m.auth_method.as_str())
+            .collect();
         assert_eq!(methods, ["basic", "none", "none"]);
     }
 
     #[test]
     fn new_types_and_auth_methods_need_a_new_enough_agent() {
-        let mut m = crate::monitor::checkers::test_support::monitor(MonitorType::Http, "https://x.io");
+        let mut m =
+            crate::monitor::checkers::test_support::monitor(MonitorType::Http, "https://x.io");
         for v in [None, Some("0.0.9"), Some("garbage"), Some("9.9.9")] {
             assert!(agent_can_run(&m, v), "{v:?}");
         }
         m.auth_method = "oauth2".into();
-        for (v, ok) in [(None, false), (Some("0.0.9"), false), (Some("bad"), false), (Some("9.9.9"), true), (Some("v9.0.0-rc.1"), true)] {
+        for (v, ok) in [
+            (None, false),
+            (Some("0.0.9"), false),
+            (Some("bad"), false),
+            (Some("9.9.9"), true),
+            (Some("v9.0.0-rc.1"), true),
+        ] {
             assert_eq!(agent_can_run(&m, v), ok, "{v:?}");
         }
         m.auth_method = "basic".into();
         m.monitor_type = MonitorType::Postgres;
-        assert!(!agent_can_run(&m, Some("0.0.9")) && agent_can_run(&m, Some(SERVICE_MONITORS_SINCE)));
+        assert!(
+            !agent_can_run(&m, Some("0.0.9")) && agent_can_run(&m, Some(SERVICE_MONITORS_SINCE))
+        );
         // This build's own agents always qualify, released or not.
         assert!(agent_can_run(&m, Some(env!("CARGO_PKG_VERSION"))));
-        for kind in [MonitorType::SqlServer, MonitorType::Mongodb, MonitorType::GameServer] {
+        for kind in [
+            MonitorType::SqlServer,
+            MonitorType::Mongodb,
+            MonitorType::GameServer,
+        ] {
             m.monitor_type = kind;
             assert_eq!(introduced_in(kind), Some(BATCH_0_3_SINCE));
             assert!(!agent_can_run(&m, Some("0.1.9")) && !agent_can_run(&m, None));
-            assert!(agent_can_run(&m, Some("0.3.0")) && agent_can_run(&m, Some(env!("CARGO_PKG_VERSION"))));
+            assert!(
+                agent_can_run(&m, Some("0.3.0"))
+                    && agent_can_run(&m, Some(env!("CARGO_PKG_VERSION")))
+            );
         }
         assert_eq!(parse_version("1.2"), Some((1, 2, 0)));
     }
 
     #[test]
     fn snmpv3_and_tailscale_ping_need_a_batch_agent() {
-        let mut m = crate::monitor::checkers::test_support::monitor(MonitorType::Snmp, "snmp://router.local?version=2c");
+        let mut m = crate::monitor::checkers::test_support::monitor(
+            MonitorType::Snmp,
+            "snmp://router.local?version=2c",
+        );
         assert_eq!(version_needed(&m), Some(SERVICE_MONITORS_SINCE));
         m.target = "snmp://router.local/1.3.6.1.2.1.1.3.0?version=3&auth=sha".into();
         assert_eq!(version_needed(&m), Some(BATCH_0_3_SINCE));
@@ -286,9 +338,20 @@ mod tests {
 
     #[test]
     fn real_browser_monitors_never_go_to_agents() {
-        let m = crate::monitor::checkers::test_support::monitor(MonitorType::RealBrowser, "https://x.io");
-        assert_eq!(introduced_in(MonitorType::RealBrowser), Some(BATCH_0_3_SINCE));
-        for v in [None, Some("0.3.0"), Some(env!("CARGO_PKG_VERSION")), Some("99.0.0")] {
+        let m = crate::monitor::checkers::test_support::monitor(
+            MonitorType::RealBrowser,
+            "https://x.io",
+        );
+        assert_eq!(
+            introduced_in(MonitorType::RealBrowser),
+            Some(BATCH_0_3_SINCE)
+        );
+        for v in [
+            None,
+            Some("0.3.0"),
+            Some(env!("CARGO_PKG_VERSION")),
+            Some("99.0.0"),
+        ] {
             assert!(!agent_can_run(&m, v), "{v:?}");
         }
     }
