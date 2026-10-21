@@ -26,6 +26,7 @@ ENV CARGO_PROFILE_RELEASE_STRIP=symbols \
 # Everything the build reads: templates, static assets, migrations and
 # locales are compiled into the binary.
 COPY Cargo.toml Cargo.lock ./
+COPY kit ./kit
 COPY src ./src
 COPY templates ./templates
 COPY static ./static

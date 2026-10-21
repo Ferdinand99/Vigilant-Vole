@@ -10,7 +10,7 @@ pub mod config_io;
 pub mod db;
 pub mod discovery;
 pub mod i18n;
-pub mod kit;
+pub use vole_kit as kit;
 pub mod kuma_import;
 pub mod maintenance;
 pub mod mcp;

@@ -23,8 +23,6 @@ pub mod tags;
 pub use crate::kit::db::migrate::{
     apply_one, backup_before_migration, embedded_migrations, prepare_tracking,
 };
-#[cfg(test)]
-pub use crate::kit::db::test_conn;
 pub use crate::kit::db::{
     CONNECTION_PRAGMAS, DbError, MigrationError, MigrationReport, MigrationSet, UpgradeError,
     api_tokens, apply_migrations, build_engine_pool, build_pool, interact, migrate, run_migrations,
@@ -73,6 +71,16 @@ pub static MIGRATIONS: MigrationSet = MigrationSet {
     }),
     after: data_fixups,
 };
+
+/// Open an in-memory database with connection pragmas and all migrations
+/// applied. For tests in any module.
+#[cfg(test)]
+pub fn test_conn() -> Connection {
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    conn.execute_batch(CONNECTION_PRAGMAS).expect("pragmas");
+    apply_migrations(&mut conn).expect("migrations");
+    conn
+}
 
 #[cfg(test)]
 mod tests;

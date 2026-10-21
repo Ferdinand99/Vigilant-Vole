@@ -3747,8 +3747,46 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "vole-kit",
  "webpki-root-certs",
  "x509-parser",
+]
+
+[[package]]
+name = "vole-kit"
+version = "0.5.1"
+dependencies = [
+ "argon2",
+ "askama",
+ "axum",
+ "axum-extra",
+ "base64 0.23.1",
+ "deadpool-sqlite",
+ "futures-util",
+ "hex",
+ "jiff",
+ "lettre",
+ "qrcode",
+ "rand 0.10.3",
+ "rcgen",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "rust-embed",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror",
+ "time",
+ "tokio",
+ "tokio-rustls",
+ "totp-rs",
+ "tower",
+ "tracing",
+ "url",
+ "webpki-root-certs",
 ]
 
 [[package]]

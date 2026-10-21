@@ -90,4 +90,4 @@ pub static KIT: KitConfig = KitConfig {
     ],
 };
 
-crate::register_config!(KIT);
+vole_kit::register_config!(KIT);

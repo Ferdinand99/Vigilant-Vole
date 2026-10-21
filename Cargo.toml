@@ -1,63 +1,103 @@
+[workspace]
+members = [".", "kit"]
+resolver = "3"
+
+# Versions shared by Vigilant Vole and the kit (`kit/`, the `vole-kit` crate).
+[workspace.dependencies]
+argon2 = "0.6.0"
+askama = "0.16.1"
+axum = { version = "0.8.9", features = ["multipart"] }
+axum-extra = { version = "0.12.6", features = ["cookie", "cookie-signed", "form"] }
+base64 = "0.23.1"
+deadpool-sqlite = "0.14.0"
+futures-util = "0.3.34"
+hex = "0.4.3"
+jiff = { version = "0.2.38", features = ["serde"] }
+lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "tokio1", "builder", "hostname", "pool", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier"] }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+rand = "0.10.3"
+rcgen = { version = "0.14.7", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }
+regex = "1.13.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "form", "query", "stream", "socks", "http2", "charset", "gzip"] }
+rust-embed = "8.12.0"
+rusqlite = { version = "0.40", features = ["bundled"] }
+rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+rustls-native-certs = "0.8.4"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+time = { version = "0.3.55", features = ["serde", "formatting", "parsing"] }
+tokio = { version = "1.53.1", features = ["full"] }
+tokio-rustls = { version = "0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
+totp-rs = { version = "6.0.0", features = ["otpauth", "gen_secret"] }
+tower = "0.5.3"
+tracing = "0.1.44"
+url = "2.5.8"
+webpki-root-certs = "1"
+
 [package]
 name = "vigilant-vole"
 version = "0.5.1"
 edition = "2024"
 
 [dependencies]
+# The shared product kit (auth, i18n, db, HTTP, docs, MCP, notifications).
+vole-kit = { path = "kit" }
 # SNMPv3 privacy (AES-CFB, DES-CBC; the block modes are done by hand in snmp/usm.rs).
 aes = "0.9.3"
-argon2 = "0.6.0"
-askama = "0.16.1"
-axum = { version = "0.8.9", features = ["multipart"] }
-axum-extra = { version = "0.12.6", features = ["cookie", "cookie-signed", "form"] }
-base64 = "0.23.1"
+argon2 = { workspace = true }
+askama = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+base64 = { workspace = true }
 bollard = "0.21.1"
 bytes = "1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
-deadpool-sqlite = "0.14.0"
+deadpool-sqlite = { workspace = true }
 des = "0.9.0"
-futures-util = "0.3.34"
+futures-util = { workspace = true }
 h2 = "0.4.19"
-hex = "0.4.3"
+hex = { workspace = true }
 hickory-resolver = "0.26.3"
 hmac = "0.13.0"
 http = "1"
-jiff = { version = "0.2.38", features = ["serde"] }
-lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "tokio1", "builder", "hostname", "pool", "tokio1-rustls", "aws-lc-rs", "rustls-platform-verifier"] }
+jiff = { workspace = true }
+lettre = { workspace = true }
 md-5 = "0.11.0"
 miette = { version = "7.6.0", default-features = false }
 prost = "0.14"
 prost-reflect = { version = "0.16.5", features = ["serde"] }
 prost-types = "0.14"
 protox = { version = "0.10.0", default-features = false }
-qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
-rand = "0.10.3"
-regex = "1.13.1"
-reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "form", "query", "stream", "socks", "http2", "charset", "gzip"] }
-rusqlite = { version = "0.40", features = ["bundled"] }
-rust-embed = "8.12.0"
-rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
-rustls-native-certs = "0.8.4"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+qrcode = { workspace = true }
+rand = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+rust-embed = { workspace = true }
+rustls = { workspace = true }
+rustls-native-certs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 serde_json_path = "0.7.2"
 serde_yaml_ng = "0.10.0"
 sha1 = "0.11.0"
-sha2 = "0.11.1"
+sha2 = { workspace = true }
 surge-ping = "0.9.1"
-thiserror = "2.0.21"
-time = { version = "0.3.55", features = ["serde", "formatting", "parsing"] }
-tokio = { version = "1.53.1", features = ["full"] }
-tokio-rustls = { version = "0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots", "url"] }
-totp-rs = { version = "6.0.0", features = ["otpauth", "gen_secret"] }
-tower = "0.5.3"
+totp-rs = { workspace = true }
+tower = { workspace = true }
 tower-http = { version = "0.7.1", features = ["trace", "compression-gzip"] }
-tracing = "0.1.44"
+tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-url = "2.5.8"
-webpki-root-certs = "1"
+url = { workspace = true }
+webpki-root-certs = { workspace = true }
 x509-parser = "0.18.1"
 
 [dev-dependencies]
@@ -66,4 +106,4 @@ x509-parser = "0.18.1"
 insta = "1.43"
 # mTLS tests: generate a throwaway CA, server and client certificates, and run
 # a TLS server that demands a client certificate. Test builds only.
-rcgen = { version = "0.14.7", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }
+rcgen = { workspace = true }
