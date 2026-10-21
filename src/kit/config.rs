@@ -32,6 +32,11 @@ pub struct KitConfig {
     /// the product's.
     /// The product's database migrations and how to run them.
     pub migrations: &'static super::db::migrate::MigrationSet,
+    /// Path prefixes that may be framed by other sites (public pages);
+    /// everything else is served with `frame-ancestors 'none'`.
+    pub embeddable_prefixes: &'static [&'static str],
+    /// Looks up one of the product's embedded static files by path.
+    pub static_file: fn(&str) -> Option<super::http::assets::StaticFile>,
     pub locales: &'static [(&'static str, &'static str)],
 }
 

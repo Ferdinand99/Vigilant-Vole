@@ -1092,8 +1092,7 @@ async fn published_view(state: &AppState, slug: String) -> ApiResult<Option<Publ
 
 /// Response extension marking a public status page, wherever it's served
 /// (custom domains serve it at `/`), so `security_headers` lets it be framed.
-#[derive(Debug, Clone, Copy)]
-pub struct PublicPage;
+pub use crate::kit::http::headers::Embeddable as PublicPage;
 
 fn page_response(view: PublicView) -> Response {
     let page = &view.page;

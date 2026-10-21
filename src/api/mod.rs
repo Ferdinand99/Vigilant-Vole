@@ -9,7 +9,10 @@ pub mod agents;
 pub mod auth;
 pub mod badges;
 pub mod dashboard;
-pub mod error;
+pub mod error {
+    //! Moved to [`crate::kit::http::error`].
+    pub use crate::kit::http::error::*;
+}
 pub mod events;
 pub mod maintenance;
 pub mod metrics;
@@ -28,10 +31,7 @@ pub mod v1;
 
 use std::sync::Arc;
 
-use askama::Template;
-use axum::extract::{FromRef, Path as AxumPath};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::{Html, IntoResponse, Response};
+use axum::extract::FromRef;
 use axum::routing::get;
 use axum::{Router, middleware};
 use axum_extra::extract::cookie::Key;
@@ -45,12 +45,8 @@ use crate::config::Config;
 use crate::db::settings::{self as db_settings, Settings};
 use crate::monitor::Scheduler;
 
-pub use error::{ApiError, ApiResult};
+pub use crate::kit::http::{ApiError, ApiResult, HtmlTemplate};
 pub use page::{Flash, PageCtx, UserView, flash};
-
-#[derive(Embed)]
-#[folder = "static/"]
-struct StaticAssets;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -134,8 +130,11 @@ pub fn build_router(state: AppState) -> Router {
         ));
 
     let public = Router::new()
-        .route("/healthz", get(healthz))
-        .route("/static/{*path}", get(static_asset))
+        .route("/healthz", get(crate::kit::http::healthz))
+        .route(
+            "/static/{*path}",
+            get(crate::kit::http::assets::static_asset),
+        )
         .merge(auth::public_router())
         .merge(public_status::public_router())
         .merge(badges::public_router())
@@ -161,133 +160,25 @@ pub fn build_router(state: AppState) -> Router {
             crate::i18n::layer,
         ))
         .layer(middleware::from_fn(error::negotiate))
-        .layer(middleware::from_fn(security_headers))
+        .layer(middleware::from_fn(
+            crate::kit::http::headers::security_headers,
+        ))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
-/// Content-Security-Policy for the app. Scripts only from our own files (no
-/// inline scripts or handlers anywhere; the i18n strings are a JSON data
-/// block). Inline styles stay allowed for `style=` attributes and custom CSS.
-const APP_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
-    img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; \
-    base-uri 'self'; form-action 'self'";
-/// The same for embeddable public status pages, minus `frame-ancestors`.
-const PUBLIC_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
-    img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'";
+#[derive(Embed)]
+#[folder = "static/"]
+struct StaticAssets;
 
-/// Baseline hardening headers. Public status pages and the status-page JSON stay
-/// frameable so people can embed them, everything else (the admin UI) cannot be.
-async fn security_headers(req: axum::extract::Request, next: middleware::Next) -> Response {
-    let by_path = req.uri().path().starts_with("/status/")
-        || req.uri().path().starts_with("/api/status-page/");
-    let mut res = next.run(req).await;
-    // Status pages served on a custom domain at `/` mark themselves.
-    let embeddable = by_path
-        || res
-            .extensions()
-            .get::<public_status::PublicPage>()
-            .is_some();
-    let headers = res.headers_mut();
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    headers.insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("same-origin"),
-    );
-    if !embeddable {
-        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-    }
-    headers
-        .entry(header::CONTENT_SECURITY_POLICY)
-        .or_insert(HeaderValue::from_static(if embeddable {
-            PUBLIC_CSP
-        } else {
-            APP_CSP
-        }));
-    res
-}
-
-async fn healthz() -> &'static str {
-    "ok"
-}
-
-/// Renders an askama template; render failures become `ApiError::Internal`.
-pub struct HtmlTemplate<T>(pub T);
-
-impl<T: Template> IntoResponse for HtmlTemplate<T> {
-    fn into_response(self) -> Response {
-        match self.0.render() {
-            Ok(html) => Html(html).into_response(),
-            Err(err) => ApiError::from(err).into_response(),
-        }
-    }
-}
-
-async fn static_asset(AxumPath(path): AxumPath<String>, headers: HeaderMap) -> Response {
-    let Some(file) = StaticAssets::get(&path) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let etag = format!("\"{}\"", hex::encode(&file.metadata.sha256_hash()[..16]));
-    // Debug builds serve straight from disk, so don't let the browser cache edits.
-    let cache_control = if cfg!(debug_assertions) {
-        "no-cache"
-    } else {
-        "public, max-age=3600"
-    };
-    let not_modified = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.split(',').any(|t| t.trim() == etag));
-
-    let mut response = if not_modified {
-        StatusCode::NOT_MODIFIED.into_response()
-    } else {
-        (
-            [(header::CONTENT_TYPE, guess_content_type(&path))],
-            file.data,
-        )
-            .into_response()
-    };
-    let h = response.headers_mut();
-    h.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static(cache_control),
-    );
-    if let Ok(v) = HeaderValue::from_str(&etag) {
-        h.insert(header::ETAG, v);
-    }
-    response
-}
-
-fn guess_content_type(path: &str) -> &'static str {
-    match path
-        .rsplit('.')
-        .next()
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("js") | Some("mjs") => "text/javascript; charset=utf-8",
-        Some("css") => "text/css; charset=utf-8",
-        Some("json") => "application/json",
-        Some("webmanifest") => "application/manifest+json",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("webp") => "image/webp",
-        Some("gif") => "image/gif",
-        Some("ico") => "image/x-icon",
-        Some("woff2") => "font/woff2",
-        Some("woff") => "font/woff",
-        Some("ttf") => "font/ttf",
-        Some("otf") => "font/otf",
-        Some("txt") => "text/plain; charset=utf-8",
-        Some("map") => "application/json",
-        _ => "application/octet-stream",
-    }
+/// The product's static files, for the kit's static file handler.
+pub fn static_file(path: &str) -> Option<crate::kit::http::assets::StaticFile> {
+    let file = StaticAssets::get(path)?;
+    Some(crate::kit::http::assets::StaticFile {
+        sha256: file.metadata.sha256_hash(),
+        data: file.data,
+    })
 }
 
 #[cfg(test)]
@@ -296,15 +187,15 @@ mod tests {
     use axum::http::Request;
     use tower::ServiceExt as _;
 
-    use super::guess_content_type;
+    use crate::kit::http::assets::guess_content_type;
 
     #[tokio::test]
     async fn app_pages_get_a_strict_csp_and_status_pages_stay_embeddable() {
         let state = super::agents::test_support::test_state().await;
         let app = super::build_router(state);
-        let csp = |res: &super::Response| {
+        let csp = |res: &axum::response::Response| {
             res.headers()
-                .get(super::header::CONTENT_SECURITY_POLICY)
+                .get(axum::http::header::CONTENT_SECURITY_POLICY)
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or_default()
                 .to_string()

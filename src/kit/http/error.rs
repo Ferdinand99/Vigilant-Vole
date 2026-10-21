@@ -16,7 +16,7 @@ use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use serde_json::json;
 
-use crate::db::DbError;
+use crate::kit::db::DbError;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -58,11 +58,11 @@ impl ApiError {
     /// Safe-to-display message.
     pub fn public_message(&self) -> String {
         match self {
-            ApiError::NotFound => crate::i18n::t("error.not_found").into(),
-            ApiError::Forbidden => crate::i18n::t("error.forbidden").into(),
+            ApiError::NotFound => crate::kit::i18n::t("error.not_found").into(),
+            ApiError::Forbidden => crate::kit::i18n::t("error.forbidden").into(),
             ApiError::BadRequest(msg) => msg.clone(),
-            ApiError::Unauthorized => crate::i18n::t("error.unauthorized").into(),
-            ApiError::Internal(_) => crate::i18n::t("error.internal").into(),
+            ApiError::Unauthorized => crate::kit::i18n::t("error.unauthorized").into(),
+            ApiError::Internal(_) => crate::kit::i18n::t("error.internal").into(),
         }
     }
 }
@@ -146,11 +146,11 @@ pub async fn not_found() -> ApiError {
 
 fn error_page(status: StatusCode, message: &str) -> String {
     let title = match status {
-        StatusCode::NOT_FOUND => crate::i18n::t("error.title_404"),
-        StatusCode::FORBIDDEN => crate::i18n::t("error.title_403"),
-        StatusCode::BAD_REQUEST => crate::i18n::t("error.title_400"),
-        StatusCode::UNAUTHORIZED => crate::i18n::t("error.title_401"),
-        StatusCode::INTERNAL_SERVER_ERROR => crate::i18n::t("error.title_500"),
+        StatusCode::NOT_FOUND => crate::kit::i18n::t("error.title_404"),
+        StatusCode::FORBIDDEN => crate::kit::i18n::t("error.title_403"),
+        StatusCode::BAD_REQUEST => crate::kit::i18n::t("error.title_400"),
+        StatusCode::UNAUTHORIZED => crate::kit::i18n::t("error.title_401"),
+        StatusCode::INTERNAL_SERVER_ERROR => crate::kit::i18n::t("error.title_500"),
         other => other.canonical_reason().unwrap_or("Error"),
     };
     format!(
@@ -165,8 +165,8 @@ fn error_page(status: StatusCode, message: &str) -> String {
         code = status.as_u16(),
         title = escape_html(title),
         message = escape_html(message),
-        lang = crate::i18n::current().code(),
-        back = escape_html(crate::i18n::t("error.back")),
+        lang = crate::kit::i18n::current().code(),
+        back = escape_html(crate::kit::i18n::t("error.back")),
     )
 }
 

@@ -13,6 +13,8 @@ pub static KIT: KitConfig = KitConfig {
     user_agent: concat!("VigilantVole/", env!("CARGO_PKG_VERSION")),
     backup_prefix: "vigilant-vole-before-",
     migrations: &crate::db::MIGRATIONS,
+    embeddable_prefixes: &["/status/", "/api/status-page/"],
+    static_file: crate::api::static_file,
     locales: &[
         ("en", include_str!("../locales/en.toml")),
         ("nb", include_str!("../locales/nb.toml")),
