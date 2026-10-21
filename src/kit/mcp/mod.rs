@@ -148,6 +148,7 @@ pub fn origin_allowed(headers: &HeaderMap, base_url: Option<&str>) -> bool {
 /// the Bearer API token (no cookies, no Basic), the per-token rate limit and
 /// the protocol version header. `instance` tells apart apps that share a
 /// process (tests).
+#[allow(clippy::result_large_err)] // the error is the finished HTTP response, built once per rejected request
 pub async fn authenticate(
     core: &Core,
     headers: &HeaderMap,
