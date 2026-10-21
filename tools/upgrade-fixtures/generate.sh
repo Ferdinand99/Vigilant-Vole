@@ -15,8 +15,8 @@
 #                     tests/upgrade.rs checks after upgrading
 #
 # Usage:
-#   tools/upgrade-fixtures/generate.sh                 # v0.1.0 … v0.4.0
-#   tools/upgrade-fixtures/generate.sh v0.5.0          # one (new) release
+#   tools/upgrade-fixtures/generate.sh                 # v0.1.0 … v0.5.0
+#   tools/upgrade-fixtures/generate.sh v0.5.1          # one (new) release
 #
 # Needs Docker and network access (to pull the release images). Everything
 # else (curl, jq, sqlite3, oathtool, openssl) runs in a helper container, so
@@ -35,7 +35,7 @@ set -euo pipefail
 # Git Bash would rewrite container paths such as /data into Windows paths.
 export MSYS_NO_PATHCONV=1
 
-DEFAULT_VERSIONS=(v0.1.0 v0.2.0 v0.3.0 v0.4.0)
+DEFAULT_VERSIONS=(v0.1.0 v0.2.0 v0.3.0 v0.4.0 v0.5.0)
 TOOLS_IMAGE=vv-upgrade-fixture-tools
 ADMIN_USER='admin'
 ADMIN_PASSWORD='Vole-Upgrade-Pass-2026!'
@@ -314,7 +314,17 @@ CHANNEL_VALUES='{
   "matrix.room_id": "!fixture:matrix.org",
   "webex.room_id": "ops@example.com",
   "telegram.bot_token": "123456:ABC-fixture-secret",
-  "twilio.account_sid": "AC00000000000000000000000000fixture"
+  "twilio.account_sid": "AC00000000000000000000000000fixture",
+  "zulip.bot_email": "vigilant-bot@example.zulipchat.com",
+  "threema.gateway_id": "*FIXTURE",
+  "threema.recipient": "ECHOECHO",
+  "signl4.url": "https://connect.signl4.com/webhook/fixture-secret",
+  "squadcast.url": "https://api.squadcast.com/v3/incidents/api/fixture-secret",
+  "grafana_oncall.url": "https://oncall.example.com/integrations/v1/webhook/fixture-secret/",
+  "sendgrid.from": "alerts@example.com",
+  "sendgrid.to": "ops@example.com",
+  "brevo.from": "alerts@example.com",
+  "brevo.to": "ops@example.com"
 }'
 
 # One channel per provider kind; required and secret fields get harmless

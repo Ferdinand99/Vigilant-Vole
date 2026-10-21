@@ -129,7 +129,7 @@ the restored copy.
 
 Running an older version on a database a newer version has migrated is **not supported**.
 
-- **From 0.5.0 on** the app refuses to start on such a database, before changing anything:
+- **From 0.5.1 on** the app refuses to start on such a database, before changing anything:
 
   ```
   database migration failed: the database was created by a newer Vigilant Vole (schema 0110_…);
@@ -138,7 +138,7 @@ Running an older version on a database a newer version has migrated is **not sup
   ```
 
   Settings → Backup also refuses to restore a backup made by a newer version.
-- **0.4.0 and older** don't check. They start, and in a test of 0.4.0 on a 0.5.0 database the dashboard,
+- **0.5.0 and older** don't check. They start, and in a test of 0.4.0 on a 0.5.0 database the dashboard,
   status pages and API writes worked, but anything the newer version stores (incident updates,
   subscribers, new maintenance options) is ignored and can end up inconsistent. Don't rely on it:
   roll back as above.
@@ -198,10 +198,12 @@ backup from the oldest release.
 
 After the release's image is on GHCR:
 
-1. `tools/upgrade-fixtures/generate.sh v0.5.0` (needs Docker; takes about two minutes).
+1. `tools/upgrade-fixtures/generate.sh v0.5.1` (needs Docker; takes about two minutes). The script
+   bind-mounts local folders, so with a remote Docker context (`ssh://`) copy `tools/upgrade-fixtures/`
+   to that host and run it there with `OUT_DIR` set, then copy the result back.
 2. Add the version to `RELEASES` in `tests/upgrade.rs`.
 3. `cargo test --test upgrade --test backup_restore`.
-4. Commit `tests/fixtures/upgrade/v0.5.0/` (about 250 KB).
+4. Commit `tests/fixtures/upgrade/v0.5.1/` (about 300 KB).
 
 If the generator reports items the new release rejected, extend the seed data in the script (new
 monitor types, fields or providers go into its `MONITORS` list or the channel values) so the fixture
