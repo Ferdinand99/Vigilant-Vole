@@ -6,7 +6,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -56,6 +56,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/status-pages/{id}/subscribers/{sid}",
             axum::routing::delete(delete_subscriber),
+        )
+        .route(
+            "/status-pages/{id}/subscribers/{sid}/approve",
+            post(approve_subscriber),
         )
         .layer(axum::middleware::from_fn(
             crate::api::public_status::invalidate_after_writes,
@@ -834,6 +838,29 @@ async fn list_subscribers(
         &headers,
         &json!({ "data": data, "next_cursor": null }),
     ))
+}
+
+/// Approves a webhook sign-up (webhooks are never confirmed by their link).
+async fn approve_subscriber(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    headers: HeaderMap,
+    Id((id, sid)): Id<(i64, i64)>,
+) -> V1Result<Response> {
+    user.require(Role::Editor)?;
+    let Some(sub) = state
+        .with_conn(move |c| crate::db::subscribers::approve(c, id, sid))
+        .await?
+    else {
+        return Err(V1Error::not_found());
+    };
+    let bg = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::subscribers::send_welcome(&bg, id, sid).await {
+            tracing::warn!(page = id, subscriber = sid, error = %e, "webhook welcome failed");
+        }
+    });
+    Ok(json_ok(&headers, &json!(sub)))
 }
 
 async fn delete_subscriber(

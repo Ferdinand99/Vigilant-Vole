@@ -183,6 +183,11 @@ pub fn apply_migrations(conn: &mut Connection) -> Result<Vec<String>, MigrationE
         tracing::info!(migration = %name, "applied database migration");
         applied.push(name);
     }
+    // Data fix-ups SQL can't do (hashing); each does nothing once done.
+    let hashed = subscribers::hash_legacy_tokens(conn)?;
+    if hashed > 0 {
+        tracing::info!(count = hashed, "hashed status page subscriber tokens");
+    }
     Ok(applied)
 }
 

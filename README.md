@@ -262,7 +262,7 @@ vigilant-vole agent --server <URL> --token <TOKEN> …     # remote probe agent
 vigilant-vole --version
 ```
 
-Settings → General (admins): site name, public base URL (used in notification links, push URLs and agent snippets — set it!), time zone, language, heartbeat retention (default 90 days), public badges.
+Settings → General (admins): site name, public base URL (used in notification links, push URLs, agent snippets and status page subscriptions — set it!), time zone, language, heartbeat retention (default 90 days), public badges.
 
 ## 📡 Monitor types
 
@@ -322,7 +322,7 @@ Events: down, up (with downtime), reminder, escalation, certificate expiring, do
 
 - **Logo and browser icon**: upload PNG, JPEG, WebP or ICO (up to 1 MB; SVG is refused) in the page's Settings tab. Files are checked by content, kept in the database (backups stay one file) and served at `/status/<slug>/logo` and `/favicon`
 - **Password protection**: give a page a password and visitors get an unlock form; the unlock lasts 30 days in that browser (a signed, `HttpOnly` cookie for that page only) and changing or removing the password signs everyone out. While locked, the live refresh, the JSON and badges of monitors that are only on protected pages stay private. Signed-in users skip the lock
-- **Subscribers** (Subscribers tab): let visitors subscribe to incidents, incident updates and maintenance by **email** (double opt-in: nothing is sent until they click the confirmation link; sent through an SMTP channel you pick) or by **webhook** (a JSON POST; only public addresses are accepted, redirects are not followed). Every mail has an unsubscribe link and a `List-Unsubscribe` header, each subscriber gets their own message, the form answers the same whether or not an address is known, sign-ups are rate-limited and unconfirmed ones expire after three days. Subscribers who keep failing are dropped. The form follows a page's password lock
+- **Subscribers** (Subscribers tab): let visitors subscribe to incidents, incident updates and maintenance by **email** (double opt-in: nothing is sent until they click the confirmation link; sent through an SMTP channel you pick) or by **webhook** (a JSON POST; only public addresses on port 80, 443 or above 1024 are accepted, never through a proxy, redirects are not followed). A webhook gets nothing until an editor **approves** it in the Subscribers tab; it then receives a `subscribed` message with its unsubscribe link, then every announcement. Subscriptions need the **Public URL** (Settings → General) or the page's custom domain: links in mails and webhooks always point there, never at whatever address a visitor used, and without either the page offers no sign-up (the tab says so). Every mail has an unsubscribe link and `List-Unsubscribe` / one-click `List-Unsubscribe-Post` headers, each subscriber gets their own message, the form answers the same whether or not an address is known, and sign-ups are rate-limited per address (per /64 for IPv6), per target and per page (100 an hour), with at most 10 webhooks per host. Unconfirmed email sign-ups expire after three days, unapproved webhooks after 14; subscribers who keep failing are dropped; only a hash of each link token is stored. The form follows a page's password lock. A page that becomes password protected keeps notifying the subscribers who already confirmed (they opted in); remove them in the tab if they shouldn't hear about it any more
 - **Analytics** (Analytics tab): built-in, cookie-free counts of views, unique visitors and referring sites with a 30-day chart — no IP addresses are stored, unique visitors use a hash whose salt changes daily, bots and signed-in users don't count. Optionally add Plausible, Umami, Matomo or Google Analytics; its script loads on that page only and the page's CSP allows exactly that provider
 
 - Public at `/status/<slug>`, or at `/` on a **custom domain** (point the domain at Vigilant Vole / your reverse proxy and set it on the page)
@@ -464,7 +464,7 @@ You get `vigilant_*` metrics (status, response time, 24h/30d uptime ratio, certi
 ## 🔒 Security
 
 - **Put it behind HTTPS.** Run a reverse proxy (Caddy, Traefik, nginx) in front and set `VV_TRUST_PROXY=1` so session cookies get `Secure` and the login rate limiter sees real client IPs. Don't set it if clients can reach the app directly.
-- **Set the public base URL** in Settings → General so links in notifications, push URLs and agent snippets are right.
+- **Set the public base URL** in Settings → General so links in notifications, push URLs and agent snippets are right. Status page subscriptions and browser-based MCP clients need it (or, for subscriptions, the page's custom domain); behind a reverse proxy, `X-Forwarded-Host`/`-Proto` only count with `VV_TRUST_PROXY`.
 - **Roles**: *viewer* (read-only), *editor* (monitors, status pages, maintenance, notifications, tags), *admin* (users, settings, tokens, agents, backup, integrations). Give people the least they need.
 - **2FA**: Settings → Security → turn on TOTP; keep the recovery codes.
 - **API tokens** are stored as SHA-256 hashes, can expire, and only work under `/api/` and `/metrics`. Prefer `read` tokens for dashboards and scrapers.

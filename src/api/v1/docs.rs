@@ -302,7 +302,8 @@ pub static ROUTES: &[RouteDoc] = &[
     r("GET", "/api/v1/status-pages/{id}/subscription", "viewer", "Status pages", "Whether visitors can subscribe to the page's announcements, which email channel sends the mails and whether webhook subscribers are allowed."),
     r("PUT", "/api/v1/status-pages/{id}/subscription", "editor", "Status pages", "Change the subscription settings (enabled, channel_id of an email notification channel or null, webhooks). Omitted fields stay as they are.")
         .req(r#"{"enabled": true, "channel_id": 3, "webhooks": false}"#),
-    r("GET", "/api/v1/status-pages/{id}/subscribers", "editor", "Status pages", "List the page's subscribers (email addresses or webhook URLs) with their confirmation state."),
+    r("GET", "/api/v1/status-pages/{id}/subscribers", "editor", "Status pages", "List the page's subscribers (email addresses or webhook URLs) with their confirmation state. A webhook with confirmed_at null waits for an editor's approval."),
+    r("POST", "/api/v1/status-pages/{id}/subscribers/{sid}/approve", "editor", "Status pages", "Approve a webhook sign-up. Webhooks are never confirmed by a link; once approved, the webhook gets a \"subscribed\" message with its unsubscribe link."),
     r("DELETE", "/api/v1/status-pages/{id}/subscribers/{sid}", "editor", "Status pages", "Remove a subscriber."),
     // -- Maintenance --
     r("GET", "/api/v1/maintenance", "viewer", "Maintenance", "List maintenance windows with their current state."),

@@ -49,7 +49,7 @@ API tokens only work under `/api/` and for `/metrics`; they can't open the web U
 | Tags | `GET/POST /api/v1/tags`, `GET/PATCH/DELETE /api/v1/tags/{id}` |
 | Remote browsers | `GET/POST /api/v1/remote-browsers`, `GET/PUT/PATCH/DELETE /api/v1/remote-browsers/{id}`, `POST …/{id}/test` (writes: admin; URLs come back with their token masked) |
 | Notifications | `GET /api/v1/notification-providers`, `GET/POST /api/v1/notification-channels`, `GET/PATCH/DELETE …/{id}`, `POST …/{id}/test` |
-| Status pages | `GET/POST /api/v1/status-pages`, `GET/PATCH/DELETE …/{id}`, `PUT …/{id}/sections`, `GET/POST …/{id}/incidents`, `GET/PATCH/DELETE …/{id}/incidents/{iid}`, `GET/POST …/{id}/incidents/{iid}/updates`, `GET/PUT …/{id}/subscription`, `GET …/{id}/subscribers`, `DELETE …/{id}/subscribers/{sid}` |
+| Status pages | `GET/POST /api/v1/status-pages`, `GET/PATCH/DELETE …/{id}`, `PUT …/{id}/sections`, `GET/POST …/{id}/incidents`, `GET/PATCH/DELETE …/{id}/incidents/{iid}`, `GET/POST …/{id}/incidents/{iid}/updates`, `GET/PUT …/{id}/subscription`, `GET …/{id}/subscribers`, `POST …/{id}/subscribers/{sid}/approve`, `DELETE …/{id}/subscribers/{sid}` |
 | Maintenance | `GET/POST /api/v1/maintenance`, `GET/PATCH/DELETE /api/v1/maintenance/{id}` |
 | System | `GET /api/v1/me`, `GET /api/v1/health`, `GET /api/v1/agents`, `GET/PATCH /api/v1/settings`, `GET /api/v1/openapi.json` |
 | Configuration | `GET/POST /api/v1/config` — see [config-as-code](config-as-code.md) |

@@ -54,6 +54,14 @@ fn parse_field(
                 if step == 0 {
                     return Err(format!("A step of 0 isn’t valid in the {label} field."));
                 }
+                // A larger step can only ever hit the first value (and adding
+                // it could overflow).
+                if step > max - min {
+                    return Err(format!(
+                        "A step of {step} is too large in the {label} field (at most {}).",
+                        max - min
+                    ));
+                }
                 (r, step)
             }
             None => (part, 1),
@@ -76,7 +84,10 @@ fn parse_field(
         let mut v = lo;
         while v <= hi {
             bits |= 1 << v;
-            v += step;
+            let Some(next) = v.checked_add(step) else {
+                break;
+            };
+            v = next;
         }
     }
     Ok((bits, star))
@@ -256,9 +267,15 @@ mod tests {
             "5-1 * * * *",
             "* * * foo *",
             "1- * * * *",
+            // Steps beyond the field's range (a huge one used to overflow).
+            "1/4294967295 * * * *",
+            "*/60 * * * *",
+            "* */24 * * *",
+            "* * * * 1/8",
         ] {
             assert!(CronSpec::parse(bad).is_err(), "{bad:?} should not parse");
         }
+        assert!(CronSpec::parse("*/59 */23 */30 */11 */7").is_ok());
         assert!(CronSpec::parse("* * * * *").is_ok());
     }
 }

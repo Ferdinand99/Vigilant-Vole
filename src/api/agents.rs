@@ -85,8 +85,13 @@ pub fn public_router() -> Router<AppState> {
 // ---------------------------------------------------------------------------
 
 /// Public URL of this server: the `base_url` setting, else derived from the
-/// request (`X-Forwarded-Proto`/`Host`).
+/// request (`Host`, and `X-Forwarded-Host`/`-Proto` only behind a trusted
+/// proxy, `VV_TRUST_PROXY`).
 pub fn public_base_url(settings: &Settings, headers: &HeaderMap) -> String {
+    base_url_from(settings, headers, crate::auth::session::trust_proxy())
+}
+
+fn base_url_from(settings: &Settings, headers: &HeaderMap, trust_proxy: bool) -> String {
     if let Some(base) = settings
         .base_url
         .as_deref()
@@ -101,11 +106,15 @@ pub fn public_base_url(settings: &Settings, headers: &HeaderMap) -> String {
             .and_then(|v| v.to_str().ok())
             .map(str::trim)
     };
-    let host = header("x-forwarded-host")
+    // Anybody can send X-Forwarded-*; only a proxy we trust sets them for real.
+    let forwarded = |name: &str| trust_proxy.then(|| header(name)).flatten();
+    let host = forwarded("x-forwarded-host")
+        .and_then(|h| h.split(',').next())
+        .map(str::trim)
         .or_else(|| header("host"))
         .filter(|h| !h.is_empty())
         .unwrap_or("localhost:3001");
-    let proto = header("x-forwarded-proto")
+    let proto = forwarded("x-forwarded-proto")
         .and_then(|p| p.split(',').next())
         .map(str::trim)
         .filter(|p| *p == "https" || *p == "http")
@@ -1112,11 +1121,25 @@ mod tests {
         let mut s = Settings::default();
         let mut h = HeaderMap::new();
         h.insert("host", HeaderValue::from_static("vv.local:3001"));
-        assert_eq!(public_base_url(&s, &h), "http://vv.local:3001");
+        assert_eq!(base_url_from(&s, &h, true), "http://vv.local:3001");
         h.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-        assert_eq!(public_base_url(&s, &h), "https://vv.local:3001");
+        h.insert(
+            "x-forwarded-host",
+            HeaderValue::from_static("status.proxy.example, inner"),
+        );
+        assert_eq!(base_url_from(&s, &h, true), "https://status.proxy.example");
         s.base_url = Some("https://status.example.com/".into());
-        assert_eq!(public_base_url(&s, &h), "https://status.example.com");
+        assert_eq!(base_url_from(&s, &h, true), "https://status.example.com");
+    }
+
+    #[test]
+    fn forwarded_headers_are_ignored_without_a_trusted_proxy() {
+        let s = Settings::default();
+        let mut h = HeaderMap::new();
+        h.insert("host", HeaderValue::from_static("vv.local:3001"));
+        h.insert("x-forwarded-proto", HeaderValue::from_static("https"));
+        h.insert("x-forwarded-host", HeaderValue::from_static("evil.example"));
+        assert_eq!(base_url_from(&s, &h, false), "http://vv.local:3001");
     }
 
     #[test]

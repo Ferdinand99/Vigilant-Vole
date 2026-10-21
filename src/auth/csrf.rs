@@ -31,6 +31,18 @@ pub fn is_exempt_path(path: &str) -> bool {
     })
 }
 
+/// `/status/{slug}/subscribe/unsubscribe/{token}`: mail clients POST this
+/// link from the `List-Unsubscribe` header (RFC 8058 one-click) without an
+/// `Origin` or `Referer`. The secret token in the path is the proof, and the
+/// session cookie plays no part.
+fn is_unsubscribe_link(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    matches!(
+        parts.as_slice(),
+        ["", "status", slug, "subscribe", "unsubscribe", token] if !slug.is_empty() && !token.is_empty()
+    )
+}
+
 fn is_safe_method(method: &Method) -> bool {
     matches!(
         *method,
@@ -74,7 +86,7 @@ pub fn is_allowed(
     trust_proxy: bool,
     base_url: Option<&str>,
 ) -> bool {
-    if is_safe_method(method) || is_exempt_path(path) {
+    if is_safe_method(method) || is_exempt_path(path) || is_unsubscribe_link(path) {
         return true;
     }
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
@@ -91,20 +103,6 @@ pub fn is_allowed(
         },
     };
     source_matches(source, headers, trust_proxy, base_url)
-}
-
-/// Does the request's `Origin` (or, failing that, `Referer`) name this
-/// server? `None` when the request carries neither (non-browser clients),
-/// `Some(false)` for a foreign or opaque origin. Used for DNS-rebinding
-/// protection on endpoints that are authenticated by token only.
-pub fn source_is_ours(
-    headers: &HeaderMap,
-    trust_proxy: bool,
-    base_url: Option<&str>,
-) -> Option<bool> {
-    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-    let source = header("origin").or_else(|| header("referer"))?;
-    Some(source_matches(source, headers, trust_proxy, base_url))
 }
 
 fn source_matches(
@@ -178,6 +176,22 @@ mod tests {
                 false,
                 None
             ));
+        }
+    }
+
+    #[test]
+    fn one_click_unsubscribe_needs_no_origin_but_nothing_else_does() {
+        let none = h(&[("host", "vole.local")]);
+        assert!(post("/status/acme/subscribe/unsubscribe/vvs_abc", &none));
+        for path in [
+            "/status/acme/subscribe/confirm/vvs_abc",
+            "/status/acme/subscribe",
+            "/status/acme/subscribe/unsubscribe/",
+            "/status//subscribe/unsubscribe/x",
+            "/status/acme/subscribe/unsubscribe/x/more",
+            "/x/status/acme/subscribe/unsubscribe/x",
+        ] {
+            assert!(!post(path, &none), "{path}");
         }
     }
 

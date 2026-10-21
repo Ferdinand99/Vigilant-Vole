@@ -404,6 +404,8 @@ async fn general_save(
         })
         .await?;
     tracing::info!(user = %user.username, "general settings saved");
+    // Public pages show a subscribe link only with a public URL.
+    super::public_status::invalidate_views();
     // Confirm in the language the next page will use.
     let lang = own_lang
         .as_deref()

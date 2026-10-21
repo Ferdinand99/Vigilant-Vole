@@ -425,3 +425,43 @@ fn every_monitor_type_is_accepted_by_a_fresh_schema() {
         .unwrap();
     }
 }
+
+#[test]
+fn subscriber_tokens_upgrade_hashes_old_links_and_drops_base_url() {
+    let mut conn = migrated_before("0103");
+    let token = crate::auth::tokens::generate();
+    conn.execute(
+        "INSERT INTO status_pages (id, slug, title) VALUES (1, 's', 'S')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO status_page_subscribers (page_id, kind, target, token, lang, base_url, confirmed_at)
+         VALUES (1, 'email', 'a@example.com', ?1, 'nb', 'http://attacker.example', datetime('now'))",
+        params![token],
+    )
+    .unwrap();
+    super::apply_migrations(&mut conn).unwrap();
+    let columns: Vec<String> = conn
+        .prepare("SELECT name FROM pragma_table_info('status_page_subscribers')")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert!(
+        !columns.iter().any(|c| c == "base_url" || c == "token"),
+        "{columns:?}"
+    );
+    // The link that was already sent still finds the subscriber; the plain
+    // token is gone from the database.
+    let sub = crate::db::subscribers::by_token(&conn, &token)
+        .unwrap()
+        .unwrap();
+    assert_eq!((sub.lang.as_str(), sub.is_confirmed()), ("nb", true));
+    assert_ne!(sub.token_hash, token);
+    // Deleting the page still cascades to its subscribers.
+    conn.execute("DELETE FROM status_pages WHERE id = 1", [])
+        .unwrap();
+    assert_eq!(crate::db::subscribers::count(&conn, 1).unwrap(), 0);
+}

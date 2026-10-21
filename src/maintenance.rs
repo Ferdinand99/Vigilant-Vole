@@ -39,6 +39,21 @@ const LOOKAHEAD_DAYS: i64 = 9;
 const LONG_LOOKAHEAD_DAYS: i64 = 4 * 366;
 /// Longest cron window, in minutes (31 days).
 pub const MAX_DURATION_MINUTES: i64 = 31 * 24 * 60;
+/// Most a wall clock jumps at a DST change (and then some), in minutes: a
+/// cron time whose local start plus duration plus this is still before the
+/// local "now" has certainly ended, without a time-zone conversion.
+const DST_SLACK_MINUTES: i64 = 3 * 60;
+
+#[cfg(test)]
+thread_local! {
+    /// Local-time → instant conversions done by [`starts_on`] (tests only).
+    static CONVERSIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn count_conversion() {
+    #[cfg(test)]
+    CONVERSIONS.with(|c| c.set(c.get() + 1));
+}
 
 // ---------------------------------------------------------------------------
 // Schedule math (pure)
@@ -261,23 +276,33 @@ fn day_matches(s: &Schedule, date: Date) -> bool {
     }
 }
 
-/// The occurrences that start on local `date`, earliest first.
-fn starts_on(s: &Schedule, date: Date) -> Vec<(Timestamp, Timestamp)> {
+/// The occurrences that start on local `date`, earliest first, computed as
+/// they are asked for. Cron times that certainly ended before `now_local`
+/// (the local wall clock) are skipped without converting them.
+fn starts_on<'a>(
+    s: &'a Schedule,
+    date: Date,
+    now_local: jiff::civil::DateTime,
+) -> Box<dyn Iterator<Item = (Timestamp, Timestamp)> + 'a> {
     if s.strategy != Strategy::Cron {
-        return occurrence_on(s, date).into_iter().collect();
+        count_conversion();
+        return Box::new(occurrence_on(s, date).into_iter());
     }
     let Some(cron) = &s.cron else {
-        return Vec::new();
+        return Box::new(std::iter::empty());
     };
-    cron.times()
-        .filter_map(|(h, m)| {
-            let start = date.at(h, m, 0, 0).to_zoned(s.tz.clone()).ok()?.timestamp();
-            let end = start
-                .checked_add(jiff::SignedDuration::from_mins(s.duration_minutes))
-                .ok()?;
-            Some((start, end))
-        })
-        .collect()
+    let duration = jiff::SignedDuration::from_mins(s.duration_minutes);
+    let slack = jiff::SignedDuration::from_mins(s.duration_minutes + DST_SLACK_MINUTES);
+    Box::new(cron.times().filter_map(move |(h, m)| {
+        let local = date.at(h, m, 0, 0);
+        if local.checked_add(slack).is_ok_and(|end| end < now_local) {
+            return None;
+        }
+        count_conversion();
+        let start = local.to_zoned(s.tz.clone()).ok()?.timestamp();
+        let end = start.checked_add(duration).ok()?;
+        Some((start, end))
+    }))
 }
 
 /// The occurrence in effect at `now`, or else the next one to start.
@@ -311,6 +336,11 @@ pub fn next_occurrence(s: &Schedule, now: Timestamp) -> Option<(Timestamp, Times
             if let Some(start_at) = s.start_at {
                 from = from.max(start_at);
             }
+            // Occurrences must start before `end_at`: none starts on a later
+            // local date, so the search stops there instead of looking years
+            // ahead for a window that is over.
+            let last_date = s.end_at.map(|b| b.to_zoned(s.tz.clone()).date());
+            let now_local = now.to_zoned(s.tz.clone()).datetime();
             // Begin early enough that an occurrence that started before `now`
             // (an overnight window, a long cron window) is still found.
             let mut date = from
@@ -319,8 +349,11 @@ pub fn next_occurrence(s: &Schedule, now: Timestamp) -> Option<(Timestamp, Times
                 .checked_sub(jiff::Span::new().days(back_days))
                 .ok()?;
             for _ in 0..=(ahead_days + back_days) {
+                if last_date.is_some_and(|last| date > last) {
+                    return None;
+                }
                 if day_matches(s, date) {
-                    for (start, end) in starts_on(s, date) {
+                    for (start, end) in starts_on(s, date, now_local) {
                         let in_range = s.start_at.is_none_or(|a| start >= a)
                             && s.end_at.is_none_or(|b| start < b);
                         let skipped = s.skip_until.is_some_and(|k| start < k);
@@ -1331,6 +1364,48 @@ mod tests {
             span(&s, "2026-10-20T02:30:00Z"),
             pair("2026-10-21T02:00:00Z", "2026-10-21T03:00:00Z")
         );
+    }
+
+    fn conversions_for(f: impl FnOnce()) -> usize {
+        CONVERSIONS.with(|c| c.set(0));
+        f();
+        CONVERSIONS.with(|c| c.get())
+    }
+
+    #[test]
+    fn finished_cron_windows_are_not_searched_for_years() {
+        // Every minute, but the range ended a year ago: the search used to
+        // walk four years of days converting 1 440 times each (about two
+        // million time-zone conversions per call, every 30 s).
+        let mut s = cron("* * * * *", 1, "Europe/Oslo");
+        s.start_at = Some(ts("2025-01-01T00:00:00Z"));
+        s.end_at = Some(ts("2025-10-01T00:00:00Z"));
+        let n = conversions_for(|| {
+            assert_eq!(next_occurrence(&s, ts("2026-10-21T12:00:00Z")), None);
+            assert_eq!(
+                window_state(&s, ts("2026-10-21T12:00:00Z")),
+                WindowState::Ended
+            );
+        });
+        assert_eq!(n, 0, "nothing to convert after the end");
+    }
+
+    #[test]
+    fn a_running_every_minute_cron_is_found_without_converting_the_whole_day() {
+        let s = cron("* * * * *", 5, "America/New_York");
+        let now = ts("2026-10-21T21:30:30Z");
+        let mut found = None;
+        let n = conversions_for(|| found = next_occurrence(&s, now));
+        let (start, end) = found.unwrap();
+        assert!(start <= now && now < end, "{start} {end}");
+        // The minutes of today and yesterday that ended long ago are skipped
+        // without a conversion; what's left is the DST slack plus the window.
+        assert!(
+            n <= 2 * (DST_SLACK_MINUTES as usize + 10),
+            "{n} conversions"
+        );
+        // Still exact at the edge of the window.
+        assert_eq!(start, ts("2026-10-21T21:26:00Z"));
     }
 
     #[test]

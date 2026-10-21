@@ -150,6 +150,25 @@ async fn feeds_respect_publishing_and_passwords() {
     // The page itself doesn't advertise a feed to people who can't read it.
     let (_, _, page) = get(&t, "/status/acme", None, None).await;
     assert!(!page.contains("feed.xml"), "{page}");
+
+    // Someone who may read it gets a private feed: no shared cache keeps it
+    // and no other site can read it.
+    let cookie = login(&t, "reader", Role::Viewer).await;
+    let (status, headers, body) = get(&t, "/status/acme/feed.xml", None, Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("<feed"), "{body}");
+    assert_eq!(headers.get("cache-control"), Some("private, no-store"));
+    assert_eq!(headers.get("access-control-allow-origin"), None);
+}
+
+#[tokio::test]
+async fn public_feeds_are_cacheable_and_readable_anywhere() {
+    let t = app().await;
+    seed(&t, true, None).await;
+    let (status, headers, _) = get(&t, "/status/acme/feed.xml", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers.get("cache-control"), Some("public, max-age=60"));
+    assert_eq!(headers.get("access-control-allow-origin"), Some("*"));
 }
 
 #[tokio::test]

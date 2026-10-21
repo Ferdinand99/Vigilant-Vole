@@ -88,6 +88,10 @@ pub fn router() -> Router<AppState> {
             "/status-pages/{id}/subscribers/{sid}",
             delete(remove_subscriber),
         )
+        .route(
+            "/status-pages/{id}/subscribers/{sid}/approve",
+            post(approve_subscriber),
+        )
         .merge(super::public_status::assets::editor_routes())
         .layer(axum::middleware::from_fn(
             super::public_status::invalidate_after_writes,
@@ -1757,6 +1761,11 @@ struct SubscribersTemplate {
     /// Active email channels: (id, name, selected).
     channels: Vec<(i64, String, bool)>,
     rows: Vec<SubscriberRow>,
+    /// Links in messages have no address to point at (no public URL and no
+    /// custom domain), so the page offers no subscriptions.
+    base_missing: bool,
+    /// The viewer can open Settings → General.
+    is_admin: bool,
 }
 
 struct SubscriberRow {
@@ -1764,6 +1773,8 @@ struct SubscriberRow {
     target: String,
     kind_label: &'static str,
     confirmed: bool,
+    /// A webhook waiting for an editor's approval.
+    awaiting: bool,
     created: String,
 }
 
@@ -1791,6 +1802,7 @@ async fn subscribers(
             ))
         })
         .await?;
+    let base_missing = crate::subscribers::link_base(site.base_url.as_deref(), &page).is_none();
     let channels = channels
         .into_iter()
         .map(|(cid, name)| (cid, name, settings.channel_id == Some(cid)))
@@ -1805,6 +1817,7 @@ async fn subscribers(
                 crate::i18n::t("sub.type_webhook")
             },
             confirmed: s.is_confirmed(),
+            awaiting: s.awaits_approval(),
             created: super::public_status::fmt_local(&s.created_at, &tz),
             id: s.id,
             target: s.target,
@@ -1828,6 +1841,8 @@ async fn subscribers(
             settings,
             channels,
             rows,
+            base_missing,
+            is_admin: user.is_admin(),
         }),
     ))
 }
@@ -1878,6 +1893,35 @@ async fn save_subscribers(
         Redirect::to(&back),
     )
         .into_response())
+}
+
+/// Approves a webhook sign-up; the webhook then gets a "subscribed" message
+/// with its unsubscribe link.
+async fn approve_subscriber(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path((id, sid)): Path<(i64, i64)>,
+) -> ApiResult<Response> {
+    user.require(Role::Editor)?;
+    if state
+        .with_conn(move |c| db_subscribers::approve(c, id, sid))
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound);
+    }
+    let bg = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::subscribers::send_welcome(&bg, id, sid).await {
+            tracing::warn!(page = id, subscriber = sid, error = %e, "webhook welcome failed");
+        }
+    });
+    Ok(hx_refresh(flash(
+        jar,
+        "success",
+        crate::i18n::t("sub.approved"),
+    )))
 }
 
 async fn remove_subscriber(

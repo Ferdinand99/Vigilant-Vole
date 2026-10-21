@@ -242,11 +242,14 @@ async fn requests_need_a_valid_bearer_token_and_the_right_origin() {
 
     // OK with a token; browsers on other origins are refused even with one.
     assert_eq!(h.post(Some(&h.admin), &[], ping).await.0, StatusCode::OK);
+    // A name that matches the Host header proves nothing: a rebound name
+    // (evil.example → this server) matches too. Without a public URL only
+    // IP addresses and localhost pass.
     assert_eq!(
         h.post(Some(&h.admin), &[("origin", "http://vole.test")], ping)
             .await
             .0,
-        StatusCode::OK
+        StatusCode::FORBIDDEN
     );
     let (status, _, body) = h
         .post(Some(&h.admin), &[("origin", "https://evil.example")], ping)
@@ -255,6 +258,26 @@ async fn requests_need_a_valid_bearer_token_and_the_right_origin() {
     assert_eq!(
         h.post(Some(&h.admin), &[("origin", "null")], ping).await.0,
         StatusCode::FORBIDDEN
+    );
+    // With a public URL, its origin is the one browsers may use.
+    h.state
+        .with_conn(|c| {
+            crate::db::settings::set(c, crate::db::settings::BASE_URL, "http://vole.test")
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        h.post(Some(&h.admin), &[("origin", "http://vole.test")], ping)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        h.post(Some(&h.admin), &[("origin", "https://vole.test")], ping)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+        "another scheme is another origin"
     );
     // An unsupported protocol version header is a 400.
     assert_eq!(
@@ -368,14 +391,74 @@ async fn malformed_and_unknown_requests_get_json_rpc_errors() {
         -32600,
         "jsonrpc must be 2.0"
     );
-    // A batch answers every request and skips notifications.
+    // Batches (dropped by MCP 2025-06-18) are refused as a whole: one
+    // request can't carry a pile of tool calls past the rate limit.
     let batch = r#"[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/initialized"},{"jsonrpc":"2.0","id":"b","method":"ping"}]"#;
-    let (_, _, body) = h.post(Some(&h.admin), &[], batch).await;
-    let replies: Vec<Value> = serde_json::from_str(&body).unwrap();
-    assert_eq!(
-        replies.iter().map(|r| r["id"].clone()).collect::<Vec<_>>(),
-        [json!(1), json!("b")]
-    );
+    for body in [batch, "[]"] {
+        let (status, _, reply) = h.post(Some(&h.admin), &[], body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+        let reply: Value = serde_json::from_str(&reply).unwrap();
+        assert_eq!(reply["error"]["code"], -32600, "{reply}");
+        assert!(reply["id"].is_null());
+    }
+}
+
+#[test]
+fn browser_origins_need_the_public_url_or_a_fixed_address() {
+    fn h(pairs: &[(&'static str, &'static str)]) -> axum::http::HeaderMap {
+        let mut map = axum::http::HeaderMap::new();
+        for (k, v) in pairs {
+            map.insert(*k, axum::http::HeaderValue::from_static(v));
+        }
+        map
+    }
+    // No browser, no check.
+    assert!(origin_allowed(&h(&[("host", "vole.test")]), None));
+    // Without a public URL: IP addresses and localhost on the Host they reach.
+    for (host, origin) in [
+        ("127.0.0.1:3001", "http://127.0.0.1:3001"),
+        ("localhost:3001", "http://localhost:3001"),
+        ("[::1]:3001", "http://[::1]:3001"),
+        ("192.168.1.5", "http://192.168.1.5"),
+    ] {
+        let map = {
+            let mut m = axum::http::HeaderMap::new();
+            m.insert("host", host.parse().unwrap());
+            m.insert("origin", origin.parse().unwrap());
+            m
+        };
+        assert!(origin_allowed(&map, None), "{origin}");
+    }
+    for (host, origin) in [
+        ("vole.test", "http://vole.test"),
+        ("127.0.0.1:3001", "http://127.0.0.1:3002"),
+        ("127.0.0.1", "null"),
+    ] {
+        let map = {
+            let mut m = axum::http::HeaderMap::new();
+            m.insert("host", host.parse().unwrap());
+            m.insert("origin", origin.parse().unwrap());
+            m
+        };
+        assert!(!origin_allowed(&map, None), "{origin}");
+    }
+    // With one, exactly its origin (default ports normalised), whatever the Host.
+    let base = Some("https://status.example.com/");
+    assert!(origin_allowed(
+        &h(&[
+            ("host", "internal:3001"),
+            ("origin", "https://status.example.com:443")
+        ]),
+        base
+    ));
+    assert!(!origin_allowed(
+        &h(&[("host", "127.0.0.1"), ("origin", "http://127.0.0.1")]),
+        base
+    ));
+    assert!(origin_allowed(
+        &h(&[("referer", "https://status.example.com/settings")]),
+        base
+    ));
 }
 
 #[test]

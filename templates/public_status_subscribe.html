@@ -13,7 +13,10 @@
 
 {% block head %}
   <meta name="robots" content="noindex">
-  <meta name="referrer" content="no-referrer">
+  {#- The token in the URL never leaves the site, but same-origin POSTs keep
+      their Origin header ("no-referrer" makes browsers send `Origin: null`,
+      which the CSRF check refuses). -#}
+  <meta name="referrer" content="same-origin">
 {% endblock %}
 
 {% block header %}
@@ -58,6 +61,12 @@
     <span class="empty-icon">{{ m::icon("mail") }}</span>
     <h2 class="auth-title" id="sub-title">{{ tr("sub.sent_title") }}</h2>
     <p class="auth-sub">{{ tr("sub.sent_body") }}</p>
+  </div>
+  {%- else if mode == "review" %}
+  <div class="auth-head">
+    <span class="empty-icon">{{ m::icon("clock") }}</span>
+    <h2 class="auth-title" id="sub-title">{{ tr("sub.review_title") }}</h2>
+    <p class="auth-sub">{{ tr("sub.review_body") }}</p>
   </div>
   {%- else if mode == "confirm" %}
   <div class="auth-head">

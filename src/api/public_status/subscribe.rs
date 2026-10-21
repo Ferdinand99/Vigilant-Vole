@@ -3,7 +3,12 @@
 //! Signing up always answers the same ("check your inbox") whether or not
 //! the address was already known, so the form can't be used to find out who
 //! subscribes. Confirming and unsubscribing are a page with a button (a POST),
-//! so a mail scanner that opens the links does neither.
+//! so a mail scanner that opens the links does neither. Webhook sign-ups get
+//! no confirmation at all: they wait for an editor's approval.
+//!
+//! A page only offers subscriptions when links can point at an address the
+//! server vouches for: the configured public URL or the page's custom domain
+//! ([`send::link_base`]).
 
 use crate::i18n::Tr as _;
 use axum::Form;
@@ -30,7 +35,7 @@ struct SubscribeTemplate {
     theme: String,
     custom_css: Option<String>,
     page: StatusPage,
-    /// "form" | "sent" | "confirm" | "confirmed" | "unsubscribe" | "unsubscribed" | "invalid"
+    /// "form" | "sent" | "review" | "confirm" | "confirmed" | "unsubscribe" | "unsubscribed" | "invalid"
     mode: &'static str,
     error: Option<String>,
     email: bool,
@@ -69,7 +74,8 @@ impl SubscribeTemplate {
     }
 }
 
-/// Published page whose visitor may see it, with its subscription settings.
+/// Published page whose visitor may see it and that offers subscriptions,
+/// with its subscription settings.
 async fn open_page(
     state: &AppState,
     jar: &SignedCookieJar,
@@ -84,9 +90,11 @@ async fn open_page(
             StatusCode::UNAUTHORIZED,
         )));
     }
-    let id = page.id;
-    let settings = state.with_conn(move |c| db::settings(c, id)).await?;
-    if !settings.enabled {
+    let p = page.clone();
+    let (settings, base) = state
+        .with_conn(move |c| Ok((db::settings(c, p.id)?, send::link_base_for(c, &p)?)))
+        .await?;
+    if !settings.enabled || base.is_none() {
         return Err(ApiError::NotFound);
     }
     Ok(Ok((page, settings)))
@@ -146,30 +154,8 @@ fn valid_email(raw: &str) -> bool {
     raw.len() <= 254 && !raw.contains(char::is_whitespace) && lettre::Address::from_str(raw).is_ok()
 }
 
-fn base_url_for(configured: &str, headers: &HeaderMap) -> String {
-    if !configured.is_empty() {
-        return configured.to_string();
-    }
-    let trust = session::trust_proxy();
-    let host = trust
-        .then(|| headers.get("x-forwarded-host"))
-        .flatten()
-        .or_else(|| headers.get(header::HOST))
-        .and_then(|v| v.to_str().ok())
-        .and_then(|h| h.split(',').next())
-        .map(str::trim)
-        .unwrap_or_default();
-    let scheme = if session::is_https(headers, trust) {
-        "https"
-    } else {
-        "http"
-    };
-    if host.is_empty() {
-        String::new()
-    } else {
-        format!("{scheme}://{host}")
-    }
-}
+/// New sign-ups one page takes per hour, whatever addresses they come from.
+pub const PAGE_SIGNUPS_PER_HOUR: u32 = 100;
 
 pub async fn sign_up(
     State(state): State<AppState>,
@@ -189,7 +175,7 @@ pub async fn sign_up(
     again.webhook = webhook_on;
 
     let ip = session::client_ip(&headers, peer, session::trust_proxy())
-        .map_or_else(|| "unknown".to_string(), |ip| ip.to_string());
+        .map_or_else(|| "unknown".to_string(), send::client_key);
     // The data directory tells app instances apart (tests run several).
     let scope = state.config.data_dir.display();
     if !send::allow(
@@ -235,40 +221,44 @@ pub async fn sign_up(
         return Ok(again.respond(StatusCode::UNPROCESSABLE_ENTITY));
     };
 
+    // However many addresses they come from, sign-ups can't flood a page.
+    if !send::allow(
+        &format!("sub-page:{scope}:{}", page.id),
+        PAGE_SIGNUPS_PER_HOUR,
+        Duration::from_secs(3600),
+    ) {
+        again.error = Some(crate::i18n::t("sub.err_rate").into());
+        return Ok(again.respond(StatusCode::TOO_MANY_REQUESTS));
+    }
+    let done = if kind == "email" { "sent" } else { "review" };
     // One address can't be used to spam someone with confirmation mails.
     if !send::allow(
         &format!("sub-target:{scope}:{}:{kind}:{target}", page.id),
         3,
         Duration::from_secs(3600),
     ) {
-        return Ok(SubscribeTemplate::new(page, "sent").respond(StatusCode::OK));
+        return Ok(SubscribeTemplate::new(page, done).respond(StatusCode::OK));
     }
 
-    let base = base_url_for(&send::site_base_url(&state).await, &headers);
-    let (page_id, lang, t, b) = (
+    let (page_id, lang, secret) = (
         page.id,
         crate::i18n::current().code(),
-        target.clone(),
-        base.clone(),
+        send::new_secret(&state.session_key),
     );
     let added = state
-        .with_conn(move |c| db::add(c, page_id, kind, &t, lang, &b))
+        .with_conn(move |c| db::add(c, page_id, kind, &target, lang, &secret))
         .await?;
-    if let Added::Pending(token) = added {
-        let sub = state
-            .with_conn(move |c| db::by_token(c, &token))
-            .await?
-            .ok_or(ApiError::NotFound)?;
-        // In the background: a slow mail server or webhook must not make the
-        // answer slower (or tell a new address from a known one by timing).
+    if let (Added::Pending(id), "email") = (added, kind) {
+        // In the background: a slow mail server must not make the answer
+        // slower (or tell a new address from a known one by timing).
         let state = state.clone();
         tokio::spawn(async move {
-            if let Err(e) = send::send_confirmation(&state, page_id, &sub, &base).await {
-                tracing::warn!(page = page_id, kind = %sub.kind, error = %e, "subscription confirmation failed");
+            if let Err(e) = send::send_confirmation(&state, page_id, id).await {
+                tracing::warn!(page = page_id, error = %e, "subscription confirmation failed");
             }
         });
     }
-    Ok(SubscribeTemplate::new(page, "sent").respond(StatusCode::OK))
+    Ok(SubscribeTemplate::new(page, done).respond(StatusCode::OK))
 }
 
 /// Looks the token up and the page it belongs to.
@@ -277,7 +267,7 @@ async fn by_token(
     slug: String,
     token: String,
 ) -> ApiResult<Option<(StatusPage, db::Subscriber)>> {
-    if !crate::auth::tokens::is_well_formed(&token) {
+    if !send::is_well_formed(&token) {
         return Ok(None);
     }
     state
@@ -317,6 +307,10 @@ async fn token_page(
     let Some((page, sub)) = by_token(state, slug.clone(), token.clone()).await? else {
         return page_for_error(state, slug).await;
     };
+    // Only an email address is confirmed by its link; webhooks wait for an editor.
+    if mode == "confirm" && sub.kind != "email" {
+        return Ok(invalid(page));
+    }
     let mut tpl = SubscribeTemplate::new(page, mode);
     tpl.target = sub.masked_target();
     tpl.token = token;

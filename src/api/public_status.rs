@@ -380,7 +380,8 @@ pub struct PublicView {
     pub updated_label: String,
     #[serde(skip)]
     pub footer_html: String,
-    /// The page lets visitors subscribe to announcements.
+    /// The page lets visitors subscribe to announcements (they are on and
+    /// links have an address to point at).
     #[serde(skip)]
     pub subscribe: bool,
     /// Logged-in editor viewing an unpublished page.
@@ -884,7 +885,8 @@ fn load_view_data(
         updated_at: maintenance::fmt_db_ts(now),
         updated_label: fmt_ts(now, &tz),
         footer_html: String::new(),
-        subscribe: crate::db::subscribers::settings(conn, page.id).is_ok_and(|s| s.enabled),
+        subscribe: crate::db::subscribers::settings(conn, page.id).is_ok_and(|s| s.enabled)
+            && crate::subscribers::link_base_for(conn, &page).is_ok_and(|b| b.is_some()),
         preview: !page.published,
         can_edit: false,
         fragment_url: format!("/status/{}/fragment", page.slug),

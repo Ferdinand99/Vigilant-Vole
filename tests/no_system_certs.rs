@@ -1,5 +1,11 @@
 //! A machine without CA certificates (scratch/distroless images) must not
 //! crash the binary: it warns and uses the bundled roots.
+//!
+//! These tests can't complete a TLS handshake against the bundled roots: that
+//! needs a server certificate issued by a public CA. The unit test
+//! `tls_roots::tests::roots_added_for_the_fallback_are_trusted_in_a_real_handshake`
+//! covers that part: it adds its own CA through the same code path as the
+//! bundled roots and completes a real handshake with it.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};

@@ -35,7 +35,9 @@ app's MCP settings (the token goes in the environment, never on the command line
 ```
 
 The bridge reads `VV_MCP_TOKEN` (or `VV_TOKEN`) and the address from `--url` / `VV_MCP_URL`. It forwards each
-message to `POST <url>/mcp` and never follows redirects. Run `vigilant-vole` from the release binary or the
+message to `POST <url>/mcp` and never follows redirects. It warns on stderr when `--url` is plain `http://` to
+another machine (the token would cross the network unencrypted), and it refuses answers larger than 8 MiB (a JSON
+body or one event of a stream) with an error instead of buffering them. Run `vigilant-vole` from the release binary or the
 container (`docker run -i -e VV_MCP_TOKEN=… ghcr.io/ferdinand99/vigilant-vole mcp --url …`).
 
 ## What the assistant can do
@@ -77,15 +79,19 @@ Resources: `vigilant-vole://api-reference` (this server's REST API reference as 
   `••••••`, and header values are hidden (names stay). Content from monitor names, messages and incident texts is
   data the assistant reads: treat prompts hidden in a monitor name as untrusted, as with any tool output.
 - **Rate limit** of 120 requests a minute per token (HTTP 429 with `Retry-After`).
-- **Origin check.** A browser request whose `Origin` isn't this server's gets 403 (DNS-rebinding protection);
-  assistants and the bridge send no `Origin`. Use HTTPS in front of the server when it is reachable from outside.
+- **Origin check** (DNS-rebinding protection). Assistants and the bridge send no `Origin` and are not affected. A
+  browser request must come from the **Public URL** set under **Settings → General**; without one, only from an IP
+  address or `localhost` (matching the address it was sent to). Comparing with the request's `Host` alone would
+  not help: a hostile name rebound to this server's address matches its own `Host`. Other origins get 403. Use
+  HTTPS in front of the server when it is reachable from outside.
 - Every call is made as the token's user inside the server, through the same REST code, so audit and validation are
   identical to the REST API. Revoke the token under **Settings → API tokens** to cut access immediately.
 
 ## Protocol details
 
 `POST /mcp`, JSON-RPC 2.0, MCP versions 2025-06-18, 2025-03-26 and 2024-11-05. The server is stateless (no session id),
-answers every request with plain JSON (batches are accepted), `202` for notifications, and `405` for `GET`/`DELETE`
-because it has no server-initiated stream. Methods: `initialize`, `ping`, `tools/list`, `tools/call`,
+answers every request with plain JSON, `202` for notifications, and `405` for `GET`/`DELETE` because it has no
+server-initiated stream. JSON-RPC batches (dropped in MCP 2025-06-18) are refused with HTTP 400 and a `-32600`
+error: send one message per request. Methods: `initialize`, `ping`, `tools/list`, `tools/call`,
 `resources/list`, `resources/templates/list`, `resources/read`. Tool failures are returned as results with
 `isError: true` and a message the assistant can act on.

@@ -4,7 +4,9 @@
 //! announcement and the whole update timeline, and `<updated>` moves whenever
 //! an update is posted, so feed readers show the incident again. Published
 //! pages only; a password-protected page answers 401 (feed readers can't
-//! unlock it) and nothing about it leaks.
+//! unlock it) and nothing about it leaks. Its feed, for someone who did
+//! unlock it, is private: never stored by shared caches, never readable by
+//! other sites.
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -199,14 +201,21 @@ pub async fn feed(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/atom+xml; charset=utf-8"),
     );
-    h.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=60"),
-    );
-    h.insert(
-        header::ACCESS_CONTROL_ALLOW_ORIGIN,
-        HeaderValue::from_static("*"),
-    );
+    if view.page.is_protected() {
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+    } else {
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=60"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        );
+    }
     Ok(resp)
 }
 

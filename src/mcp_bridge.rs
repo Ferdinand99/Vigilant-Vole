@@ -14,6 +14,10 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncWrite, AsyncWriteExt as
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+/// Largest answer (a JSON body, or one event of an event stream) passed on.
+pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+/// Largest error body read for the message.
+const MAX_ERROR_BYTES: usize = 64 * 1024;
 
 /// JSON-RPC code: the line was not valid JSON.
 pub const CODE_PARSE_ERROR: i64 = -32700;
@@ -74,6 +78,24 @@ pub fn normalize_url(raw: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
+/// A warning when the token would travel unencrypted to another machine.
+pub fn cleartext_warning(endpoint: &str) -> Option<String> {
+    let url = url::Url::parse(endpoint).ok()?;
+    if url.scheme() != "http" {
+        return None;
+    }
+    let local = match url.host()? {
+        url::Host::Domain(d) => d.eq_ignore_ascii_case("localhost"),
+        url::Host::Ipv4(ip) => ip.is_loopback(),
+        url::Host::Ipv6(ip) => ip.is_loopback(),
+    };
+    (!local).then(|| {
+        format!(
+            "warning: {endpoint} is plain http, so the API token crosses the network unencrypted; use https:// unless the server runs on this machine"
+        )
+    })
+}
+
 fn token_from_env() -> Option<String> {
     ["VV_MCP_TOKEN", "VV_TOKEN"]
         .iter()
@@ -97,6 +119,9 @@ pub async fn run(args: McpArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
             std::process::exit(2);
         }
     };
+    if let Some(warning) = cleartext_warning(&endpoint) {
+        eprintln!("vigilant-vole mcp: {warning}");
+    }
     crate::tls_roots::init();
     let cfg = BridgeConfig { endpoint, token };
     let input = tokio::io::BufReader::new(tokio::io::stdin());
@@ -271,6 +296,9 @@ impl Bridge {
                     }
                 };
                 pending.extend_from_slice(&chunk);
+                if pending.len() + data.len() > MAX_RESPONSE_BYTES {
+                    return Ok(Err(too_large()));
+                }
                 while let Some(pos) = pending.iter().position(|b| *b == b'\n') {
                     let raw: Vec<u8> = pending.drain(..=pos).collect();
                     let line = String::from_utf8_lossy(&raw);
@@ -287,6 +315,9 @@ impl Bridge {
                             data.push('\n');
                         }
                         data.push_str(rest.strip_prefix(' ').unwrap_or(rest));
+                        if data.len() > MAX_RESPONSE_BYTES {
+                            return Ok(Err(too_large()));
+                        }
                     }
                 }
             }
@@ -295,14 +326,9 @@ impl Bridge {
             }
             return Ok(Ok(()));
         }
-        let body = match resp.text().await {
-            Ok(b) => b,
-            Err(e) => {
-                return Ok(Err((
-                    CODE_CONNECT,
-                    format!("could not read the response: {}", describe_error(&e)),
-                )));
-            }
+        let body = match read_capped(resp, MAX_RESPONSE_BYTES).await {
+            Ok(b) => String::from_utf8_lossy(&b).into_owned(),
+            Err(e) => return Ok(Err(e)),
         };
         if body.trim().is_empty() {
             return Ok(Ok(()));
@@ -336,6 +362,35 @@ impl Bridge {
         write_value(out, &value).await?;
         Ok(Ok(()))
     }
+}
+
+fn too_large() -> RpcError {
+    (
+        CODE_HTTP,
+        format!(
+            "the server's answer is larger than {} MiB; not passed on",
+            MAX_RESPONSE_BYTES / (1024 * 1024)
+        ),
+    )
+}
+
+/// The body, up to `cap` bytes; a larger one is an error, not read to the end.
+async fn read_capped(resp: reqwest::Response, cap: usize) -> Result<Vec<u8>, RpcError> {
+    let mut stream = resp.bytes_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| {
+            (
+                CODE_CONNECT,
+                format!("could not read the response: {}", describe_error(&e)),
+            )
+        })?;
+        if body.len() + chunk.len() > cap {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 fn describe_error(e: &reqwest::Error) -> String {
@@ -380,7 +435,15 @@ async fn http_error(resp: reqwest::Response) -> RpcError {
             format!("HTTP {code}: redirect to {loc} (redirects are not followed; check --url)"),
         );
     }
-    let body = resp.text().await.unwrap_or_default();
+    let mut body = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(Ok(chunk)) = stream.next().await {
+        body.extend_from_slice(&chunk);
+        if body.len() >= MAX_ERROR_BYTES {
+            break;
+        }
+    }
+    let body = String::from_utf8_lossy(&body);
     let snippet: String = body.trim().chars().take(200).collect();
     (CODE_HTTP, format!("HTTP {code}: {snippet}"))
 }
@@ -441,6 +504,12 @@ mod tests {
             "limit" => (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "7")], "slow down").into_response(),
             "redirect" => (StatusCode::FOUND, [(header::LOCATION, "https://login.example/")]).into_response(),
             "fail" => (StatusCode::INTERNAL_SERVER_ERROR, "x".repeat(500)).into_response(),
+            "huge" => axum::Json(json!({"jsonrpc":"2.0","id":id,"result":"x".repeat(MAX_RESPONSE_BYTES)})).into_response(),
+            "huge_sse" => (
+                [(header::CONTENT_TYPE, "text/event-stream")],
+                format!("data: {}\n\n", "x".repeat(MAX_RESPONSE_BYTES + 1)),
+            )
+                .into_response(),
             "sse" => (
                 [(header::CONTENT_TYPE, "text/event-stream")],
                 format!("event: message\ndata: {{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":1}}\n\ndata: {{\"jsonrpc\":\"2.0\",\"method\":\"n\"}}\n\n"),
@@ -586,6 +655,44 @@ mod tests {
         .await;
         assert_eq!(out[0]["id"], 9);
         assert_eq!(out[0]["error"]["code"], CODE_CONNECT);
+    }
+
+    #[tokio::test]
+    async fn oversized_answers_are_refused_not_buffered() {
+        let (url, _) = server().await;
+        let out = bridge(
+            &url,
+            "good",
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"huge\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"huge_sse\"}\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}\n",
+        )
+        .await;
+        assert_eq!(out.len(), 3);
+        for (n, id) in [(0, 1), (1, 2)] {
+            assert_eq!(out[n]["id"], id);
+            assert_eq!(out[n]["error"]["code"], CODE_HTTP);
+            assert!(
+                out[n]["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("larger than")
+            );
+        }
+        assert_eq!(out[2]["id"], 3, "the bridge keeps going");
+    }
+
+    #[test]
+    fn plain_http_to_another_machine_is_warned_about() {
+        for local in [
+            "http://localhost:3001/mcp",
+            "http://127.0.0.1:3001/mcp",
+            "http://[::1]:3001/mcp",
+            "https://status.example.com/mcp",
+        ] {
+            assert_eq!(cleartext_warning(local), None, "{local}");
+        }
+        let w = cleartext_warning("http://status.example.com/mcp").unwrap();
+        assert!(w.contains("unencrypted") && w.contains("https://"), "{w}");
+        assert!(cleartext_warning("http://192.168.1.5:3001/mcp").is_some());
     }
 
     #[test]

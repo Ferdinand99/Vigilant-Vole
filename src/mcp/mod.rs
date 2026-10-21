@@ -3,13 +3,16 @@
 //!
 //! Vigilant Vole never calls an AI model and never relays AI usage; it only
 //! answers the client's requests. Transport: Streamable HTTP, `POST /mcp`
-//! with JSON-RPC 2.0 (single messages; the server is stateless and offers no
+//! with JSON-RPC 2.0 (single messages; batches, which the 2025-06-18
+//! revision dropped, are refused; the server is stateless and offers no
 //! server-initiated stream, so `GET /mcp` is `405` as the specification
 //! allows). Authentication is an API token (`Authorization: Bearer vv_…`):
 //! a read token sees only the read tools, a write token also the editing
-//! tools, and the user's role still applies. There are no session cookies,
-//! and a browser `Origin` that isn't this server's is refused (DNS-rebinding
-//! protection).
+//! tools, and the user's role still applies. There are no session cookies.
+//! A browser request must come from the configured public URL, or, without
+//! one, from an IP address or `localhost` (DNS-rebinding protection: a name
+//! that an attacker rebinds to this server would match the `Host` header,
+//! so the `Host` header alone proves nothing).
 //!
 //! The tools are thin layers over the REST API: each call is sent to
 //! `/api/v1/**` inside the process with the caller's token, so validation,
@@ -32,7 +35,7 @@ use axum::routing::post;
 use serde_json::{Map, Value, json};
 
 use crate::api::AppState;
-use crate::auth::{AuthMethod, CurrentUser, TokenScope, csrf};
+use crate::auth::{AuthMethod, CurrentUser, TokenScope};
 
 /// Protocol versions we speak, newest first.
 pub const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -116,17 +119,57 @@ pub(crate) struct Caller {
     pub can_write: bool,
 }
 
+/// `(scheme, host, port)` of an http(s) URL, with the scheme's default port.
+fn origin_of(url: &str) -> Option<(String, String, u16)> {
+    let url = url::Url::parse(url).ok()?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return None;
+    }
+    Some((
+        url.scheme().to_string(),
+        url.host_str()?.to_ascii_lowercase(),
+        url.port_or_known_default()?,
+    ))
+}
+
+/// Whether a request may use the endpoint as far as its browser origin goes.
+/// Non-browser clients send no `Origin` (or `Referer`) and pass. A browser
+/// request must come from the configured public URL; without one, from an
+/// address no other site can rebind to this server: an IP address or
+/// `localhost`, matching the `Host` it was sent to.
+fn origin_allowed(headers: &HeaderMap, base_url: Option<&str>) -> bool {
+    let header = |name: header::HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
+    let Some(source) = header(header::ORIGIN).or_else(|| header(header::REFERER)) else {
+        return true;
+    };
+    let Some(origin) = origin_of(source) else {
+        // "null" (sandboxed pages, file://) and anything else unusable.
+        return false;
+    };
+    if let Some(base) = base_url.map(str::trim).filter(|b| !b.is_empty()) {
+        return origin_of(base).is_some_and(|b| b == origin);
+    }
+    let (scheme, host, _) = &origin;
+    let fixed = host == "localhost"
+        || host
+            .trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok();
+    fixed
+        && header(header::HOST)
+            .and_then(|h| origin_of(&format!("{scheme}://{h}/")))
+            .is_some_and(|h| h == origin)
+}
+
 async fn handle(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
     // DNS-rebinding protection: a browser page from another origin must not
-    // be able to drive this endpoint. Non-browser clients send no Origin.
+    // be able to drive this endpoint.
     let base_url = state.settings().await.ok().and_then(|s| s.base_url);
-    if csrf::source_is_ours(
-        &headers,
-        crate::auth::session::trust_proxy(),
-        base_url.as_deref(),
-    ) == Some(false)
-    {
-        return http_error(StatusCode::FORBIDDEN, "This Origin is not allowed.");
+    if !origin_allowed(&headers, base_url.as_deref()) {
+        return http_error(
+            StatusCode::FORBIDDEN,
+            "This Origin is not allowed. Browser clients must use the public URL from Settings → General.",
+        );
     }
 
     // Bearer tokens only; no cookies, no Basic.
@@ -196,28 +239,23 @@ async fn handle(State(state): State<AppState>, headers: HeaderMap, body: Bytes) 
             ));
         }
     };
-    match message {
-        Value::Array(items) => {
-            // Batches are not part of the newest protocol versions but cost little to accept.
-            if items.is_empty() {
-                return json_response(rpc_error(Value::Null, -32600, "Empty batch."));
-            }
-            let mut out = Vec::new();
-            for item in items {
-                if let Some(reply) = process(&ctx, item).await {
-                    out.push(reply);
-                }
-            }
-            if out.is_empty() {
-                accepted()
-            } else {
-                json_response(Value::Array(out))
-            }
-        }
-        single => match process(&ctx, single).await {
-            Some(reply) => json_response(reply),
-            None => accepted(),
-        },
+    if message.is_array() {
+        // MCP 2025-06-18 removed JSON-RPC batching. Answering them would let
+        // one request (and one rate-limit unit) carry hundreds of tool calls.
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CACHE_CONTROL, "no-store")],
+            axum::Json(rpc_error(
+                Value::Null,
+                -32600,
+                "Invalid request: batches are not supported; send one JSON-RPC message per request.",
+            )),
+        )
+            .into_response();
+    }
+    match process(&ctx, message).await {
+        Some(reply) => json_response(reply),
+        None => accepted(),
     }
 }
 
