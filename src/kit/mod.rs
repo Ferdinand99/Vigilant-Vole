@@ -14,5 +14,6 @@ pub mod db;
 pub mod docs;
 pub mod http;
 pub mod i18n;
+pub mod mcp;
 pub mod page;
 pub mod state;
