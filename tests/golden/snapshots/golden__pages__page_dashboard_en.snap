@@ -1,0 +1,264 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>Dashboard · Golden Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Golden Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>Golden Vole</span>
+      </a>
+
+      <nav class="topnav" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/" aria-current="page">Dashboard</a>
+        <a class="topnav-link" href="/status-pages">Status pages</a>
+        <a class="topnav-link" href="/maintenance">Maintenance</a>
+        <a class="topnav-link" href="/settings">Settings</a>
+      </nav>
+
+      <div class="topbar-end">
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="Account and appearance">
+          <span class="avatar" aria-hidden="true">A</span>
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            <span class="avatar avatar-lg" aria-hidden="true">A</span>
+            <span>
+              <span class="user-card-name">admin</span>
+              <span class="user-card-meta">admin · Admin</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>Security</a>
+          <a class="menu-item" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>API tokens</a>
+          <a class="menu-item" href="/api-docs"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#code"></use></svg>API docs</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">Appearance</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#theme-auto"></use></svg><span>Auto</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span>Light</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><span>Dark</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg>Log out</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container " tabindex="-1">
+    
+<div id="dash-head">
+
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">Monitors</h1>
+      <p class="page-sub"><span class="live" data-state="connecting" data-label-live="Live" data-label-connecting="Connecting…" data-label-reconnecting="Reconnecting…" data-label-offline="Offline"><span class="dot" aria-hidden="true"></span><span class="live-label">Connecting…</span></span></p>
+    </div>
+    <div class="page-actions">
+      <a href="/tags" class="btn btn-secondary"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#tag"></use></svg><span>Tags</span></a>
+      <a class="btn btn-secondary" href="/?select=1"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check-circle"></use></svg><span>Select</span></a>
+      <a href="/monitors/new" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg><span>New monitor</span></a>
+    </div>
+  </div>
+</header>
+</div>
+<form id="dash-filters" class="stack-sm" method="get" action="/" role="search" aria-label="Filter monitors"
+  hx-get="/" hx-target="#dash-results" hx-swap="innerHTML" hx-push-url="true" hx-trigger="change, submit"
+  hx-include="#dash-results [name=collapsed], #dash-results [name=select]" data-no-progress>
+  <label class="search"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg><input id="dash-q" type="search" name="q" value=""
+    placeholder="Search monitors…" aria-label="Search monitors by name, address or tag" autocomplete="off" spellcheck="false"
+    hx-get="/" hx-trigger="input changed delay:250ms, search" hx-target="#dash-results" hx-swap="innerHTML"
+    hx-include="#dash-filters, #dash-results [name=collapsed], #dash-results [name=select]" hx-push-url="true"></label>
+  <div class="popover" id="dash-filter-menu" popover>
+    <div class="stack-sm">
+      <div class="field">
+        <label class="label" for="dash-type">Type</label>
+        <select id="dash-type" name="type">
+          <option value="">All types</option>
+          <option value="http">HTTP(S)</option>
+          <option value="ping">Ping</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="dash-tag">Tag</label>
+        <select id="dash-tag" name="tag">
+          <option value="">All tags</option>
+          <option value="2">env</option>
+          <option value="1">production</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="dash-sort">Sort by</label>
+        <select id="dash-sort" name="sort">
+          <option value="status" selected>Problems first</option>
+          <option value="name">Name</option>
+          <option value="uptime">Lowest uptime</option>
+          <option value="response">Slowest</option>
+          <option value="newest">Newest</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="chips chips-scroll">
+    <button type="button" class="chip" popovertarget="dash-filter-menu"><svg class="icon icon-sm" aria-hidden="true"><use href="/static/icons.svg#sliders"></use></svg>Filter and sort</button>
+    <span class="vh" id="status-filter-label">Status</span>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="" checked>All</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="down"><span class="dot status-down" aria-hidden="true"></span>Down</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="pending"><span class="dot status-pending" aria-hidden="true"></span>Pending</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="up"><span class="dot status-up" aria-hidden="true"></span>Up</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="maintenance"><span class="dot status-maintenance" aria-hidden="true"></span>Maintenance</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="paused"><span class="dot status-paused" aria-hidden="true"></span>Paused</label>
+  </div>
+  <noscript><div class="cluster"><button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#filter"></use></svg><span>Apply filters</span></button></div></noscript>
+</form>
+
+<div id="dash-results" class="stack">
+  
+<div class="stack" hx-ext="sse" sse-connect="/events" sse-swap="monitors-updated" hx-swap="innerHTML">
+  
+
+<div class="stats">
+  <a class="stat" href="/">
+    <span class="stat-label">Monitors</span>
+    <span class="stat-value num">3</span>
+  </a>
+  <a class="stat status-up" href="/?status=up">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>Up</span>
+    <span class="stat-value num">0</span>
+  </a>
+  <a class="stat status-down" href="/?status=down">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>Down</span>
+    <span class="stat-value num">0</span>
+  </a>
+  <a class="stat status-pending" href="/?status=pending">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>Pending</span>
+    <span class="stat-value num">2</span>
+  </a>
+  <a class="stat status-paused" href="/?status=paused">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>Paused</span>
+    <span class="stat-value num">1</span>
+  </a>
+</div>
+<section class="section" aria-labelledby="ungrouped-title">
+  <div class="section-head"><div><h2 class="section-title" id="ungrouped-title">Active</h2></div></div>
+  <ul class="list" role="list">
+    
+<li class="list-row" id="monitor-row-2">
+  <span class="dot status-pending" role="img" aria-label="Pending"></span>
+  <div class="list-main">
+    <a class="list-title list-title-wrap stretched" href="/monitors/2">API</a>
+    <span class="list-sub">HTTP(S) · https://api.example.com/health</span>
+  </div>
+  <div class="list-beats"><div class="beats" role="img" aria-label="Recent checks, oldest first"><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span></div></div>
+  <div class="list-value">
+    <strong><bdi>—</bdi></strong>
+    <small>24 h</small>
+  </div>
+  <div class="list-value hide-sm">
+    <strong><bdi>—</bdi></strong>
+    <small>Response</small>
+  </div>
+  <svg class="icon list-chevron" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
+</li>
+    
+<li class="list-row" id="monitor-row-1">
+  <span class="dot status-pending" role="img" aria-label="Pending"></span>
+  <div class="list-main">
+    <a class="list-title list-title-wrap stretched" href="/monitors/1">Website</a>
+    <span class="list-sub">HTTP(S) · https://example.com</span>
+    <span class="tags"><span class="tag tag-blue">env<span class="tag-value">prod</span></span><span class="tag tag-blue">production</span></span>
+  </div>
+  <div class="list-beats"><div class="beats" role="img" aria-label="Recent checks, oldest first"><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span></div></div>
+  <div class="list-value">
+    <strong><bdi>—</bdi></strong>
+    <small>24 h</small>
+  </div>
+  <div class="list-value hide-sm">
+    <strong><bdi>—</bdi></strong>
+    <small>Response</small>
+  </div>
+  <svg class="icon list-chevron" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
+</li>
+  </ul>
+</section>
+<section class="section" aria-labelledby="paused-title">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title" id="paused-title">Paused</h2>
+      <p class="section-sub">Not checked and never alert until you resume them.</p>
+    </div>
+  </div>
+  <ul class="list" role="list">
+    
+<li class="list-row" id="monitor-row-3">
+  <span class="dot status-paused" role="img" aria-label="Paused"></span>
+  <div class="list-main">
+    <a class="list-title list-title-wrap stretched" href="/monitors/3">Legacy box</a>
+    <span class="list-sub">Ping · legacy.example.com</span>
+  </div>
+  <div class="list-beats"><div class="beats" role="img" aria-label="Recent checks, oldest first"><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span></div></div>
+  <div class="list-value">
+    <strong><bdi>—</bdi></strong>
+    <small>24 h</small>
+  </div>
+  <div class="list-value hide-sm">
+    <strong><bdi>—</bdi></strong>
+    <small>Response</small>
+  </div>
+  <svg class="icon list-chevron" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
+</li>
+  </ul>
+</section>
+</div>
+</div>
+
+  </main>
+
+  <nav class="tabbar" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>Dashboard</span></a>
+    <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>Status</span></a>
+    <a class="tabbar-item" href="/maintenance"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#wrench"></use></svg><span>Maintenance</span></a>
+    <a class="tabbar-item" href="/settings"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#gear"></use></svg><span>Settings</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"Copied the API reference. Paste it into your AI assistant.","ai_downloaded":"Couldn’t copy, so the reference was downloaded as a Markdown file.","ai_failed":"Couldn’t load the API reference. Try again.","cancel":"Cancel","confirm":"Confirm","confirm_title":"Are you sure?","connecting":"Connecting…","copied":"Copied","copied_announce":"Copied to clipboard","copy_failed":"Couldn’t copy. Select the text and copy it manually.","delete":"Delete","dismiss":"Dismiss","hint_common":"avoid common words and sequences","hint_min_length":"use at least {n} characters","hint_repeated":"too many repeated characters","live":"Live","moved":"Moved {item} to position {pos} of {total}","network_error":"Can’t reach the server. Check your connection.","offline":"Offline","reconnecting":"Reconnecting…","server_error":"Something went wrong on the server. Try again.","strength_0":"Too short","strength_1":"Weak","strength_2":"Fair","strength_3":"Good","strength_4":"Strong","strength_prefix":"Strength:"}</script>
+  
+</body>
+</html>

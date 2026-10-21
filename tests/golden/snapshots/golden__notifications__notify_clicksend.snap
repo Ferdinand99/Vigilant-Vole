@@ -1,0 +1,78 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: clicksend (SMS (ClickSend))
+
+## minimal config
+{
+  "api_key": "secret-api_key",
+  "to": "+4712345678",
+  "username": "username-value"
+}
+
+### down
+POST https://rest.clicksend.com/v3/sms/send
+Authorization: Basic dXNlcm5hbWUtdmFsdWU6c2VjcmV0LWFwaV9rZXk=
+(json)
+{
+  "messages": [
+    {
+      "body": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nhttps://vv.example/monitors/7",
+      "source": "vigilant-vole",
+      "to": "+4712345678"
+    }
+  ]
+}
+
+### up
+POST https://rest.clicksend.com/v3/sms/send
+Authorization: Basic dXNlcm5hbWUtdmFsdWU6c2VjcmV0LWFwaV9rZXk=
+(json)
+{
+  "messages": [
+    {
+      "body": "🟢 Payments API is back up — down for 12m 4s\nhttps://vv.example/monitors/7",
+      "source": "vigilant-vole",
+      "to": "+4712345678"
+    }
+  ]
+}
+
+## full config
+{
+  "api_key": "secret-api_key",
+  "from": "Vole",
+  "to": "+4712345678",
+  "username": "username-value"
+}
+
+### down
+POST https://rest.clicksend.com/v3/sms/send
+Authorization: Basic dXNlcm5hbWUtdmFsdWU6c2VjcmV0LWFwaV9rZXk=
+(json)
+{
+  "messages": [
+    {
+      "body": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nhttps://vv.example/monitors/7",
+      "from": "Vole",
+      "source": "vigilant-vole",
+      "to": "+4712345678"
+    }
+  ]
+}
+
+### up
+POST https://rest.clicksend.com/v3/sms/send
+Authorization: Basic dXNlcm5hbWUtdmFsdWU6c2VjcmV0LWFwaV9rZXk=
+(json)
+{
+  "messages": [
+    {
+      "body": "🟢 Payments API is back up — down for 12m 4s\nhttps://vv.example/monitors/7",
+      "from": "Vole",
+      "source": "vigilant-vole",
+      "to": "+4712345678"
+    }
+  ]
+}

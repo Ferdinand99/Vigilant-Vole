@@ -1,0 +1,216 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>Users · Golden Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Golden Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>Golden Vole</span>
+      </a>
+
+      <nav class="topnav" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/">Dashboard</a>
+        <a class="topnav-link" href="/status-pages">Status pages</a>
+        <a class="topnav-link" href="/maintenance">Maintenance</a>
+        <a class="topnav-link" href="/settings" aria-current="page">Settings</a>
+      </nav>
+
+      <div class="topbar-end">
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="Account and appearance">
+          <span class="avatar" aria-hidden="true">A</span>
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            <span class="avatar avatar-lg" aria-hidden="true">A</span>
+            <span>
+              <span class="user-card-name">admin</span>
+              <span class="user-card-meta">admin · Admin</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>Security</a>
+          <a class="menu-item" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>API tokens</a>
+          <a class="menu-item" href="/api-docs"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#code"></use></svg>API docs</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">Appearance</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#theme-auto"></use></svg><span>Auto</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span>Light</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><span>Dark</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg>Log out</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container " tabindex="-1">
+    
+<div class="settings">
+  <aside class="settings-side">
+    <p class="settings-heading" aria-hidden="true">Settings</p>
+    <nav class="settings-nav" aria-label="Settings" hx-boost="true" hx-swap="innerHTML transition:true">
+      <a class="settings-link" href="/settings/general"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sliders"></use></svg>General</a>
+      <a class="settings-link" href="/settings/notifications"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#bell"></use></svg>Notifications</a>
+      <a class="settings-link" href="/settings/users" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg>Users</a>
+      <a class="settings-link" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>Security</a>
+      <a class="settings-link" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>API tokens</a>
+      <a class="settings-link" href="/settings/agents"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#server"></use></svg>Remote agents</a>
+      <a class="settings-link" href="/settings/integrations"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plug"></use></svg>Integrations</a>
+      <a class="settings-link" href="/settings/browsers"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#browser"></use></svg>Remote browsers</a>
+      <a class="settings-link" href="/settings/backup"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#archive"></use></svg>Backup</a>
+    </nav>
+  </aside>
+  <div class="settings-content" id="settings-content">
+    
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">Users</h1>
+      <p class="page-sub">Who can sign in, and what they can change.</p>
+    </div>
+    <div class="page-actions">
+  <button type="button" class="btn btn-primary" data-sheet-open="#new-user" commandfor="new-user" command="show-modal"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg><span>New user</span></button>
+</div>
+  </div>
+</header>
+
+<section class="section" aria-labelledby="users-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="users-title">People</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <ul class="list" role="list">
+    <li class="list-row" id="user-1">
+  <span class="avatar" aria-hidden="true">A</span>
+  <span class="list-main">
+    <span class="list-title">admin <span class="muted">(you)</span></span>
+    <span class="list-sub">admin · Last login <time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time></span>
+  </span>
+  <span class="list-trail cluster">
+    <span class="badge badge-brand">Admin</span>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" popovertarget="user-menu-1" aria-label="Actions for admin"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#more"></use></svg></button>
+  </span>
+  <div class="menu" id="user-menu-1" popover>
+    <button class="menu-item" type="button" data-sheet-open="#edit-user-1" commandfor="edit-user-1" command="show-modal"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pencil"></use></svg>Edit</button>
+  </div>
+</li>
+  </ul>
+  <p class="section-foot">Viewers can look but not change anything. Editors manage monitors, status pages, maintenance and notifications. Admins can do everything, including users and settings.</p>
+</section>
+
+<dialog class="sheet" id="new-user" aria-labelledby="new-user-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="new-user-title">New user</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="new-user" command="close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#x"></use></svg></button>
+  </header>
+  <div class="sheet-body">
+    <form id="new-user-form" class="form" method="post" action="/settings/users">
+      <div class="field-row">
+        <div class="field">
+          <label class="label" for="nu-username">Username</label>
+          <input id="nu-username" name="username" type="text" required maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="ada…">
+        </div>
+        <div class="field">
+          <label class="label" for="nu-display">Display name <span class="label-optional">Optional</span></label>
+          <input id="nu-display" name="display_name" type="text" maxlength="80" autocomplete="off" placeholder="Ada Lovelace…">
+        </div>
+      </div>
+      <div class="field">
+        <span class="label" id="nu-role-label">Role</span>
+        <div class="segmented segmented-block" role="radiogroup" aria-labelledby="nu-role-label">
+          <label><input type="radio" name="role" value="viewer" checked><span>Viewer</span></label>
+          <label><input type="radio" name="role" value="editor"><span>Editor</span></label>
+          <label><input type="radio" name="role" value="admin"><span>Admin</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="nu-password">Temporary password</label>
+        <input id="nu-password" name="password" type="text" required minlength="10" maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" class="mono" aria-describedby="nu-password-help">
+        <p class="help" id="nu-password-help">At least 10 characters. Share it privately; they can change it under Security.</p>
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="new-user" command="close">Cancel</button>
+    <button type="submit" class="btn btn-primary" form="new-user-form">Add user</button>
+  </footer>
+</dialog>
+<dialog class="sheet" id="edit-user-1" aria-labelledby="edit-user-1-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="edit-user-1-title">Edit admin</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="edit-user-1" command="close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#x"></use></svg></button>
+  </header>
+  <div class="sheet-body">
+    <form id="edit-user-1-form" class="form" method="post" action="/settings/users/1">
+      <div class="field">
+        <label class="label" for="eu-1-display">Display name <span class="label-optional">Optional</span></label>
+        <input id="eu-1-display" name="display_name" type="text" maxlength="80" autocomplete="off" value="" placeholder="admin…">
+      </div>
+      <input type="hidden" name="role" value="admin">
+      <p class="help">Your role is Admin. Another admin can change it.</p>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="edit-user-1" command="close">Cancel</button>
+    <button type="submit" class="btn btn-primary" form="edit-user-1-form">Save user</button>
+  </footer>
+</dialog>
+
+  </div>
+</div>
+
+  </main>
+
+  <nav class="tabbar" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>Dashboard</span></a>
+    <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>Status</span></a>
+    <a class="tabbar-item" href="/maintenance"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#wrench"></use></svg><span>Maintenance</span></a>
+    <a class="tabbar-item" href="/settings" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#gear"></use></svg><span>Settings</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"Copied the API reference. Paste it into your AI assistant.","ai_downloaded":"Couldn’t copy, so the reference was downloaded as a Markdown file.","ai_failed":"Couldn’t load the API reference. Try again.","cancel":"Cancel","confirm":"Confirm","confirm_title":"Are you sure?","connecting":"Connecting…","copied":"Copied","copied_announce":"Copied to clipboard","copy_failed":"Couldn’t copy. Select the text and copy it manually.","delete":"Delete","dismiss":"Dismiss","hint_common":"avoid common words and sequences","hint_min_length":"use at least {n} characters","hint_repeated":"too many repeated characters","live":"Live","moved":"Moved {item} to position {pos} of {total}","network_error":"Can’t reach the server. Check your connection.","offline":"Offline","reconnecting":"Reconnecting…","server_error":"Something went wrong on the server. Try again.","strength_0":"Too short","strength_1":"Weak","strength_2":"Fair","strength_3":"Good","strength_4":"Strong","strength_prefix":"Strength:"}</script>
+  
+</body>
+</html>

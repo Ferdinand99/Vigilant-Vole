@@ -1,0 +1,36 @@
+---
+source: tests/golden/auth.rs
+expression: out
+---
+allow GET /settings []
+allow HEAD /settings []
+allow OPTIONS /settings []
+BLOCK POST /settings/general []
+allow POST /settings/general [hx-request=true]
+allow POST /settings/general [hx-request=TRUE]
+BLOCK POST /settings/general [hx-request=false]
+allow POST /settings/general [host=vv.test, origin=http://vv.test]
+allow POST /settings/general [host=vv.test:80, origin=http://vv.test]
+allow POST /settings/general [host=vv.test:3001, origin=http://vv.test:3001]
+allow POST /settings/general [host=vv.test, origin=https://vv.test]
+BLOCK POST /settings/general [host=vv.test, origin=http://evil.test]
+BLOCK POST /settings/general [host=vv.test, origin=null]
+allow POST /settings/general [host=vv.test, referer=http://vv.test/settings]
+BLOCK POST /settings/general [host=vv.test, referer=http://evil.test/]
+allow POST /settings/general [host=internal:3001, origin=https://status.example.com] base_url=https://status.example.com
+BLOCK POST /settings/general [host=internal:3001, origin=http://status.example.com] base_url=https://status.example.com
+BLOCK DELETE /settings/tokens/1 [host=vv.test, origin=http://evil.test]
+allow POST /api/push/abc []
+allow POST /api/agent/v1/results []
+allow POST /api/v1/monitors []
+allow POST /api/v1 []
+BLOCK POST /api/v1x []
+allow POST /api/badge/1/status []
+allow POST /metrics []
+allow POST /mcp []
+BLOCK POST /mcpx []
+allow POST /status/acme/subscribe/unsubscribe/tok123 []
+BLOCK POST /status/acme/subscribe []
+BLOCK POST /api/status-page/acme []
+trust_proxy=false: forwarded host vv.example, origin https://vv.example -> false
+trust_proxy=true: forwarded host vv.example, origin https://vv.example -> true

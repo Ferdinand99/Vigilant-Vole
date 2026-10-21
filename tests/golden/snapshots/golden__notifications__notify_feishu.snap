@@ -1,0 +1,188 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: feishu (Feishu / Lark)
+
+## minimal config
+{
+  "url": "https://open.feishu.cn/open-apis/bot/v2/hook/"
+}
+
+### down
+POST https://open.feishu.cn/open-apis/bot/v2/hook/
+(json)
+{
+  "card": {
+    "config": {
+      "wide_screen_mode": true
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "content": "HTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+          "tag": "lark_md"
+        }
+      },
+      {
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "content": "View monitor",
+              "tag": "plain_text"
+            },
+            "type": "primary",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "tag": "action"
+      }
+    ],
+    "header": {
+      "template": "red",
+      "title": {
+        "content": "🔴 Payments API is down",
+        "tag": "plain_text"
+      }
+    }
+  },
+  "msg_type": "interactive"
+}
+
+### up
+POST https://open.feishu.cn/open-apis/bot/v2/hook/
+(json)
+{
+  "card": {
+    "config": {
+      "wide_screen_mode": true
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "content": "down for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+          "tag": "lark_md"
+        }
+      },
+      {
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "content": "View monitor",
+              "tag": "plain_text"
+            },
+            "type": "primary",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "tag": "action"
+      }
+    ],
+    "header": {
+      "template": "green",
+      "title": {
+        "content": "🟢 Payments API is back up",
+        "tag": "plain_text"
+      }
+    }
+  },
+  "msg_type": "interactive"
+}
+
+## full config
+{
+  "secret": "secret-secret",
+  "url": "https://open.feishu.cn/open-apis/bot/v2/hook/"
+}
+
+### down
+POST https://open.feishu.cn/open-apis/bot/v2/hook/
+(json)
+{
+  "card": {
+    "config": {
+      "wide_screen_mode": true
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "content": "HTTP 503 (after 3 retries)\n\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+          "tag": "lark_md"
+        }
+      },
+      {
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "content": "View monitor",
+              "tag": "plain_text"
+            },
+            "type": "primary",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "tag": "action"
+      }
+    ],
+    "header": {
+      "template": "red",
+      "title": {
+        "content": "🔴 Payments API is down",
+        "tag": "plain_text"
+      }
+    }
+  },
+  "msg_type": "interactive",
+  "sign": "<sign(timestamp, secret)>",
+  "timestamp": "<unix-seconds>"
+}
+
+### up
+POST https://open.feishu.cn/open-apis/bot/v2/hook/
+(json)
+{
+  "card": {
+    "config": {
+      "wide_screen_mode": true
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "content": "down for 12m 4s\n\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\n\n[View monitor](https://vv.example/monitors/7)",
+          "tag": "lark_md"
+        }
+      },
+      {
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "content": "View monitor",
+              "tag": "plain_text"
+            },
+            "type": "primary",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "tag": "action"
+      }
+    ],
+    "header": {
+      "template": "green",
+      "title": {
+        "content": "🟢 Payments API is back up",
+        "tag": "plain_text"
+      }
+    }
+  },
+  "msg_type": "interactive",
+  "sign": "<sign(timestamp, secret)>",
+  "timestamp": "<unix-seconds>"
+}

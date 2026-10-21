@@ -1,0 +1,85 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: keep (Keep)
+
+## minimal config
+{
+  "api_key": "secret-api_key",
+  "server": "https://api.keephq.dev"
+}
+
+### down
+POST https://api.keephq.dev/alerts/event
+X-API-KEY: secret-api_key
+(json)
+{
+  "description": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "fingerprint": "vv-monitor-7",
+  "name": "Payments API is down",
+  "service": "Payments API",
+  "severity": "critical",
+  "source": [
+    "vigilant-vole"
+  ],
+  "status": "firing",
+  "url": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://api.keephq.dev/alerts/event
+X-API-KEY: secret-api_key
+(json)
+{
+  "description": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "fingerprint": "vv-monitor-7",
+  "name": "Payments API is back up",
+  "service": "Payments API",
+  "severity": "info",
+  "source": [
+    "vigilant-vole"
+  ],
+  "status": "resolved",
+  "url": "https://vv.example/monitors/7"
+}
+
+## full config
+{
+  "api_key": "secret-api_key",
+  "server": "https://api.keephq.dev"
+}
+
+### down
+POST https://api.keephq.dev/alerts/event
+X-API-KEY: secret-api_key
+(json)
+{
+  "description": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "fingerprint": "vv-monitor-7",
+  "name": "Payments API is down",
+  "service": "Payments API",
+  "severity": "critical",
+  "source": [
+    "vigilant-vole"
+  ],
+  "status": "firing",
+  "url": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://api.keephq.dev/alerts/event
+X-API-KEY: secret-api_key
+(json)
+{
+  "description": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "fingerprint": "vv-monitor-7",
+  "name": "Payments API is back up",
+  "service": "Payments API",
+  "severity": "info",
+  "source": [
+    "vigilant-vole"
+  ],
+  "status": "resolved",
+  "url": "https://vv.example/monitors/7"
+}

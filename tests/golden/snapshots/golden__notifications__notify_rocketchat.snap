@@ -1,0 +1,166 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: rocketchat (Rocket.Chat)
+
+## minimal config
+{
+  "url": "https://chat.example.com/hooks/"
+}
+
+### down
+POST https://chat.example.com/hooks/
+(json)
+{
+  "attachments": [
+    {
+      "color": "#FF3B30",
+      "fallback": "🔴 Payments API is down — HTTP 503 (after 3 retries)",
+      "fields": [
+        {
+          "short": false,
+          "title": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "short": true,
+          "title": "Type",
+          "value": "HTTP(S)"
+        },
+        {
+          "short": true,
+          "title": "Time",
+          "value": "2026-10-19 14:03:12 UTC"
+        }
+      ],
+      "text": "HTTP 503 (after 3 retries)",
+      "title": "🔴 Payments API is down",
+      "title_link": "https://vv.example/monitors/7"
+    }
+  ],
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)"
+}
+
+### up
+POST https://chat.example.com/hooks/
+(json)
+{
+  "attachments": [
+    {
+      "color": "#34C759",
+      "fallback": "🟢 Payments API is back up — down for 12m 4s",
+      "fields": [
+        {
+          "short": false,
+          "title": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "short": true,
+          "title": "Type",
+          "value": "HTTP(S)"
+        },
+        {
+          "short": true,
+          "title": "Downtime",
+          "value": "12m 4s"
+        },
+        {
+          "short": true,
+          "title": "Time",
+          "value": "2026-10-19 14:03:12 UTC"
+        }
+      ],
+      "text": "down for 12m 4s",
+      "title": "🟢 Payments API is back up",
+      "title_link": "https://vv.example/monitors/7"
+    }
+  ],
+  "text": "🟢 Payments API is back up — down for 12m 4s"
+}
+
+## full config
+{
+  "channel": "#alerts",
+  "emoji": ":rotating_light:",
+  "url": "https://chat.example.com/hooks/",
+  "username": "Vigilant Vole"
+}
+
+### down
+POST https://chat.example.com/hooks/
+(json)
+{
+  "alias": "Vigilant Vole",
+  "attachments": [
+    {
+      "color": "#FF3B30",
+      "fallback": "🔴 Payments API is down — HTTP 503 (after 3 retries)",
+      "fields": [
+        {
+          "short": false,
+          "title": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "short": true,
+          "title": "Type",
+          "value": "HTTP(S)"
+        },
+        {
+          "short": true,
+          "title": "Time",
+          "value": "2026-10-19 14:03:12 UTC"
+        }
+      ],
+      "text": "HTTP 503 (after 3 retries)",
+      "title": "🔴 Payments API is down",
+      "title_link": "https://vv.example/monitors/7"
+    }
+  ],
+  "channel": "#alerts",
+  "emoji": ":rotating_light:",
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)"
+}
+
+### up
+POST https://chat.example.com/hooks/
+(json)
+{
+  "alias": "Vigilant Vole",
+  "attachments": [
+    {
+      "color": "#34C759",
+      "fallback": "🟢 Payments API is back up — down for 12m 4s",
+      "fields": [
+        {
+          "short": false,
+          "title": "Target",
+          "value": "https://pay.example/health"
+        },
+        {
+          "short": true,
+          "title": "Type",
+          "value": "HTTP(S)"
+        },
+        {
+          "short": true,
+          "title": "Downtime",
+          "value": "12m 4s"
+        },
+        {
+          "short": true,
+          "title": "Time",
+          "value": "2026-10-19 14:03:12 UTC"
+        }
+      ],
+      "text": "down for 12m 4s",
+      "title": "🟢 Payments API is back up",
+      "title_link": "https://vv.example/monitors/7"
+    }
+  ],
+  "channel": "#alerts",
+  "emoji": ":rotating_light:",
+  "text": "🟢 Payments API is back up — down for 12m 4s"
+}

@@ -1,0 +1,13 @@
+---
+source: tests/golden/product.rs
+expression: "norm::text(&got[0])"
+---
+POST /hook?k=1
+accept: */*
+accept-encoding: gzip
+content-length: <n>
+content-type: application/json
+host: 127.0.0.1:<port>
+user-agent: VigilantVole/<VERSION>
+
+{"downtime_seconds":null,"event":"down","expires_in_days":null,"message":"HTTP 503","monitor":"Payments API","monitor_id":7,"monitor_type":"http","occurred_at":"2026-10-19T14:03:12Z","status":"down","summary":"🔴 Payments API is down — HTTP 503","target":"https://pay.example/health","url":"https://vv.example/monitors/7"}

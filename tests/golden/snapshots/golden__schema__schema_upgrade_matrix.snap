@@ -1,0 +1,41 @@
+---
+source: tests/golden/schema.rs
+expression: out
+---
+fresh schema sha256 ab88782397792974
+
+== v0.1.0
+had: 6
+applied: 0095_more_monitor_types.sql, 0096_http_auth.sql, 0097_sqlserver_mongodb.sql, 0098_status_page_extras.sql, 0099_real_browser.sql, 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql
+backup: vigilant-vole-before-0095_more_monitor_types-<unix-seconds>.db
+schema sha256 ab88782397792974
+
+== v0.2.0
+had: 8
+applied: 0097_sqlserver_mongodb.sql, 0098_status_page_extras.sql, 0099_real_browser.sql, 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql
+backup: vigilant-vole-before-0097_sqlserver_mongodb-<unix-seconds>.db
+schema sha256 ab88782397792974
+
+== v0.3.0
+had: 11
+applied: 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql
+backup: vigilant-vole-before-0100_maintenance_strategies-<unix-seconds>.db
+schema sha256 ab88782397792974
+
+== v0.4.0
+had: 11
+applied: 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql
+backup: vigilant-vole-before-0100_maintenance_strategies-<unix-seconds>.db
+schema sha256 ab88782397792974
+
+== v0.5.0
+had: 15
+applied: 
+backup: none
+schema sha256 ab88782397792974
+
+== v0.5.1
+had: 15
+applied: 
+backup: none
+schema sha256 ab88782397792974

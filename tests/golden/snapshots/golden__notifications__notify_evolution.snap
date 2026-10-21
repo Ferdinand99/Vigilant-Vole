@@ -1,0 +1,57 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: evolution (WhatsApp (Evolution API))
+
+## minimal config
+{
+  "api_key": "secret-api_key",
+  "instance": "vigilant",
+  "number": "4712345678",
+  "server": "https://evolution.example.com"
+}
+
+### down
+POST https://evolution.example.com/message/sendText/vigilant
+apikey: secret-api_key
+(json)
+{
+  "number": "4712345678",
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nhttps://vv.example/monitors/7"
+}
+
+### up
+POST https://evolution.example.com/message/sendText/vigilant
+apikey: secret-api_key
+(json)
+{
+  "number": "4712345678",
+  "text": "🟢 Payments API is back up — down for 12m 4s\nhttps://vv.example/monitors/7"
+}
+
+## full config
+{
+  "api_key": "secret-api_key",
+  "instance": "vigilant",
+  "number": "4712345678",
+  "server": "https://evolution.example.com"
+}
+
+### down
+POST https://evolution.example.com/message/sendText/vigilant
+apikey: secret-api_key
+(json)
+{
+  "number": "4712345678",
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nhttps://vv.example/monitors/7"
+}
+
+### up
+POST https://evolution.example.com/message/sendText/vigilant
+apikey: secret-api_key
+(json)
+{
+  "number": "4712345678",
+  "text": "🟢 Payments API is back up — down for 12m 4s\nhttps://vv.example/monitors/7"
+}

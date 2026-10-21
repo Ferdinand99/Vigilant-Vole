@@ -1,0 +1,267 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: teams (Microsoft Teams)
+
+## minimal config
+{
+  "url": "https://prod-00.westus.logic.azure.com/workflows/"
+}
+
+### down
+POST https://prod-00.westus.logic.azure.com/workflows/
+(json)
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "actions": [
+          {
+            "title": "View monitor",
+            "type": "Action.OpenUrl",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "body": [
+          {
+            "color": "Attention",
+            "size": "Medium",
+            "text": "🔴 Payments API is down",
+            "type": "TextBlock",
+            "weight": "Bolder",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "HTTP 503 (after 3 retries)",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "facts": [
+              {
+                "title": "Target",
+                "value": "https://pay.example/health"
+              },
+              {
+                "title": "Type",
+                "value": "HTTP(S)"
+              },
+              {
+                "title": "Time",
+                "value": "2026-10-19 14:03:12 UTC"
+              }
+            ],
+            "type": "FactSet"
+          }
+        ],
+        "msteams": {
+          "width": "Full"
+        },
+        "type": "AdaptiveCard",
+        "version": "1.4"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null
+    }
+  ],
+  "type": "message"
+}
+
+### up
+POST https://prod-00.westus.logic.azure.com/workflows/
+(json)
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "actions": [
+          {
+            "title": "View monitor",
+            "type": "Action.OpenUrl",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "body": [
+          {
+            "color": "Good",
+            "size": "Medium",
+            "text": "🟢 Payments API is back up",
+            "type": "TextBlock",
+            "weight": "Bolder",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "down for 12m 4s",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "facts": [
+              {
+                "title": "Target",
+                "value": "https://pay.example/health"
+              },
+              {
+                "title": "Type",
+                "value": "HTTP(S)"
+              },
+              {
+                "title": "Downtime",
+                "value": "12m 4s"
+              },
+              {
+                "title": "Time",
+                "value": "2026-10-19 14:03:12 UTC"
+              }
+            ],
+            "type": "FactSet"
+          }
+        ],
+        "msteams": {
+          "width": "Full"
+        },
+        "type": "AdaptiveCard",
+        "version": "1.4"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null
+    }
+  ],
+  "type": "message"
+}
+
+## full config
+{
+  "url": "https://prod-00.westus.logic.azure.com/workflows/"
+}
+
+### down
+POST https://prod-00.westus.logic.azure.com/workflows/
+(json)
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "actions": [
+          {
+            "title": "View monitor",
+            "type": "Action.OpenUrl",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "body": [
+          {
+            "color": "Attention",
+            "size": "Medium",
+            "text": "🔴 Payments API is down",
+            "type": "TextBlock",
+            "weight": "Bolder",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "HTTP 503 (after 3 retries)",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "facts": [
+              {
+                "title": "Target",
+                "value": "https://pay.example/health"
+              },
+              {
+                "title": "Type",
+                "value": "HTTP(S)"
+              },
+              {
+                "title": "Time",
+                "value": "2026-10-19 14:03:12 UTC"
+              }
+            ],
+            "type": "FactSet"
+          }
+        ],
+        "msteams": {
+          "width": "Full"
+        },
+        "type": "AdaptiveCard",
+        "version": "1.4"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null
+    }
+  ],
+  "type": "message"
+}
+
+### up
+POST https://prod-00.westus.logic.azure.com/workflows/
+(json)
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "actions": [
+          {
+            "title": "View monitor",
+            "type": "Action.OpenUrl",
+            "url": "https://vv.example/monitors/7"
+          }
+        ],
+        "body": [
+          {
+            "color": "Good",
+            "size": "Medium",
+            "text": "🟢 Payments API is back up",
+            "type": "TextBlock",
+            "weight": "Bolder",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "down for 12m 4s",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "facts": [
+              {
+                "title": "Target",
+                "value": "https://pay.example/health"
+              },
+              {
+                "title": "Type",
+                "value": "HTTP(S)"
+              },
+              {
+                "title": "Downtime",
+                "value": "12m 4s"
+              },
+              {
+                "title": "Time",
+                "value": "2026-10-19 14:03:12 UTC"
+              }
+            ],
+            "type": "FactSet"
+          }
+        ],
+        "msteams": {
+          "width": "Full"
+        },
+        "type": "AdaptiveCard",
+        "version": "1.4"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null
+    }
+  ],
+  "type": "message"
+}

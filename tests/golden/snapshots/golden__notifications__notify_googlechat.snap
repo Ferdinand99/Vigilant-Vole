@@ -1,0 +1,281 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: googlechat (Google Chat)
+
+## minimal config
+{
+  "url": "https://chat.googleapis.com/v1/spaces/"
+}
+
+### down
+POST https://chat.googleapis.com/v1/spaces/
+(json)
+{
+  "cardsV2": [
+    {
+      "card": {
+        "header": {
+          "subtitle": "Vigilant Vole",
+          "title": "🔴 Payments API is down"
+        },
+        "sections": [
+          {
+            "widgets": [
+              {
+                "textParagraph": {
+                  "text": "HTTP 503 (after 3 retries)"
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "https://pay.example/health",
+                  "topLabel": "Target",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "HTTP(S)",
+                  "topLabel": "Type",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "2026-10-19 14:03:12 UTC",
+                  "topLabel": "Time",
+                  "wrapText": true
+                }
+              },
+              {
+                "buttonList": {
+                  "buttons": [
+                    {
+                      "onClick": {
+                        "openLink": {
+                          "url": "https://vv.example/monitors/7"
+                        }
+                      },
+                      "text": "View monitor"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "cardId": "vv-down"
+    }
+  ]
+}
+
+### up
+POST https://chat.googleapis.com/v1/spaces/
+(json)
+{
+  "cardsV2": [
+    {
+      "card": {
+        "header": {
+          "subtitle": "Vigilant Vole",
+          "title": "🟢 Payments API is back up"
+        },
+        "sections": [
+          {
+            "widgets": [
+              {
+                "textParagraph": {
+                  "text": "down for 12m 4s"
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "https://pay.example/health",
+                  "topLabel": "Target",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "HTTP(S)",
+                  "topLabel": "Type",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "12m 4s",
+                  "topLabel": "Downtime",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "2026-10-19 14:03:12 UTC",
+                  "topLabel": "Time",
+                  "wrapText": true
+                }
+              },
+              {
+                "buttonList": {
+                  "buttons": [
+                    {
+                      "onClick": {
+                        "openLink": {
+                          "url": "https://vv.example/monitors/7"
+                        }
+                      },
+                      "text": "View monitor"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "cardId": "vv-up"
+    }
+  ]
+}
+
+## full config
+{
+  "url": "https://chat.googleapis.com/v1/spaces/"
+}
+
+### down
+POST https://chat.googleapis.com/v1/spaces/
+(json)
+{
+  "cardsV2": [
+    {
+      "card": {
+        "header": {
+          "subtitle": "Vigilant Vole",
+          "title": "🔴 Payments API is down"
+        },
+        "sections": [
+          {
+            "widgets": [
+              {
+                "textParagraph": {
+                  "text": "HTTP 503 (after 3 retries)"
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "https://pay.example/health",
+                  "topLabel": "Target",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "HTTP(S)",
+                  "topLabel": "Type",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "2026-10-19 14:03:12 UTC",
+                  "topLabel": "Time",
+                  "wrapText": true
+                }
+              },
+              {
+                "buttonList": {
+                  "buttons": [
+                    {
+                      "onClick": {
+                        "openLink": {
+                          "url": "https://vv.example/monitors/7"
+                        }
+                      },
+                      "text": "View monitor"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "cardId": "vv-down"
+    }
+  ]
+}
+
+### up
+POST https://chat.googleapis.com/v1/spaces/
+(json)
+{
+  "cardsV2": [
+    {
+      "card": {
+        "header": {
+          "subtitle": "Vigilant Vole",
+          "title": "🟢 Payments API is back up"
+        },
+        "sections": [
+          {
+            "widgets": [
+              {
+                "textParagraph": {
+                  "text": "down for 12m 4s"
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "https://pay.example/health",
+                  "topLabel": "Target",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "HTTP(S)",
+                  "topLabel": "Type",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "12m 4s",
+                  "topLabel": "Downtime",
+                  "wrapText": true
+                }
+              },
+              {
+                "decoratedText": {
+                  "text": "2026-10-19 14:03:12 UTC",
+                  "topLabel": "Time",
+                  "wrapText": true
+                }
+              },
+              {
+                "buttonList": {
+                  "buttons": [
+                    {
+                      "onClick": {
+                        "openLink": {
+                          "url": "https://vv.example/monitors/7"
+                        }
+                      },
+                      "text": "View monitor"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "cardId": "vv-up"
+    }
+  ]
+}

@@ -1,0 +1,1498 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>مرجع API · Golden Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Golden Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body>
+  <a class="skip" href="#main">تخطَّ إلى المحتوى</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>Golden Vole</span>
+      </a>
+
+      <nav class="topnav" aria-label="الرئيسية" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/">لوحة المعلومات</a>
+        <a class="topnav-link" href="/status-pages">صفحات الحالة</a>
+        <a class="topnav-link" href="/maintenance">الصيانة</a>
+        <a class="topnav-link" href="/settings">الإعدادات</a>
+      </nav>
+
+      <div class="topbar-end">
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="الحساب والمظهر">
+          <span class="avatar" aria-hidden="true">A</span>
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            <span class="avatar avatar-lg" aria-hidden="true">A</span>
+            <span>
+              <span class="user-card-name">admin</span>
+              <span class="user-card-meta">admin · مسؤول</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>الأمان</a>
+          <a class="menu-item" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>رموز API</a>
+          <a class="menu-item" href="/api-docs"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#code"></use></svg>وثائق API</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">المظهر</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#theme-auto"></use></svg><span>تلقائي</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span>فاتح</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><span>داكن</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg>تسجيل الخروج</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container " tabindex="-1">
+    
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">مرجع API</h1>
+      <p class="page-sub">أتمت Vigilant Vole برمز وJSON عادي. كل ما يفعله التطبيق تستطيع النصوص البرمجية فعله.</p>
+    </div>
+    <div class="page-actions">
+  <a class="btn btn-secondary" href="/api/v1/openapi.json" download="vigilant-vole-openapi.json"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#download"></use></svg><span>OpenAPI 3.1</span></a>
+  <a class="btn btn-primary" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg><span>إنشاء رمز</span></a>
+</div>
+  </div>
+</header>
+
+<section class="card ai-strip" aria-labelledby="ai-strip-text">
+  <span class="ai-strip-icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sparkle"></use></svg></span>
+  <p class="ai-strip-text" id="ai-strip-text"><strong>تعمل مع مساعد ذكاء اصطناعي؟</strong> أعطه واجهة API كاملة في لصقة واحدة.</p>
+  <div class="ai-strip-actions">
+    <a class="btn btn-plain btn-sm" href="/api-docs.md" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#external"></use></svg><span>فتح بصيغة Markdown</span></a>
+    <button type="button" class="btn btn-secondary btn-sm" data-copy-url="/api-docs.md" data-download-name="vigilant-vole-api.md"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#copy"></use></svg><span>نسخ للذكاء الاصطناعي</span></button>
+  </div>
+</section>
+
+<nav class="chips chips-scroll" aria-label="أقسام API">
+  <a class="chip" href="#getting-started">البدء</a>
+  <a class="chip" href="#monitors">Monitors <span class="badge">14</span></a>
+  <a class="chip" href="#tags">Tags <span class="badge">5</span></a>
+  <a class="chip" href="#notifications">Notifications <span class="badge">7</span></a>
+  <a class="chip" href="#remote-browsers">Remote browsers <span class="badge">7</span></a>
+  <a class="chip" href="#status-pages">Status pages <span class="badge">19</span></a>
+  <a class="chip" href="#maintenance">Maintenance <span class="badge">5</span></a>
+  <a class="chip" href="#system">System <span class="badge">6</span></a>
+  <a class="chip" href="#configuration">Configuration <span class="badge">2</span></a>
+  <a class="chip" href="#push-and-machine-endpoints">Push and machine endpoints <span class="badge">8</span></a>
+</nav>
+
+<section class="section" id="getting-started" aria-labelledby="start-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="start-title">البدء</h2>
+    <p class="section-sub">أرسل رمزك كرمز Bearer. الرموز للقراءة فقط تستطيع استدعاء كل طلبات GET.</p>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="grid-2">
+    <div class="card stack-sm">
+      <h3>المصادقة</h3>
+      <pre class="code"><code id="curl-example">curl -H "Authorization: Bearer vv_…" http://vv.test/api/v1/monitors</code></pre>
+      <div class="cluster">
+        <button type="button" class="btn btn-secondary btn-sm" data-copy="#curl-example"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#copy"></use></svg><span>نسخ</span></button>
+      </div>
+      <p class="help">هل سجّلت الدخول؟ تعمل نقاط النهاية نفسها بجلستك في هذا المتصفح، فيمكنك فتح روابط GET مباشرة.</p>
+    </div>
+    <div class="card stack-sm">
+      <h3>الاصطلاحات</h3>
+      <dl class="dl">
+        <div class="dl-row"><dt>العنوان الأساسي</dt><dd class="break mono">http://vv.test/api/v1</dd></div>
+        <div class="dl-row"><dt>القوائم</dt><dd><code>?limit=&amp;cursor=</code> → <code>next_cursor</code></dd></div>
+        <div class="dl-row"><dt>التخزين المؤقت</dt><dd>ترسل طلبات GET ترويسة <code>ETag</code></dd></div>
+        <div class="dl-row"><dt>الأوقات</dt><dd>UTC, <code>YYYY-MM-DD HH:MM:SS</code></dd></div>
+        <div class="dl-row"><dt>الأسرار</dt><dd>تظهر كـ <code>••••••</code>؛ أعدها كما هي للإبقاء على القيمة</dd></div>
+      </dl>
+    </div>
+  </div>
+  <details class="disclosure card">
+    <summary>الأخطاء <span class="disclosure-sub">شكل واحد لكل نقطة نهاية</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+    <div class="disclosure-body stack-sm">
+      <pre class="code"><code>{
+  &#34;error&#34;: {
+    &#34;code&#34;: &#34;validation_failed&#34;,
+    &#34;message&#34;: &#34;Enter a full URL, including https://, like https://example.com.&#34;,
+    &#34;fields&#34;: {&#34;target&#34;: &#34;Enter a full URL, including https://, like https://example.com.&#34;}
+  }
+}</code></pre>
+      <p class="help">الرموز: <code>bad_request</code> 400, <code>unauthorized</code> 401, <code>forbidden</code> 403, <code>not_found</code> 404, <code>conflict</code> 409, <code>validation_failed</code> 422, <code>delivery_failed</code> 502.</p>
+    </div>
+  </details>
+</section>
+<section class="section" id="monitors" aria-labelledby="monitors-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="monitors-title">Monitors</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-monitors">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors</code></span>
+          <span class="list-sub">List monitors with their current status.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات, أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>status</code></dt><dd>up | down | pending | maintenance | paused | unknown</dd></div>
+                <div class="dl-row"><dt><code>type</code></dt><dd>monitor type, e.g. http</dd></div>
+                <div class="dl-row"><dt><code>tag</code></dt><dd>tag name</dd></div>
+                <div class="dl-row"><dt><code>q</code></dt><dd>search name, target and description</dd></div>
+                <div class="dl-row"><dt><code>limit</code></dt><dd>page size (1–500, default 50)</dd></div>
+                <div class="dl-row"><dt><code>cursor</code></dt><dd>next_cursor from the previous page</dd></div>
+              </dl>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [ …monitor… ], &#34;next_cursor&#34;: &#34;42&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-monitors">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors</code></span>
+          <span class="list-sub">Create a monitor. Same validation as the monitor form; unknown tag names are created.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retries&#34;: 1,
+  &#34;tags&#34;: [&#34;production&#34;, {&#34;name&#34;: &#34;env&#34;, &#34;value&#34;: &#34;prod&#34;}],
+  &#34;notifications&#34;: [1, {&#34;channel_id&#34;: 3, &#34;escalation&#34;: true}],
+  &#34;escalation_minutes&#34;: 15
+}</code></pre>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;id&#34;: 7,
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;description&#34;: &#34;&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;parent_id&#34;: null,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retry_interval_seconds&#34;: null,
+  &#34;timeout_seconds&#34;: 10,
+  &#34;retries&#34;: 1,
+  &#34;active&#34;: true,
+  &#34;upside_down&#34;: false,
+  &#34;http_method&#34;: &#34;GET&#34;,
+  &#34;accepted_status_codes&#34;: &#34;200-399&#34;,
+  &#34;max_redirects&#34;: 10,
+  &#34;ignore_tls&#34;: false,
+  &#34;expiry_notify&#34;: true,
+  &#34;expiry_days&#34;: 14,
+  &#34;status&#34;: &#34;up&#34;,
+  &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
+  &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
+  &#34;created_at&#34;: &#34;<DATETIME>&#34;,
+  &#34;updated_at&#34;: &#34;<DATETIME>&#34;
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-monitors-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors/{id}</code></span>
+          <span class="list-sub">Get one monitor. Passwords are masked; push tokens are shown to editors only.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;id&#34;: 7,
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;description&#34;: &#34;&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;parent_id&#34;: null,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retry_interval_seconds&#34;: null,
+  &#34;timeout_seconds&#34;: 10,
+  &#34;retries&#34;: 1,
+  &#34;active&#34;: true,
+  &#34;upside_down&#34;: false,
+  &#34;http_method&#34;: &#34;GET&#34;,
+  &#34;accepted_status_codes&#34;: &#34;200-399&#34;,
+  &#34;max_redirects&#34;: 10,
+  &#34;ignore_tls&#34;: false,
+  &#34;expiry_notify&#34;: true,
+  &#34;expiry_days&#34;: 14,
+  &#34;status&#34;: &#34;up&#34;,
+  &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
+  &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
+  &#34;created_at&#34;: &#34;<DATETIME>&#34;,
+  &#34;updated_at&#34;: &#34;<DATETIME>&#34;
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="put--api-v1-monitors-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PUT</span> <code class="break">/api/v1/monitors/{id}</code></span>
+          <span class="list-sub">Replace a monitor: fields you leave out go back to their defaults (tags and notifications are kept unless sent).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retries&#34;: 1,
+  &#34;tags&#34;: [&#34;production&#34;, {&#34;name&#34;: &#34;env&#34;, &#34;value&#34;: &#34;prod&#34;}],
+  &#34;notifications&#34;: [1, {&#34;channel_id&#34;: 3, &#34;escalation&#34;: true}],
+  &#34;escalation_minutes&#34;: 15
+}</code></pre>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;id&#34;: 7,
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;description&#34;: &#34;&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;parent_id&#34;: null,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retry_interval_seconds&#34;: null,
+  &#34;timeout_seconds&#34;: 10,
+  &#34;retries&#34;: 1,
+  &#34;active&#34;: true,
+  &#34;upside_down&#34;: false,
+  &#34;http_method&#34;: &#34;GET&#34;,
+  &#34;accepted_status_codes&#34;: &#34;200-399&#34;,
+  &#34;max_redirects&#34;: 10,
+  &#34;ignore_tls&#34;: false,
+  &#34;expiry_notify&#34;: true,
+  &#34;expiry_days&#34;: 14,
+  &#34;status&#34;: &#34;up&#34;,
+  &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
+  &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
+  &#34;created_at&#34;: &#34;<DATETIME>&#34;,
+  &#34;updated_at&#34;: &#34;<DATETIME>&#34;
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-monitors-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/monitors/{id}</code></span>
+          <span class="list-sub">Change some fields; everything else stays. Send &#34;••••••&#34; for a secret to keep it.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;interval_seconds&#34;: 30, &#34;retries&#34;: 2}</code></pre>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;id&#34;: 7,
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;description&#34;: &#34;&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;parent_id&#34;: null,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retry_interval_seconds&#34;: null,
+  &#34;timeout_seconds&#34;: 10,
+  &#34;retries&#34;: 1,
+  &#34;active&#34;: true,
+  &#34;upside_down&#34;: false,
+  &#34;http_method&#34;: &#34;GET&#34;,
+  &#34;accepted_status_codes&#34;: &#34;200-399&#34;,
+  &#34;max_redirects&#34;: 10,
+  &#34;ignore_tls&#34;: false,
+  &#34;expiry_notify&#34;: true,
+  &#34;expiry_days&#34;: 14,
+  &#34;status&#34;: &#34;up&#34;,
+  &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
+  &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
+  &#34;created_at&#34;: &#34;<DATETIME>&#34;,
+  &#34;updated_at&#34;: &#34;<DATETIME>&#34;
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-monitors-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/monitors/{id}</code></span>
+          <span class="list-sub">Delete a monitor and its history. Returns 204.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-monitors-id-pause">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors/{id}/pause</code></span>
+          <span class="list-sub">Pause checks and alerts.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;id&#34;: 7,
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;description&#34;: &#34;&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;parent_id&#34;: null,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retry_interval_seconds&#34;: null,
+  &#34;timeout_seconds&#34;: 10,
+  &#34;retries&#34;: 1,
+  &#34;active&#34;: true,
+  &#34;upside_down&#34;: false,
+  &#34;http_method&#34;: &#34;GET&#34;,
+  &#34;accepted_status_codes&#34;: &#34;200-399&#34;,
+  &#34;max_redirects&#34;: 10,
+  &#34;ignore_tls&#34;: false,
+  &#34;expiry_notify&#34;: true,
+  &#34;expiry_days&#34;: 14,
+  &#34;status&#34;: &#34;up&#34;,
+  &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
+  &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
+  &#34;created_at&#34;: &#34;<DATETIME>&#34;,
+  &#34;updated_at&#34;: &#34;<DATETIME>&#34;
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-monitors-id-resume">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors/{id}/resume</code></span>
+          <span class="list-sub">Resume a paused monitor.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;id&#34;: 7,
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;description&#34;: &#34;&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;parent_id&#34;: null,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retry_interval_seconds&#34;: null,
+  &#34;timeout_seconds&#34;: 10,
+  &#34;retries&#34;: 1,
+  &#34;active&#34;: true,
+  &#34;upside_down&#34;: false,
+  &#34;http_method&#34;: &#34;GET&#34;,
+  &#34;accepted_status_codes&#34;: &#34;200-399&#34;,
+  &#34;max_redirects&#34;: 10,
+  &#34;ignore_tls&#34;: false,
+  &#34;expiry_notify&#34;: true,
+  &#34;expiry_days&#34;: 14,
+  &#34;status&#34;: &#34;up&#34;,
+  &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
+  &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
+  &#34;created_at&#34;: &#34;<DATETIME>&#34;,
+  &#34;updated_at&#34;: &#34;<DATETIME>&#34;
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-monitors-id-check">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors/{id}/check</code></span>
+          <span class="list-sub">Run a check right now and return its result (409 for paused, push and group monitors).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;status&#34;: &#34;up&#34;, &#34;heartbeat&#34;: {&#34;id&#34;: 991, &#34;status&#34;: &#34;up&#34;, &#34;response_time_ms&#34;: 84, &#34;message&#34;: &#34;200 OK&#34;, &#34;checked_at&#34;: &#34;<DATETIME>&#34;}}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-monitors-id-heartbeats">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors/{id}/heartbeats</code></span>
+          <span class="list-sub">Check history, newest first (local checks only).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات, أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>since</code></dt><dd>UTC time, e.g. <DATETIME></dd></div>
+                <div class="dl-row"><dt><code>limit</code></dt><dd>page size (1–500, default 50)</dd></div>
+                <div class="dl-row"><dt><code>cursor</code></dt><dd>next_cursor from the previous page</dd></div>
+              </dl>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 991, &#34;monitor_id&#34;: 7, &#34;agent_id&#34;: null, &#34;status&#34;: &#34;up&#34;, &#34;response_time_ms&#34;: 84, &#34;message&#34;: &#34;200 OK&#34;, &#34;checked_at&#34;: &#34;<DATETIME>&#34;}], &#34;next_cursor&#34;: &#34;940&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-monitors-id-uptime">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors/{id}/uptime</code></span>
+          <span class="list-sub">Uptime over a window plus one entry per day (survives heartbeat retention).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات, أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>days</code></dt><dd>1–365 (default 30)</dd></div>
+              </dl>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;monitor_id&#34;: 7, &#34;days&#34;: 30, &#34;uptime_pct&#34;: 99.98, &#34;uptime_24h_pct&#34;: 100.0, &#34;daily&#34;: [{&#34;day&#34;: &#34;<DATE>&#34;, &#34;up&#34;: 1440, &#34;down&#34;: 0, &#34;pending&#34;: 0, &#34;maintenance&#34;: 0, &#34;avg_ms&#34;: 82.4, &#34;uptime_pct&#34;: 100.0}]}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-monitors-id-events">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors/{id}/events</code></span>
+          <span class="list-sub">Outages, maintenance, pauses and other events, newest first.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات, أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>limit</code></dt><dd>page size (1–500, default 50)</dd></div>
+              </dl>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 12, &#34;monitor_id&#34;: 7, &#34;kind&#34;: &#34;down&#34;, &#34;message&#34;: &#34;timeout&#34;, &#34;started_at&#34;: &#34;<DATETIME>&#34;, &#34;ended_at&#34;: &#34;<DATETIME>&#34;, &#34;duration_seconds&#34;: 240}], &#34;next_cursor&#34;: null}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="put--api-v1-monitors-id-tags">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PUT</span> <code class="break">/api/v1/monitors/{id}/tags</code></span>
+          <span class="list-sub">Replace a monitor&#39;s tags (names are created if new).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>[&#34;production&#34;, {&#34;name&#34;: &#34;env&#34;, &#34;value&#34;: &#34;prod&#34;}, {&#34;id&#34;: 4}]</code></pre>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;id&#34;: 7,
+  &#34;name&#34;: &#34;Website&#34;,
+  &#34;description&#34;: &#34;&#34;,
+  &#34;monitor_type&#34;: &#34;http&#34;,
+  &#34;target&#34;: &#34;https://example.com&#34;,
+  &#34;parent_id&#34;: null,
+  &#34;interval_seconds&#34;: 60,
+  &#34;retry_interval_seconds&#34;: null,
+  &#34;timeout_seconds&#34;: 10,
+  &#34;retries&#34;: 1,
+  &#34;active&#34;: true,
+  &#34;upside_down&#34;: false,
+  &#34;http_method&#34;: &#34;GET&#34;,
+  &#34;accepted_status_codes&#34;: &#34;200-399&#34;,
+  &#34;max_redirects&#34;: 10,
+  &#34;ignore_tls&#34;: false,
+  &#34;expiry_notify&#34;: true,
+  &#34;expiry_days&#34;: 14,
+  &#34;status&#34;: &#34;up&#34;,
+  &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
+  &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
+  &#34;created_at&#34;: &#34;<DATETIME>&#34;,
+  &#34;updated_at&#34;: &#34;<DATETIME>&#34;
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-monitors-bulk">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors/bulk</code></span>
+          <span class="list-sub">Change settings on many monitors at once (ids, or every monitor matching a filter like the list&#39;s). Each setting is optional; it uses the monitor form&#39;s validation and one transaction. Settings that don&#39;t apply to a monitor&#39;s type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;filter&#34;: {&#34;type&#34;: &#34;http&#34;, &#34;tag&#34;: &#34;production&#34;}, &#34;set&#34;: {&#34;run_on_agents&#34;: true, &#34;confirm_with_agents&#34;: true, &#34;interval_seconds&#34;: 120, &#34;channels&#34;: {&#34;add&#34;: [{&#34;name&#34;: &#34;Ops Discord&#34;, &#34;escalation&#34;: false}], &#34;remove&#34;: [3]}, &#34;tags&#34;: {&#34;add&#34;: [{&#34;name&#34;: &#34;eu&#34;, &#34;color&#34;: &#34;teal&#34;, &#34;value&#34;: &#34;west&#34;}], &#34;remove&#34;: [&#34;legacy&#34;]}}}</code></pre>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;updated&#34;: 38, &#34;skipped&#34;: [{&#34;id&#34;: 12, &#34;reason&#34;: &#34;agents_unsupported&#34;}]}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="tags" aria-labelledby="tags-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="tags-title">Tags</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-tags">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/tags</code></span>
+          <span class="list-sub">List tags with how many monitors use them.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;monitors&#34;: 12}], &#34;next_cursor&#34;: null}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-tags">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/tags</code></span>
+          <span class="list-sub">Create a tag. Colours are palette names (red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown, gray); hex values map to the nearest.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;}</code></pre>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-tags-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/tags/{id}</code></span>
+          <span class="list-sub">Get one tag.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-tags-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/tags/{id}</code></span>
+          <span class="list-sub">Rename or recolour a tag.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;color&#34;: &#34;teal&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-tags-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/tags/{id}</code></span>
+          <span class="list-sub">Delete a tag (it is removed from every monitor).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="notifications" aria-labelledby="notifications-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="notifications-title">Notifications</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-notification-providers">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/notification-providers</code></span>
+          <span class="list-sub">Every channel kind with its config fields (which are required, which are secret).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;kind&#34;: &#34;discord&#34;, &#34;label&#34;: &#34;Discord&#34;, &#34;fields&#34;: [{&#34;key&#34;: &#34;url&#34;, &#34;type&#34;: &#34;url&#34;, &#34;required&#34;: true, &#34;secret&#34;: true}]}]}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-notification-channels">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/notification-channels</code></span>
+          <span class="list-sub">List channels. Secrets are always masked as &#34;••••••&#34;.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 1, &#34;name&#34;: &#34;Ops Discord&#34;, &#34;kind&#34;: &#34;discord&#34;, &#34;active&#34;: true, &#34;is_default&#34;: true, &#34;monitors&#34;: 12, &#34;config&#34;: {&#34;url&#34;: &#34;••••••&#34;, &#34;username&#34;: &#34;Vole&#34;}}], &#34;next_cursor&#34;: null}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-notification-channels">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/notification-channels</code></span>
+          <span class="list-sub">Create a channel. apply_existing links it to every monitor.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;name&#34;: &#34;Ops Discord&#34;, &#34;kind&#34;: &#34;discord&#34;, &#34;config&#34;: {&#34;url&#34;: &#34;https://discord.com/api/webhooks/…&#34;}, &#34;is_default&#34;: true, &#34;apply_existing&#34;: false}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-notification-channels-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/notification-channels/{id}</code></span>
+          <span class="list-sub">Get one channel (secrets masked).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-notification-channels-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/notification-channels/{id}</code></span>
+          <span class="list-sub">Update a channel. Secrets you leave out or send masked keep their stored value.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;active&#34;: false}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-notification-channels-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/notification-channels/{id}</code></span>
+          <span class="list-sub">Delete a channel.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-notification-channels-id-test">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/notification-channels/{id}/test</code></span>
+          <span class="list-sub">Send a test notification (502 with the provider&#39;s error when delivery fails).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;ok&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="remote-browsers" aria-labelledby="remote-browsers-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="remote-browsers-title">Remote browsers</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-remote-browsers">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/remote-browsers</code></span>
+          <span class="list-sub">List the remote browsers (CDP endpoints) real-browser monitors use. Tokens and passwords in URLs are masked; the first one is the default.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 1, &#34;name&#34;: &#34;Chrome&#34;, &#34;url&#34;: &#34;ws://chrome:9222/devtools/browser/…&#34;, &#34;monitors&#34;: 3, &#34;default&#34;: true}], &#34;next_cursor&#34;: null}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-remote-browsers">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/remote-browsers</code></span>
+          <span class="list-sub">Add a remote browser: ws(s)://…/devtools/browser/&#60;id&#62;, http(s)://host:port (discovered through /json/version) or wss://host?token=….</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;name&#34;: &#34;Chrome&#34;, &#34;url&#34;: &#34;http://chrome:9222&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-remote-browsers-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/remote-browsers/{id}</code></span>
+          <span class="list-sub">Get one remote browser (secrets masked).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="put--api-v1-remote-browsers-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PUT</span> <code class="break">/api/v1/remote-browsers/{id}</code></span>
+          <span class="list-sub">Change a remote browser. A masked URL keeps its token while the host stays the same.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-remote-browsers-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/remote-browsers/{id}</code></span>
+          <span class="list-sub">Rename a remote browser or change its URL.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;name&#34;: &#34;Chrome (LAN)&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-remote-browsers-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/remote-browsers/{id}</code></span>
+          <span class="list-sub">Remove a remote browser; monitors that used it fall back to the default one.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-remote-browsers-id-test">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/remote-browsers/{id}/test</code></span>
+          <span class="list-sub">Connect and ask the browser for its version.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;ok&#34;: true, &#34;product&#34;: &#34;HeadlessChrome/156.0.8078.36&#34;, &#34;protocol_version&#34;: &#34;1.3&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="status-pages" aria-labelledby="status-pages-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="status-pages-title">Status pages</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-status-pages">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/status-pages</code></span>
+          <span class="list-sub">List status pages.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-status-pages">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/status-pages</code></span>
+          <span class="list-sub">Create a status page (slug defaults to the title).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;title&#34;: &#34;Acme status&#34;, &#34;slug&#34;: &#34;acme&#34;, &#34;sections&#34;: [{&#34;name&#34;: &#34;API&#34;, &#34;monitor_ids&#34;: [7, 8]}]}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-status-pages-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/status-pages/{id}</code></span>
+          <span class="list-sub">Get a page with its sections and monitors.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;id&#34;: 1, &#34;slug&#34;: &#34;acme&#34;, &#34;title&#34;: &#34;Acme status&#34;, &#34;published&#34;: true, &#34;theme&#34;: &#34;auto&#34;, &#34;sections&#34;: [{&#34;id&#34;: 3, &#34;name&#34;: &#34;API&#34;, &#34;monitors&#34;: [{&#34;id&#34;: 7, &#34;name&#34;: &#34;Website&#34;}]}], &#34;public_url&#34;: &#34;/status/acme&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-status-pages-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/status-pages/{id}</code></span>
+          <span class="list-sub">Change page settings (and optionally its sections). Also: password (write-only, &#34;&#34; removes), analytics, logo/favicon as data: URLs (&#34;&#34; removes).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;theme&#34;: &#34;dark&#34;, &#34;refresh_seconds&#34;: 30, &#34;password&#34;: &#34;correct horse&#34;, &#34;analytics&#34;: {&#34;provider&#34;: &#34;plausible&#34;, &#34;site_id&#34;: &#34;status.example.com&#34;, &#34;script_url&#34;: &#34;https://plausible.io/js/script.js&#34;}}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-status-pages-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/status-pages/{id}</code></span>
+          <span class="list-sub">Delete a page.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="put--api-v1-status-pages-id-sections">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PUT</span> <code class="break">/api/v1/status-pages/{id}/sections</code></span>
+          <span class="list-sub">Replace the page layout: sections in order, monitors in order.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>[{&#34;name&#34;: &#34;API&#34;, &#34;monitor_ids&#34;: [7, 8]}, {&#34;name&#34;: &#34;Website&#34;, &#34;monitor_ids&#34;: [9]}]</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-status-pages-id-incidents">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/status-pages/{id}/incidents</code></span>
+          <span class="list-sub">List a page&#39;s incidents.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-status-pages-id-incidents">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/status-pages/{id}/incidents</code></span>
+          <span class="list-sub">Post an incident (severity: info, warning, danger, success).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;title&#34;: &#34;Elevated error rates&#34;, &#34;body&#34;: &#34;We&#39;re looking into it.&#34;, &#34;severity&#34;: &#34;warning&#34;, &#34;pinned&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-status-pages-id-incidents-iid">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/status-pages/{id}/incidents/{iid}</code></span>
+          <span class="list-sub">Get one incident.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-status-pages-id-incidents-iid">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/status-pages/{id}/incidents/{iid}</code></span>
+          <span class="list-sub">Update an incident; resolved: true resolves it, false reopens it.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;body&#34;: &#34;Fixed.&#34;, &#34;severity&#34;: &#34;success&#34;, &#34;resolved&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-status-pages-id-incidents-iid">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/status-pages/{id}/incidents/{iid}</code></span>
+          <span class="list-sub">Delete an incident.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-status-pages-id-incidents-iid-updates">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/status-pages/{id}/incidents/{iid}/updates</code></span>
+          <span class="list-sub">List an incident&#39;s updates, newest first.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-status-pages-id-incidents-iid-updates">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/status-pages/{id}/incidents/{iid}/updates</code></span>
+          <span class="list-sub">Post an update to an incident (status: investigating, identified, monitoring, resolved). A resolved update resolves the incident; any other status reopens it.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;status&#34;: &#34;identified&#34;, &#34;body&#34;: &#34;A bad deploy. Rolling back.&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-status-pages-id-incidents-iid-updates-uid">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/status-pages/{id}/incidents/{iid}/updates/{uid}</code></span>
+          <span class="list-sub">Delete one update.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-status-pages-id-subscription">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/status-pages/{id}/subscription</code></span>
+          <span class="list-sub">Whether visitors can subscribe to the page&#39;s announcements, which email channel sends the mails and whether webhook subscribers are allowed.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="put--api-v1-status-pages-id-subscription">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PUT</span> <code class="break">/api/v1/status-pages/{id}/subscription</code></span>
+          <span class="list-sub">Change the subscription settings (enabled, channel_id of an email notification channel or null, webhooks). Omitted fields stay as they are.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;enabled&#34;: true, &#34;channel_id&#34;: 3, &#34;webhooks&#34;: false}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-status-pages-id-subscribers">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/status-pages/{id}/subscribers</code></span>
+          <span class="list-sub">List the page&#39;s subscribers (email addresses or webhook URLs) with their confirmation state. A webhook with confirmed_at null waits for an editor&#39;s approval.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-status-pages-id-subscribers-sid-approve">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/status-pages/{id}/subscribers/{sid}/approve</code></span>
+          <span class="list-sub">Approve a webhook sign-up. Webhooks are never confirmed by a link; once approved, the webhook gets a &#34;subscribed&#34; message with its unsubscribe link.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-status-pages-id-subscribers-sid">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/status-pages/{id}/subscribers/{sid}</code></span>
+          <span class="list-sub">Remove a subscriber.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="maintenance" aria-labelledby="maintenance-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="maintenance-title">Maintenance</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-maintenance">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/maintenance</code></span>
+          <span class="list-sub">List maintenance windows with their current state.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-maintenance">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/maintenance</code></span>
+          <span class="list-sub">Create a window. Times: start_at/end_at in UTC, time_from/time_to local to timezone, weekdays ISO (1 = Monday). Strategies: manual, once, daily, weekly, interval (interval_days, counted from start_at), monthly (month_days like 1,15,-1) and cron (cron + duration_minutes).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;title&#34;: &#34;Database upgrade&#34;, &#34;strategy&#34;: &#34;weekly&#34;, &#34;weekdays&#34;: &#34;2,4&#34;, &#34;time_from&#34;: &#34;<TIME>&#34;, &#34;time_to&#34;: &#34;<TIME>&#34;, &#34;timezone&#34;: &#34;Europe/Oslo&#34;, &#34;monitor_ids&#34;: [7]}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-maintenance-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/maintenance/{id}</code></span>
+          <span class="list-sub">Get one window.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-maintenance-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/maintenance/{id}</code></span>
+          <span class="list-sub">Change a window; null clears a time field.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;active&#34;: false}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-maintenance-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/maintenance/{id}</code></span>
+          <span class="list-sub">Delete a window.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="system" aria-labelledby="system-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="system-title">System</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-me">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/me</code></span>
+          <span class="list-sub">Who you are and how you signed in.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;id&#34;: 1, &#34;username&#34;: &#34;ada&#34;, &#34;role&#34;: &#34;admin&#34;, &#34;auth&#34;: &#34;token&#34;, &#34;token_scope&#34;: &#34;read&#34;, &#34;can_edit&#34;: false, &#34;is_admin&#34;: false}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-health">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/health</code></span>
+          <span class="list-sub">Version, uptime and monitor counts.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;status&#34;: &#34;ok&#34;, &#34;version&#34;: &#34;0.1.0&#34;, &#34;uptime_seconds&#34;: 86400, &#34;monitors&#34;: {&#34;total&#34;: 14, &#34;by_status&#34;: {&#34;up&#34;: 13, &#34;down&#34;: 1}}, &#34;status_pages&#34;: 1, &#34;agents&#34;: 2}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-agents">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/agents</code></span>
+          <span class="list-sub">Remote probe agents and whether they&#39;re online.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-settings">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/settings</code></span>
+          <span class="list-sub">Instance settings.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;retention_days&#34;: 90, &#34;base_url&#34;: &#34;https://status.example.com&#34;, &#34;timezone&#34;: &#34;Europe/Oslo&#34;, &#34;language&#34;: &#34;en&#34;, &#34;site_name&#34;: &#34;Vigilant Vole&#34;, &#34;badges_public&#34;: false, &#34;metrics_enabled&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-settings">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/settings</code></span>
+          <span class="list-sub">Change some settings.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;retention_days&#34;: 180, &#34;base_url&#34;: &#34;https://status.example.com&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-openapijson">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/openapi.json</code></span>
+          <span class="list-sub">This reference as an OpenAPI 3.1 document.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="configuration" aria-labelledby="configuration-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="configuration-title">Configuration</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-config">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/config</code></span>
+          <span class="list-sub">Export the whole configuration as YAML or JSON. Secrets are masked unless an admin asks for them.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات, أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>format</code></dt><dd>yaml (default) | json</dd></div>
+                <div class="dl-row"><dt><code>secrets</code></dt><dd>1 to include secrets (admins only)</dd></div>
+                <div class="dl-row"><dt><code>download</code></dt><dd>1 to download as a file</dd></div>
+              </dl>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>version: 1
+tags:
+  - name: production
+    color: green
+notification_channels:
+  - name: Ops Discord
+    kind: discord
+    config:
+      url: &#34;••••••&#34;
+monitors:
+  - name: Website
+    monitor_type: http
+    target: https://example.com
+    interval_seconds: 30
+    tags: [production]
+    notifications: [Ops Discord]
+status_pages:
+  - slug: acme
+    title: Acme status
+    sections:
+      - name: Services
+        monitors: [Website]</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-config">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/config</code></span>
+          <span class="list-sub">Import a configuration document (YAML or JSON body). Merge upserts by key; replace also deletes what the document doesn&#39;t list in the sections it contains. Masked secrets keep stored values.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-down">admin</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات, أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>mode</code></dt><dd>merge (default) | replace</dd></div>
+                <div class="dl-row"><dt><code>dry_run</code></dt><dd>1 to only return the plan</dd></div>
+                <div class="dl-row"><dt><code>confirm</code></dt><dd>1, required to apply a replace</dd></div>
+              </dl>
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>version: 1
+tags:
+  - name: production
+    color: green
+notification_channels:
+  - name: Ops Discord
+    kind: discord
+    config:
+      url: &#34;••••••&#34;
+monitors:
+  - name: Website
+    monitor_type: http
+    target: https://example.com
+    interval_seconds: 30
+    tags: [production]
+    notifications: [Ops Discord]
+status_pages:
+  - slug: acme
+    title: Acme status
+    sections:
+      - name: Services
+        monitors: [Website]</code></pre>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{
+  &#34;applied&#34;: false,
+  &#34;mode&#34;: &#34;merge&#34;,
+  &#34;summary&#34;: {&#34;create&#34;: 2, &#34;update&#34;: 1, &#34;delete&#34;: 0, &#34;unchanged&#34;: 14, &#34;skip&#34;: 0},
+  &#34;items&#34;: [
+    {&#34;kind&#34;: &#34;monitor&#34;, &#34;key&#34;: &#34;Website&#34;, &#34;action&#34;: &#34;update&#34;, &#34;changes&#34;: [&#34;interval_seconds&#34;]},
+    {&#34;kind&#34;: &#34;tag&#34;, &#34;key&#34;: &#34;staging&#34;, &#34;action&#34;: &#34;create&#34;}
+  ],
+  &#34;errors&#34;: [],
+  &#34;warnings&#34;: []
+}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="push-and-machine-endpoints" aria-labelledby="push-and-machine-endpoints-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="push-and-machine-endpoints-title">Push and machine endpoints</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-push-token">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/push/{token}</code></span>
+          <span class="list-sub">Report a push monitor&#39;s status (POST works too). Rate limited to 1 per second.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">push token</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات, أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>status</code></dt><dd>up (default) | down</dd></div>
+                <div class="dl-row"><dt><code>msg</code></dt><dd>message to record</dd></div>
+                <div class="dl-row"><dt><code>ping</code></dt><dd>response time in ms</dd></div>
+              </dl>
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;ok&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-badge-id-kind">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/badge/{id}/{kind}</code></span>
+          <span class="list-sub">SVG badge: kind is status, uptime, ping or cert-exp. Public when the monitor is on a published status page or badges are public.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">public</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">المعاملات</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <dl class="dl">
+                <div class="dl-row"><dt><code>duration</code></dt><dd>24h | 7d | 30d</dd></div>
+                <div class="dl-row"><dt><code>style</code></dt><dd>flat | flat-square</dd></div>
+                <div class="dl-row"><dt><code>label</code></dt><dd>custom label</dd></div>
+              </dl>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-status-page-slug">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/status-page/{slug}</code></span>
+          <span class="list-sub">A published status page as JSON (CORS enabled), for embedding.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">public</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;title&#34;: &#34;Acme status&#34;, &#34;overall&#34;: {&#34;indicator&#34;: &#34;operational&#34;, &#34;title&#34;: &#34;All systems operational&#34;}, &#34;sections&#34;: [ … ], &#34;incidents&#34;: [ … ]}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-agent-v1-monitors">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/agent/v1/monitors</code></span>
+          <span class="list-sub">For remote agents: the monitors to run (Bearer vva_… token, ETag).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">agent token</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-agent-v1-results">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/agent/v1/results</code></span>
+          <span class="list-sub">For remote agents: a batch of up to 500 results.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">agent token</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;results&#34;: [{&#34;monitor_id&#34;: 7, &#34;status&#34;: &#34;up&#34;, &#34;response_time_ms&#34;: 120, &#34;message&#34;: &#34;200 OK&#34;, &#34;checked_at&#34;: &#34;<DATETIME>&#34;}]}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--metrics">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/metrics</code></span>
+          <span class="list-sub">Prometheus metrics (when enabled). Bearer token or basic-auth password; Kuma-compatible series included.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">metrics token</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--mcp">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/mcp</code></span>
+          <span class="list-sub">Model Context Protocol server (Streamable HTTP, JSON-RPC 2.0) for AI assistants: tools to read and, with a write token, steer your monitors, incidents and maintenance, plus this reference as a resource. Bearer API token; GET answers 405. See docs/mcp.md.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">api token</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;jsonrpc&#34;: &#34;2.0&#34;, &#34;id&#34;: 1, &#34;method&#34;: &#34;tools/call&#34;, &#34;params&#34;: {&#34;name&#34;: &#34;why_is_it_down&#34;, &#34;arguments&#34;: {&#34;id&#34;: 7}}}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--healthz">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/healthz</code></span>
+          <span class="list-sub">Liveness probe: always &#34;ok&#34;.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-info">public</span></span>
+      </li>
+    </ul>
+  </div>
+</section>
+
+  </main>
+
+  <nav class="tabbar" aria-label="الرئيسية" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>لوحة المعلومات</span></a>
+    <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>الحالة</span></a>
+    <a class="tabbar-item" href="/maintenance"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#wrench"></use></svg><span>الصيانة</span></a>
+    <a class="tabbar-item" href="/settings"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#gear"></use></svg><span>الإعدادات</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"نُسخ مرجع API. الصقه في مساعد الذكاء الاصطناعي.","ai_downloaded":"تعذّر النسخ، لذا نُزّل المرجع كملف Markdown.","ai_failed":"تعذّر تحميل مرجع API. حاول مرة أخرى.","cancel":"إلغاء","confirm":"تأكيد","confirm_title":"هل أنت متأكد؟","connecting":"جارٍ الاتصال…","copied":"تم النسخ","copied_announce":"تم النسخ إلى الحافظة","copy_failed":"تعذّر النسخ. حدّد النص وانسخه يدويًا.","delete":"حذف","dismiss":"تجاهل","hint_common":"تجنّب الكلمات والتسلسلات الشائعة","hint_min_length":"استخدم {n} أحرف على الأقل","hint_repeated":"أحرف مكررة كثيرًا","live":"مباشر","moved":"تم نقل {item} إلى الموضع {pos} من {total}","network_error":"تعذّر الوصول إلى الخادم. تحقق من اتصالك.","offline":"غير متصل","reconnecting":"جارٍ إعادة الاتصال…","server_error":"حدث خطأ في الخادم. حاول مرة أخرى.","strength_0":"قصيرة جدًا","strength_1":"ضعيفة","strength_2":"مقبولة","strength_3":"جيدة","strength_4":"قوية","strength_prefix":"القوة:"}</script>
+  
+</body>
+</html>

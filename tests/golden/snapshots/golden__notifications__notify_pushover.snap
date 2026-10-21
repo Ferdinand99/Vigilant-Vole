@@ -1,0 +1,87 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: pushover (Pushover)
+
+## minimal config
+{
+  "app_token": "secret-app_token",
+  "down_priority": "1",
+  "expire": 3600,
+  "priority": "0",
+  "retry": 60,
+  "user_key": "secret-user_key"
+}
+
+### down
+POST https://api.pushover.net/1/messages.json
+(json)
+{
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 1,
+  "timestamp": 1792418592,
+  "title": "🔴 Payments API is down",
+  "token": "secret-app_token",
+  "url": "https://vv.example/monitors/7",
+  "url_title": "View monitor",
+  "user": "secret-user_key"
+}
+
+### up
+POST https://api.pushover.net/1/messages.json
+(json)
+{
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 0,
+  "timestamp": 1792418592,
+  "title": "🟢 Payments API is back up",
+  "token": "secret-app_token",
+  "url": "https://vv.example/monitors/7",
+  "url_title": "View monitor",
+  "user": "secret-user_key"
+}
+
+## full config
+{
+  "app_token": "secret-app_token",
+  "device": "iphone",
+  "down_priority": "1",
+  "expire": 3600,
+  "priority": "0",
+  "retry": 60,
+  "sound": "pushover",
+  "user_key": "secret-user_key"
+}
+
+### down
+POST https://api.pushover.net/1/messages.json
+(json)
+{
+  "device": "iphone",
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 1,
+  "sound": "pushover",
+  "timestamp": 1792418592,
+  "title": "🔴 Payments API is down",
+  "token": "secret-app_token",
+  "url": "https://vv.example/monitors/7",
+  "url_title": "View monitor",
+  "user": "secret-user_key"
+}
+
+### up
+POST https://api.pushover.net/1/messages.json
+(json)
+{
+  "device": "iphone",
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 0,
+  "sound": "pushover",
+  "timestamp": 1792418592,
+  "title": "🟢 Payments API is back up",
+  "token": "secret-app_token",
+  "url": "https://vv.example/monitors/7",
+  "url_title": "View monitor",
+  "user": "secret-user_key"
+}

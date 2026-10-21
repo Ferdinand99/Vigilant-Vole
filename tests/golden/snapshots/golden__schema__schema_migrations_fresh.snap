@@ -1,0 +1,19 @@
+---
+source: tests/golden/schema.rs
+expression: "applied_migrations(&conn).join(\"\\n\")"
+---
+0001_init.sql
+0002_full_schema.sql
+0050_statuspages_extras.sql
+0060_auth_sessions.sql
+0070_integrations_discovery.sql
+0090_i18n_user_language.sql
+0095_more_monitor_types.sql
+0096_http_auth.sql
+0097_sqlserver_mongodb.sql
+0098_status_page_extras.sql
+0099_real_browser.sql
+0100_maintenance_strategies.sql
+0101_incident_updates.sql
+0102_status_page_subscribers.sql
+0103_subscriber_tokens.sql

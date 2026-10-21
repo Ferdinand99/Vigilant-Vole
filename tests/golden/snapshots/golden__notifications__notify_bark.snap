@@ -1,0 +1,72 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: bark (Bark)
+
+## minimal config
+{
+  "critical": false,
+  "device_key": "secret-device_key",
+  "group": "Vigilant Vole",
+  "server": "https://api.day.app"
+}
+
+### down
+POST https://api.day.app/push
+(json)
+{
+  "body": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "device_key": "secret-device_key",
+  "group": "Vigilant Vole",
+  "level": "timeSensitive",
+  "title": "🔴 Payments API is down",
+  "url": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://api.day.app/push
+(json)
+{
+  "body": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "device_key": "secret-device_key",
+  "group": "Vigilant Vole",
+  "level": "active",
+  "title": "🟢 Payments API is back up",
+  "url": "https://vv.example/monitors/7"
+}
+
+## full config
+{
+  "critical": true,
+  "device_key": "secret-device_key",
+  "group": "Vigilant Vole",
+  "server": "https://api.day.app",
+  "sound": "alarm"
+}
+
+### down
+POST https://api.day.app/push
+(json)
+{
+  "body": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "device_key": "secret-device_key",
+  "group": "Vigilant Vole",
+  "level": "critical",
+  "sound": "alarm",
+  "title": "🔴 Payments API is down",
+  "url": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://api.day.app/push
+(json)
+{
+  "body": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "device_key": "secret-device_key",
+  "group": "Vigilant Vole",
+  "level": "active",
+  "sound": "alarm",
+  "title": "🟢 Payments API is back up",
+  "url": "https://vv.example/monitors/7"
+}

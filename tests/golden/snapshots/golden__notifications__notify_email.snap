@@ -1,0 +1,268 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: email (Email (SMTP))
+
+## minimal config
+{
+  "from": "Vigilant Vole <alerts@example.com>",
+  "host": "smtp.example.com",
+  "ignore_tls": false,
+  "port": 587,
+  "security": "starttls",
+  "to": "ops@example.com, oncall@example.com"
+}
+
+### down
+From: "Vigilant Vole" <alerts@example.com>
+Subject: =?utf-8?b?8J+UtA==?= Payments API is down
+To: ops@example.com, oncall@example.com
+MIME-Version: 1.0
+Date: <date>
+Content-Type: multipart/alternative;
+ boundary="<boundary-0>"
+
+--<boundary-0>
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+=F0=9F=94=B4 Payments API is down =E2=80=94 HTTP 503 (after 3 retries)
+Target: https://pay.example/health
+Type: HTTP(S)
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+--<boundary-0>
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!doctype html><html><head><meta charset=3D"utf-8"><meta name=3D"viewport" =
+content=3D"width=3Ddevice-width,initial-scale=3D1"><meta name=3D"color-sche=
+me" content=3D"light"><title>=F0=9F=94=B4 Payments API is down</title></hea=
+d><body style=3D"margin:0;padding:0;background:#f5f5f7;font-family:-apple-s=
+ystem,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',Roboto,Helvetica,=
+Arial,sans-serif;-webkit-font-smoothing:antialiased"><table role=3D"present=
+ation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" style=3D"backgrou=
+nd:#f5f5f7"><tr><td align=3D"center" style=3D"padding:32px 16px"><table rol=
+e=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" style=
+=3D"max-width:520px;background:#ffffff;border-radius:18px"><tr><td style=3D=
+"padding:28px 28px 8px"><p style=3D"margin:0 0 14px;font-size:13px;font-wei=
+ght:600;color:#FF3B30">&#9679;&nbsp;Down</p><h1 style=3D"margin:0;font-size=
+:22px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;color:#1d1d1f=
+">Payments API is down</h1><p style=3D"margin:8px 0 0;color:#424245;font-si=
+ze:15px;line-height:1.45">HTTP 503 (after 3 retries)</p><p style=3D"margin:=
+24px 0 0"><a href=3D"https://vv.example/monitors/7" style=3D"display:inline=
+-block;padding:11px 20px;border-radius:980px;background:#1d1d1f;color:#ffff=
+ff;text-decoration:none;font-size:15px;font-weight:600">View monitor</a></p=
+></td></tr><tr><td style=3D"padding:16px 28px 20px"><table role=3D"presenta=
+tion" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0"><tr><td style=3D"p=
+adding:10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:14px;wid=
+th:96px;vertical-align:top">Target</td><td style=3D"padding:10px 0;border-t=
+op:1px solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-word">ht=
+tps://pay.example/health</td></tr><tr><td style=3D"padding:10px 0;border-to=
+p:1px solid #e5e5ea;color:#6e6e73;font-size:14px;width:96px;vertical-align:=
+top">Type</td><td style=3D"padding:10px 0;border-top:1px solid #e5e5ea;colo=
+r:#1d1d1f;font-size:14px;word-break:break-word">HTTP(S)</td></tr><tr><td st=
+yle=3D"padding:10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:=
+14px;width:96px;vertical-align:top">Time</td><td style=3D"padding:10px 0;bo=
+rder-top:1px solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-wo=
+rd">2026-10-19 14:03:12 UTC</td></tr></table></td></tr></table><p style=3D"=
+margin:16px 0 0;font-size:12px;color:#86868b">Sent by Vigilant Vole</p></td=
+></tr></table></body></html>
+--<boundary-0>--
+
+### up
+From: "Vigilant Vole" <alerts@example.com>
+Subject: =?utf-8?b?8J+fog==?= Payments API is back up
+To: ops@example.com, oncall@example.com
+MIME-Version: 1.0
+Date: <date>
+Content-Type: multipart/alternative;
+ boundary="<boundary-0>"
+
+--<boundary-0>
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+=F0=9F=9F=A2 Payments API is back up =E2=80=94 down for 12m 4s
+Target: https://pay.example/health
+Type: HTTP(S)
+Downtime: 12m 4s
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+--<boundary-0>
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!doctype html><html><head><meta charset=3D"utf-8"><meta name=3D"viewport" =
+content=3D"width=3Ddevice-width,initial-scale=3D1"><meta name=3D"color-sche=
+me" content=3D"light"><title>=F0=9F=9F=A2 Payments API is back up</title></=
+head><body style=3D"margin:0;padding:0;background:#f5f5f7;font-family:-appl=
+e-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',Roboto,Helveti=
+ca,Arial,sans-serif;-webkit-font-smoothing:antialiased"><table role=3D"pres=
+entation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" style=3D"backg=
+round:#f5f5f7"><tr><td align=3D"center" style=3D"padding:32px 16px"><table =
+role=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" st=
+yle=3D"max-width:520px;background:#ffffff;border-radius:18px"><tr><td style=
+=3D"padding:28px 28px 8px"><p style=3D"margin:0 0 14px;font-size:13px;font-=
+weight:600;color:#34C759">&#9679;&nbsp;Up</p><h1 style=3D"margin:0;font-siz=
+e:22px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;color:#1d1d1=
+f">Payments API is back up</h1><p style=3D"margin:8px 0 0;color:#424245;fon=
+t-size:15px;line-height:1.45">down for 12m 4s</p><p style=3D"margin:24px 0 =
+0"><a href=3D"https://vv.example/monitors/7" style=3D"display:inline-block;=
+padding:11px 20px;border-radius:980px;background:#1d1d1f;color:#ffffff;text=
+-decoration:none;font-size:15px;font-weight:600">View monitor</a></p></td><=
+/tr><tr><td style=3D"padding:16px 28px 20px"><table role=3D"presentation" w=
+idth=3D"100%" cellpadding=3D"0" cellspacing=3D"0"><tr><td style=3D"padding:=
+10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:14px;width:96px=
+;vertical-align:top">Target</td><td style=3D"padding:10px 0;border-top:1px =
+solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-word">https://p=
+ay.example/health</td></tr><tr><td style=3D"padding:10px 0;border-top:1px s=
+olid #e5e5ea;color:#6e6e73;font-size:14px;width:96px;vertical-align:top">Ty=
+pe</td><td style=3D"padding:10px 0;border-top:1px solid #e5e5ea;color:#1d1d=
+1f;font-size:14px;word-break:break-word">HTTP(S)</td></tr><tr><td style=3D"=
+padding:10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:14px;wi=
+dth:96px;vertical-align:top">Downtime</td><td style=3D"padding:10px 0;borde=
+r-top:1px solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-word"=
+>12m 4s</td></tr><tr><td style=3D"padding:10px 0;border-top:1px solid #e5e5=
+ea;color:#6e6e73;font-size:14px;width:96px;vertical-align:top">Time</td><td=
+ style=3D"padding:10px 0;border-top:1px solid #e5e5ea;color:#1d1d1f;font-si=
+ze:14px;word-break:break-word">2026-10-19 14:03:12 UTC</td></tr></table></t=
+d></tr></table><p style=3D"margin:16px 0 0;font-size:12px;color:#86868b">Se=
+nt by Vigilant Vole</p></td></tr></table></body></html>
+--<boundary-0>--
+
+## full config
+{
+  "bcc": "archive@example.com",
+  "cc": "team@example.com",
+  "from": "Vigilant Vole <alerts@example.com>",
+  "host": "smtp.example.com",
+  "ignore_tls": true,
+  "password": "secret-password",
+  "port": 587,
+  "security": "starttls",
+  "subject_prefix": "[Prod]",
+  "to": "ops@example.com, oncall@example.com",
+  "username": "alerts@example.com"
+}
+
+### down
+From: "Vigilant Vole" <alerts@example.com>
+Subject: [Prod] =?utf-8?b?8J+UtA==?= Payments API is down
+To: ops@example.com, oncall@example.com
+Cc: team@example.com
+MIME-Version: 1.0
+Date: <date>
+Content-Type: multipart/alternative;
+ boundary="<boundary-0>"
+
+--<boundary-0>
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+=F0=9F=94=B4 Payments API is down =E2=80=94 HTTP 503 (after 3 retries)
+Target: https://pay.example/health
+Type: HTTP(S)
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+--<boundary-0>
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!doctype html><html><head><meta charset=3D"utf-8"><meta name=3D"viewport" =
+content=3D"width=3Ddevice-width,initial-scale=3D1"><meta name=3D"color-sche=
+me" content=3D"light"><title>=F0=9F=94=B4 Payments API is down</title></hea=
+d><body style=3D"margin:0;padding:0;background:#f5f5f7;font-family:-apple-s=
+ystem,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',Roboto,Helvetica,=
+Arial,sans-serif;-webkit-font-smoothing:antialiased"><table role=3D"present=
+ation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" style=3D"backgrou=
+nd:#f5f5f7"><tr><td align=3D"center" style=3D"padding:32px 16px"><table rol=
+e=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" style=
+=3D"max-width:520px;background:#ffffff;border-radius:18px"><tr><td style=3D=
+"padding:28px 28px 8px"><p style=3D"margin:0 0 14px;font-size:13px;font-wei=
+ght:600;color:#FF3B30">&#9679;&nbsp;Down</p><h1 style=3D"margin:0;font-size=
+:22px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;color:#1d1d1f=
+">Payments API is down</h1><p style=3D"margin:8px 0 0;color:#424245;font-si=
+ze:15px;line-height:1.45">HTTP 503 (after 3 retries)</p><p style=3D"margin:=
+24px 0 0"><a href=3D"https://vv.example/monitors/7" style=3D"display:inline=
+-block;padding:11px 20px;border-radius:980px;background:#1d1d1f;color:#ffff=
+ff;text-decoration:none;font-size:15px;font-weight:600">View monitor</a></p=
+></td></tr><tr><td style=3D"padding:16px 28px 20px"><table role=3D"presenta=
+tion" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0"><tr><td style=3D"p=
+adding:10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:14px;wid=
+th:96px;vertical-align:top">Target</td><td style=3D"padding:10px 0;border-t=
+op:1px solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-word">ht=
+tps://pay.example/health</td></tr><tr><td style=3D"padding:10px 0;border-to=
+p:1px solid #e5e5ea;color:#6e6e73;font-size:14px;width:96px;vertical-align:=
+top">Type</td><td style=3D"padding:10px 0;border-top:1px solid #e5e5ea;colo=
+r:#1d1d1f;font-size:14px;word-break:break-word">HTTP(S)</td></tr><tr><td st=
+yle=3D"padding:10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:=
+14px;width:96px;vertical-align:top">Time</td><td style=3D"padding:10px 0;bo=
+rder-top:1px solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-wo=
+rd">2026-10-19 14:03:12 UTC</td></tr></table></td></tr></table><p style=3D"=
+margin:16px 0 0;font-size:12px;color:#86868b">Sent by Vigilant Vole</p></td=
+></tr></table></body></html>
+--<boundary-0>--
+
+### up
+From: "Vigilant Vole" <alerts@example.com>
+Subject: [Prod] =?utf-8?b?8J+fog==?= Payments API is back up
+To: ops@example.com, oncall@example.com
+Cc: team@example.com
+MIME-Version: 1.0
+Date: <date>
+Content-Type: multipart/alternative;
+ boundary="<boundary-0>"
+
+--<boundary-0>
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+=F0=9F=9F=A2 Payments API is back up =E2=80=94 down for 12m 4s
+Target: https://pay.example/health
+Type: HTTP(S)
+Downtime: 12m 4s
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+--<boundary-0>
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!doctype html><html><head><meta charset=3D"utf-8"><meta name=3D"viewport" =
+content=3D"width=3Ddevice-width,initial-scale=3D1"><meta name=3D"color-sche=
+me" content=3D"light"><title>=F0=9F=9F=A2 Payments API is back up</title></=
+head><body style=3D"margin:0;padding:0;background:#f5f5f7;font-family:-appl=
+e-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',Roboto,Helveti=
+ca,Arial,sans-serif;-webkit-font-smoothing:antialiased"><table role=3D"pres=
+entation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" style=3D"backg=
+round:#f5f5f7"><tr><td align=3D"center" style=3D"padding:32px 16px"><table =
+role=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=3D"0" st=
+yle=3D"max-width:520px;background:#ffffff;border-radius:18px"><tr><td style=
+=3D"padding:28px 28px 8px"><p style=3D"margin:0 0 14px;font-size:13px;font-=
+weight:600;color:#34C759">&#9679;&nbsp;Up</p><h1 style=3D"margin:0;font-siz=
+e:22px;line-height:1.25;font-weight:600;letter-spacing:-0.02em;color:#1d1d1=
+f">Payments API is back up</h1><p style=3D"margin:8px 0 0;color:#424245;fon=
+t-size:15px;line-height:1.45">down for 12m 4s</p><p style=3D"margin:24px 0 =
+0"><a href=3D"https://vv.example/monitors/7" style=3D"display:inline-block;=
+padding:11px 20px;border-radius:980px;background:#1d1d1f;color:#ffffff;text=
+-decoration:none;font-size:15px;font-weight:600">View monitor</a></p></td><=
+/tr><tr><td style=3D"padding:16px 28px 20px"><table role=3D"presentation" w=
+idth=3D"100%" cellpadding=3D"0" cellspacing=3D"0"><tr><td style=3D"padding:=
+10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:14px;width:96px=
+;vertical-align:top">Target</td><td style=3D"padding:10px 0;border-top:1px =
+solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-word">https://p=
+ay.example/health</td></tr><tr><td style=3D"padding:10px 0;border-top:1px s=
+olid #e5e5ea;color:#6e6e73;font-size:14px;width:96px;vertical-align:top">Ty=
+pe</td><td style=3D"padding:10px 0;border-top:1px solid #e5e5ea;color:#1d1d=
+1f;font-size:14px;word-break:break-word">HTTP(S)</td></tr><tr><td style=3D"=
+padding:10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:14px;wi=
+dth:96px;vertical-align:top">Downtime</td><td style=3D"padding:10px 0;borde=
+r-top:1px solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-word"=
+>12m 4s</td></tr><tr><td style=3D"padding:10px 0;border-top:1px solid #e5e5=
+ea;color:#6e6e73;font-size:14px;width:96px;vertical-align:top">Time</td><td=
+ style=3D"padding:10px 0;border-top:1px solid #e5e5ea;color:#1d1d1f;font-si=
+ze:14px;word-break:break-word">2026-10-19 14:03:12 UTC</td></tr></table></t=
+d></tr></table><p style=3D"margin:16px 0 0;font-size:12px;color:#86868b">Se=
+nt by Vigilant Vole</p></td></tr></table></body></html>
+--<boundary-0>--

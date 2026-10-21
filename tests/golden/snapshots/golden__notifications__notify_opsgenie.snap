@@ -1,0 +1,82 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: opsgenie (Opsgenie)
+
+## minimal config
+{
+  "api_key": "secret-api_key",
+  "priority": "P1",
+  "region": "us"
+}
+
+### down
+POST https://api.opsgenie.com/v2/alerts
+Authorization: GenieKey secret-api_key
+(json)
+{
+  "alias": "vv-monitor-7",
+  "description": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "details": {
+    "event": "down",
+    "target": "https://pay.example/health",
+    "url": "https://vv.example/monitors/7"
+  },
+  "entity": "Payments API",
+  "message": "Payments API is down",
+  "priority": "P1",
+  "source": "Vigilant Vole",
+  "tags": [
+    "vigilant-vole"
+  ]
+}
+
+### up
+POST https://api.opsgenie.com/v2/alerts/vv-monitor-7/close?identifierType=alias
+Authorization: GenieKey secret-api_key
+(json)
+{
+  "note": "🟢 Payments API is back up — down for 12m 4s",
+  "source": "Vigilant Vole"
+}
+
+## full config
+{
+  "api_key": "secret-api_key",
+  "priority": "P1",
+  "region": "us",
+  "tags": "prod, payments"
+}
+
+### down
+POST https://api.opsgenie.com/v2/alerts
+Authorization: GenieKey secret-api_key
+(json)
+{
+  "alias": "vv-monitor-7",
+  "description": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "details": {
+    "event": "down",
+    "target": "https://pay.example/health",
+    "url": "https://vv.example/monitors/7"
+  },
+  "entity": "Payments API",
+  "message": "Payments API is down",
+  "priority": "P1",
+  "source": "Vigilant Vole",
+  "tags": [
+    "vigilant-vole",
+    "prod",
+    "payments"
+  ]
+}
+
+### up
+POST https://api.opsgenie.com/v2/alerts/vv-monitor-7/close?identifierType=alias
+Authorization: GenieKey secret-api_key
+(json)
+{
+  "note": "🟢 Payments API is back up — down for 12m 4s",
+  "source": "Vigilant Vole"
+}

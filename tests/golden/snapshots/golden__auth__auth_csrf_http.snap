@@ -1,0 +1,26 @@
+---
+source: tests/golden/auth.rs
+expression: out
+---
+no Origin or Referer: 403 (blocked)
+HX-Request: 422 (passed the guard)
+same Origin: 422 (passed the guard)
+same Referer: 422 (passed the guard)
+foreign Origin: 403 (blocked)
+Origin null: 403 (blocked)
+exempt /api/v1/tags with foreign Origin: 422
+exempt /api/push/not-a-token with foreign Origin: 404
+exempt /mcp with foreign Origin: 403
+
+== blocked HTML response
+status: 403
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>403 · Forbidden</title><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css"><script src="/static/theme.js"></script></head><body class="error-page"><main class="container"><div class="card empty-state"><h1>403 · Forbidden</h1><p>You don’t have permission to do that.</p><p><a class="btn" href="/">Back to dashboard</a></p></div></main></body></html>

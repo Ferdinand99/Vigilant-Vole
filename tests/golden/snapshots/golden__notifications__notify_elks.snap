@@ -1,0 +1,57 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: elks (SMS (46elks))
+
+## minimal config
+{
+  "from": "Vole",
+  "password": "secret-password",
+  "to": "+46701234567",
+  "username": "u"
+}
+
+### down
+POST https://api.46elks.com/a1/sms
+Authorization: Basic dTpzZWNyZXQtcGFzc3dvcmQ=
+(form)
+from=Vole
+to=+46701234567
+message=🔴 Payments API is down — HTTP 503 (after 3 retries)
+https://vv.example/monitors/7
+
+### up
+POST https://api.46elks.com/a1/sms
+Authorization: Basic dTpzZWNyZXQtcGFzc3dvcmQ=
+(form)
+from=Vole
+to=+46701234567
+message=🟢 Payments API is back up — down for 12m 4s
+https://vv.example/monitors/7
+
+## full config
+{
+  "from": "Vole",
+  "password": "secret-password",
+  "to": "+46701234567",
+  "username": "u"
+}
+
+### down
+POST https://api.46elks.com/a1/sms
+Authorization: Basic dTpzZWNyZXQtcGFzc3dvcmQ=
+(form)
+from=Vole
+to=+46701234567
+message=🔴 Payments API is down — HTTP 503 (after 3 retries)
+https://vv.example/monitors/7
+
+### up
+POST https://api.46elks.com/a1/sms
+Authorization: Basic dTpzZWNyZXQtcGFzc3dvcmQ=
+(form)
+from=Vole
+to=+46701234567
+message=🟢 Payments API is back up — down for 12m 4s
+https://vv.example/monitors/7

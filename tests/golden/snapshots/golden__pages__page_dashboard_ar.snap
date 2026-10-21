@@ -1,0 +1,264 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>لوحة المعلومات · Golden Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Golden Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/sse.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body>
+  <a class="skip" href="#main">تخطَّ إلى المحتوى</a>
+
+  <header class="topbar">
+    <div class="topbar-inner container">
+      <a class="brand" href="/">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span>Golden Vole</span>
+      </a>
+
+      <nav class="topnav" aria-label="الرئيسية" hx-boost="true" hx-swap="innerHTML transition:true">
+        <a class="topnav-link" href="/" aria-current="page">لوحة المعلومات</a>
+        <a class="topnav-link" href="/status-pages">صفحات الحالة</a>
+        <a class="topnav-link" href="/maintenance">الصيانة</a>
+        <a class="topnav-link" href="/settings">الإعدادات</a>
+      </nav>
+
+      <div class="topbar-end">
+        <button class="user-button" type="button" popovertarget="user-menu" aria-label="الحساب والمظهر">
+          <span class="avatar" aria-hidden="true">A</span>
+        </button>
+        <div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            <span class="avatar avatar-lg" aria-hidden="true">A</span>
+            <span>
+              <span class="user-card-name">admin</span>
+              <span class="user-card-meta">admin · مسؤول</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg>الأمان</a>
+          <a class="menu-item" href="/settings/tokens"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg>رموز API</a>
+          <a class="menu-item" href="/api-docs"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#code"></use></svg>وثائق API</a>
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">المظهر</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#theme-auto"></use></svg><span>تلقائي</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sun"></use></svg><span>فاتح</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#moon"></use></svg><span>داكن</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#logout"></use></svg>تسجيل الخروج</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="main container " tabindex="-1">
+    
+<div id="dash-head">
+
+<header class="page-head">
+  <div class="page-head-row">
+    <div class="page-head-text">
+      <h1 class="page-title">المراقبات</h1>
+      <p class="page-sub"><span class="live" data-state="connecting" data-label-live="مباشر" data-label-connecting="جارٍ الاتصال…" data-label-reconnecting="جارٍ إعادة الاتصال…" data-label-offline="غير متصل"><span class="dot" aria-hidden="true"></span><span class="live-label">جارٍ الاتصال…</span></span></p>
+    </div>
+    <div class="page-actions">
+      <a href="/tags" class="btn btn-secondary"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#tag"></use></svg><span>الوسوم</span></a>
+      <a class="btn btn-secondary" href="/?select=1"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check-circle"></use></svg><span>تحديد</span></a>
+      <a href="/monitors/new" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg><span>مراقب جديد</span></a>
+    </div>
+  </div>
+</header>
+</div>
+<form id="dash-filters" class="stack-sm" method="get" action="/" role="search" aria-label="تصفية المراقبات"
+  hx-get="/" hx-target="#dash-results" hx-swap="innerHTML" hx-push-url="true" hx-trigger="change, submit"
+  hx-include="#dash-results [name=collapsed], #dash-results [name=select]" data-no-progress>
+  <label class="search"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg><input id="dash-q" type="search" name="q" value=""
+    placeholder="ابحث في المراقبات…" aria-label="البحث في المراقبات بالاسم أو العنوان أو الوسم" autocomplete="off" spellcheck="false"
+    hx-get="/" hx-trigger="input changed delay:250ms, search" hx-target="#dash-results" hx-swap="innerHTML"
+    hx-include="#dash-filters, #dash-results [name=collapsed], #dash-results [name=select]" hx-push-url="true"></label>
+  <div class="popover" id="dash-filter-menu" popover>
+    <div class="stack-sm">
+      <div class="field">
+        <label class="label" for="dash-type">النوع</label>
+        <select id="dash-type" name="type">
+          <option value="">كل الأنواع</option>
+          <option value="http">HTTP(S)</option>
+          <option value="ping">Ping</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="dash-tag">الوسم</label>
+        <select id="dash-tag" name="tag">
+          <option value="">كل الوسوم</option>
+          <option value="2">env</option>
+          <option value="1">production</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="dash-sort">الترتيب حسب</label>
+        <select id="dash-sort" name="sort">
+          <option value="status" selected>المشكلات أولًا</option>
+          <option value="name">الاسم</option>
+          <option value="uptime">الأقل تشغيلًا</option>
+          <option value="response">الأبطأ</option>
+          <option value="newest">الأحدث</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="chips chips-scroll">
+    <button type="button" class="chip" popovertarget="dash-filter-menu"><svg class="icon icon-sm" aria-hidden="true"><use href="/static/icons.svg#sliders"></use></svg>التصفية والترتيب</button>
+    <span class="vh" id="status-filter-label">الحالة</span>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="" checked>الكل</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="down"><span class="dot status-down" aria-hidden="true"></span>متعطل</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="pending"><span class="dot status-pending" aria-hidden="true"></span>قيد الانتظار</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="up"><span class="dot status-up" aria-hidden="true"></span>يعمل</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="maintenance"><span class="dot status-maintenance" aria-hidden="true"></span>صيانة</label>
+    <label class="chip"><input type="radio" name="status" aria-describedby="status-filter-label" value="paused"><span class="dot status-paused" aria-hidden="true"></span>موقوف مؤقتًا</label>
+  </div>
+  <noscript><div class="cluster"><button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#filter"></use></svg><span>تطبيق التصفية</span></button></div></noscript>
+</form>
+
+<div id="dash-results" class="stack">
+  
+<div class="stack" hx-ext="sse" sse-connect="/events" sse-swap="monitors-updated" hx-swap="innerHTML">
+  
+
+<div class="stats">
+  <a class="stat" href="/">
+    <span class="stat-label">المراقبات</span>
+    <span class="stat-value num">3</span>
+  </a>
+  <a class="stat status-up" href="/?status=up">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>يعمل</span>
+    <span class="stat-value num">0</span>
+  </a>
+  <a class="stat status-down" href="/?status=down">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>متعطل</span>
+    <span class="stat-value num">0</span>
+  </a>
+  <a class="stat status-pending" href="/?status=pending">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>قيد الانتظار</span>
+    <span class="stat-value num">2</span>
+  </a>
+  <a class="stat status-paused" href="/?status=paused">
+    <span class="stat-label"><span class="stat-dot" aria-hidden="true"></span>موقوف مؤقتًا</span>
+    <span class="stat-value num">1</span>
+  </a>
+</div>
+<section class="section" aria-labelledby="ungrouped-title">
+  <div class="section-head"><div><h2 class="section-title" id="ungrouped-title">نشط</h2></div></div>
+  <ul class="list" role="list">
+    
+<li class="list-row" id="monitor-row-2">
+  <span class="dot status-pending" role="img" aria-label="قيد الانتظار"></span>
+  <div class="list-main">
+    <a class="list-title list-title-wrap stretched" href="/monitors/2">API</a>
+    <span class="list-sub">HTTP(S) · https://api.example.com/health</span>
+  </div>
+  <div class="list-beats"><div class="beats" role="img" aria-label="آخر الفحوصات، الأقدم أولًا"><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span></div></div>
+  <div class="list-value">
+    <strong><bdi>—</bdi></strong>
+    <small>24 س</small>
+  </div>
+  <div class="list-value hide-sm">
+    <strong><bdi>—</bdi></strong>
+    <small>الاستجابة</small>
+  </div>
+  <svg class="icon list-chevron" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
+</li>
+    
+<li class="list-row" id="monitor-row-1">
+  <span class="dot status-pending" role="img" aria-label="قيد الانتظار"></span>
+  <div class="list-main">
+    <a class="list-title list-title-wrap stretched" href="/monitors/1">Website</a>
+    <span class="list-sub">HTTP(S) · https://example.com</span>
+    <span class="tags"><span class="tag tag-blue">env<span class="tag-value">prod</span></span><span class="tag tag-blue">production</span></span>
+  </div>
+  <div class="list-beats"><div class="beats" role="img" aria-label="آخر الفحوصات، الأقدم أولًا"><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span></div></div>
+  <div class="list-value">
+    <strong><bdi>—</bdi></strong>
+    <small>24 س</small>
+  </div>
+  <div class="list-value hide-sm">
+    <strong><bdi>—</bdi></strong>
+    <small>الاستجابة</small>
+  </div>
+  <svg class="icon list-chevron" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
+</li>
+  </ul>
+</section>
+<section class="section" aria-labelledby="paused-title">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title" id="paused-title">موقوف مؤقتًا</h2>
+      <p class="section-sub">لا تُفحص ولا تُرسل تنبيهات حتى تستأنفها.</p>
+    </div>
+  </div>
+  <ul class="list" role="list">
+    
+<li class="list-row" id="monitor-row-3">
+  <span class="dot status-paused" role="img" aria-label="موقوف مؤقتًا"></span>
+  <div class="list-main">
+    <a class="list-title list-title-wrap stretched" href="/monitors/3">Legacy box</a>
+    <span class="list-sub">Ping · legacy.example.com</span>
+  </div>
+  <div class="list-beats"><div class="beats" role="img" aria-label="آخر الفحوصات، الأقدم أولًا"><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span><span class="beat"></span></div></div>
+  <div class="list-value">
+    <strong><bdi>—</bdi></strong>
+    <small>24 س</small>
+  </div>
+  <div class="list-value hide-sm">
+    <strong><bdi>—</bdi></strong>
+    <small>الاستجابة</small>
+  </div>
+  <svg class="icon list-chevron" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
+</li>
+  </ul>
+</section>
+</div>
+</div>
+
+  </main>
+
+  <nav class="tabbar" aria-label="الرئيسية" hx-boost="true" hx-swap="innerHTML transition:true">
+    <a class="tabbar-item" href="/" aria-current="page"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>لوحة المعلومات</span></a>
+    <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>الحالة</span></a>
+    <a class="tabbar-item" href="/maintenance"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#wrench"></use></svg><span>الصيانة</span></a>
+    <a class="tabbar-item" href="/settings"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#gear"></use></svg><span>الإعدادات</span></a>
+  </nav>
+
+  <div class="toaster" id="toaster" aria-live="polite">
+  </div>
+  <div class="progress-bar" id="vv-progress" aria-hidden="true"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"نُسخ مرجع API. الصقه في مساعد الذكاء الاصطناعي.","ai_downloaded":"تعذّر النسخ، لذا نُزّل المرجع كملف Markdown.","ai_failed":"تعذّر تحميل مرجع API. حاول مرة أخرى.","cancel":"إلغاء","confirm":"تأكيد","confirm_title":"هل أنت متأكد؟","connecting":"جارٍ الاتصال…","copied":"تم النسخ","copied_announce":"تم النسخ إلى الحافظة","copy_failed":"تعذّر النسخ. حدّد النص وانسخه يدويًا.","delete":"حذف","dismiss":"تجاهل","hint_common":"تجنّب الكلمات والتسلسلات الشائعة","hint_min_length":"استخدم {n} أحرف على الأقل","hint_repeated":"أحرف مكررة كثيرًا","live":"مباشر","moved":"تم نقل {item} إلى الموضع {pos} من {total}","network_error":"تعذّر الوصول إلى الخادم. تحقق من اتصالك.","offline":"غير متصل","reconnecting":"جارٍ إعادة الاتصال…","server_error":"حدث خطأ في الخادم. حاول مرة أخرى.","strength_0":"قصيرة جدًا","strength_1":"ضعيفة","strength_2":"مقبولة","strength_3":"جيدة","strength_4":"قوية","strength_prefix":"القوة:"}</script>
+  
+</body>
+</html>

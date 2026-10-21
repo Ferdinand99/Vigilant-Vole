@@ -1,0 +1,256 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: slack (Slack)
+
+## minimal config
+{
+  "url": "https://hooks.slack.com/services/"
+}
+
+### down
+POST https://hooks.slack.com/services/
+(json)
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*🔴 Payments API is down*\nHTTP 503 (after 3 retries)",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Target*\nhttps://pay.example/health",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Type*\nHTTP(S)",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "Vigilant Vole · <!date^1792418592^{date_short_pretty} at {time}|2026-10-19 14:03:12 UTC>",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "View monitor",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://vv.example/monitors/7"
+            }
+          ],
+          "type": "actions"
+        }
+      ],
+      "color": "#FF3B30"
+    }
+  ],
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)"
+}
+
+### up
+POST https://hooks.slack.com/services/
+(json)
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*🟢 Payments API is back up*\ndown for 12m 4s",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Target*\nhttps://pay.example/health",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Type*\nHTTP(S)",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Downtime*\n12m 4s",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "Vigilant Vole · <!date^1792418592^{date_short_pretty} at {time}|2026-10-19 14:03:12 UTC>",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "View monitor",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://vv.example/monitors/7"
+            }
+          ],
+          "type": "actions"
+        }
+      ],
+      "color": "#34C759"
+    }
+  ],
+  "text": "🟢 Payments API is back up — down for 12m 4s"
+}
+
+## full config
+{
+  "channel": "#alerts",
+  "icon_emoji": ":rotating_light:",
+  "url": "https://hooks.slack.com/services/",
+  "username": "Vigilant Vole"
+}
+
+### down
+POST https://hooks.slack.com/services/
+(json)
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*🔴 Payments API is down*\nHTTP 503 (after 3 retries)",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Target*\nhttps://pay.example/health",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Type*\nHTTP(S)",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "Vigilant Vole · <!date^1792418592^{date_short_pretty} at {time}|2026-10-19 14:03:12 UTC>",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "View monitor",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://vv.example/monitors/7"
+            }
+          ],
+          "type": "actions"
+        }
+      ],
+      "color": "#FF3B30"
+    }
+  ],
+  "channel": "#alerts",
+  "icon_emoji": ":rotating_light:",
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)",
+  "username": "Vigilant Vole"
+}
+
+### up
+POST https://hooks.slack.com/services/
+(json)
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*🟢 Payments API is back up*\ndown for 12m 4s",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Target*\nhttps://pay.example/health",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Type*\nHTTP(S)",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Downtime*\n12m 4s",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "Vigilant Vole · <!date^1792418592^{date_short_pretty} at {time}|2026-10-19 14:03:12 UTC>",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "View monitor",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://vv.example/monitors/7"
+            }
+          ],
+          "type": "actions"
+        }
+      ],
+      "color": "#34C759"
+    }
+  ],
+  "channel": "#alerts",
+  "icon_emoji": ":rotating_light:",
+  "text": "🟢 Payments API is back up — down for 12m 4s",
+  "username": "Vigilant Vole"
+}

@@ -1,0 +1,116 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme-lock>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>Golden status</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+  <meta name="description" content="الحالة غير متاحة — Golden status">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Golden status">
+  <meta property="og:description" content="الحالة غير متاحة — Golden status">
+  <meta property="og:site_name" content="Golden status">
+  <meta name="twitter:card" content="summary">
+  <link rel="alternate" type="application/json" href="/api/status-page/golden">
+  <link rel="alternate" type="application/atom+xml" title="خلاصة الحوادث" href="/status/golden/feed.xml">
+
+</head>
+<body class="public-body">
+  <a class="skip" href="#main">تخطَّ إلى المحتوى</a>
+  <header class="public-head container container-narrow">
+    
+<div class="public-brand">
+  <div class="stack stack-xs">
+    <h1 class="public-title">Golden status</h1>
+  </div>
+</div>
+
+  </header>
+  <main id="main" class="public-main container container-narrow">
+    
+<div class="stack" id="sp-live" hx-get="/status/golden/fragment" hx-trigger="every 60s" hx-swap="outerHTML" data-no-progress>
+  <div class="banner status-unknown">
+    <span class="banner-icon"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#circle-dashed"></use></svg></span>
+    <div>
+      <p class="banner-title">الحالة غير متاحة</p>
+      <p class="banner-sub">لا شيء للإبلاغ عنه بعد. آخر تحديث <time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time>.</p>
+    </div>
+  </div>
+  <section class="section" aria-labelledby="sp-sec-1">
+    <div class="section-head">
+      <div><h2 class="section-title" id="sp-sec-1">Web</h2></div>
+    </div>
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap">
+        <span class="list-main">
+          <span class="list-title list-title-wrap">Website</span>
+        </span>
+        <span class="list-trail">
+          <span class="pill status-unknown"><span class="dot"></span>لا بيانات</span>
+        </span>
+        <div class="list-full uptime">
+          <div class="uptime-days" role="img" aria-label="وقت التشغيل خلال 90 يومًا: لا بيانات"><span class="uptime-day status-none" data-tip="<DAY-89> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-88> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-87> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-86> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-85> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-84> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-83> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-82> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-81> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-80> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-79> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-78> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-77> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-76> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-75> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-74> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-73> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-72> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-71> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-70> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-69> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-68> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-67> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-66> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-65> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-64> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-63> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-62> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-61> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-60> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-59> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-58> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-57> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-56> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-55> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-54> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-53> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-52> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-51> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-50> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-49> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-48> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-47> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-46> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-45> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-44> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-43> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-42> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-41> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-40> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-39> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-38> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-37> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-36> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-35> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-34> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-33> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-32> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-31> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-30> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-29> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-28> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-27> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-26> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-25> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-24> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-23> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-22> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-21> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-20> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-19> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-18> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-17> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-16> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-15> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-14> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-13> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-12> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-11> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-10> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-9> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-8> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-7> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-6> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-5> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-4> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-3> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-2> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-1> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-0> · لا بيانات"></span></div>
+          <div class="uptime-legend"><span class="hide-sm">قبل 90 يومًا</span><span class="show-sm">قبل 45 يومًا</span><span><bdi>لا بيانات</bdi></span><span>اليوم</span></div>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap">
+        <span class="list-main">
+          <span class="list-title list-title-wrap">API</span>
+        </span>
+        <span class="list-trail">
+          <span class="pill status-unknown"><span class="dot"></span>لا بيانات</span>
+        </span>
+        <div class="list-full uptime">
+          <div class="uptime-days" role="img" aria-label="وقت التشغيل خلال 90 يومًا: لا بيانات"><span class="uptime-day status-none" data-tip="<DAY-89> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-88> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-87> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-86> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-85> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-84> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-83> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-82> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-81> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-80> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-79> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-78> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-77> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-76> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-75> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-74> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-73> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-72> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-71> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-70> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-69> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-68> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-67> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-66> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-65> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-64> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-63> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-62> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-61> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-60> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-59> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-58> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-57> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-56> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-55> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-54> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-53> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-52> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-51> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-50> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-49> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-48> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-47> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-46> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-45> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-44> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-43> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-42> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-41> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-40> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-39> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-38> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-37> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-36> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-35> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-34> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-33> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-32> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-31> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-30> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-29> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-28> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-27> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-26> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-25> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-24> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-23> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-22> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-21> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-20> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-19> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-18> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-17> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-16> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-15> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-14> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-13> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-12> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-11> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-10> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-9> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-8> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-7> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-6> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-5> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-4> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-3> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-2> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-1> · لا بيانات"></span><span class="uptime-day status-none" data-tip="<DAY-0> · لا بيانات"></span></div>
+          <div class="uptime-legend"><span class="hide-sm">قبل 90 يومًا</span><span class="show-sm">قبل 45 يومًا</span><span><bdi>لا بيانات</bdi></span><span>اليوم</span></div>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section class="section" aria-labelledby="sp-past">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title" id="sp-past">الحوادث السابقة</h2>
+        <p class="section-sub">آخر 14 يومًا</p>
+      </div>
+    </div>
+    <div class="card">
+      <p class="muted ta-center">لا حوادث خلال آخر 14 يومًا.</p>
+    </div>
+  </section>
+</div>
+
+  </main>
+  <footer class="public-foot container container-narrow">
+    
+<div class="stack stack-xs">
+  <p><a href="/status/golden/feed.xml" rel="alternate" type="application/atom+xml">خلاصة الحوادث</a></p>
+  <p>مدعوم من <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a></p>
+</div>
+
+  </footer>
+  <div class="toaster" id="toaster" aria-live="polite"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"نُسخ مرجع API. الصقه في مساعد الذكاء الاصطناعي.","ai_downloaded":"تعذّر النسخ، لذا نُزّل المرجع كملف Markdown.","ai_failed":"تعذّر تحميل مرجع API. حاول مرة أخرى.","cancel":"إلغاء","confirm":"تأكيد","confirm_title":"هل أنت متأكد؟","connecting":"جارٍ الاتصال…","copied":"تم النسخ","copied_announce":"تم النسخ إلى الحافظة","copy_failed":"تعذّر النسخ. حدّد النص وانسخه يدويًا.","delete":"حذف","dismiss":"تجاهل","hint_common":"تجنّب الكلمات والتسلسلات الشائعة","hint_min_length":"استخدم {n} أحرف على الأقل","hint_repeated":"أحرف مكررة كثيرًا","live":"مباشر","moved":"تم نقل {item} إلى الموضع {pos} من {total}","network_error":"تعذّر الوصول إلى الخادم. تحقق من اتصالك.","offline":"غير متصل","reconnecting":"جارٍ إعادة الاتصال…","server_error":"حدث خطأ في الخادم. حاول مرة أخرى.","strength_0":"قصيرة جدًا","strength_1":"ضعيفة","strength_2":"مقبولة","strength_3":"جيدة","strength_4":"قوية","strength_prefix":"القوة:"}</script>
+  
+</body>
+</html>

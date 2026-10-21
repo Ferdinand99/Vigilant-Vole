@@ -1,0 +1,729 @@
+---
+source: tests/golden/schema.rs
+expression: dump(&conn)
+---
+-- index idx_api_tokens_user (on api_tokens)
+CREATE INDEX idx_api_tokens_user ON api_tokens (user_id);
+
+-- index idx_heartbeats_agent (on heartbeats)
+CREATE INDEX idx_heartbeats_agent ON heartbeats (agent_id, monitor_id, checked_at);
+
+-- index idx_heartbeats_checked_at (on heartbeats)
+CREATE INDEX idx_heartbeats_checked_at ON heartbeats (checked_at);
+
+-- index idx_heartbeats_monitor_id (on heartbeats)
+CREATE INDEX idx_heartbeats_monitor_id ON heartbeats (monitor_id, checked_at);
+
+-- index idx_incident_updates_incident (on incident_updates)
+CREATE INDEX idx_incident_updates_incident ON incident_updates (incident_id, created_at);
+
+-- index idx_incidents_page (on incidents)
+CREATE INDEX idx_incidents_page ON incidents (status_page_id, created_at);
+
+-- index idx_incidents_page_resolved (on incidents)
+CREATE INDEX idx_incidents_page_resolved ON incidents (status_page_id, resolved_at);
+
+-- index idx_maintenance_monitors_monitor (on maintenance_monitors)
+CREATE INDEX idx_maintenance_monitors_monitor ON maintenance_monitors (monitor_id);
+
+-- index idx_maintenance_status_pages_page (on maintenance_status_pages)
+CREATE INDEX idx_maintenance_status_pages_page ON maintenance_status_pages (status_page_id);
+
+-- index idx_monitor_events_monitor (on monitor_events)
+CREATE INDEX idx_monitor_events_monitor ON monitor_events (monitor_id, started_at);
+
+-- index idx_monitor_notifications_channel (on monitor_notifications)
+CREATE INDEX idx_monitor_notifications_channel ON monitor_notifications (channel_id);
+
+-- index idx_monitor_tags_tag (on monitor_tags)
+CREATE INDEX idx_monitor_tags_tag ON monitor_tags (tag_id);
+
+-- index idx_monitors_external (on monitors)
+CREATE UNIQUE INDEX idx_monitors_external ON monitors (source, external_id) WHERE external_id IS NOT NULL;
+
+-- index idx_monitors_parent (on monitors)
+CREATE INDEX idx_monitors_parent ON monitors (parent_id);
+
+-- index idx_status_page_monitors_monitor (on status_page_monitors)
+CREATE INDEX idx_status_page_monitors_monitor ON status_page_monitors (monitor_id);
+
+-- index idx_status_page_sections_page (on status_page_sections)
+CREATE INDEX idx_status_page_sections_page ON status_page_sections (status_page_id, sort_order);
+
+-- index idx_status_page_subscribers_page (on status_page_subscribers)
+CREATE INDEX idx_status_page_subscribers_page ON status_page_subscribers(page_id);
+
+-- table agents (on agents)
+CREATE TABLE agents (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    location TEXT NOT NULL DEFAULT '',
+    prefix TEXT NOT NULL,                      -- first chars of the token, for display/lookup
+    token_hash TEXT NOT NULL UNIQUE,           -- sha256 hex
+    version TEXT,
+    last_seen_at TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table api_tokens (on api_tokens)
+CREATE TABLE api_tokens (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    prefix TEXT NOT NULL,                       -- first chars of the token, for display
+    token_hash TEXT NOT NULL UNIQUE,            -- sha256 hex
+    scope TEXT NOT NULL DEFAULT 'read' CHECK (scope IN ('read', 'write')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
+    expires_at TEXT
+);
+
+-- table discovery_paused (on discovery_paused)
+CREATE TABLE discovery_paused (
+    monitor_id INTEGER PRIMARY KEY REFERENCES monitors(id) ON DELETE CASCADE,
+    paused_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table heartbeat_daily (on heartbeat_daily)
+CREATE TABLE heartbeat_daily (
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,                          -- 'YYYY-MM-DD' (UTC)
+    up_count INTEGER NOT NULL DEFAULT 0,
+    down_count INTEGER NOT NULL DEFAULT 0,
+    pending_count INTEGER NOT NULL DEFAULT 0,
+    maintenance_count INTEGER NOT NULL DEFAULT 0,
+    avg_response_ms REAL,
+    PRIMARY KEY (monitor_id, day)
+) WITHOUT ROWID;
+
+-- table heartbeats (on heartbeats)
+CREATE TABLE "heartbeats" (
+    id INTEGER PRIMARY KEY,
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,   -- NULL = checked locally
+    status TEXT NOT NULL CHECK (status IN ('up', 'down', 'pending', 'maintenance')),
+    response_time_ms INTEGER,
+    message TEXT,
+    checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table incident_updates (on incident_updates)
+CREATE TABLE incident_updates (
+    id INTEGER PRIMARY KEY,
+    incident_id INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('investigating', 'identified', 'monitoring', 'resolved')),
+    body TEXT NOT NULL DEFAULT '',              -- Markdown subset, like the incident body
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table incidents (on incidents)
+CREATE TABLE incidents (
+    id INTEGER PRIMARY KEY,
+    status_page_id INTEGER NOT NULL REFERENCES status_pages(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'danger', 'success')),
+    pinned INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT
+);
+
+-- table maintenance_monitors (on maintenance_monitors)
+CREATE TABLE maintenance_monitors (
+    maintenance_id INTEGER NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    PRIMARY KEY (maintenance_id, monitor_id)
+) WITHOUT ROWID;
+
+-- table maintenance_status_pages (on maintenance_status_pages)
+CREATE TABLE maintenance_status_pages (
+    maintenance_id INTEGER NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,
+    status_page_id INTEGER NOT NULL REFERENCES status_pages(id) ON DELETE CASCADE,
+    PRIMARY KEY (maintenance_id, status_page_id)
+) WITHOUT ROWID;
+
+-- table maintenance_windows (on maintenance_windows)
+CREATE TABLE "maintenance_windows" (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    strategy TEXT NOT NULL DEFAULT 'manual'
+        CHECK (strategy IN ('manual', 'once', 'daily', 'weekly', 'interval', 'monthly', 'cron')),
+    active INTEGER NOT NULL DEFAULT 1,
+    start_at TEXT,                              -- 'once': window start (UTC); recurring: first valid day
+    end_at TEXT,
+    weekdays TEXT,                              -- 'weekly': e.g. '1,3,5' (ISO, Mon = 1)
+    time_from TEXT,                             -- 'HH:MM' in `timezone`
+    time_to TEXT,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    skip_until TEXT,
+    interval_days INTEGER,                      -- 'interval': every N days, counted from start_at
+    month_days TEXT,                            -- 'monthly': e.g. '1,15,-1' (negative = from the end)
+    cron TEXT,                                  -- 'cron': five fields, evaluated in `timezone`
+    duration_minutes INTEGER                    -- 'cron': length of each occurrence
+);
+
+-- table monitor_events (on monitor_events)
+CREATE TABLE monitor_events (
+    id INTEGER PRIMARY KEY,
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('down', 'up', 'maintenance', 'paused', 'resumed',
+                                       'cert_expiring', 'domain_expiring', 'flapping')),
+    message TEXT,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    ended_at TEXT,
+    duration_seconds INTEGER
+);
+
+-- table monitor_expiry (on monitor_expiry)
+CREATE TABLE monitor_expiry (
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('cert', 'domain')),
+    subject TEXT,
+    issuer TEXT,
+    expires_at TEXT NOT NULL,
+    checked_at TEXT NOT NULL DEFAULT (datetime('now')),
+    notified_at TEXT,
+    PRIMARY KEY (monitor_id, kind)
+) WITHOUT ROWID;
+
+-- table monitor_notifications (on monitor_notifications)
+CREATE TABLE monitor_notifications (
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    channel_id INTEGER NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE,
+    escalation INTEGER NOT NULL DEFAULT 0,      -- 1 = only notified after escalation_minutes
+    PRIMARY KEY (monitor_id, channel_id)
+) WITHOUT ROWID;
+
+-- table monitor_screenshots (on monitor_screenshots)
+CREATE TABLE monitor_screenshots (
+    monitor_id INTEGER PRIMARY KEY REFERENCES monitors(id) ON DELETE CASCADE,
+    image BLOB NOT NULL,
+    mime TEXT NOT NULL DEFAULT 'image/jpeg',
+    message TEXT,
+    taken_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table monitor_tags (on monitor_tags)
+CREATE TABLE monitor_tags (
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    value TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (monitor_id, tag_id)
+) WITHOUT ROWID;
+
+-- table monitors (on monitors)
+CREATE TABLE "monitors" (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    monitor_type TEXT NOT NULL CHECK (monitor_type IN (
+        'http', 'keyword', 'json_query', 'tcp', 'ping', 'dns', 'push', 'docker',
+        'websocket', 'domain_expiry', 'ntp', 'steam', 'tls', 'smtp', 'redis',
+        'postgres', 'mysql', 'mqtt', 'kafka', 'rabbitmq', 'grpc', 'radius', 'snmp', 'sqlserver',
+        'mongodb', 'tailscale_ping', 'game_server', 'grpc_keyword',
+        'real_browser', 'group')),
+    target TEXT NOT NULL DEFAULT '',
+    parent_id INTEGER REFERENCES monitors(id) ON DELETE SET NULL,  -- must be a 'group' (app-validated)
+    interval_seconds INTEGER NOT NULL DEFAULT 60,
+    retry_interval_seconds INTEGER,            -- NULL = same as interval_seconds
+    timeout_seconds INTEGER NOT NULL DEFAULT 10,
+    retries INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    upside_down INTEGER NOT NULL DEFAULT 0,
+    http_method TEXT NOT NULL DEFAULT 'GET',
+    http_headers TEXT,                         -- JSON object
+    http_body TEXT,
+    http_body_encoding TEXT NOT NULL DEFAULT 'json' CHECK (http_body_encoding IN ('json', 'form', 'raw')),
+    accepted_status_codes TEXT NOT NULL DEFAULT '200-399',
+    max_redirects INTEGER NOT NULL DEFAULT 10,
+    ignore_tls INTEGER NOT NULL DEFAULT 0,
+    basic_auth_user TEXT,
+    basic_auth_pass TEXT,
+    secret TEXT,                               -- RADIUS shared secret, SNMP community
+    proxy_url TEXT,
+    keyword TEXT,
+    keyword_invert INTEGER NOT NULL DEFAULT 0,
+    json_path TEXT,
+    json_operator TEXT NOT NULL DEFAULT '==' CHECK (json_operator IN ('==', '!=', 'contains', '<', '<=', '>', '>=')),
+    json_expected TEXT,
+    dns_record_type TEXT NOT NULL DEFAULT 'A',
+    dns_resolver TEXT,
+    dns_expected TEXT,
+    docker_host TEXT,
+    push_token TEXT UNIQUE,
+    expiry_notify INTEGER NOT NULL DEFAULT 1,
+    expiry_days INTEGER NOT NULL DEFAULT 14,
+    resend_interval INTEGER NOT NULL DEFAULT 0,      -- re-notify every N down checks; 0 = off
+    escalation_minutes INTEGER NOT NULL DEFAULT 0,   -- 0 = off
+    flap_detection INTEGER NOT NULL DEFAULT 1,
+    run_on_agents INTEGER NOT NULL DEFAULT 0,
+    confirm_with_agents INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'docker', 'config')),
+    external_id TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    auth_method TEXT NOT NULL DEFAULT 'none',
+    oauth_token_url TEXT,
+    oauth_client_id TEXT,
+    oauth_client_secret TEXT,
+    oauth_scope TEXT,
+    oauth_audience TEXT,
+    oauth_client_auth TEXT NOT NULL DEFAULT 'client_secret_basic',
+    tls_client_cert TEXT,
+    tls_client_key TEXT,
+    tls_ca_cert TEXT,
+    grpc_proto TEXT                            -- for the upcoming gRPC keyword type (unused yet)
+, remote_browser_id INTEGER REFERENCES remote_browsers(id) ON DELETE SET NULL, browser_selector TEXT, browser_wait TEXT NOT NULL DEFAULT 'load', browser_viewport TEXT NOT NULL DEFAULT 'desktop', browser_js_errors INTEGER NOT NULL DEFAULT 0);
+
+-- table notification_channels (on notification_channels)
+CREATE TABLE "notification_channels" (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',          -- JSON object
+    active INTEGER NOT NULL DEFAULT 1,
+    is_default INTEGER NOT NULL DEFAULT 0,      -- auto-attach to new monitors
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table remote_browsers (on remote_browsers)
+CREATE TABLE remote_browsers (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    url TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table schema_migrations (on schema_migrations)
+CREATE TABLE schema_migrations (
+             name TEXT PRIMARY KEY,
+             applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+         );
+
+-- table settings (on settings)
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+) WITHOUT ROWID;
+
+-- table status_page_assets (on status_page_assets)
+CREATE TABLE status_page_assets (
+    page_id INTEGER NOT NULL REFERENCES status_pages(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('logo', 'favicon')),
+    mime TEXT NOT NULL,
+    bytes BLOB NOT NULL,
+    sha256 TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (page_id, kind)
+);
+
+-- table status_page_monitors (on status_page_monitors)
+CREATE TABLE status_page_monitors (
+    section_id INTEGER NOT NULL REFERENCES status_page_sections(id) ON DELETE CASCADE,
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (section_id, monitor_id)
+) WITHOUT ROWID;
+
+-- table status_page_referrers (on status_page_referrers)
+CREATE TABLE status_page_referrers (
+    page_id INTEGER NOT NULL REFERENCES status_pages(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    views INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (page_id, day, domain)
+) WITHOUT ROWID;
+
+-- table status_page_sections (on status_page_sections)
+CREATE TABLE status_page_sections (
+    id INTEGER PRIMARY KEY,
+    status_page_id INTEGER NOT NULL REFERENCES status_pages(id) ON DELETE CASCADE,
+    name TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+-- table status_page_subscribers (on status_page_subscribers)
+CREATE TABLE "status_page_subscribers" (
+    id INTEGER PRIMARY KEY,
+    page_id INTEGER NOT NULL REFERENCES status_pages(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('email', 'webhook')),
+    target TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    nonce TEXT NOT NULL DEFAULT '',
+    lang TEXT NOT NULL DEFAULT 'en',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    confirmed_at TEXT,
+    failures INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (page_id, kind, target)
+);
+
+-- table status_page_views (on status_page_views)
+CREATE TABLE status_page_views (
+    page_id INTEGER NOT NULL REFERENCES status_pages(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    views INTEGER NOT NULL DEFAULT 0,
+    visitors INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (page_id, day)
+) WITHOUT ROWID;
+
+-- table status_pages (on status_pages)
+CREATE TABLE status_pages (
+    id INTEGER PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    custom_domain TEXT UNIQUE,
+    published INTEGER NOT NULL DEFAULT 1,
+    theme TEXT NOT NULL DEFAULT 'auto' CHECK (theme IN ('auto', 'light', 'dark')),
+    show_tags INTEGER NOT NULL DEFAULT 0,
+    show_uptime INTEGER NOT NULL DEFAULT 1,
+    show_response INTEGER NOT NULL DEFAULT 1,
+    footer_text TEXT,
+    custom_css TEXT,
+    refresh_seconds INTEGER NOT NULL DEFAULT 60,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+, show_powered_by INTEGER NOT NULL DEFAULT 1, password_hash TEXT, password_version INTEGER NOT NULL DEFAULT 0, analytics_enabled INTEGER NOT NULL DEFAULT 1, analytics_unique INTEGER NOT NULL DEFAULT 1, analytics_provider TEXT NOT NULL DEFAULT 'none', analytics_site_id TEXT NOT NULL DEFAULT '', analytics_url TEXT NOT NULL DEFAULT '', subscribe_enabled INTEGER NOT NULL DEFAULT 0, subscribe_channel_id INTEGER REFERENCES notification_channels(id) ON DELETE SET NULL, subscribe_webhooks INTEGER NOT NULL DEFAULT 0);
+
+-- table tags (on tags)
+CREATE TABLE tags (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    color TEXT NOT NULL DEFAULT ''
+);
+
+-- table users (on users)
+CREATE TABLE "users" (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'editor', 'viewer')),
+    display_name TEXT NOT NULL DEFAULT '',
+    totp_secret TEXT,
+    totp_enabled INTEGER NOT NULL DEFAULT 0,
+    recovery_codes TEXT,                       -- JSON array of argon2 hashes
+    active INTEGER NOT NULL DEFAULT 1,
+    last_login_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+, session_version INTEGER NOT NULL DEFAULT 1, totp_last_step INTEGER, language TEXT);
+
+-- columns: cid name type notnull default pk
+agents
+  0 id INTEGER 0 - 1
+  1 name TEXT 1 - 0
+  2 location TEXT 1 '' 0
+  3 prefix TEXT 1 - 0
+  4 token_hash TEXT 1 - 0
+  5 version TEXT 0 - 0
+  6 last_seen_at TEXT 0 - 0
+  7 active INTEGER 1 1 0
+  8 created_at TEXT 1 datetime('now') 0
+  index sqlite_autoindex_agents_1 unique=1 origin=u partial=0
+api_tokens
+  0 id INTEGER 0 - 1
+  1 user_id INTEGER 1 - 0
+  2 name TEXT 1 - 0
+  3 prefix TEXT 1 - 0
+  4 token_hash TEXT 1 - 0
+  5 scope TEXT 1 'read' 0
+  6 created_at TEXT 1 datetime('now') 0
+  7 last_used_at TEXT 0 - 0
+  8 expires_at TEXT 0 - 0
+  index idx_api_tokens_user unique=0 origin=c partial=0
+  index sqlite_autoindex_api_tokens_1 unique=1 origin=u partial=0
+discovery_paused
+  0 monitor_id INTEGER 0 - 1
+  1 paused_at TEXT 1 datetime('now') 0
+heartbeat_daily
+  0 monitor_id INTEGER 1 - 1
+  1 day TEXT 1 - 2
+  2 up_count INTEGER 1 0 0
+  3 down_count INTEGER 1 0 0
+  4 pending_count INTEGER 1 0 0
+  5 maintenance_count INTEGER 1 0 0
+  6 avg_response_ms REAL 0 - 0
+  index sqlite_autoindex_heartbeat_daily_1 unique=1 origin=pk partial=0
+heartbeats
+  0 id INTEGER 0 - 1
+  1 monitor_id INTEGER 1 - 0
+  2 agent_id INTEGER 0 - 0
+  3 status TEXT 1 - 0
+  4 response_time_ms INTEGER 0 - 0
+  5 message TEXT 0 - 0
+  6 checked_at TEXT 1 datetime('now') 0
+  index idx_heartbeats_agent unique=0 origin=c partial=0
+  index idx_heartbeats_checked_at unique=0 origin=c partial=0
+  index idx_heartbeats_monitor_id unique=0 origin=c partial=0
+incident_updates
+  0 id INTEGER 0 - 1
+  1 incident_id INTEGER 1 - 0
+  2 status TEXT 1 - 0
+  3 body TEXT 1 '' 0
+  4 created_at TEXT 1 datetime('now') 0
+  index idx_incident_updates_incident unique=0 origin=c partial=0
+incidents
+  0 id INTEGER 0 - 1
+  1 status_page_id INTEGER 1 - 0
+  2 title TEXT 1 - 0
+  3 body TEXT 1 '' 0
+  4 severity TEXT 1 'info' 0
+  5 pinned INTEGER 1 1 0
+  6 created_at TEXT 1 datetime('now') 0
+  7 updated_at TEXT 1 datetime('now') 0
+  8 resolved_at TEXT 0 - 0
+  index idx_incidents_page unique=0 origin=c partial=0
+  index idx_incidents_page_resolved unique=0 origin=c partial=0
+maintenance_monitors
+  0 maintenance_id INTEGER 1 - 1
+  1 monitor_id INTEGER 1 - 2
+  index idx_maintenance_monitors_monitor unique=0 origin=c partial=0
+  index sqlite_autoindex_maintenance_monitors_1 unique=1 origin=pk partial=0
+maintenance_status_pages
+  0 maintenance_id INTEGER 1 - 1
+  1 status_page_id INTEGER 1 - 2
+  index idx_maintenance_status_pages_page unique=0 origin=c partial=0
+  index sqlite_autoindex_maintenance_status_pages_1 unique=1 origin=pk partial=0
+maintenance_windows
+  0 id INTEGER 0 - 1
+  1 title TEXT 1 - 0
+  2 description TEXT 1 '' 0
+  3 strategy TEXT 1 'manual' 0
+  4 active INTEGER 1 1 0
+  5 start_at TEXT 0 - 0
+  6 end_at TEXT 0 - 0
+  7 weekdays TEXT 0 - 0
+  8 time_from TEXT 0 - 0
+  9 time_to TEXT 0 - 0
+  10 timezone TEXT 1 'UTC' 0
+  11 created_at TEXT 1 datetime('now') 0
+  12 skip_until TEXT 0 - 0
+  13 interval_days INTEGER 0 - 0
+  14 month_days TEXT 0 - 0
+  15 cron TEXT 0 - 0
+  16 duration_minutes INTEGER 0 - 0
+monitor_events
+  0 id INTEGER 0 - 1
+  1 monitor_id INTEGER 1 - 0
+  2 kind TEXT 1 - 0
+  3 message TEXT 0 - 0
+  4 started_at TEXT 1 datetime('now') 0
+  5 ended_at TEXT 0 - 0
+  6 duration_seconds INTEGER 0 - 0
+  index idx_monitor_events_monitor unique=0 origin=c partial=0
+monitor_expiry
+  0 monitor_id INTEGER 1 - 1
+  1 kind TEXT 1 - 2
+  2 subject TEXT 0 - 0
+  3 issuer TEXT 0 - 0
+  4 expires_at TEXT 1 - 0
+  5 checked_at TEXT 1 datetime('now') 0
+  6 notified_at TEXT 0 - 0
+  index sqlite_autoindex_monitor_expiry_1 unique=1 origin=pk partial=0
+monitor_notifications
+  0 monitor_id INTEGER 1 - 1
+  1 channel_id INTEGER 1 - 2
+  2 escalation INTEGER 1 0 0
+  index idx_monitor_notifications_channel unique=0 origin=c partial=0
+  index sqlite_autoindex_monitor_notifications_1 unique=1 origin=pk partial=0
+monitor_screenshots
+  0 monitor_id INTEGER 0 - 1
+  1 image BLOB 1 - 0
+  2 mime TEXT 1 'image/jpeg' 0
+  3 message TEXT 0 - 0
+  4 taken_at TEXT 1 datetime('now') 0
+monitor_tags
+  0 monitor_id INTEGER 1 - 1
+  1 tag_id INTEGER 1 - 2
+  2 value TEXT 1 '' 0
+  index idx_monitor_tags_tag unique=0 origin=c partial=0
+  index sqlite_autoindex_monitor_tags_1 unique=1 origin=pk partial=0
+monitors
+  0 id INTEGER 0 - 1
+  1 name TEXT 1 - 0
+  2 description TEXT 1 '' 0
+  3 monitor_type TEXT 1 - 0
+  4 target TEXT 1 '' 0
+  5 parent_id INTEGER 0 - 0
+  6 interval_seconds INTEGER 1 60 0
+  7 retry_interval_seconds INTEGER 0 - 0
+  8 timeout_seconds INTEGER 1 10 0
+  9 retries INTEGER 1 0 0
+  10 active INTEGER 1 1 0
+  11 upside_down INTEGER 1 0 0
+  12 http_method TEXT 1 'GET' 0
+  13 http_headers TEXT 0 - 0
+  14 http_body TEXT 0 - 0
+  15 http_body_encoding TEXT 1 'json' 0
+  16 accepted_status_codes TEXT 1 '200-399' 0
+  17 max_redirects INTEGER 1 10 0
+  18 ignore_tls INTEGER 1 0 0
+  19 basic_auth_user TEXT 0 - 0
+  20 basic_auth_pass TEXT 0 - 0
+  21 secret TEXT 0 - 0
+  22 proxy_url TEXT 0 - 0
+  23 keyword TEXT 0 - 0
+  24 keyword_invert INTEGER 1 0 0
+  25 json_path TEXT 0 - 0
+  26 json_operator TEXT 1 '==' 0
+  27 json_expected TEXT 0 - 0
+  28 dns_record_type TEXT 1 'A' 0
+  29 dns_resolver TEXT 0 - 0
+  30 dns_expected TEXT 0 - 0
+  31 docker_host TEXT 0 - 0
+  32 push_token TEXT 0 - 0
+  33 expiry_notify INTEGER 1 1 0
+  34 expiry_days INTEGER 1 14 0
+  35 resend_interval INTEGER 1 0 0
+  36 escalation_minutes INTEGER 1 0 0
+  37 flap_detection INTEGER 1 1 0
+  38 run_on_agents INTEGER 1 0 0
+  39 confirm_with_agents INTEGER 1 0 0
+  40 source TEXT 1 'manual' 0
+  41 external_id TEXT 0 - 0
+  42 sort_order INTEGER 1 0 0
+  43 created_at TEXT 1 datetime('now') 0
+  44 updated_at TEXT 1 datetime('now') 0
+  45 auth_method TEXT 1 'none' 0
+  46 oauth_token_url TEXT 0 - 0
+  47 oauth_client_id TEXT 0 - 0
+  48 oauth_client_secret TEXT 0 - 0
+  49 oauth_scope TEXT 0 - 0
+  50 oauth_audience TEXT 0 - 0
+  51 oauth_client_auth TEXT 1 'client_secret_basic' 0
+  52 tls_client_cert TEXT 0 - 0
+  53 tls_client_key TEXT 0 - 0
+  54 tls_ca_cert TEXT 0 - 0
+  55 grpc_proto TEXT 0 - 0
+  56 remote_browser_id INTEGER 0 - 0
+  57 browser_selector TEXT 0 - 0
+  58 browser_wait TEXT 1 'load' 0
+  59 browser_viewport TEXT 1 'desktop' 0
+  60 browser_js_errors INTEGER 1 0 0
+  index idx_monitors_external unique=1 origin=c partial=1
+  index idx_monitors_parent unique=0 origin=c partial=0
+  index sqlite_autoindex_monitors_1 unique=1 origin=u partial=0
+notification_channels
+  0 id INTEGER 0 - 1
+  1 name TEXT 1 - 0
+  2 kind TEXT 1 - 0
+  3 config TEXT 1 '{}' 0
+  4 active INTEGER 1 1 0
+  5 is_default INTEGER 1 0 0
+  6 created_at TEXT 1 datetime('now') 0
+remote_browsers
+  0 id INTEGER 0 - 1
+  1 name TEXT 1 - 0
+  2 url TEXT 1 - 0
+  3 created_at TEXT 1 datetime('now') 0
+  4 updated_at TEXT 1 datetime('now') 0
+  index sqlite_autoindex_remote_browsers_1 unique=1 origin=u partial=0
+schema_migrations
+  0 name TEXT 0 - 1
+  1 applied_at TEXT 1 datetime('now') 0
+  index sqlite_autoindex_schema_migrations_1 unique=1 origin=pk partial=0
+settings
+  0 key TEXT 1 - 1
+  1 value TEXT 1 - 0
+  index sqlite_autoindex_settings_1 unique=1 origin=pk partial=0
+status_page_assets
+  0 page_id INTEGER 1 - 1
+  1 kind TEXT 1 - 2
+  2 mime TEXT 1 - 0
+  3 bytes BLOB 1 - 0
+  4 sha256 TEXT 1 - 0
+  5 updated_at TEXT 1 datetime('now') 0
+  index sqlite_autoindex_status_page_assets_1 unique=1 origin=pk partial=0
+status_page_monitors
+  0 section_id INTEGER 1 - 1
+  1 monitor_id INTEGER 1 - 2
+  2 sort_order INTEGER 1 0 0
+  index idx_status_page_monitors_monitor unique=0 origin=c partial=0
+  index sqlite_autoindex_status_page_monitors_1 unique=1 origin=pk partial=0
+status_page_referrers
+  0 page_id INTEGER 1 - 1
+  1 day TEXT 1 - 2
+  2 domain TEXT 1 - 3
+  3 views INTEGER 1 0 0
+  index sqlite_autoindex_status_page_referrers_1 unique=1 origin=pk partial=0
+status_page_sections
+  0 id INTEGER 0 - 1
+  1 status_page_id INTEGER 1 - 0
+  2 name TEXT 1 '' 0
+  3 sort_order INTEGER 1 0 0
+  index idx_status_page_sections_page unique=0 origin=c partial=0
+status_page_subscribers
+  0 id INTEGER 0 - 1
+  1 page_id INTEGER 1 - 0
+  2 kind TEXT 1 - 0
+  3 target TEXT 1 - 0
+  4 token_hash TEXT 1 - 0
+  5 nonce TEXT 1 '' 0
+  6 lang TEXT 1 'en' 0
+  7 created_at TEXT 1 datetime('now') 0
+  8 confirmed_at TEXT 0 - 0
+  9 failures INTEGER 1 0 0
+  index idx_status_page_subscribers_page unique=0 origin=c partial=0
+  index sqlite_autoindex_status_page_subscribers_1 unique=1 origin=u partial=0
+  index sqlite_autoindex_status_page_subscribers_2 unique=1 origin=u partial=0
+status_page_views
+  0 page_id INTEGER 1 - 1
+  1 day TEXT 1 - 2
+  2 views INTEGER 1 0 0
+  3 visitors INTEGER 1 0 0
+  index sqlite_autoindex_status_page_views_1 unique=1 origin=pk partial=0
+status_pages
+  0 id INTEGER 0 - 1
+  1 slug TEXT 1 - 0
+  2 title TEXT 1 - 0
+  3 description TEXT 1 '' 0
+  4 custom_domain TEXT 0 - 0
+  5 published INTEGER 1 1 0
+  6 theme TEXT 1 'auto' 0
+  7 show_tags INTEGER 1 0 0
+  8 show_uptime INTEGER 1 1 0
+  9 show_response INTEGER 1 1 0
+  10 footer_text TEXT 0 - 0
+  11 custom_css TEXT 0 - 0
+  12 refresh_seconds INTEGER 1 60 0
+  13 created_at TEXT 1 datetime('now') 0
+  14 updated_at TEXT 1 datetime('now') 0
+  15 show_powered_by INTEGER 1 1 0
+  16 password_hash TEXT 0 - 0
+  17 password_version INTEGER 1 0 0
+  18 analytics_enabled INTEGER 1 1 0
+  19 analytics_unique INTEGER 1 1 0
+  20 analytics_provider TEXT 1 'none' 0
+  21 analytics_site_id TEXT 1 '' 0
+  22 analytics_url TEXT 1 '' 0
+  23 subscribe_enabled INTEGER 1 0 0
+  24 subscribe_channel_id INTEGER 0 - 0
+  25 subscribe_webhooks INTEGER 1 0 0
+  index sqlite_autoindex_status_pages_1 unique=1 origin=u partial=0
+  index sqlite_autoindex_status_pages_2 unique=1 origin=u partial=0
+tags
+  0 id INTEGER 0 - 1
+  1 name TEXT 1 - 0
+  2 color TEXT 1 '' 0
+  index sqlite_autoindex_tags_1 unique=1 origin=u partial=0
+users
+  0 id INTEGER 0 - 1
+  1 username TEXT 1 - 0
+  2 password_hash TEXT 1 - 0
+  3 role TEXT 1 'viewer' 0
+  4 display_name TEXT 1 '' 0
+  5 totp_secret TEXT 0 - 0
+  6 totp_enabled INTEGER 1 0 0
+  7 recovery_codes TEXT 0 - 0
+  8 active INTEGER 1 1 0
+  9 last_login_at TEXT 0 - 0
+  10 created_at TEXT 1 datetime('now') 0
+  11 session_version INTEGER 1 1 0
+  12 totp_last_step INTEGER 0 - 0
+  13 language TEXT 0 - 0
+  index sqlite_autoindex_users_1 unique=1 origin=u partial=0

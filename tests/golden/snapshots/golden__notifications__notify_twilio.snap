@@ -1,0 +1,57 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: twilio (SMS (Twilio))
+
+## minimal config
+{
+  "account_sid": "AC",
+  "auth_token": "secret-auth_token",
+  "from": "+15005550006",
+  "to": "+4712345678"
+}
+
+### down
+POST https://api.twilio.com/2010-04-01/Accounts/AC/Messages.json
+Authorization: Basic QUM6c2VjcmV0LWF1dGhfdG9rZW4=
+(form)
+To=+4712345678
+From=+15005550006
+Body=🔴 Payments API is down — HTTP 503 (after 3 retries)
+https://vv.example/monitors/7
+
+### up
+POST https://api.twilio.com/2010-04-01/Accounts/AC/Messages.json
+Authorization: Basic QUM6c2VjcmV0LWF1dGhfdG9rZW4=
+(form)
+To=+4712345678
+From=+15005550006
+Body=🟢 Payments API is back up — down for 12m 4s
+https://vv.example/monitors/7
+
+## full config
+{
+  "account_sid": "AC",
+  "auth_token": "secret-auth_token",
+  "from": "+15005550006",
+  "to": "+4712345678"
+}
+
+### down
+POST https://api.twilio.com/2010-04-01/Accounts/AC/Messages.json
+Authorization: Basic QUM6c2VjcmV0LWF1dGhfdG9rZW4=
+(form)
+To=+4712345678
+From=+15005550006
+Body=🔴 Payments API is down — HTTP 503 (after 3 retries)
+https://vv.example/monitors/7
+
+### up
+POST https://api.twilio.com/2010-04-01/Accounts/AC/Messages.json
+Authorization: Basic QUM6c2VjcmV0LWF1dGhfdG9rZW4=
+(form)
+To=+4712345678
+From=+15005550006
+Body=🟢 Payments API is back up — down for 12m 4s
+https://vv.example/monitors/7

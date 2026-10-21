@@ -1,0 +1,69 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: goalert (GoAlert)
+
+## minimal config
+{
+  "server": "https://goalert.example.com",
+  "token": "secret-token"
+}
+
+### down
+POST https://goalert.example.com/api/v2/generic/incoming
+(form)
+token=secret-token
+summary=Payments API is down
+details=HTTP 503 (after 3 retries)
+Target: https://pay.example/health
+Type: HTTP(S)
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+dedup=vv-monitor-7
+
+### up
+POST https://goalert.example.com/api/v2/generic/incoming
+(form)
+token=secret-token
+summary=Payments API is back up
+details=down for 12m 4s
+Target: https://pay.example/health
+Type: HTTP(S)
+Downtime: 12m 4s
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+dedup=vv-monitor-7
+action=close
+
+## full config
+{
+  "server": "https://goalert.example.com",
+  "token": "secret-token"
+}
+
+### down
+POST https://goalert.example.com/api/v2/generic/incoming
+(form)
+token=secret-token
+summary=Payments API is down
+details=HTTP 503 (after 3 retries)
+Target: https://pay.example/health
+Type: HTTP(S)
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+dedup=vv-monitor-7
+
+### up
+POST https://goalert.example.com/api/v2/generic/incoming
+(form)
+token=secret-token
+summary=Payments API is back up
+details=down for 12m 4s
+Target: https://pay.example/health
+Type: HTTP(S)
+Downtime: 12m 4s
+Time: 2026-10-19 14:03:12 UTC
+https://vv.example/monitors/7
+dedup=vv-monitor-7
+action=close

@@ -1,0 +1,71 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: webhook (Webhook)
+
+## minimal config
+{
+  "content_type": "json",
+  "method": "POST",
+  "url": "https://example.com/hooks/vigilant"
+}
+
+### down
+POST https://example.com/hooks/vigilant
+(json)
+{
+  "downtime_seconds": null,
+  "event": "down",
+  "expires_in_days": null,
+  "message": "HTTP 503 (after 3 retries)",
+  "monitor": "Payments API",
+  "monitor_id": 7,
+  "monitor_type": "http",
+  "occurred_at": "2026-10-19T14:03:12Z",
+  "status": "down",
+  "summary": "🔴 Payments API is down — HTTP 503 (after 3 retries)",
+  "target": "https://pay.example/health",
+  "url": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://example.com/hooks/vigilant
+(json)
+{
+  "downtime_seconds": 724,
+  "event": "up",
+  "expires_in_days": null,
+  "message": "200 OK",
+  "monitor": "Payments API",
+  "monitor_id": 7,
+  "monitor_type": "http",
+  "occurred_at": "2026-10-19T14:03:12Z",
+  "status": "up",
+  "summary": "🟢 Payments API is back up — down for 12m 4s",
+  "target": "https://pay.example/health",
+  "url": "https://vv.example/monitors/7"
+}
+
+## full config
+{
+  "body_template": "{\"text\": \"{{summary}}\"}",
+  "content_type": "json",
+  "headers": {
+    "X-Golden": "yes"
+  },
+  "method": "POST",
+  "url": "https://example.com/hooks/vigilant"
+}
+
+### down
+POST https://example.com/hooks/vigilant
+X-Golden: yes
+(raw application/json)
+{"text": "🔴 Payments API is down — HTTP 503 (after 3 retries)"}
+
+### up
+POST https://example.com/hooks/vigilant
+X-Golden: yes
+(raw application/json)
+{"text": "🟢 Payments API is back up — down for 12m 4s"}

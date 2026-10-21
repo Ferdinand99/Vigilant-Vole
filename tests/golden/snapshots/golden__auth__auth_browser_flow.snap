@@ -1,0 +1,40 @@
+---
+source: tests/golden/auth.rs
+expression: out
+---
+== POST /logout
+status: 303
+location: /login
+set-cookie: vv_session=; Path=/; Max-Age=0; Expires=<date>
+cookies held: []
+== GET / signed out
+status: 303
+location: /login
+== GET /login
+status: 200
+content-type: text/html; charset=utf-8
+== POST /login wrong password
+status: 401
+content-type: text/html; charset=utf-8
+== POST /login admin
+status: 303
+location: /settings/tokens
+set-cookie: vv_session=<signed>; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000
+cookies held: ["vv_session"]
+== GET /settings/tokens signed in
+status: 200
+content-type: text/html; charset=utf-8
+== POST /login eve (2FA)
+status: 303
+location: /login/2fa
+set-cookie: vv_2fa=<signed>; HttpOnly; SameSite=Lax; Path=/; Max-Age=300
+cookies held: ["vv_2fa"]
+== GET /login/2fa
+status: 200
+content-type: text/html; charset=utf-8
+== POST /login/2fa
+status: 303
+location: /
+set-cookie: vv_2fa=; Path=/; Max-Age=0; Expires=<date>
+set-cookie: vv_session=<signed>; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000
+cookies held: ["vv_session"]

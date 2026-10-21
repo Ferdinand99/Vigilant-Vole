@@ -1,0 +1,213 @@
+---
+source: tests/golden/security_headers.rs
+expression: out
+---
+== app page (signed in): GET /
+status: 200
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== app page (signed out, login): GET /login
+status: 200
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== app page, gzip accepted: GET /login [accept-encoding: gzip]
+status: 200
+content-encoding: gzip
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== redirect to login: GET /settings
+status: 303
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+location: /login?next=%2Fsettings
+referrer-policy: same-origin
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== htmx request: GET / [hx-request: true]
+status: 200
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== public status page: GET /status/golden
+status: 200
+cache-control: no-cache
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+
+== public status page on its custom domain: GET / [host: status.golden.test]
+status: 200
+cache-control: no-cache
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+
+== public status JSON: GET /api/status-page/golden
+status: 200
+access-control-allow-origin: *
+cache-control: public, max-age=30
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'
+content-type: application/json
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+
+== REST API: GET /api/v1/me [authorization: Bearer <token>]
+status: 200
+cache-control: private, no-cache
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+etag: "<hash>"
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== REST API unauthorised: GET /api/v1/me
+status: 401
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== OpenAPI document: GET /api/v1/openapi.json [authorization: Bearer <token>]
+status: 200
+cache-control: private, no-cache
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+etag: "<hash>"
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== static stylesheet: GET /static/style.css
+status: 200
+cache-control: <no-cache in debug builds, public, max-age=3600 in release>
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/css; charset=utf-8
+etag: "<hash>"
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== static script, gzip accepted: GET /static/app.js [accept-encoding: gzip]
+status: 200
+cache-control: <no-cache in debug builds, public, max-age=3600 in release>
+content-encoding: gzip
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/javascript; charset=utf-8
+etag: "<hash>"
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== static font: GET /static/fonts/InterVariable.woff2
+status: 200
+cache-control: <no-cache in debug builds, public, max-age=3600 in release>
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: font/woff2
+etag: "<hash>"
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== static missing: GET /static/nope.css
+status: 404
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+referrer-policy: same-origin
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== health check: GET /healthz
+status: 200
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/plain; charset=utf-8
+referrer-policy: same-origin
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== not found (HTML): GET /no-such-page [accept: text/html]
+status: 404
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/html; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== not found (JSON): GET /no-such-page [accept: application/json]
+status: 404
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== MCP GET: GET /mcp
+status: 405
+allow: POST
+cache-control: no-store
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: text/plain; charset=utf-8
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+== REST API create: POST /api/v1/tags
+status: 201
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+location: /api/v1/tags/3
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY

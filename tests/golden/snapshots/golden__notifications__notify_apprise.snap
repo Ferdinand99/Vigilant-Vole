@@ -1,0 +1,44 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: apprise (Apprise)
+
+## minimal config
+{
+  "url": "http://apprise:8000"
+}
+
+### down
+error: missing 'urls' in channel config
+
+### up
+error: missing 'urls' in channel config
+
+## full config
+{
+  "config_key": "vigilant",
+  "tag": "devops",
+  "url": "http://apprise:8000",
+  "urls": "tgram://bottoken/ChatID, mailto://user:pass@gmail.com"
+}
+
+### down
+POST http://apprise:8000/notify/vigilant
+(json)
+{
+  "body": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "tag": "devops",
+  "title": "🔴 Payments API is down",
+  "type": "failure"
+}
+
+### up
+POST http://apprise:8000/notify/vigilant
+(json)
+{
+  "body": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "tag": "devops",
+  "title": "🟢 Payments API is back up",
+  "type": "success"
+}

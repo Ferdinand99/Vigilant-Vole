@@ -1,0 +1,17 @@
+---
+source: tests/golden/product.rs
+expression: out
+---
+server user agent: VigilantVole/<VERSION>
+notification product name: Vigilant Vole
+default site name: Vigilant Vole
+agent docker image: vigilant-vole:latest
+MCP protocol versions: ["2025-06-18", "2025-03-26", "2024-11-05"]
+TOTP URL (no site name): otpauth://totp/Vigilant%20Vole:admin?secret=K5YMSTXGCAMWB5SHRO24JENVW2TLI4VP&issuer=Vigilant%20Vole
+TOTP URL (site name): otpauth://totp/Golden%20Vole:admin?secret=K5YMSTXGCAMWB5SHRO24JENVW2TLI4VP&issuer=Golden%20Vole
+database file: vigilant-vole.db
+data directory after startup: ["session.key", "vigilant-vole.db"]
+database download: 200 application/vnd.sqlite3 | attachment; filename="vigilant-vole-backup-<stamp>.db"
+config download: 200 application/yaml; charset=utf-8 | attachment; filename="vigilant-vole-config-<stamp>.yaml"
+metrics challenge: 401 www-authenticate="Basic realm=\"Vigilant Vole metrics\""
+MCP challenge: 401 www-authenticate="Bearer realm=\"Vigilant Vole\"" body={"error":{"code":-32000,"message":"Send your API token as `Authorization: Bearer vv_…`."},"id":null,"jsonrpc":"2.0"}

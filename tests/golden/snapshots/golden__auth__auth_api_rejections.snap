@@ -1,0 +1,64 @@
+---
+source: tests/golden/auth.rs
+expression: out
+---
+== no Authorization
+status: 401
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+{"error":{"code":"unauthorized","message":"Please log in to continue."}}
+
+== malformed token
+status: 401
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+{"error":{"code":"unauthorized","message":"Please log in to continue."}}
+
+== unknown token
+status: 401
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+{"error":{"code":"unauthorized","message":"Please log in to continue."}}
+
+== agent token on the REST API
+status: 401
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+{"error":{"code":"unauthorized","message":"Please log in to continue."}}
+
+== Basic with the admin token as password
+status: 200
+cache-control: private, no-cache
+content-length: <n>
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+content-type: application/json
+etag: "<hash>"
+referrer-policy: same-origin
+vary: accept-encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+{"auth":"token","can_edit":true,"display_name":"admin","id":1,"is_admin":true,"role":"admin","token_scope":"write","username":"admin"}
+
+== GET /settings signed out
+status: 303
+location: /login?next=%2Fsettings

@@ -1,0 +1,63 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: matrix (Matrix)
+
+## minimal config
+{
+  "access_token": "secret-access_token",
+  "homeserver": "https://matrix.org",
+  "room_id": "!abcdef:matrix.org"
+}
+
+### down
+PUT https://matrix.org/_matrix/client/v3/rooms/%21abcdef%3Amatrix.org/send/m.room.message/vv1792418592000000000-<seq>
+Authorization: Bearer secret-access_token
+(json)
+{
+  "body": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "format": "org.matrix.custom.html",
+  "formatted_body": "<strong>🔴 Payments API is down</strong><br>HTTP 503 (after 3 retries)<ul><li>Target: https://pay.example/health</li><li>Type: HTTP(S)</li><li>Time: 2026-10-19 14:03:12 UTC</li></ul><a href=\"https://vv.example/monitors/7\">View monitor</a>",
+  "msgtype": "m.text"
+}
+
+### up
+PUT https://matrix.org/_matrix/client/v3/rooms/%21abcdef%3Amatrix.org/send/m.room.message/vv1792418592000000000-<seq>
+Authorization: Bearer secret-access_token
+(json)
+{
+  "body": "🟢 Payments API is back up — down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "format": "org.matrix.custom.html",
+  "formatted_body": "<strong>🟢 Payments API is back up</strong><br>down for 12m 4s<ul><li>Target: https://pay.example/health</li><li>Type: HTTP(S)</li><li>Downtime: 12m 4s</li><li>Time: 2026-10-19 14:03:12 UTC</li></ul><a href=\"https://vv.example/monitors/7\">View monitor</a>",
+  "msgtype": "m.text"
+}
+
+## full config
+{
+  "access_token": "secret-access_token",
+  "homeserver": "https://matrix.org",
+  "room_id": "!abcdef:matrix.org"
+}
+
+### down
+PUT https://matrix.org/_matrix/client/v3/rooms/%21abcdef%3Amatrix.org/send/m.room.message/vv1792418592000000000-<seq>
+Authorization: Bearer secret-access_token
+(json)
+{
+  "body": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "format": "org.matrix.custom.html",
+  "formatted_body": "<strong>🔴 Payments API is down</strong><br>HTTP 503 (after 3 retries)<ul><li>Target: https://pay.example/health</li><li>Type: HTTP(S)</li><li>Time: 2026-10-19 14:03:12 UTC</li></ul><a href=\"https://vv.example/monitors/7\">View monitor</a>",
+  "msgtype": "m.text"
+}
+
+### up
+PUT https://matrix.org/_matrix/client/v3/rooms/%21abcdef%3Amatrix.org/send/m.room.message/vv1792418592000000000-<seq>
+Authorization: Bearer secret-access_token
+(json)
+{
+  "body": "🟢 Payments API is back up — down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "format": "org.matrix.custom.html",
+  "formatted_body": "<strong>🟢 Payments API is back up</strong><br>down for 12m 4s<ul><li>Target: https://pay.example/health</li><li>Type: HTTP(S)</li><li>Downtime: 12m 4s</li><li>Time: 2026-10-19 14:03:12 UTC</li></ul><a href=\"https://vv.example/monitors/7\">View monitor</a>",
+  "msgtype": "m.text"
+}

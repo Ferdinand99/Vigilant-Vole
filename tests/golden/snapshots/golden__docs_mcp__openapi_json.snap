@@ -1,0 +1,4058 @@
+---
+source: tests/golden/docs_mcp.rs
+expression: "format!(\"content-type: {}\\n\\n{}\", res.header(\"content-type\"), pretty(&doc))"
+---
+content-type: application/json
+
+{
+  "components": {
+    "responses": {
+      "Error": {
+        "content": {
+          "application/json": {
+            "example": {
+              "error": {
+                "code": "validation_failed",
+                "fields": {
+                  "target": "Enter a full URL, including https://, like https://example.com."
+                },
+                "message": "Enter a full URL, including https://, like https://example.com."
+              }
+            }
+          }
+        },
+        "description": "Error"
+      }
+    },
+    "securitySchemes": {
+      "agentToken": {
+        "description": "Remote agent token (vva_…)",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "bearerAuth": {
+        "description": "API token (vv_…)",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "sessionCookie": {
+        "in": "cookie",
+        "name": "vv_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "REST API for Vigilant Vole. Authenticate with `Authorization: Bearer vv_…` (create tokens under Settings → API tokens). Read-only tokens act as viewers. Errors use `{\"error\": {\"code\", \"message\", \"fields\"}}`; lists use `?limit=&cursor=` and return `next_cursor`.",
+    "title": "Vigilant Vole API",
+    "version": "<VERSION>"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/agent/v1/monitors": {
+      "get": {
+        "operationId": "get--api-agent-v1-monitors",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "agentToken": []
+          }
+        ],
+        "summary": "For remote agents: the monitors to run (Bearer vva_… token, ETag).",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "agent token"
+      }
+    },
+    "/api/agent/v1/results": {
+      "post": {
+        "operationId": "post--api-agent-v1-results",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "results": [
+                  {
+                    "checked_at": "2026-10-19 14:03:00",
+                    "message": "200 OK",
+                    "monitor_id": 7,
+                    "response_time_ms": 120,
+                    "status": "up"
+                  }
+                ]
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "agentToken": []
+          }
+        ],
+        "summary": "For remote agents: a batch of up to 500 results.",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "agent token"
+      }
+    },
+    "/api/badge/{id}/{kind}": {
+      "get": {
+        "operationId": "get--api-badge-id-kind",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "24h | 7d | 30d",
+            "in": "query",
+            "name": "duration",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "flat | flat-square",
+            "in": "query",
+            "name": "style",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "custom label",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "SVG badge: kind is status, uptime, ping or cert-exp. Public when the monitor is on a published status page or badges are public.",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "public"
+      }
+    },
+    "/api/push/{token}": {
+      "get": {
+        "operationId": "get--api-push-token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "up (default) | down",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "message to record",
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "response time in ms",
+            "in": "query",
+            "name": "ping",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "Report a push monitor's status (POST works too). Rate limited to 1 per second.",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "push token"
+      }
+    },
+    "/api/status-page/{slug}": {
+      "get": {
+        "operationId": "get--api-status-page-slug",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": "{\"title\": \"Acme status\", \"overall\": {\"indicator\": \"operational\", \"title\": \"All systems operational\"}, \"sections\": [ … ], \"incidents\": [ … ]}"
+              }
+            },
+            "description": "Success"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [],
+        "summary": "A published status page as JSON (CORS enabled), for embedding.",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "public"
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "operationId": "get--api-v1-agents",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Remote probe agents and whether they're online.",
+        "tags": [
+          "System"
+        ],
+        "x-access": "admin"
+      }
+    },
+    "/api/v1/config": {
+      "get": {
+        "operationId": "get--api-v1-config",
+        "parameters": [
+          {
+            "description": "yaml (default) | json",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to include secrets (admins only)",
+            "in": "query",
+            "name": "secrets",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to download as a file",
+            "in": "query",
+            "name": "download",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/yaml": {
+                "example": "version: 1\ntags:\n  - name: production\n    color: green\nnotification_channels:\n  - name: Ops Discord\n    kind: discord\n    config:\n      url: \"••••••\"\nmonitors:\n  - name: Website\n    monitor_type: http\n    target: https://example.com\n    interval_seconds: 30\n    tags: [production]\n    notifications: [Ops Discord]\nstatus_pages:\n  - slug: acme\n    title: Acme status\n    sections:\n      - name: Services\n        monitors: [Website]"
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Export the whole configuration as YAML or JSON. Secrets are masked unless an admin asks for them.",
+        "tags": [
+          "Configuration"
+        ],
+        "x-access": "editor"
+      },
+      "post": {
+        "operationId": "post--api-v1-config",
+        "parameters": [
+          {
+            "description": "merge (default) | replace",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to only return the plan",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "1, required to apply a replace",
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            },
+            "application/yaml": {
+              "example": "version: 1\ntags:\n  - name: production\n    color: green\nnotification_channels:\n  - name: Ops Discord\n    kind: discord\n    config:\n      url: \"••••••\"\nmonitors:\n  - name: Website\n    monitor_type: http\n    target: https://example.com\n    interval_seconds: 30\n    tags: [production]\n    notifications: [Ops Discord]\nstatus_pages:\n  - slug: acme\n    title: Acme status\n    sections:\n      - name: Services\n        monitors: [Website]",
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "applied": false,
+                  "errors": [],
+                  "items": [
+                    {
+                      "action": "update",
+                      "changes": [
+                        "interval_seconds"
+                      ],
+                      "key": "Website",
+                      "kind": "monitor"
+                    },
+                    {
+                      "action": "create",
+                      "key": "staging",
+                      "kind": "tag"
+                    }
+                  ],
+                  "mode": "merge",
+                  "summary": {
+                    "create": 2,
+                    "delete": 0,
+                    "skip": 0,
+                    "unchanged": 14,
+                    "update": 1
+                  },
+                  "warnings": []
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Import a configuration document (YAML or JSON body). Merge upserts by key; replace also deletes what the document doesn't list in the sections it contains. Masked secrets keep stored values.",
+        "tags": [
+          "Configuration"
+        ],
+        "x-access": "admin"
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "get--api-v1-health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "agents": 2,
+                  "monitors": {
+                    "by_status": {
+                      "down": 1,
+                      "up": 13
+                    },
+                    "total": 14
+                  },
+                  "status": "ok",
+                  "status_pages": 1,
+                  "uptime_seconds": 86400,
+                  "version": "0.1.0"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Version, uptime and monitor counts.",
+        "tags": [
+          "System"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/maintenance": {
+      "get": {
+        "operationId": "get--api-v1-maintenance",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List maintenance windows with their current state.",
+        "tags": [
+          "Maintenance"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-maintenance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "monitor_ids": [
+                  7
+                ],
+                "strategy": "weekly",
+                "time_from": "22:00",
+                "time_to": "23:30",
+                "timezone": "Europe/Oslo",
+                "title": "Database upgrade",
+                "weekdays": "2,4"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a window. Times: start_at/end_at in UTC, time_from/time_to local to timezone, weekdays ISO (1 = Monday). Strategies: manual, once, daily, weekly, interval (interval_days, counted from start_at), monthly (month_days like 1,15,-1) and cron (cron + duration_minutes).",
+        "tags": [
+          "Maintenance"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/maintenance/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-maintenance-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a window.",
+        "tags": [
+          "Maintenance"
+        ],
+        "x-access": "editor"
+      },
+      "get": {
+        "operationId": "get--api-v1-maintenance-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get one window.",
+        "tags": [
+          "Maintenance"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-maintenance-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "active": false
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change a window; null clears a time field.",
+        "tags": [
+          "Maintenance"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "get--api-v1-me",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "auth": "token",
+                  "can_edit": false,
+                  "id": 1,
+                  "is_admin": false,
+                  "role": "admin",
+                  "token_scope": "read",
+                  "username": "ada"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Who you are and how you signed in.",
+        "tags": [
+          "System"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/monitors": {
+      "get": {
+        "operationId": "get--api-v1-monitors",
+        "parameters": [
+          {
+            "description": "up | down | pending | maintenance | paused | unknown",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "monitor type, e.g. http",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "tag name",
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "search name, target and description",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "page size (1–500, default 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "next_cursor from the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": "{\"data\": [ …monitor… ], \"next_cursor\": \"42\"}"
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List monitors with their current status.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-monitors",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "escalation_minutes": 15,
+                "interval_seconds": 60,
+                "monitor_type": "http",
+                "name": "Website",
+                "notifications": [
+                  1,
+                  {
+                    "channel_id": 3,
+                    "escalation": true
+                  }
+                ],
+                "retries": 1,
+                "tags": [
+                  "production",
+                  {
+                    "name": "env",
+                    "value": "prod"
+                  }
+                ],
+                "target": "https://example.com"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted_status_codes": "200-399",
+                  "active": true,
+                  "created_at": "2026-10-19 08:00:00",
+                  "description": "",
+                  "expiry_days": 14,
+                  "expiry_notify": true,
+                  "http_method": "GET",
+                  "id": 7,
+                  "ignore_tls": false,
+                  "interval_seconds": 60,
+                  "max_redirects": 10,
+                  "monitor_type": "http",
+                  "name": "Website",
+                  "notifications": [
+                    {
+                      "channel_id": 1,
+                      "escalation": false
+                    }
+                  ],
+                  "parent_id": null,
+                  "retries": 1,
+                  "retry_interval_seconds": null,
+                  "status": "up",
+                  "tags": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "name": "production",
+                      "value": ""
+                    }
+                  ],
+                  "target": "https://example.com",
+                  "timeout_seconds": 10,
+                  "updated_at": "2026-10-19 08:00:00",
+                  "upside_down": false
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a monitor. Same validation as the monitor form; unknown tag names are created.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/monitors/bulk": {
+      "post": {
+        "operationId": "post--api-v1-monitors-bulk",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "filter": {
+                  "tag": "production",
+                  "type": "http"
+                },
+                "set": {
+                  "channels": {
+                    "add": [
+                      {
+                        "escalation": false,
+                        "name": "Ops Discord"
+                      }
+                    ],
+                    "remove": [
+                      3
+                    ]
+                  },
+                  "confirm_with_agents": true,
+                  "interval_seconds": 120,
+                  "run_on_agents": true,
+                  "tags": {
+                    "add": [
+                      {
+                        "color": "teal",
+                        "name": "eu",
+                        "value": "west"
+                      }
+                    ],
+                    "remove": [
+                      "legacy"
+                    ]
+                  }
+                }
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "skipped": [
+                    {
+                      "id": 12,
+                      "reason": "agents_unsupported"
+                    }
+                  ],
+                  "updated": 38
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/monitors/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-monitors-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a monitor and its history. Returns 204.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      },
+      "get": {
+        "operationId": "get--api-v1-monitors-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted_status_codes": "200-399",
+                  "active": true,
+                  "created_at": "2026-10-19 08:00:00",
+                  "description": "",
+                  "expiry_days": 14,
+                  "expiry_notify": true,
+                  "http_method": "GET",
+                  "id": 7,
+                  "ignore_tls": false,
+                  "interval_seconds": 60,
+                  "max_redirects": 10,
+                  "monitor_type": "http",
+                  "name": "Website",
+                  "notifications": [
+                    {
+                      "channel_id": 1,
+                      "escalation": false
+                    }
+                  ],
+                  "parent_id": null,
+                  "retries": 1,
+                  "retry_interval_seconds": null,
+                  "status": "up",
+                  "tags": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "name": "production",
+                      "value": ""
+                    }
+                  ],
+                  "target": "https://example.com",
+                  "timeout_seconds": 10,
+                  "updated_at": "2026-10-19 08:00:00",
+                  "upside_down": false
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get one monitor. Passwords are masked; push tokens are shown to editors only.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-monitors-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "interval_seconds": 30,
+                "retries": 2
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted_status_codes": "200-399",
+                  "active": true,
+                  "created_at": "2026-10-19 08:00:00",
+                  "description": "",
+                  "expiry_days": 14,
+                  "expiry_notify": true,
+                  "http_method": "GET",
+                  "id": 7,
+                  "ignore_tls": false,
+                  "interval_seconds": 60,
+                  "max_redirects": 10,
+                  "monitor_type": "http",
+                  "name": "Website",
+                  "notifications": [
+                    {
+                      "channel_id": 1,
+                      "escalation": false
+                    }
+                  ],
+                  "parent_id": null,
+                  "retries": 1,
+                  "retry_interval_seconds": null,
+                  "status": "up",
+                  "tags": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "name": "production",
+                      "value": ""
+                    }
+                  ],
+                  "target": "https://example.com",
+                  "timeout_seconds": 10,
+                  "updated_at": "2026-10-19 08:00:00",
+                  "upside_down": false
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change some fields; everything else stays. Send \"••••••\" for a secret to keep it.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      },
+      "put": {
+        "operationId": "put--api-v1-monitors-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "escalation_minutes": 15,
+                "interval_seconds": 60,
+                "monitor_type": "http",
+                "name": "Website",
+                "notifications": [
+                  1,
+                  {
+                    "channel_id": 3,
+                    "escalation": true
+                  }
+                ],
+                "retries": 1,
+                "tags": [
+                  "production",
+                  {
+                    "name": "env",
+                    "value": "prod"
+                  }
+                ],
+                "target": "https://example.com"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted_status_codes": "200-399",
+                  "active": true,
+                  "created_at": "2026-10-19 08:00:00",
+                  "description": "",
+                  "expiry_days": 14,
+                  "expiry_notify": true,
+                  "http_method": "GET",
+                  "id": 7,
+                  "ignore_tls": false,
+                  "interval_seconds": 60,
+                  "max_redirects": 10,
+                  "monitor_type": "http",
+                  "name": "Website",
+                  "notifications": [
+                    {
+                      "channel_id": 1,
+                      "escalation": false
+                    }
+                  ],
+                  "parent_id": null,
+                  "retries": 1,
+                  "retry_interval_seconds": null,
+                  "status": "up",
+                  "tags": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "name": "production",
+                      "value": ""
+                    }
+                  ],
+                  "target": "https://example.com",
+                  "timeout_seconds": 10,
+                  "updated_at": "2026-10-19 08:00:00",
+                  "upside_down": false
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace a monitor: fields you leave out go back to their defaults (tags and notifications are kept unless sent).",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/monitors/{id}/check": {
+      "post": {
+        "operationId": "post--api-v1-monitors-id-check",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "heartbeat": {
+                    "checked_at": "2026-10-19 14:03:00",
+                    "id": 991,
+                    "message": "200 OK",
+                    "response_time_ms": 84,
+                    "status": "up"
+                  },
+                  "status": "up"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Run a check right now and return its result (409 for paused, push and group monitors).",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/monitors/{id}/events": {
+      "get": {
+        "operationId": "get--api-v1-monitors-id-events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "page size (1–500, default 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "duration_seconds": 240,
+                      "ended_at": "2026-10-18 03:14:00",
+                      "id": 12,
+                      "kind": "down",
+                      "message": "timeout",
+                      "monitor_id": 7,
+                      "started_at": "2026-10-18 03:10:00"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Outages, maintenance, pauses and other events, newest first.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/monitors/{id}/heartbeats": {
+      "get": {
+        "operationId": "get--api-v1-monitors-id-heartbeats",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "UTC time, e.g. 2026-10-19 00:00:00",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "page size (1–500, default 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "next_cursor from the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "agent_id": null,
+                      "checked_at": "2026-10-19 14:03:00",
+                      "id": 991,
+                      "message": "200 OK",
+                      "monitor_id": 7,
+                      "response_time_ms": 84,
+                      "status": "up"
+                    }
+                  ],
+                  "next_cursor": "940"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Check history, newest first (local checks only).",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/monitors/{id}/pause": {
+      "post": {
+        "operationId": "post--api-v1-monitors-id-pause",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted_status_codes": "200-399",
+                  "active": true,
+                  "created_at": "2026-10-19 08:00:00",
+                  "description": "",
+                  "expiry_days": 14,
+                  "expiry_notify": true,
+                  "http_method": "GET",
+                  "id": 7,
+                  "ignore_tls": false,
+                  "interval_seconds": 60,
+                  "max_redirects": 10,
+                  "monitor_type": "http",
+                  "name": "Website",
+                  "notifications": [
+                    {
+                      "channel_id": 1,
+                      "escalation": false
+                    }
+                  ],
+                  "parent_id": null,
+                  "retries": 1,
+                  "retry_interval_seconds": null,
+                  "status": "up",
+                  "tags": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "name": "production",
+                      "value": ""
+                    }
+                  ],
+                  "target": "https://example.com",
+                  "timeout_seconds": 10,
+                  "updated_at": "2026-10-19 08:00:00",
+                  "upside_down": false
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Pause checks and alerts.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/monitors/{id}/resume": {
+      "post": {
+        "operationId": "post--api-v1-monitors-id-resume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted_status_codes": "200-399",
+                  "active": true,
+                  "created_at": "2026-10-19 08:00:00",
+                  "description": "",
+                  "expiry_days": 14,
+                  "expiry_notify": true,
+                  "http_method": "GET",
+                  "id": 7,
+                  "ignore_tls": false,
+                  "interval_seconds": 60,
+                  "max_redirects": 10,
+                  "monitor_type": "http",
+                  "name": "Website",
+                  "notifications": [
+                    {
+                      "channel_id": 1,
+                      "escalation": false
+                    }
+                  ],
+                  "parent_id": null,
+                  "retries": 1,
+                  "retry_interval_seconds": null,
+                  "status": "up",
+                  "tags": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "name": "production",
+                      "value": ""
+                    }
+                  ],
+                  "target": "https://example.com",
+                  "timeout_seconds": 10,
+                  "updated_at": "2026-10-19 08:00:00",
+                  "upside_down": false
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Resume a paused monitor.",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/monitors/{id}/tags": {
+      "put": {
+        "operationId": "put--api-v1-monitors-id-tags",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": [
+                "production",
+                {
+                  "name": "env",
+                  "value": "prod"
+                },
+                {
+                  "id": 4
+                }
+              ],
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted_status_codes": "200-399",
+                  "active": true,
+                  "created_at": "2026-10-19 08:00:00",
+                  "description": "",
+                  "expiry_days": 14,
+                  "expiry_notify": true,
+                  "http_method": "GET",
+                  "id": 7,
+                  "ignore_tls": false,
+                  "interval_seconds": 60,
+                  "max_redirects": 10,
+                  "monitor_type": "http",
+                  "name": "Website",
+                  "notifications": [
+                    {
+                      "channel_id": 1,
+                      "escalation": false
+                    }
+                  ],
+                  "parent_id": null,
+                  "retries": 1,
+                  "retry_interval_seconds": null,
+                  "status": "up",
+                  "tags": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "name": "production",
+                      "value": ""
+                    }
+                  ],
+                  "target": "https://example.com",
+                  "timeout_seconds": 10,
+                  "updated_at": "2026-10-19 08:00:00",
+                  "upside_down": false
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace a monitor's tags (names are created if new).",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/monitors/{id}/uptime": {
+      "get": {
+        "operationId": "get--api-v1-monitors-id-uptime",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "1–365 (default 30)",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "daily": [
+                    {
+                      "avg_ms": 82.4,
+                      "day": "2026-10-19",
+                      "down": 0,
+                      "maintenance": 0,
+                      "pending": 0,
+                      "up": 1440,
+                      "uptime_pct": 100.0
+                    }
+                  ],
+                  "days": 30,
+                  "monitor_id": 7,
+                  "uptime_24h_pct": 100.0,
+                  "uptime_pct": 99.98
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Uptime over a window plus one entry per day (survives heartbeat retention).",
+        "tags": [
+          "Monitors"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/notification-channels": {
+      "get": {
+        "operationId": "get--api-v1-notification-channels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "active": true,
+                      "config": {
+                        "url": "••••••",
+                        "username": "Vole"
+                      },
+                      "id": 1,
+                      "is_default": true,
+                      "kind": "discord",
+                      "monitors": 12,
+                      "name": "Ops Discord"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List channels. Secrets are always masked as \"••••••\".",
+        "tags": [
+          "Notifications"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-notification-channels",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "apply_existing": false,
+                "config": {
+                  "url": "https://discord.com/api/webhooks/…"
+                },
+                "is_default": true,
+                "kind": "discord",
+                "name": "Ops Discord"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a channel. apply_existing links it to every monitor.",
+        "tags": [
+          "Notifications"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/notification-channels/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-notification-channels-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a channel.",
+        "tags": [
+          "Notifications"
+        ],
+        "x-access": "editor"
+      },
+      "get": {
+        "operationId": "get--api-v1-notification-channels-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get one channel (secrets masked).",
+        "tags": [
+          "Notifications"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-notification-channels-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "active": false
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Update a channel. Secrets you leave out or send masked keep their stored value.",
+        "tags": [
+          "Notifications"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/notification-channels/{id}/test": {
+      "post": {
+        "operationId": "post--api-v1-notification-channels-id-test",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Send a test notification (502 with the provider's error when delivery fails).",
+        "tags": [
+          "Notifications"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/notification-providers": {
+      "get": {
+        "operationId": "get--api-v1-notification-providers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "fields": [
+                        {
+                          "key": "url",
+                          "required": true,
+                          "secret": true,
+                          "type": "url"
+                        }
+                      ],
+                      "kind": "discord",
+                      "label": "Discord"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Every channel kind with its config fields (which are required, which are secret).",
+        "tags": [
+          "Notifications"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "operationId": "get--api-v1-openapijson",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "This reference as an OpenAPI 3.1 document.",
+        "tags": [
+          "System"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/remote-browsers": {
+      "get": {
+        "operationId": "get--api-v1-remote-browsers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "default": true,
+                      "id": 1,
+                      "monitors": 3,
+                      "name": "Chrome",
+                      "url": "ws://chrome:9222/devtools/browser/…"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the remote browsers (CDP endpoints) real-browser monitors use. Tokens and passwords in URLs are masked; the first one is the default.",
+        "tags": [
+          "Remote browsers"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-remote-browsers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "name": "Chrome",
+                "url": "http://chrome:9222"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Add a remote browser: ws(s)://…/devtools/browser/<id>, http(s)://host:port (discovered through /json/version) or wss://host?token=….",
+        "tags": [
+          "Remote browsers"
+        ],
+        "x-access": "admin"
+      }
+    },
+    "/api/v1/remote-browsers/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-remote-browsers-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Remove a remote browser; monitors that used it fall back to the default one.",
+        "tags": [
+          "Remote browsers"
+        ],
+        "x-access": "admin"
+      },
+      "get": {
+        "operationId": "get--api-v1-remote-browsers-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get one remote browser (secrets masked).",
+        "tags": [
+          "Remote browsers"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-remote-browsers-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "name": "Chrome (LAN)"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Rename a remote browser or change its URL.",
+        "tags": [
+          "Remote browsers"
+        ],
+        "x-access": "admin"
+      },
+      "put": {
+        "operationId": "put--api-v1-remote-browsers-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change a remote browser. A masked URL keeps its token while the host stays the same.",
+        "tags": [
+          "Remote browsers"
+        ],
+        "x-access": "admin"
+      }
+    },
+    "/api/v1/remote-browsers/{id}/test": {
+      "post": {
+        "operationId": "post--api-v1-remote-browsers-id-test",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "product": "HeadlessChrome/156.0.8078.36",
+                  "protocol_version": "1.3"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Connect and ask the browser for its version.",
+        "tags": [
+          "Remote browsers"
+        ],
+        "x-access": "admin"
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "operationId": "get--api-v1-settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "badges_public": false,
+                  "base_url": "https://status.example.com",
+                  "language": "en",
+                  "metrics_enabled": true,
+                  "retention_days": 90,
+                  "site_name": "Vigilant Vole",
+                  "timezone": "Europe/Oslo"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Instance settings.",
+        "tags": [
+          "System"
+        ],
+        "x-access": "admin"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "base_url": "https://status.example.com",
+                "retention_days": 180
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change some settings.",
+        "tags": [
+          "System"
+        ],
+        "x-access": "admin"
+      }
+    },
+    "/api/v1/status-pages": {
+      "get": {
+        "operationId": "get--api-v1-status-pages",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List status pages.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-status-pages",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "sections": [
+                  {
+                    "monitor_ids": [
+                      7,
+                      8
+                    ],
+                    "name": "API"
+                  }
+                ],
+                "slug": "acme",
+                "title": "Acme status"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a status page (slug defaults to the title).",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-status-pages-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a page.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      },
+      "get": {
+        "operationId": "get--api-v1-status-pages-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": 1,
+                  "public_url": "/status/acme",
+                  "published": true,
+                  "sections": [
+                    {
+                      "id": 3,
+                      "monitors": [
+                        {
+                          "id": 7,
+                          "name": "Website"
+                        }
+                      ],
+                      "name": "API"
+                    }
+                  ],
+                  "slug": "acme",
+                  "theme": "auto",
+                  "title": "Acme status"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get a page with its sections and monitors.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-status-pages-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "analytics": {
+                  "provider": "plausible",
+                  "script_url": "https://plausible.io/js/script.js",
+                  "site_id": "status.example.com"
+                },
+                "password": "correct horse",
+                "refresh_seconds": 30,
+                "theme": "dark"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change page settings (and optionally its sections). Also: password (write-only, \"\" removes), analytics, logo/favicon as data: URLs (\"\" removes).",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/incidents": {
+      "get": {
+        "operationId": "get--api-v1-status-pages-id-incidents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a page's incidents.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-status-pages-id-incidents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "body": "We're looking into it.",
+                "pinned": true,
+                "severity": "warning",
+                "title": "Elevated error rates"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Post an incident (severity: info, warning, danger, success).",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/incidents/{iid}": {
+      "delete": {
+        "operationId": "delete--api-v1-status-pages-id-incidents-iid",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "iid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete an incident.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      },
+      "get": {
+        "operationId": "get--api-v1-status-pages-id-incidents-iid",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "iid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get one incident.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-status-pages-id-incidents-iid",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "iid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "body": "Fixed.",
+                "resolved": true,
+                "severity": "success"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Update an incident; resolved: true resolves it, false reopens it.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/incidents/{iid}/updates": {
+      "get": {
+        "operationId": "get--api-v1-status-pages-id-incidents-iid-updates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "iid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List an incident's updates, newest first.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-status-pages-id-incidents-iid-updates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "iid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "body": "A bad deploy. Rolling back.",
+                "status": "identified"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Post an update to an incident (status: investigating, identified, monitoring, resolved). A resolved update resolves the incident; any other status reopens it.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/incidents/{iid}/updates/{uid}": {
+      "delete": {
+        "operationId": "delete--api-v1-status-pages-id-incidents-iid-updates-uid",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "iid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete one update.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/sections": {
+      "put": {
+        "operationId": "put--api-v1-status-pages-id-sections",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": [
+                {
+                  "monitor_ids": [
+                    7,
+                    8
+                  ],
+                  "name": "API"
+                },
+                {
+                  "monitor_ids": [
+                    9
+                  ],
+                  "name": "Website"
+                }
+              ],
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace the page layout: sections in order, monitors in order.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/subscribers": {
+      "get": {
+        "operationId": "get--api-v1-status-pages-id-subscribers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the page's subscribers (email addresses or webhook URLs) with their confirmation state. A webhook with confirmed_at null waits for an editor's approval.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/subscribers/{sid}": {
+      "delete": {
+        "operationId": "delete--api-v1-status-pages-id-subscribers-sid",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Remove a subscriber.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/subscribers/{sid}/approve": {
+      "post": {
+        "operationId": "post--api-v1-status-pages-id-subscribers-sid-approve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Approve a webhook sign-up. Webhooks are never confirmed by a link; once approved, the webhook gets a \"subscribed\" message with its unsubscribe link.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/status-pages/{id}/subscription": {
+      "get": {
+        "operationId": "get--api-v1-status-pages-id-subscription",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Whether visitors can subscribe to the page's announcements, which email channel sends the mails and whether webhook subscribers are allowed.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "viewer"
+      },
+      "put": {
+        "operationId": "put--api-v1-status-pages-id-subscription",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "channel_id": 3,
+                "enabled": true,
+                "webhooks": false
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change the subscription settings (enabled, channel_id of an email notification channel or null, webhooks). Omitted fields stay as they are.",
+        "tags": [
+          "Status pages"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "operationId": "get--api-v1-tags",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "color": "green",
+                      "id": 2,
+                      "monitors": 12,
+                      "name": "production"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List tags with how many monitors use them.",
+        "tags": [
+          "Tags"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-tags",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "color": "green",
+                "name": "production"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "color": "green",
+                  "id": 2,
+                  "name": "production"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a tag. Colours are palette names (red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown, gray); hex values map to the nearest.",
+        "tags": [
+          "Tags"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/tags/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-tags-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a tag (it is removed from every monitor).",
+        "tags": [
+          "Tags"
+        ],
+        "x-access": "editor"
+      },
+      "get": {
+        "operationId": "get--api-v1-tags-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get one tag.",
+        "tags": [
+          "Tags"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-tags-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "color": "teal"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Rename or recolour a tag.",
+        "tags": [
+          "Tags"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "get--healthz",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [],
+        "summary": "Liveness probe: always \"ok\".",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "public"
+      }
+    },
+    "/mcp": {
+      "post": {
+        "operationId": "post--mcp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "id": 1,
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                  "arguments": {
+                    "id": 7
+                  },
+                  "name": "why_is_it_down"
+                }
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Model Context Protocol server (Streamable HTTP, JSON-RPC 2.0) for AI assistants: tools to read and, with a write token, steer your monitors, incidents and maintenance, plus this reference as a resource. Bearer API token; GET answers 405. See docs/mcp.md.",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "api token"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "get--metrics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Prometheus metrics (when enabled). Bearer token or basic-auth password; Kuma-compatible series included.",
+        "tags": [
+          "Push and machine endpoints"
+        ],
+        "x-access": "metrics token"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Monitors"
+    },
+    {
+      "name": "Tags"
+    },
+    {
+      "name": "Notifications"
+    },
+    {
+      "name": "Remote browsers"
+    },
+    {
+      "name": "Status pages"
+    },
+    {
+      "name": "Maintenance"
+    },
+    {
+      "name": "System"
+    },
+    {
+      "name": "Configuration"
+    },
+    {
+      "name": "Push and machine endpoints"
+    }
+  ]
+}

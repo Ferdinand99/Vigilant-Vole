@@ -1,0 +1,58 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: waha (WhatsApp (WAHA))
+
+## minimal config
+{
+  "chat_id": "4712345678@c.us",
+  "server": "http://waha:3000",
+  "session": "default"
+}
+
+### down
+POST http://waha:3000/api/sendText
+(json)
+{
+  "chatId": "4712345678@c.us",
+  "session": "default",
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nhttps://vv.example/monitors/7"
+}
+
+### up
+POST http://waha:3000/api/sendText
+(json)
+{
+  "chatId": "4712345678@c.us",
+  "session": "default",
+  "text": "🟢 Payments API is back up — down for 12m 4s\nhttps://vv.example/monitors/7"
+}
+
+## full config
+{
+  "api_key": "secret-api_key",
+  "chat_id": "4712345678@c.us",
+  "server": "http://waha:3000",
+  "session": "default"
+}
+
+### down
+POST http://waha:3000/api/sendText
+X-Api-Key: secret-api_key
+(json)
+{
+  "chatId": "4712345678@c.us",
+  "session": "default",
+  "text": "🔴 Payments API is down — HTTP 503 (after 3 retries)\nhttps://vv.example/monitors/7"
+}
+
+### up
+POST http://waha:3000/api/sendText
+X-Api-Key: secret-api_key
+(json)
+{
+  "chatId": "4712345678@c.us",
+  "session": "default",
+  "text": "🟢 Payments API is back up — down for 12m 4s\nhttps://vv.example/monitors/7"
+}

@@ -1,0 +1,85 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: ntfy (ntfy)
+
+## minimal config
+{
+  "priority": "auto",
+  "server": "https://ntfy.sh",
+  "topic": "vigilant-alerts"
+}
+
+### down
+POST https://ntfy.sh/
+(json)
+{
+  "click": "https://vv.example/monitors/7",
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 5,
+  "tags": [
+    "red_circle"
+  ],
+  "title": "Payments API is down",
+  "topic": "vigilant-alerts"
+}
+
+### up
+POST https://ntfy.sh/
+(json)
+{
+  "click": "https://vv.example/monitors/7",
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 3,
+  "tags": [
+    "green_circle"
+  ],
+  "title": "Payments API is back up",
+  "topic": "vigilant-alerts"
+}
+
+## full config
+{
+  "access_token": "tk_",
+  "password": "secret-password",
+  "priority": "auto",
+  "server": "https://ntfy.sh",
+  "tags": "prod, payments",
+  "topic": "vigilant-alerts",
+  "username": "username-value"
+}
+
+### down
+POST https://ntfy.sh/
+Authorization: Bearer tk_
+(json)
+{
+  "click": "https://vv.example/monitors/7",
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 5,
+  "tags": [
+    "red_circle",
+    "prod",
+    "payments"
+  ],
+  "title": "Payments API is down",
+  "topic": "vigilant-alerts"
+}
+
+### up
+POST https://ntfy.sh/
+Authorization: Bearer tk_
+(json)
+{
+  "click": "https://vv.example/monitors/7",
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "priority": 3,
+  "tags": [
+    "green_circle",
+    "prod",
+    "payments"
+  ],
+  "title": "Payments API is back up",
+  "topic": "vigilant-alerts"
+}

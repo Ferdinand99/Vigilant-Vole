@@ -40,6 +40,10 @@ jobs:
       - name: Unit tests
         run: cargo test --lib
 
+      # Snapshots of externally visible behaviour (docs/golden-tests.md).
+      - name: Golden snapshots
+        run: cargo test --test golden
+
   upgrade:
     # Databases saved by every release (tests/fixtures/upgrade, made by
     # tools/upgrade-fixtures/generate.sh) upgraded with this build, plus the

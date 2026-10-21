@@ -1,0 +1,71 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: homeassistant (Home Assistant)
+
+## minimal config
+{
+  "service": "notify",
+  "token": "secret-token",
+  "url": "http://homeassistant.local:8123"
+}
+
+### down
+POST http://homeassistant.local:8123/api/services/notify/notify
+Authorization: Bearer secret-token
+(json)
+{
+  "data": {
+    "clickAction": "https://vv.example/monitors/7",
+    "url": "https://vv.example/monitors/7"
+  },
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "title": "🔴 Payments API is down"
+}
+
+### up
+POST http://homeassistant.local:8123/api/services/notify/notify
+Authorization: Bearer secret-token
+(json)
+{
+  "data": {
+    "clickAction": "https://vv.example/monitors/7",
+    "url": "https://vv.example/monitors/7"
+  },
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "title": "🟢 Payments API is back up"
+}
+
+## full config
+{
+  "service": "notify",
+  "token": "secret-token",
+  "url": "http://homeassistant.local:8123"
+}
+
+### down
+POST http://homeassistant.local:8123/api/services/notify/notify
+Authorization: Bearer secret-token
+(json)
+{
+  "data": {
+    "clickAction": "https://vv.example/monitors/7",
+    "url": "https://vv.example/monitors/7"
+  },
+  "message": "HTTP 503 (after 3 retries)\nTarget: https://pay.example/health\nType: HTTP(S)\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "title": "🔴 Payments API is down"
+}
+
+### up
+POST http://homeassistant.local:8123/api/services/notify/notify
+Authorization: Bearer secret-token
+(json)
+{
+  "data": {
+    "clickAction": "https://vv.example/monitors/7",
+    "url": "https://vv.example/monitors/7"
+  },
+  "message": "down for 12m 4s\nTarget: https://pay.example/health\nType: HTTP(S)\nDowntime: 12m 4s\nTime: 2026-10-19 14:03:12 UTC\nhttps://vv.example/monitors/7",
+  "title": "🟢 Payments API is back up"
+}

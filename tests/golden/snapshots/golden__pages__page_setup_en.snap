@@ -1,0 +1,79 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <meta name="robots" content="noindex">
+  <title>Welcome · Vigilant Vole</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Vigilant Vole">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+</head>
+<body class="auth-body">
+  <main class="auth" id="main">
+    <div>
+      <div class="auth-card">
+        <div class="auth-head">
+          <img class="auth-logo" src="/static/favicon.svg" alt="" width="56" height="56">
+          <h1 class="auth-title">Welcome</h1>
+          <p class="auth-sub">Create the admin account and name your instance. You can invite others from Settings later.</p>
+        </div>
+        
+<form class="form" method="post" action="/setup" novalidate>
+  <div class="field">
+  <label class="label" for="f-username">Username</label>
+  <input id="f-username" name="username" type="text" value="" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+</div>
+
+  <div class="field">
+    <label class="label" for="f-password">Password</label>
+    <input id="f-password" name="password" type="password" required minlength="10" maxlength="1024" autocomplete="new-password"
+      data-password-strength aria-describedby="f-password-help">
+    <div class="meter" data-strength-meter aria-hidden="true"></div>
+    <p class="help" id="f-password-help" data-strength-label aria-live="polite">At least 10 characters, and it can’t contain your username. A few unrelated words work well.</p>
+  </div>
+
+  <div class="field">
+    <label class="label" for="f-confirm">Confirm password</label>
+    <input id="f-confirm" name="confirm" type="password" required minlength="10" maxlength="1024" autocomplete="new-password">
+  </div>
+
+  <div class="field">
+  <label class="label" for="f-site_name">Site name</label>
+  <input id="f-site_name" name="site_name" type="text" value="Vigilant Vole" placeholder="Acme status…" autocomplete="off" aria-describedby="f-site_name-help">
+  <p class="help" id="f-site_name-help">Shown in the top bar and in notifications.</p>
+</div>
+
+  <input type="hidden" name="timezone" value="UTC" data-detect-timezone>
+  <p class="help">Times are shown in <strong data-timezone-label>UTC</strong>. You can change this in Settings.</p>
+
+  <button type="submit" class="btn btn-primary btn-lg btn-block">Create account</button>
+</form>
+
+      </div>
+      <p class="auth-foot">Vigilant Vole</p>
+    </div>
+  </main>
+  <div class="toaster" id="toaster" aria-live="polite"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"Copied the API reference. Paste it into your AI assistant.","ai_downloaded":"Couldn’t copy, so the reference was downloaded as a Markdown file.","ai_failed":"Couldn’t load the API reference. Try again.","cancel":"Cancel","confirm":"Confirm","confirm_title":"Are you sure?","connecting":"Connecting…","copied":"Copied","copied_announce":"Copied to clipboard","copy_failed":"Couldn’t copy. Select the text and copy it manually.","delete":"Delete","dismiss":"Dismiss","hint_common":"avoid common words and sequences","hint_min_length":"use at least {n} characters","hint_repeated":"too many repeated characters","live":"Live","moved":"Moved {item} to position {pos} of {total}","network_error":"Can’t reach the server. Check your connection.","offline":"Offline","reconnecting":"Reconnecting…","server_error":"Something went wrong on the server. Try again.","strength_0":"Too short","strength_1":"Weak","strength_2":"Fair","strength_3":"Good","strength_4":"Strong","strength_prefix":"Strength:"}</script>
+  
+</body>
+</html>

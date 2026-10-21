@@ -6,3 +6,6 @@
 
 # SQLite databases (the upgrade-test fixtures) are binary
 *.db binary
+
+# Golden test snapshots (tests/golden) are compared byte for byte
+*.snap text eol=lf

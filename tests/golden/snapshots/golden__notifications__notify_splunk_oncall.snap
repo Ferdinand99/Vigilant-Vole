@@ -1,0 +1,71 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: splunk_oncall (Splunk On-Call)
+
+## minimal config
+{
+  "api_key": "secret-api_key",
+  "routing_key": "everyone",
+  "severity": "CRITICAL"
+}
+
+### down
+POST https://alert.victorops.com/integrations/generic/20131114/alert/secret-api_key/everyone
+(json)
+{
+  "entity_display_name": "Payments API is down",
+  "entity_id": "vv-monitor-7",
+  "message_type": "CRITICAL",
+  "monitoring_tool": "Vigilant Vole",
+  "state_message": "Payments API is down — HTTP 503 (after 3 retries)",
+  "state_start_time": 1792418592,
+  "vo_annotate.u.Monitor": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://alert.victorops.com/integrations/generic/20131114/alert/secret-api_key/everyone
+(json)
+{
+  "entity_display_name": "Payments API is back up",
+  "entity_id": "vv-monitor-7",
+  "message_type": "RECOVERY",
+  "monitoring_tool": "Vigilant Vole",
+  "state_message": "Payments API is back up — down for 12m 4s",
+  "state_start_time": 1792418592,
+  "vo_annotate.u.Monitor": "https://vv.example/monitors/7"
+}
+
+## full config
+{
+  "api_key": "secret-api_key",
+  "routing_key": "everyone",
+  "severity": "CRITICAL"
+}
+
+### down
+POST https://alert.victorops.com/integrations/generic/20131114/alert/secret-api_key/everyone
+(json)
+{
+  "entity_display_name": "Payments API is down",
+  "entity_id": "vv-monitor-7",
+  "message_type": "CRITICAL",
+  "monitoring_tool": "Vigilant Vole",
+  "state_message": "Payments API is down — HTTP 503 (after 3 retries)",
+  "state_start_time": 1792418592,
+  "vo_annotate.u.Monitor": "https://vv.example/monitors/7"
+}
+
+### up
+POST https://alert.victorops.com/integrations/generic/20131114/alert/secret-api_key/everyone
+(json)
+{
+  "entity_display_name": "Payments API is back up",
+  "entity_id": "vv-monitor-7",
+  "message_type": "RECOVERY",
+  "monitoring_tool": "Vigilant Vole",
+  "state_message": "Payments API is back up — down for 12m 4s",
+  "state_start_time": 1792418592,
+  "vo_annotate.u.Monitor": "https://vv.example/monitors/7"
+}

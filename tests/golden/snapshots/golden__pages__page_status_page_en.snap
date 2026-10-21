@@ -1,0 +1,116 @@
+---
+source: tests/golden/pages.rs
+expression: "render(&res, code)"
+---
+status: 200
+content-type: text/html; charset=utf-8
+
+<!doctype html>
+<html lang="en" dir="ltr" data-theme-lock>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>Golden status</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+  
+  <meta name="description" content="Status unavailable — Golden status">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Golden status">
+  <meta property="og:description" content="Status unavailable — Golden status">
+  <meta property="og:site_name" content="Golden status">
+  <meta name="twitter:card" content="summary">
+  <link rel="alternate" type="application/json" href="/api/status-page/golden">
+  <link rel="alternate" type="application/atom+xml" title="Incident feed" href="/status/golden/feed.xml">
+
+</head>
+<body class="public-body">
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="public-head container container-narrow">
+    
+<div class="public-brand">
+  <div class="stack stack-xs">
+    <h1 class="public-title">Golden status</h1>
+  </div>
+</div>
+
+  </header>
+  <main id="main" class="public-main container container-narrow">
+    
+<div class="stack" id="sp-live" hx-get="/status/golden/fragment" hx-trigger="every 60s" hx-swap="outerHTML" data-no-progress>
+  <div class="banner status-unknown">
+    <span class="banner-icon"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#circle-dashed"></use></svg></span>
+    <div>
+      <p class="banner-title">Status unavailable</p>
+      <p class="banner-sub">There’s nothing to report yet. Updated <time datetime="<DATETIME>" data-relative title="<DATETIME>"><DATETIME></time>.</p>
+    </div>
+  </div>
+  <section class="section" aria-labelledby="sp-sec-1">
+    <div class="section-head">
+      <div><h2 class="section-title" id="sp-sec-1">Web</h2></div>
+    </div>
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap">
+        <span class="list-main">
+          <span class="list-title list-title-wrap">Website</span>
+        </span>
+        <span class="list-trail">
+          <span class="pill status-unknown"><span class="dot"></span>No data</span>
+        </span>
+        <div class="list-full uptime">
+          <div class="uptime-days" role="img" aria-label="90-day uptime No data"><span class="uptime-day status-none" data-tip="<DAY-89> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-88> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-87> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-86> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-85> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-84> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-83> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-82> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-81> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-80> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-79> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-78> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-77> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-76> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-75> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-74> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-73> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-72> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-71> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-70> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-69> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-68> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-67> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-66> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-65> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-64> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-63> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-62> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-61> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-60> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-59> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-58> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-57> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-56> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-55> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-54> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-53> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-52> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-51> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-50> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-49> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-48> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-47> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-46> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-45> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-44> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-43> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-42> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-41> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-40> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-39> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-38> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-37> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-36> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-35> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-34> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-33> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-32> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-31> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-30> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-29> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-28> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-27> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-26> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-25> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-24> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-23> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-22> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-21> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-20> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-19> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-18> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-17> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-16> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-15> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-14> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-13> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-12> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-11> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-10> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-9> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-8> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-7> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-6> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-5> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-4> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-3> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-2> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-1> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-0> · No data"></span></div>
+          <div class="uptime-legend"><span class="hide-sm">90 days ago</span><span class="show-sm">45 days ago</span><span><bdi>No data</bdi></span><span>Today</span></div>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap">
+        <span class="list-main">
+          <span class="list-title list-title-wrap">API</span>
+        </span>
+        <span class="list-trail">
+          <span class="pill status-unknown"><span class="dot"></span>No data</span>
+        </span>
+        <div class="list-full uptime">
+          <div class="uptime-days" role="img" aria-label="90-day uptime No data"><span class="uptime-day status-none" data-tip="<DAY-89> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-88> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-87> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-86> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-85> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-84> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-83> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-82> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-81> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-80> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-79> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-78> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-77> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-76> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-75> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-74> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-73> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-72> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-71> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-70> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-69> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-68> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-67> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-66> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-65> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-64> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-63> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-62> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-61> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-60> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-59> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-58> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-57> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-56> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-55> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-54> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-53> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-52> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-51> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-50> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-49> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-48> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-47> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-46> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-45> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-44> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-43> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-42> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-41> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-40> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-39> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-38> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-37> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-36> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-35> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-34> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-33> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-32> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-31> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-30> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-29> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-28> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-27> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-26> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-25> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-24> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-23> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-22> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-21> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-20> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-19> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-18> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-17> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-16> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-15> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-14> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-13> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-12> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-11> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-10> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-9> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-8> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-7> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-6> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-5> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-4> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-3> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-2> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-1> · No data"></span><span class="uptime-day status-none" data-tip="<DAY-0> · No data"></span></div>
+          <div class="uptime-legend"><span class="hide-sm">90 days ago</span><span class="show-sm">45 days ago</span><span><bdi>No data</bdi></span><span>Today</span></div>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section class="section" aria-labelledby="sp-past">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title" id="sp-past">Past incidents</h2>
+        <p class="section-sub">Last 14 days</p>
+      </div>
+    </div>
+    <div class="card">
+      <p class="muted ta-center">No incidents in the last 14 days.</p>
+    </div>
+  </section>
+</div>
+
+  </main>
+  <footer class="public-foot container container-narrow">
+    
+<div class="stack stack-xs">
+  <p><a href="/status/golden/feed.xml" rel="alternate" type="application/atom+xml">Incident feed</a></p>
+  <p>Powered by <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a></p>
+</div>
+
+  </footer>
+  <div class="toaster" id="toaster" aria-live="polite"></div>
+  <script type="application/json" id="vv-i18n">{"ai_copied":"Copied the API reference. Paste it into your AI assistant.","ai_downloaded":"Couldn’t copy, so the reference was downloaded as a Markdown file.","ai_failed":"Couldn’t load the API reference. Try again.","cancel":"Cancel","confirm":"Confirm","confirm_title":"Are you sure?","connecting":"Connecting…","copied":"Copied","copied_announce":"Copied to clipboard","copy_failed":"Couldn’t copy. Select the text and copy it manually.","delete":"Delete","dismiss":"Dismiss","hint_common":"avoid common words and sequences","hint_min_length":"use at least {n} characters","hint_repeated":"too many repeated characters","live":"Live","moved":"Moved {item} to position {pos} of {total}","network_error":"Can’t reach the server. Check your connection.","offline":"Offline","reconnecting":"Reconnecting…","server_error":"Something went wrong on the server. Try again.","strength_0":"Too short","strength_1":"Weak","strength_2":"Fair","strength_3":"Good","strength_4":"Strong","strength_prefix":"Strength:"}</script>
+  
+</body>
+</html>
