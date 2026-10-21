@@ -6,7 +6,7 @@ the design owner — don't add CSS, colours or inline styles.
 
 - Stylesheet: `static/style.css` (tokens on `:root`, one file, organised by section)
 - Behaviour: `static/app.js` (vanilla, `defer`, progressive enhancement; API on `window.VV`)
-- Icons: `static/icons.svg` (sprite) · Favicon/app mark: `static/favicon.svg` · Home-screen icons: `apple-touch-icon.png` (180, full-bleed), `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, linked with `site.webmanifest` from `layout.html` / `auth_layout.html` (regenerate the PNGs from the mark if it changes)
+- Icons: `static/icons.svg` (sprite) · Favicon/app mark: `static/favicon.svg` (a copy of `assets/brand/favicon.svg`) · Home-screen icons: `apple-touch-icon.png` (180, full-bleed), `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, linked with `site.webmanifest` from `layout.html` / `auth_layout.html` (rendered from the vole in `assets/brand/`; regenerate them if it changes)
 - Font: Inter variable, self-hosted in `static/fonts/` (OFL licence alongside), system-ui fallback
 - Macros: `templates/macros.html`
 - Layouts: `layout.html`, `settings_layout.html`, `auth_layout.html`, `public_layout.html`
