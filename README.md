@@ -1,8 +1,9 @@
 <div align="center">
 
-<img src="assets/logo.jpg" alt="Vigilant Vole logo" width="200">
-
-# Vigilant Vole
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/vole-logo-dark.svg">
+  <img src="assets/brand/vole-logo-light.svg" alt="Vigilant Vole" width="420">
+</picture>
 
 **A lightweight, self-hosted uptime monitor built in Rust.**
 Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](https://github.com/louislam/uptime-kuma), built for a smaller footprint — and a few things Kuma doesn't do.
