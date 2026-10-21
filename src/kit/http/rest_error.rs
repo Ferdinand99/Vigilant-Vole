@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
-use crate::api::ApiError;
+use crate::kit::http::ApiError;
 
 pub type V1Result<T> = Result<T, V1Error>;
 
@@ -131,8 +131,8 @@ impl From<ApiError> for V1Error {
     }
 }
 
-impl From<crate::db::DbError> for V1Error {
-    fn from(err: crate::db::DbError) -> Self {
+impl From<crate::kit::db::DbError> for V1Error {
+    fn from(err: crate::kit::db::DbError) -> Self {
         ApiError::from(err).into()
     }
 }

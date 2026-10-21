@@ -14,17 +14,22 @@ use axum::middleware::Next;
 use axum::response::Response;
 
 use super::{Lang, negotiate, scope};
-use crate::api::AppState;
-use crate::db::settings;
+use crate::kit::db::settings;
+use crate::kit::state::Core;
 
-pub async fn layer(State(state): State<AppState>, request: Request, next: Next) -> Response {
+pub async fn layer(State(core): State<Core>, request: Request, next: Next) -> Response {
     let path = request.uri().path();
     if is_machine_path(path) {
         return next.run(request).await;
     }
     let browser = negotiate(request.headers());
-    let site = site_language(&state).await;
-    let lang = if path.starts_with("/status/") {
+    let site = site_language(&core).await;
+    let cfg = crate::kit::config::get();
+    let lang = if cfg
+        .browser_language_prefixes
+        .iter()
+        .any(|p| path.starts_with(p))
+    {
         browser.or(site)
     } else {
         site.or(browser)
@@ -34,16 +39,17 @@ pub async fn layer(State(state): State<AppState>, request: Request, next: Next) 
 }
 
 fn is_machine_path(path: &str) -> bool {
-    path.starts_with("/static/")
-        || path.starts_with("/api/")
-        || path == "/metrics"
-        || path == "/healthz"
+    let cfg = crate::kit::config::get();
+    cfg.machine_path_prefixes
+        .iter()
+        .any(|p| path.starts_with(p))
+        || cfg.machine_paths.contains(&path)
 }
 
 /// The admin-chosen language, if one was saved (also refreshes the cached
 /// [`super::site_default`]).
-pub async fn site_language(state: &AppState) -> Option<Lang> {
-    match state
+pub async fn site_language(core: &Core) -> Option<Lang> {
+    match core
         .with_conn(|c| settings::get(c, settings::LANGUAGE))
         .await
     {

@@ -13,4 +13,5 @@ pub mod config;
 pub mod db;
 pub mod http;
 pub mod i18n;
+pub mod page;
 pub mod state;

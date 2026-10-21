@@ -65,7 +65,7 @@ pub async fn run(config: Config) {
     state.scheduler.start_all().await;
 
     // Notifications sent by background jobs use the site language.
-    crate::i18n::site_language(&state).await;
+    crate::i18n::site_language(&state.core()).await;
 
     // Background jobs; each owner implements its own `spawn`.
     monitor::retention::spawn(state.clone());

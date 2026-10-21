@@ -27,6 +27,8 @@ pub struct KitConfig {
     /// Prefix of the database copy taken before a migration
     /// ("vigilant-vole-before-").
     pub backup_prefix: &'static str,
+    /// Name of the one-shot flash message cookie.
+    pub flash_cookie: &'static str,
     /// Prefix of the product's environment variables ("VV" for
     /// `VV_TRUST_PROXY` and `VV_SETUP_TOKEN`).
     pub env_prefix: &'static str,
@@ -47,6 +49,13 @@ pub struct KitConfig {
     pub embeddable_prefixes: &'static [&'static str],
     /// Looks up one of the product's embedded static files by path.
     pub static_file: fn(&str) -> Option<super::http::assets::StaticFile>,
+    /// Machine endpoints that stay English: path prefixes ...
+    pub machine_path_prefixes: &'static [&'static str],
+    /// ... and exact paths.
+    pub machine_paths: &'static [&'static str],
+    /// Paths where the visitor's `Accept-Language` beats the site language
+    /// (public pages).
+    pub browser_language_prefixes: &'static [&'static str],
     pub locales: &'static [(&'static str, &'static str)],
 }
 

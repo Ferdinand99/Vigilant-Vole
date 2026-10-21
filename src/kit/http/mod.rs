@@ -3,6 +3,8 @@
 pub mod assets;
 pub mod error;
 pub mod headers;
+pub mod rest;
+mod rest_error;
 
 use askama::Template;
 use axum::response::{Html, IntoResponse, Response};

@@ -23,6 +23,7 @@
 pub mod catalog;
 mod format;
 mod lang;
+mod middleware;
 mod negotiate;
 
 use std::fmt::Display;
@@ -33,6 +34,7 @@ use std::sync::{Mutex, PoisonError};
 
 pub use format::*;
 pub use lang::{Dir, LANGS, Lang, LangInfo, Numbers, Plural, PluralRule, language_choices};
+pub use middleware::{layer, site_language};
 pub use negotiate::{negotiate, parse_accept_language};
 
 tokio::task_local! {

@@ -480,7 +480,7 @@ async fn security_template(
         new_codes,
         language: record.language.clone().unwrap_or_default(),
         languages: crate::i18n::language_choices(),
-        site_language_name: crate::i18n::site_language(state)
+        site_language_name: crate::i18n::site_language(&state.core())
             .await
             .unwrap_or_default()
             .native_name(),
@@ -594,7 +594,9 @@ async fn save_profile(
     // Confirm in the language the next page will use.
     let lang = match chosen {
         Some(lang) => lang,
-        None => crate::i18n::site_language(&state).await.unwrap_or_default(),
+        None => crate::i18n::site_language(&state.core())
+            .await
+            .unwrap_or_default(),
     };
     Ok(back_to_security(
         jar,

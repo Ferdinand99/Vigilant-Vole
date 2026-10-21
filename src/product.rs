@@ -7,6 +7,8 @@ use crate::kit::config::KitConfig;
 pub const SESSION_COOKIE: &str = "vv_session";
 /// Cookie between password and second factor.
 pub const PENDING_2FA_COOKIE: &str = "vv_2fa";
+/// Cookie carrying one-shot flash messages.
+pub const FLASH_COOKIE: &str = "vv_flash";
 /// Prefix of API tokens.
 pub const TOKEN_PREFIX: &str = "vv_";
 
@@ -31,6 +33,7 @@ pub static KIT: KitConfig = KitConfig {
     other_token_prefixes: &["vva_"],
     user_agent: concat!("VigilantVole/", env!("CARGO_PKG_VERSION")),
     backup_prefix: "vigilant-vole-before-",
+    flash_cookie: FLASH_COOKIE,
     env_prefix: "VV",
     csrf_exempt_prefixes: &[
         "/api/push",
@@ -45,6 +48,9 @@ pub static KIT: KitConfig = KitConfig {
     migrations: &crate::db::MIGRATIONS,
     embeddable_prefixes: &["/status/", "/api/status-page/"],
     static_file: crate::api::static_file,
+    machine_path_prefixes: &["/static/", "/api/"],
+    machine_paths: &["/metrics", "/healthz"],
+    browser_language_prefixes: &["/status/"],
     locales: &[
         ("en", include_str!("../locales/en.toml")),
         ("nb", include_str!("../locales/nb.toml")),

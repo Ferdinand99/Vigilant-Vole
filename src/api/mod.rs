@@ -79,6 +79,11 @@ impl FromRef<AppState> for crate::kit::state::Core {
 }
 
 impl AppState {
+    /// The part of the state the shared kit works with.
+    pub fn core(&self) -> crate::kit::state::Core {
+        axum::extract::FromRef::from_ref(self)
+    }
+
     /// Run a closure on a pooled connection, mapping every failure to `ApiError`.
     ///
     /// ```ignore
