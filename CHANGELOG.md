@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.5.0...v0.5.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* complete database backup downloads when gzip-compressed ([41302ba](https://github.com/Ferdinand99/Vigilant-Vole/commit/41302ba7a235c4d55cab6078dec0f6e057e6df14))
+* unique names for pre-migration backups taken in the same second ([41302ba](https://github.com/Ferdinand99/Vigilant-Vole/commit/41302ba7a235c4d55cab6078dec0f6e057e6df14))
+
+
+### Performance Improvements
+
+* survive 1000 monitors on 1 vCPU (shared dashboard renders, separate check pool, cached uptime and status pages, phase-spread checks) ([41302ba](https://github.com/Ferdinand99/Vigilant-Vole/commit/41302ba7a235c4d55cab6078dec0f6e057e6df14))
+
 ## [0.5.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.4.0...v0.5.0) (2026-10-21)
 
 
