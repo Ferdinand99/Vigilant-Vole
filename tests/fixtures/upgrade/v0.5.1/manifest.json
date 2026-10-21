@@ -1,0 +1,354 @@
+{
+  "version": "0.5.1",
+  "image": "ghcr.io/ferdinand99/vigilant-vole@sha256:ccbc88e2dc62718f4919dae8b4b966d435cf5472382ee2f6c10383abf30eff31",
+  "generated_at": "2026-10-21T18:10:33Z",
+  "generator": "tools/upgrade-fixtures/generate.sh",
+  "migrations": [
+    "0001_init.sql",
+    "0002_full_schema.sql",
+    "0050_statuspages_extras.sql",
+    "0060_auth_sessions.sql",
+    "0070_integrations_discovery.sql",
+    "0090_i18n_user_language.sql",
+    "0095_more_monitor_types.sql",
+    "0096_http_auth.sql",
+    "0097_sqlserver_mongodb.sql",
+    "0098_status_page_extras.sql",
+    "0099_real_browser.sql",
+    "0100_maintenance_strategies.sql",
+    "0101_incident_updates.sql",
+    "0102_status_page_subscribers.sql",
+    "0103_subscriber_tokens.sql"
+  ],
+  "credentials": {
+    "admin": {
+      "username": "admin",
+      "password": "Vole-Upgrade-Pass-2026!"
+    },
+    "user_password": "Vole-Member-Pass-2026!",
+    "totp": {
+      "username": "eddie",
+      "secret": "K5YMSTXGCAMWB5SHRO24JENVW2TLI4VP",
+      "recovery_code": "st492-tr8up"
+    },
+    "admin_token": "vv_hwJzU7iefDhqDxREBF7DV85VVwhkrBziQyOVNPDtYFe",
+    "viewer_token": "vv_HPs6I5Oq1A36YdFR357AzZK5k52xDJf7f6yYRByZ9Iq",
+    "agent_token": "vva_zS8742yOiYOx7O2f8ijAj4bbRWQY2aGQaxsewFnW",
+    "page_password": "Page-Secret-2026!",
+    "push_token": "ZEvCceCjXQPOKYk7aTyJZ87nz7e5TvZK"
+  },
+  "ids": {
+    "admin": 1,
+    "webhook": 41,
+    "escalation": 42,
+    "browser": 1,
+    "page": 1,
+    "page_internal": 2,
+    "push_monitor": 15,
+    "monitors": {
+      "Core services": 1,
+      "Website": 2,
+      "Broken page": 3,
+      "Basic auth API": 4,
+      "OAuth API": 5,
+      "mTLS API": 6,
+      "Keyword": 7,
+      "Keyword absent": 8,
+      "JSON query": 9,
+      "TCP app port": 10,
+      "TCP closed port": 11,
+      "Ping loopback": 12,
+      "Tailscale node": 13,
+      "DNS": 14,
+      "Nightly backup": 15,
+      "Docker container": 16,
+      "WebSocket": 17,
+      "Domain expiry": 18,
+      "NTP": 19,
+      "Steam server": 20,
+      "Game server": 21,
+      "TLS certificate": 22,
+      "SMTP": 23,
+      "Redis": 24,
+      "Postgres": 25,
+      "MySQL": 26,
+      "MQTT": 27,
+      "Kafka": 28,
+      "RabbitMQ": 29,
+      "gRPC": 30,
+      "gRPC keyword": 31,
+      "RADIUS": 32,
+      "SNMP": 33,
+      "SQL Server": 34,
+      "MongoDB": 35,
+      "Real browser": 36,
+      "Agent-checked site": 37,
+      "Paused legacy": 38
+    }
+  },
+  "values": {
+    "channel_secret": "http://127.0.0.1:9/hook",
+    "page_slug": "fixture",
+    "custom_domain": "status.fixture.test",
+    "custom_css": ".hero { color: #123456; }",
+    "incident_title": "Elevated error rates",
+    "users": [
+      {
+        "username": "admin",
+        "role": "admin",
+        "active": 1,
+        "totp": 0
+      },
+      {
+        "username": "vera",
+        "role": "viewer",
+        "active": 1,
+        "totp": 0
+      },
+      {
+        "username": "eddie",
+        "role": "editor",
+        "active": 1,
+        "totp": 1
+      },
+      {
+        "username": "ada",
+        "role": "admin",
+        "active": 1,
+        "totp": 0
+      },
+      {
+        "username": "dave",
+        "role": "viewer",
+        "active": 0,
+        "totp": 0
+      }
+    ],
+    "monitors": [
+      {
+        "name": "Core services",
+        "type": "group",
+        "active": 1
+      },
+      {
+        "name": "Website",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "Broken page",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "Basic auth API",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "OAuth API",
+        "type": "http",
+        "active": 0
+      },
+      {
+        "name": "mTLS API",
+        "type": "http",
+        "active": 0
+      },
+      {
+        "name": "Keyword",
+        "type": "keyword",
+        "active": 1
+      },
+      {
+        "name": "Keyword absent",
+        "type": "keyword",
+        "active": 1
+      },
+      {
+        "name": "JSON query",
+        "type": "json_query",
+        "active": 1
+      },
+      {
+        "name": "TCP app port",
+        "type": "tcp",
+        "active": 1
+      },
+      {
+        "name": "TCP closed port",
+        "type": "tcp",
+        "active": 1
+      },
+      {
+        "name": "Ping loopback",
+        "type": "ping",
+        "active": 1
+      },
+      {
+        "name": "Tailscale node",
+        "type": "tailscale_ping",
+        "active": 0
+      },
+      {
+        "name": "DNS",
+        "type": "dns",
+        "active": 1
+      },
+      {
+        "name": "Nightly backup",
+        "type": "push",
+        "active": 1
+      },
+      {
+        "name": "Docker container",
+        "type": "docker",
+        "active": 1
+      },
+      {
+        "name": "WebSocket",
+        "type": "websocket",
+        "active": 1
+      },
+      {
+        "name": "Domain expiry",
+        "type": "domain_expiry",
+        "active": 0
+      },
+      {
+        "name": "NTP",
+        "type": "ntp",
+        "active": 1
+      },
+      {
+        "name": "Steam server",
+        "type": "steam",
+        "active": 0
+      },
+      {
+        "name": "Game server",
+        "type": "game_server",
+        "active": 0
+      },
+      {
+        "name": "TLS certificate",
+        "type": "tls",
+        "active": 1
+      },
+      {
+        "name": "SMTP",
+        "type": "smtp",
+        "active": 1
+      },
+      {
+        "name": "Redis",
+        "type": "redis",
+        "active": 1
+      },
+      {
+        "name": "Postgres",
+        "type": "postgres",
+        "active": 1
+      },
+      {
+        "name": "MySQL",
+        "type": "mysql",
+        "active": 1
+      },
+      {
+        "name": "MQTT",
+        "type": "mqtt",
+        "active": 1
+      },
+      {
+        "name": "Kafka",
+        "type": "kafka",
+        "active": 1
+      },
+      {
+        "name": "RabbitMQ",
+        "type": "rabbitmq",
+        "active": 1
+      },
+      {
+        "name": "gRPC",
+        "type": "grpc",
+        "active": 1
+      },
+      {
+        "name": "gRPC keyword",
+        "type": "grpc_keyword",
+        "active": 1
+      },
+      {
+        "name": "RADIUS",
+        "type": "radius",
+        "active": 1
+      },
+      {
+        "name": "SNMP",
+        "type": "snmp",
+        "active": 1
+      },
+      {
+        "name": "SQL Server",
+        "type": "sqlserver",
+        "active": 1
+      },
+      {
+        "name": "MongoDB",
+        "type": "mongodb",
+        "active": 1
+      },
+      {
+        "name": "Real browser",
+        "type": "real_browser",
+        "active": 0
+      },
+      {
+        "name": "Agent-checked site",
+        "type": "http",
+        "active": 1
+      },
+      {
+        "name": "Paused legacy",
+        "type": "tcp",
+        "active": 0
+      }
+    ],
+    "site_name": "Vole Fixture"
+  },
+  "counts": {
+    "agents": 2,
+    "api_tokens": 2,
+    "discovery_paused": 0,
+    "heartbeat_daily": 30,
+    "heartbeats": 97,
+    "incident_updates": 0,
+    "incidents": 2,
+    "maintenance_monitors": 4,
+    "maintenance_status_pages": 1,
+    "maintenance_windows": 4,
+    "monitor_events": 23,
+    "monitor_expiry": 0,
+    "monitor_notifications": 3,
+    "monitor_screenshots": 0,
+    "monitor_tags": 11,
+    "monitors": 38,
+    "notification_channels": 42,
+    "remote_browsers": 1,
+    "schema_migrations": 15,
+    "settings": 7,
+    "status_page_assets": 1,
+    "status_page_monitors": 11,
+    "status_page_referrers": 0,
+    "status_page_sections": 4,
+    "status_page_subscribers": 0,
+    "status_page_views": 0,
+    "status_pages": 2,
+    "tags": 4,
+    "users": 5
+  },
+  "not_in_this_version": [],
+  "rejected": []
+}
