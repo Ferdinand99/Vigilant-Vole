@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.4.0...v0.5.0) (2026-10-21)
+
+
+### Features
+
+* Kuma parity round 2 — maintenance schedules, incident timeline and feed, subscribers, MCP server, 16 notification providers ([#12](https://github.com/Ferdinand99/Vigilant-Vole/issues/12)) ([f7716e5](https://github.com/Ferdinand99/Vigilant-Vole/commit/f7716e51227747fc27897ff2d46aa362a8252ffc))
+
 ## [0.4.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.3.0...v0.4.0) (2026-10-20)
 
 
