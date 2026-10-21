@@ -34,8 +34,9 @@ use std::time::Instant;
 use axum::Router;
 use axum::middleware;
 
+pub use crate::kit::docs::RouteDoc;
 pub use crate::kit::http::rest::*;
-pub use docs::{ROUTES, RouteDoc, reference_markdown};
+pub use docs::{DOCS, ROUTES, reference_markdown};
 
 use super::AppState;
 

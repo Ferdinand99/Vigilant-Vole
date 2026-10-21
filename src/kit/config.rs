@@ -56,6 +56,8 @@ pub struct KitConfig {
     /// Paths where the visitor's `Accept-Language` beats the site language
     /// (public pages).
     pub browser_language_prefixes: &'static [&'static str],
+    /// The product's API reference.
+    pub docs: &'static super::docs::DocsSpec,
     pub locales: &'static [(&'static str, &'static str)],
 }
 

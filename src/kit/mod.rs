@@ -11,6 +11,7 @@
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod docs;
 pub mod http;
 pub mod i18n;
 pub mod page;

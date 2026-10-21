@@ -51,6 +51,7 @@ pub static KIT: KitConfig = KitConfig {
     machine_path_prefixes: &["/static/", "/api/"],
     machine_paths: &["/metrics", "/healthz"],
     browser_language_prefixes: &["/status/"],
+    docs: &crate::api::v1::DOCS,
     locales: &[
         ("en", include_str!("../locales/en.toml")),
         ("nb", include_str!("../locales/nb.toml")),
