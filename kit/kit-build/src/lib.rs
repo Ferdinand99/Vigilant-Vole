@@ -50,8 +50,9 @@ pub fn templates() {
 }
 
 /// Makes `dest` an exact copy of `src` (plus a `.gitignore` that ignores
-/// everything). Files whose content is already right are left alone, so
-/// their timestamps don't trigger rebuilds.
+/// everything). Files whose content is already right are left alone, and a
+/// written copy gets its source's modification time: copies newer than the
+/// build that made them would make Cargo run the build script once more.
 pub fn sync(src: &Path, dest: &Path) -> io::Result<()> {
     let mut wanted = Vec::new();
     files(src, src, &mut wanted)?;
@@ -59,14 +60,16 @@ pub fn sync(src: &Path, dest: &Path) -> io::Result<()> {
     write_if_changed(
         &dest.join(".gitignore"),
         b"# Copied from vole-kit by vole-kit-build at build time.\n*\n",
+        fs::metadata(src)?.modified()?,
     )?;
     for rel in &wanted {
-        let data = fs::read(src.join(rel))?;
+        let source = src.join(rel);
+        let data = fs::read(&source)?;
         let target = dest.join(rel);
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        write_if_changed(&target, &data)?;
+        write_if_changed(&target, &data, fs::metadata(&source)?.modified()?)?;
     }
     let mut present = Vec::new();
     files(dest, dest, &mut present)?;
@@ -78,9 +81,13 @@ pub fn sync(src: &Path, dest: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn write_if_changed(path: &Path, data: &[u8]) -> io::Result<()> {
+fn write_if_changed(path: &Path, data: &[u8], modified: std::time::SystemTime) -> io::Result<()> {
     if fs::read(path).ok().as_deref() != Some(data) {
         fs::write(path, data)?;
+        fs::File::options()
+            .write(true)
+            .open(path)?
+            .set_modified(modified)?;
     }
     Ok(())
 }
