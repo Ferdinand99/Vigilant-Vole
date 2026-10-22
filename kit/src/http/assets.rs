@@ -1,6 +1,14 @@
-//! Serving the product's static files.
+//! Serving static files: the kit's design system (stylesheet, scripts,
+//! icon sprite, fonts) and the product's own files (its icons and manifest).
+//!
+//! The design-system files sit in the repository's `static/` folder next to
+//! the product's, so both are served from `/static/` exactly as before; the
+//! kit embeds its files by name ([`KIT_FILES`]) and the product embeds the
+//! rest. A path may belong to only one of them.
 
 use std::borrow::Cow;
+
+use rust_embed::Embed;
 
 use axum::extract::Path as AxumPath;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -12,8 +20,48 @@ pub struct StaticFile {
     pub sha256: [u8; 32],
 }
 
+/// The kit's files, as `static/` paths (globs).
+pub const KIT_FILES: &[&str] = &[
+    "style.css",
+    "app.js",
+    "theme.js",
+    "icons.svg",
+    "htmx.min.js",
+    "sse.js",
+    "fonts/*",
+];
+
+#[derive(Embed)]
+#[folder = "../static/"]
+#[include = "style.css"]
+#[include = "app.js"]
+#[include = "theme.js"]
+#[include = "icons.svg"]
+#[include = "htmx.min.js"]
+#[include = "sse.js"]
+#[include = "fonts/*"]
+struct KitAssets;
+
+/// One of the kit's own static files.
+pub fn kit_file(path: &str) -> Option<StaticFile> {
+    let file = KitAssets::get(path)?;
+    Some(StaticFile {
+        sha256: file.metadata.sha256_hash(),
+        data: file.data,
+    })
+}
+
+/// Every file the kit serves, sorted.
+pub fn kit_paths() -> Vec<String> {
+    let mut paths: Vec<String> = KitAssets::iter().map(|p| p.into_owned()).collect();
+    paths.sort();
+    paths
+}
+
+/// `GET /static/{*path}`: the kit's file, else the product's.
 pub async fn static_asset(AxumPath(path): AxumPath<String>, headers: HeaderMap) -> Response {
-    let Some(file) = (crate::config::get().static_file)(&path) else {
+    let file = kit_file(&path).or_else(|| (crate::config::get().static_file)(&path));
+    let Some(file) = file else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let etag = format!("\"{}\"", hex::encode(&file.sha256[..16]));

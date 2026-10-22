@@ -40,9 +40,9 @@ pub struct KitConfig {
     pub csrf_exempt_path: fn(&str) -> bool,
     /// Passwords (lower case) the product refuses besides the kit's list.
     pub extra_common_passwords: &'static [&'static str],
-    /// The product's translations: `(language code, locale file text)`.
-    /// The kit knows the languages ([`super::i18n::LANGS`]); the texts are
-    /// the product's.
+    /// The product's translations: `(language code, locale file text)`,
+    /// added to the kit's core catalogs ([`super::i18n::LANGS`] lists the
+    /// languages). A key may not be in both.
     /// The product's database migrations and how to run them.
     pub migrations: &'static super::db::migrate::MigrationSet,
     /// Path prefixes that may be framed by other sites (public pages);
@@ -68,12 +68,23 @@ static CONFIG: OnceLock<&'static KitConfig> = OnceLock::new();
 /// test set-up). Installing the same configuration again does nothing;
 /// installing a different one panics, because the kit would otherwise behave
 /// as two products at once.
+///
+/// The first installation also checks the translations: every catalog
+/// parses and no key is defined by both the kit and the product. A failure
+/// panics, so a broken build doesn't start.
 pub fn install(config: &'static KitConfig) {
-    let current = *CONFIG.get_or_init(|| config);
+    let mut first = false;
+    let current = *CONFIG.get_or_init(|| {
+        first = true;
+        config
+    });
     assert!(
         std::ptr::eq(current, config),
         "a different KitConfig is already installed"
     );
+    if first && let Err(e) = crate::i18n::catalog::validate() {
+        panic!("invalid translations: {e}");
+    }
 }
 
 /// The product's configuration.

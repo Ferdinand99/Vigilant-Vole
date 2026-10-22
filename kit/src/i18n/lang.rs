@@ -653,9 +653,10 @@ pub fn language_choices() -> Vec<(&'static str, String)> {
     Lang::all().map(|l| (l.code(), l.picker_label())).collect()
 }
 
-/// The text of a language's locale file. It derefs to `&str`; the text comes
-/// from the product's [`KitConfig::locales`](crate::config::KitConfig)
-/// when it is read, which keeps the language registry free of any file path.
+/// The text of a language's catalog: the kit's core strings
+/// (`kit/locales/<code>.toml`, compiled into the kit) followed by the
+/// product's own (its [`KitConfig::locales`](crate::config::KitConfig)).
+/// It derefs to `&str`; the two are joined once, when first read.
 pub struct LocaleText {
     code: &'static str,
 }
@@ -664,17 +665,37 @@ impl LocaleText {
     pub const fn new(code: &'static str) -> Self {
         Self { code }
     }
+
+    /// The kit's core strings for this language.
+    pub fn core(&self) -> &'static str {
+        super::catalog::core_text(self.code)
+    }
+
+    /// The product's strings for this language (empty when it has none).
+    pub fn product(&self) -> &'static str {
+        crate::config::get()
+            .locales
+            .iter()
+            .find(|(code, _)| *code == self.code)
+            .map_or("", |(_, text)| text)
+    }
 }
 
 impl std::ops::Deref for LocaleText {
     type Target = str;
 
     fn deref(&self) -> &str {
-        crate::config::get()
-            .locales
-            .iter()
-            .find(|(code, _)| *code == self.code)
-            .map_or("", |(_, text)| text)
+        use std::collections::HashMap;
+        use std::sync::{Mutex, PoisonError};
+        static JOINED: Mutex<Option<HashMap<&'static str, &'static str>>> = Mutex::new(None);
+        let mut joined = JOINED.lock().unwrap_or_else(PoisonError::into_inner);
+        joined
+            .get_or_insert_with(HashMap::new)
+            .entry(self.code)
+            .or_insert_with(|| {
+                let text = format!("{}\n{}", self.core(), self.product());
+                Box::leak(text.into_boxed_str())
+            })
     }
 }
 

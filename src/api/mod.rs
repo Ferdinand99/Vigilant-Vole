@@ -170,8 +170,17 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// The product's own static files; the design system (stylesheet, scripts,
+/// icon sprite, fonts) is the kit's (`crate::kit::http::assets::KIT_FILES`).
 #[derive(Embed)]
 #[folder = "static/"]
+#[exclude = "style.css"]
+#[exclude = "app.js"]
+#[exclude = "theme.js"]
+#[exclude = "icons.svg"]
+#[exclude = "htmx.min.js"]
+#[exclude = "sse.js"]
+#[exclude = "fonts/*"]
 struct StaticAssets;
 
 /// The product's static files, for the kit's static file handler.
@@ -239,5 +248,44 @@ mod tests {
             guess_content_type("unknown.bin"),
             "application/octet-stream"
         );
+    }
+
+    /// Every file under `static/` belongs to exactly one of the kit and the
+    /// product: none is served twice or left out.
+    #[test]
+    fn static_files_are_split_between_kit_and_product() {
+        fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, root, out);
+                } else {
+                    let rel = path.strip_prefix(root).unwrap().to_string_lossy();
+                    out.push(rel.replace('\\', "/"));
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static");
+        let mut paths = Vec::new();
+        walk(&root, &root, &mut paths);
+        assert!(paths.len() > 10, "{paths:?}");
+        let kit = crate::kit::http::assets::kit_paths();
+        for path in &paths {
+            let in_kit = crate::kit::http::assets::kit_file(path).is_some();
+            let in_product = super::static_file(path).is_some();
+            assert!(
+                in_kit != in_product,
+                "{path}: kit {in_kit}, product {in_product}"
+            );
+            assert_eq!(in_kit, kit.contains(path), "{path}");
+        }
+        for path in [
+            "style.css",
+            "app.js",
+            "icons.svg",
+            "fonts/InterVariable.woff2",
+        ] {
+            assert!(kit.iter().any(|p| p == path), "the kit serves {path}");
+        }
     }
 }

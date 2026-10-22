@@ -1,4 +1,7 @@
-//! Locale catalogs: `locales/<code>.toml`, compiled in and parsed once.
+//! Locale catalogs, compiled in and parsed once. A language's catalog is
+//! the kit's core strings (`kit/locales/<code>.toml`) plus the product's
+//! (registered in its `KitConfig`); a key may be defined in only one of
+//! them ([`validate`] checks, at start-up).
 //!
 //! The files use a small TOML subset: `[section]` headers (dotted names
 //! allowed), `key = "value"` lines with `\"`, `\\`, `\n` and `\u{…}`-free
@@ -29,6 +32,60 @@ fn catalogs() -> &'static [Catalog] {
             })
             .collect()
     })
+}
+
+macro_rules! core_texts {
+    ($($code:literal),*) => {
+        &[$(($code, include_str!(concat!("../../locales/", $code, ".toml")))),*]
+    };
+}
+
+/// The kit's own strings: shared pages, forms, formats, providers.
+static CORE: &[(&str, &str)] = core_texts!(
+    "en", "nb", "ar", "cs", "da", "de", "es", "fa", "fi", "fr", "he", "hu", "it", "ja", "ko", "nl",
+    "pl", "pt-BR", "pt-PT", "ro", "ru", "sv", "tr", "uk", "zh-CN", "zh-TW"
+);
+
+/// The kit's core catalog text for `code` (empty for an unknown code).
+pub fn core_text(code: &str) -> &'static str {
+    CORE.iter().find(|(c, _)| *c == code).map_or("", |(_, t)| t)
+}
+
+/// Checks every language's catalogs: both parse, and no key is defined by
+/// the kit and the product alike. Called when the configuration is
+/// installed, so a broken or clashing catalog stops the start.
+pub fn validate() -> Result<(), String> {
+    let mut problems = Vec::new();
+    for info in LANGS {
+        if let Err(e) = check_pair(info.source.core(), info.source.product()) {
+            problems.push(format!("{}: {e}", info.code));
+        }
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join("; "))
+    }
+}
+
+/// `core` and `product` each parse, and share no key.
+pub fn check_pair(core: &str, product: &str) -> Result<(), String> {
+    let core = parse(core).map_err(|e| format!("kit catalog: {e}"))?;
+    let product = parse(product).map_err(|e| format!("product catalog: {e}"))?;
+    let mut both: Vec<&String> = product.keys().filter(|k| core.contains_key(*k)).collect();
+    if both.is_empty() {
+        return Ok(());
+    }
+    both.sort();
+    Err(format!(
+        "{} key(s) defined by both the kit and the product: {}",
+        both.len(),
+        both.iter()
+            .take(10)
+            .map(|k| k.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 pub fn get(lang: Lang, key: &str) -> Option<&'static str> {
@@ -126,4 +183,23 @@ fn parse_string(s: &str) -> Result<String, String> {
         return Err(format!("unexpected text after the value: {tail:?}"));
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    #[test]
+    fn kit_and_product_catalogs_are_disjoint() {
+        validate().unwrap();
+    }
+
+    #[test]
+    fn a_key_in_both_catalogs_is_an_error() {
+        let err =
+            check_pair("[common]\nsave = \"Save\"\n", "[common]\nsave = \"Keep\"\n").unwrap_err();
+        assert!(err.contains("common.save"), "{err}");
+        assert!(check_pair("[common]\nsave = \"Save\"\n", "[detail]\nsave = \"Keep\"\n").is_ok());
+        assert!(check_pair("[common\n", "").is_err());
+    }
 }
