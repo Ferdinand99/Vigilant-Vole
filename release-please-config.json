@@ -10,7 +10,7 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "include-component-in-tag": false,
-      "exclude-paths": ["kit", "examples"],
+      "exclude-paths": ["examples"],
       "extra-files": [
         { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.package.version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value == 'vigilant-vole')].version" }

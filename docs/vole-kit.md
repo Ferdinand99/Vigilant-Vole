@@ -388,11 +388,15 @@ working.
 
 * **Vigilant Vole is a `simple` package with TOML extra files.** The `rust`
   strategy on a workspace root would set every member's version (vole-kit
-  included) to Vigilant Vole's. Commits that touch only `kit/` or
-  `examples/` don't count towards Vigilant Vole (`exclude-paths`).
+  included) to Vigilant Vole's. Commits that touch only `examples/` don't
+  count towards Vigilant Vole (`exclude-paths`).
+* **Kit commits count towards both.** Vigilant Vole embeds the kit, so a fix
+  in `kit/` (say in auth) must reach Vigilant Vole's users too: a kit-only
+  `fix` opens two release PRs, one per component, each bumping only its own
+  files.
 * **The cargo-workspace plugin isn't used.** It would bump vigilant-vole for
-  every kit release. Vigilant Vole depends on the kit by path without a
-  version, so a kit release needs no Vigilant Vole release.
+  every kit release, including ones that change nothing Vigilant Vole
+  ships. Vigilant Vole depends on the kit by path without a version.
 * **The kit starts at 0.0.0** in the manifest and `Cargo.toml`, so its first
   release is 0.1.0. That needs at least one user-facing commit (`feat`,
   `fix`) touching `kit/`.
@@ -425,7 +429,7 @@ and prints the release PRs it would open. It was used to check this setup:
 
 * merging this branch gives "release 0.7.0" (Vigilant Vole) and "release
   vole-kit 0.1.0", each bumping only its own files;
-* a later kit-only fix proposes only vole-kit 0.1.1;
+* a later kit-only fix proposes vole-kit 0.1.1 and Vigilant Vole 0.7.1;
 * a Vigilant Vole fix proposes only 0.7.1;
 * a kit-demo change proposes nothing.
 
