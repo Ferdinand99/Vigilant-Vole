@@ -916,3 +916,46 @@ topic.label = "App-topic"
 topic.help = "Kun iOS: appens bundle-ID."
 server.required = "Angiv Gorush-URL’en"
 tokens.required = "Angiv mindst ét enhedstoken"
+
+[dashboard]
+response = "Svar"
+
+[detail]
+expires = "Udløber"
+request = "Forespørgsel"
+
+[monitor_form]
+edit_heading = "Rediger {name}"
+
+[general]
+language = "Sprog"
+err_site_name = "Brug højst 80 tegn."
+
+[docs]
+title = "API-reference"
+create_token = "Opret et token"
+sections = "API-afsnit"
+getting_started = "Kom i gang"
+getting_started_sub = "Send dit token som et bearer-token. Skrivebeskyttede tokens kan kalde alle GET."
+authenticate = "Godkend"
+session_help = "Logget ind? De samme endepunkter virker med din session i denne browser, så du kan åbne GET-links direkte."
+conventions = "Konventioner"
+base_url = "Basis-URL"
+lists = "Lister"
+caching = "Caching"
+caching_text = "GET sender en"
+times = "Tider"
+secrets = "Hemmeligheder"
+secrets_1 = "Vises som"
+secrets_2 = "; send den tilbage for at beholde værdien"
+errors = "Fejl"
+errors_sub = "Én form for hvert endepunkt"
+codes = "Koder:"
+details = "Detaljer"
+parameters = "Parametre"
+examples_lc = "eksempler"
+examples = "Eksempler"
+ai_lead = "Bygger du med en AI-assistent?"
+ai_text = "Giv den hele API’et i én indsætning."
+copy_for_ai = "Kopiér til AI"
+open_markdown = "Åbn som Markdown"

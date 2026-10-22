@@ -970,3 +970,46 @@ topic.label = "موضوع التطبيق"
 topic.help = "لنظام iOS فقط: معرّف حزمة التطبيق (bundle ID)."
 server.required = "أدخل عنوان Gorush"
 tokens.required = "أدخل رمز جهاز واحدًا على الأقل"
+
+[dashboard]
+response = "الاستجابة"
+
+[detail]
+expires = "ينتهي"
+request = "الطلب"
+
+[monitor_form]
+edit_heading = "تعديل {name}"
+
+[general]
+language = "اللغة"
+err_site_name = "استخدم 80 حرفًا على الأكثر."
+
+[docs]
+title = "مرجع API"
+create_token = "إنشاء رمز"
+sections = "أقسام API"
+getting_started = "البدء"
+getting_started_sub = "أرسل رمزك كرمز Bearer. الرموز للقراءة فقط تستطيع استدعاء كل طلبات GET."
+authenticate = "المصادقة"
+session_help = "هل سجّلت الدخول؟ تعمل نقاط النهاية نفسها بجلستك في هذا المتصفح، فيمكنك فتح روابط GET مباشرة."
+conventions = "الاصطلاحات"
+base_url = "العنوان الأساسي"
+lists = "القوائم"
+caching = "التخزين المؤقت"
+caching_text = "ترسل طلبات GET ترويسة"
+times = "الأوقات"
+secrets = "الأسرار"
+secrets_1 = "تظهر كـ"
+secrets_2 = "؛ أعدها كما هي للإبقاء على القيمة"
+errors = "الأخطاء"
+errors_sub = "شكل واحد لكل نقطة نهاية"
+codes = "الرموز:"
+details = "التفاصيل"
+parameters = "المعاملات"
+examples_lc = "أمثلة"
+examples = "أمثلة"
+ai_lead = "تعمل مع مساعد ذكاء اصطناعي؟"
+ai_text = "أعطه واجهة API كاملة في لصقة واحدة."
+copy_for_ai = "نسخ للذكاء الاصطناعي"
+open_markdown = "فتح بصيغة Markdown"

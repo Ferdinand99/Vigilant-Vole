@@ -915,3 +915,46 @@ topic.label = "Uygulama konusu"
 topic.help = "Yalnızca iOS: uygulamanın bundle ID’si."
 server.required = "Gorush URL’sini girin"
 tokens.required = "En az bir cihaz belirteci girin"
+
+[dashboard]
+response = "Yanıt"
+
+[detail]
+expires = "Sona erer"
+request = "İstek"
+
+[monitor_form]
+edit_heading = "Düzenle: {name}"
+
+[general]
+language = "Dil"
+err_site_name = "En çok 80 karakter kullanın."
+
+[docs]
+title = "API başvurusu"
+create_token = "Belirteç oluştur"
+sections = "API bölümleri"
+getting_started = "Başlarken"
+getting_started_sub = "Belirtecinizi bearer belirteci olarak gönderin. Salt okunur belirteçler her GET isteğini çağırabilir."
+authenticate = "Kimlik doğrulama"
+session_help = "Giriş yaptınız mı? Aynı uç noktalar bu tarayıcıdaki oturumunuzla da çalışır; böylece GET bağlantılarını doğrudan açabilirsiniz."
+conventions = "Kurallar"
+base_url = "Temel URL"
+lists = "Listeler"
+caching = "Önbellekleme"
+caching_text = "GET yanıtları şu başlığı gönderir:"
+times = "Zamanlar"
+secrets = "Gizli anahtarlar"
+secrets_1 = "Gösterim:"
+secrets_2 = "; değeri korumak için aynen geri gönderin"
+errors = "Hatalar"
+errors_sub = "Her uç nokta için tek biçim"
+codes = "Kodlar:"
+details = "Ayrıntılar"
+parameters = "Parametreler"
+examples_lc = "örnekler"
+examples = "Örnekler"
+ai_lead = "Bir yapay zekâ asistanıyla mı geliştiriyorsunuz?"
+ai_text = "Tüm API’yi tek yapıştırmayla ona verin."
+copy_for_ai = "AI için kopyala"
+open_markdown = "Markdown olarak aç"

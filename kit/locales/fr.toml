@@ -928,3 +928,46 @@ topic.label = "Topic de l’app"
 topic.help = "iOS uniquement : l’ID de bundle de l’app."
 server.required = "Saisir l’URL Gorush"
 tokens.required = "Saisir au moins un jeton d’appareil"
+
+[dashboard]
+response = "Réponse"
+
+[detail]
+expires = "Expire"
+request = "Requête"
+
+[monitor_form]
+edit_heading = "Modifier {name}"
+
+[general]
+language = "Langue"
+err_site_name = "Utiliser 80 caractères au maximum."
+
+[docs]
+title = "Référence de l’API"
+create_token = "Créer un jeton"
+sections = "Sections de l’API"
+getting_started = "Premiers pas"
+getting_started_sub = "Envoyer le jeton en Bearer. Les jetons en lecture seule peuvent appeler tous les GET."
+authenticate = "S’authentifier"
+session_help = "Connecté ? Les mêmes points de terminaison fonctionnent avec la session de ce navigateur : les liens GET peuvent s’ouvrir directement."
+conventions = "Conventions"
+base_url = "URL de base"
+lists = "Listes"
+caching = "Cache"
+caching_text = "Les GET envoient un"
+times = "Heures"
+secrets = "Secrets"
+secrets_1 = "Affichés sous la forme"
+secrets_2 = ". Renvoyer cette valeur pour la conserver"
+errors = "Erreurs"
+errors_sub = "Un seul format pour tous les points de terminaison"
+codes = "Codes :"
+details = "Détails"
+parameters = "Paramètres"
+examples_lc = "exemples"
+examples = "Exemples"
+ai_lead = "Un assistant IA pour développer ?"
+ai_text = "Toute l’API en un seul copier-coller."
+copy_for_ai = "Copier pour l’IA"
+open_markdown = "Ouvrir en Markdown"

@@ -915,3 +915,46 @@ topic.label = "App-topic"
 topic.help = "Alleen iOS: de bundle-ID van de app."
 server.required = "Voer de Gorush-URL in"
 tokens.required = "Voer minstens één apparaattoken in"
+
+[dashboard]
+response = "Respons"
+
+[detail]
+expires = "Verloopt"
+request = "Verzoek"
+
+[monitor_form]
+edit_heading = "{name} bewerken"
+
+[general]
+language = "Taal"
+err_site_name = "Gebruik maximaal 80 tekens."
+
+[docs]
+title = "API-referentie"
+create_token = "Een token maken"
+sections = "API-secties"
+getting_started = "Aan de slag"
+getting_started_sub = "Stuur je token mee als bearer-token. Alleen-lezen tokens kunnen elke GET aanroepen."
+authenticate = "Authenticeren"
+session_help = "Ingelogd? Dezelfde endpoints werken met je sessie in deze browser, zodat je GET-links direct kunt openen."
+conventions = "Conventies"
+base_url = "Basis-URL"
+lists = "Lijsten"
+caching = "Caching"
+caching_text = "GET-verzoeken sturen een"
+times = "Tijden"
+secrets = "Geheimen"
+secrets_1 = "Getoond als"
+secrets_2 = "; stuur het terug om de waarde te behouden"
+errors = "Fouten"
+errors_sub = "Eén vorm voor elk endpoint"
+codes = "Codes:"
+details = "Details"
+parameters = "Parameters"
+examples_lc = "voorbeelden"
+examples = "Voorbeelden"
+ai_lead = "Bouw je met een AI-assistent?"
+ai_text = "Geef hem in één keer de hele API."
+copy_for_ai = "Kopiëren voor AI"
+open_markdown = "Openen als Markdown"

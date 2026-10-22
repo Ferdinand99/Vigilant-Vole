@@ -901,3 +901,46 @@ topic.label = "앱 토픽"
 topic.help = "iOS 전용: 앱의 번들 ID예요."
 server.required = "Gorush URL을 입력하세요"
 tokens.required = "기기 토큰을 하나 이상 입력하세요"
+
+[dashboard]
+response = "응답"
+
+[detail]
+expires = "만료"
+request = "요청"
+
+[monitor_form]
+edit_heading = "{name} 편집"
+
+[general]
+language = "언어"
+err_site_name = "80자 이하로 입력하세요."
+
+[docs]
+title = "API 레퍼런스"
+create_token = "토큰 만들기"
+sections = "API 섹션"
+getting_started = "시작하기"
+getting_started_sub = "토큰을 Bearer 토큰으로 보내세요. 읽기 전용 토큰으로 모든 GET을 호출할 수 있어요."
+authenticate = "인증"
+session_help = "로그인했나요? 이 브라우저에서는 세션으로도 같은 엔드포인트를 쓸 수 있어서 GET 링크를 바로 열 수 있어요."
+conventions = "규칙"
+base_url = "기본 URL"
+lists = "목록"
+caching = "캐싱"
+caching_text = "GET은 다음 헤더를 보내요:"
+times = "시간"
+secrets = "비밀 값"
+secrets_1 = "표시 형태:"
+secrets_2 = "; 값을 유지하려면 그대로 다시 보내세요"
+errors = "오류"
+errors_sub = "모든 엔드포인트가 같은 형식을 사용해요"
+codes = "코드:"
+details = "상세"
+parameters = "매개변수"
+examples_lc = "예시"
+examples = "예시"
+ai_lead = "AI 어시스턴트와 함께 개발하나요?"
+ai_text = "API 전체를 한 번에 붙여 넣어 전달하세요."
+copy_for_ai = "AI용으로 복사"
+open_markdown = "Markdown으로 열기"

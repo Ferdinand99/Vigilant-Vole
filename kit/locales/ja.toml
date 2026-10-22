@@ -900,3 +900,46 @@ topic.label = "アプリのトピック"
 topic.help = "iOSのみ：アプリのバンドルID。"
 server.required = "Gorush URLを入力してください"
 tokens.required = "デバイストークンを1つ以上入力してください"
+
+[dashboard]
+response = "応答"
+
+[detail]
+expires = "有効期限"
+request = "リクエスト"
+
+[monitor_form]
+edit_heading = "{name}を編集"
+
+[general]
+language = "言語"
+err_site_name = "80文字以内にしてください。"
+
+[docs]
+title = "APIリファレンス"
+create_token = "トークンを作成"
+sections = "APIのセクション"
+getting_started = "はじめに"
+getting_started_sub = "トークンを Bearer トークンとして送信します。読み取り専用のトークンでも、すべてのGETを呼び出せます。"
+authenticate = "認証"
+session_help = "サインイン中ですか？ 同じエンドポイントをこのブラウザのセッションでも使えるため、GETのリンクを直接開けます。"
+conventions = "規約"
+base_url = "ベースURL"
+lists = "リスト"
+caching = "キャッシュ"
+caching_text = "GETは次のヘッダーを返します:"
+times = "時刻"
+secrets = "シークレット"
+secrets_1 = "表示は"
+secrets_2 = "。値を保持するにはそのまま送り返します"
+errors = "エラー"
+errors_sub = "すべてのエンドポイントで共通の形式"
+codes = "コード："
+details = "詳細"
+parameters = "パラメーター"
+examples_lc = "例"
+examples = "例"
+ai_lead = "AIアシスタントで開発中ですか？"
+ai_text = "API全体を一度の貼り付けで渡せます。"
+copy_for_ai = "AI用にコピー"
+open_markdown = "Markdownで開く"

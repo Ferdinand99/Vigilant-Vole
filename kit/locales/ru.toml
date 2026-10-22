@@ -943,3 +943,46 @@ topic.label = "Топик приложения"
 topic.help = "Только для iOS: bundle ID приложения."
 server.required = "Введите URL Gorush"
 tokens.required = "Введите хотя бы один токен устройства"
+
+[dashboard]
+response = "Отклик"
+
+[detail]
+expires = "Истекает"
+request = "Запрос"
+
+[monitor_form]
+edit_heading = "Изменение: {name}"
+
+[general]
+language = "Язык"
+err_site_name = "Не более 80 символов."
+
+[docs]
+title = "Справочник API"
+create_token = "Создать токен"
+sections = "Разделы API"
+getting_started = "Начало работы"
+getting_started_sub = "Передавайте токен как bearer-токен. Токены только для чтения могут вызывать любые GET."
+authenticate = "Аутентификация"
+session_help = "Вы вошли? Те же эндпоинты работают с вашим сеансом в этом браузере, поэтому ссылки GET можно открывать напрямую."
+conventions = "Соглашения"
+base_url = "Базовый URL"
+lists = "Списки"
+caching = "Кэширование"
+caching_text = "GET отправляют"
+times = "Время"
+secrets = "Секреты"
+secrets_1 = "Показываются как"
+secrets_2 = "; отправьте это значение обратно, чтобы сохранить прежнее"
+errors = "Ошибки"
+errors_sub = "Единый формат для всех эндпоинтов"
+codes = "Коды:"
+details = "Подробности"
+parameters = "Параметры"
+examples_lc = "примеры"
+examples = "Примеры"
+ai_lead = "Разработка с ИИ-ассистентом?"
+ai_text = "Весь API — одной вставкой."
+copy_for_ai = "Копировать для ИИ"
+open_markdown = "Открыть как Markdown"

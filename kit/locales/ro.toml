@@ -929,3 +929,46 @@ topic.label = "Topic aplicație"
 topic.help = "Doar iOS: bundle ID-ul aplicației."
 server.required = "Introdu URL-ul Gorush"
 tokens.required = "Introdu cel puțin un token de dispozitiv"
+
+[dashboard]
+response = "Răspuns"
+
+[detail]
+expires = "Expiră"
+request = "Cerere"
+
+[monitor_form]
+edit_heading = "Editează {name}"
+
+[general]
+language = "Limbă"
+err_site_name = "Folosește cel mult 80 de caractere."
+
+[docs]
+title = "Referință API"
+create_token = "Creează un token"
+sections = "Secțiuni API"
+getting_started = "Primii pași"
+getting_started_sub = "Trimite tokenul ca token bearer. Tokenurile doar pentru citire pot apela orice GET."
+authenticate = "Autentificare"
+session_help = "Ești autentificat? Aceleași endpointuri funcționează cu sesiunea ta din acest browser, deci poți deschide direct linkurile GET."
+conventions = "Convenții"
+base_url = "URL de bază"
+lists = "Liste"
+caching = "Cache"
+caching_text = "Cererile GET trimit un"
+times = "Timp"
+secrets = "Secrete"
+secrets_1 = "Afișate ca"
+secrets_2 = "; trimite-l înapoi pentru a păstra valoarea"
+errors = "Erori"
+errors_sub = "O singură formă pentru fiecare endpoint"
+codes = "Coduri:"
+details = "Detalii"
+parameters = "Parametri"
+examples_lc = "exemple"
+examples = "Exemple"
+ai_lead = "Lucrezi cu un asistent AI?"
+ai_text = "Dă-i tot API-ul dintr-o singură lipire."
+copy_for_ai = "Copiază pentru AI"
+open_markdown = "Deschide ca Markdown"
