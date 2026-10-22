@@ -1509,3 +1509,69 @@ remove_msg = "Vedkommende slutter å få oppdateringer, men kan abonnere på nyt
 removed = "Abonnenten er fjernet."
 approve = "Godkjenn"
 approved = "Webhooken er godkjent. Den får en melding med avmeldingslenken sin."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Velkommen tilbake. Logg inn for å se overvåkingene dine."
+
+[setup]
+site_name_placeholder = "Acme status…"
+tz_after = ". Du kan endre dette i Innstillinger."
+
+[users]
+roles_help = "Lesere kan se, men ikke endre noe. Redaktører administrerer overvåkinger, statussider, vedlikehold og varslinger. Administratorer kan gjøre alt, også brukere og innstillinger."
+
+[tokens]
+sub = "La skript, dashbord og Prometheus lese eller endre overvåkingene dine."
+scope_read_sub = "Overvåkinger, status, målinger"
+
+[auth]
+all_set = "Alt er klart. Legg til din første overvåking for å komme i gang."
+setup_token_required = "Denne instansen krever en oppsettsnøkkel. Åpne /setup?token=… med verdien av VV_SETUP_TOKEN fra serverens konfigurasjon."
+
+[error]
+back = "Tilbake til oversikten"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Konfigurer Vigilant Vole"
+
+[common]
+recent_checks = "Siste sjekker"
+
+[nav]
+dashboard = "Oversikt"
+status_pages = "Statussider"
+status_short = "Status"
+maintenance = "Vedlikehold"
+agents = "Eksterne agenter"
+browsers = "Eksterne nettlesere"
+
+[count]
+monitors.one = "{n} overvåking"
+monitors.other = "{n} overvåkinger"
+checks.one = "{n} sjekk"
+checks.other = "{n} sjekker"
+status_pages.one = "{n} statusside"
+status_pages.other = "{n} statussider"
+incidents.one = "{n} driftsmelding"
+incidents.other = "{n} driftsmeldinger"
+outages.one = "{n} avbrudd"
+outages.other = "{n} avbrudd"
+agents.one = "{n} agent"
+agents.other = "{n} agenter"
+
+[notif]
+sub = "Hvor varslene sendes når en overvåking går ned, kommer opp igjen eller trenger oppmerksomhet."
+delete_msg = "Overvåkingene slutter å sende varsler til denne kanalen."
+used_by = "Brukes av {monitors} akkurat nå."
+add_new = "Legg til i nye overvåkinger"
+add_new_help = "Alle overvåkinger du lager fra nå av, bruker denne kanalen."
+add_existing = "Legg til i alle eksisterende overvåkinger"
+add_existing_help = "Legges til i overvåkinger som ikke bruker den ennå. Ingenting fjernes."
+add_existing_help_new = "Du kan endre dette for hver overvåking senere."
+empty_text = "Legg til Slack, Discord, e-post, ntfy, PagerDuty eller en av 20 andre tjenester for å få beskjed om nedetid med en gang."
+default_tip = "Legges automatisk til i nye overvåkinger"
+foot = "Standardkanaler legges automatisk til i nye overvåkinger. Velg kanaler for én overvåking i innstillingene for den."
+no_monitors = "Ingen overvåkinger"

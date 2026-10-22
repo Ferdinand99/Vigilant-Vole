@@ -1,5 +1,6 @@
 //! Kit Demo: the smallest product built on vole-kit. It has its own name,
-//! cookies, token prefix, version, one migration and one string; everything
+//! cookies, token prefix, version, one migration and a few strings (its own,
+//! and the texts the kit's pages take from a product); everything
 //! else (sign-in, users, tokens, Security, the API reference, the layout and
 //! the design system) is the kit's, reached the way any product reaches it:
 //! templates through `vole-kit-build`, pages through
@@ -76,10 +77,10 @@ static DOCS: DocsSpec = DocsSpec {
     openapi_title: "Kit Demo API",
     openapi_description: "REST API for Kit Demo. Authenticate with `Authorization: Bearer kd_…`.",
     bearer_description: "API token (kd_…)",
-    agent_token_description: "",
+    credentials: &[],
     error_example: ERROR_EXAMPLE,
-    config_file: "kit-demo.yml",
-    agent_token_access: "",
+    error_codes: &[],
+    config_document: None,
     curl_path_param: no_param,
     markdown_intro: intro,
     markdown_middle: nothing,
@@ -89,6 +90,7 @@ static DOCS: DocsSpec = DocsSpec {
     api_base: "/api/v1",
     example_path: "/api/v1/notes",
     metrics_path: None,
+    fallback_host: Some("127.0.0.1:3101"),
 };
 
 const LOGO: &[u8] = include_bytes!("../static/logo.svg");
@@ -129,7 +131,10 @@ pub static KIT: KitConfig = KitConfig {
     machine_paths: &["/healthz"],
     browser_language_prefixes: &[],
     docs: &DOCS,
-    locales: &[("en", include_str!("../locales/en.toml"))],
+    locales: &[
+        ("en", include_str!("../locales/en.toml")),
+        ("nb", include_str!("../locales/nb.toml")),
+    ],
     ui: &Ui {
         logo: "/static/logo.svg",
         favicon: "/static/logo.svg",
@@ -139,8 +144,8 @@ pub static KIT: KitConfig = KitConfig {
             NavItem {
                 id: "home",
                 href: "/",
-                label: "nav.dashboard",
-                short_label: "nav.dashboard",
+                label: "demo.notes",
+                short_label: "demo.notes",
                 icon: "pulse",
             },
             NavItem {
@@ -158,6 +163,7 @@ pub static KIT: KitConfig = KitConfig {
         ],
         home_url: "https://example.com/kit-demo",
     },
+    public_url_setting: None,
 };
 
 /// Installs [`KIT`]; call before anything else (tests too).

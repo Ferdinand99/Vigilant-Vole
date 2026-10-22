@@ -171,6 +171,7 @@ pub static KIT: KitConfig = KitConfig {
         ],
         home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
     },
+    public_url_setting: Some("Settings → General"),
 };
 
 /// Installs [`KIT`] as the kit's configuration. Runs at start-up (`main`,

@@ -1506,3 +1506,69 @@ remove_msg = "Er erhält keine Updates mehr. Er kann erneut abonnieren."
 removed = "Abonnent entfernt."
 approve = "Freigeben"
 approved = "Webhook freigegeben. Er erhält eine Nachricht mit seinem Abmeldelink."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Willkommen zurück. Melde dich an, um deine Monitore zu sehen."
+
+[setup]
+site_name_placeholder = "Acme-Status …"
+tz_after = ". Du kannst das in den Einstellungen ändern."
+
+[users]
+roles_help = "Betrachter können nur ansehen, aber nichts ändern. Bearbeiter verwalten Monitore, Statusseiten, Wartung und Benachrichtigungen. Admins können alles, auch Benutzer und Einstellungen."
+
+[tokens]
+sub = "Lass Skripte, Dashboards und Prometheus deine Monitore lesen oder ändern."
+scope_read_sub = "Monitore, Status, Metriken"
+
+[auth]
+all_set = "Alles bereit. Füge deinen ersten Monitor hinzu, um loszulegen."
+setup_token_required = "Diese Instanz benötigt ein Setup-Token. Öffne /setup?token=… mit dem Wert von VV_SETUP_TOKEN aus der Serverkonfiguration."
+
+[error]
+back = "Zurück zum Dashboard"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Vigilant Vole einrichten"
+
+[common]
+recent_checks = "Letzte Prüfungen"
+
+[nav]
+dashboard = "Dashboard"
+status_pages = "Statusseiten"
+status_short = "Status"
+maintenance = "Wartung"
+agents = "Remote-Agents"
+browsers = "Remote-Browser"
+
+[count]
+monitors.one = "{n} Monitor"
+monitors.other = "{n} Monitore"
+checks.one = "{n} Prüfung"
+checks.other = "{n} Prüfungen"
+status_pages.one = "{n} Statusseite"
+status_pages.other = "{n} Statusseiten"
+incidents.one = "{n} Vorfall"
+incidents.other = "{n} Vorfälle"
+outages.one = "{n} Ausfall"
+outages.other = "{n} Ausfälle"
+agents.one = "{n} Agent"
+agents.other = "{n} Agents"
+
+[notif]
+sub = "Wohin Alarme gehen, wenn ein Monitor offline geht, wieder online kommt oder Aufmerksamkeit braucht."
+delete_msg = "Monitore senden keine Alarme mehr an diesen Kanal."
+used_by = "Wird derzeit von {monitors} verwendet."
+add_new = "Zu neuen Monitoren hinzufügen"
+add_new_help = "Jeder Monitor, den du ab jetzt erstellst, verwendet diesen Kanal."
+add_existing = "Zu allen vorhandenen Monitoren hinzufügen"
+add_existing_help = "Fügt ihn Monitoren hinzu, die ihn noch nicht verwenden. Nichts wird entfernt."
+add_existing_help_new = "Du kannst das später für jeden Monitor ändern."
+empty_text = "Füge Slack, Discord, E-Mail, ntfy, PagerDuty oder einen von 20 weiteren Diensten hinzu, um von Ausfällen sofort zu erfahren."
+default_tip = "Wird neuen Monitoren automatisch hinzugefügt"
+foot = "Standardkanäle werden neuen Monitoren automatisch hinzugefügt. Wähle Kanäle für einen einzelnen Monitor in dessen Einstellungen."
+no_monitors = "Keine Monitore"

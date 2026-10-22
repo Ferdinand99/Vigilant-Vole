@@ -1538,3 +1538,81 @@ remove_msg = "Přestane dostávat aktuality. Může se přihlásit znovu."
 removed = "Odběratel odebrán."
 approve = "Schválit"
 approved = "Webhook schválen. Dostane zprávu s odkazem pro zrušení odběru."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Vítejte zpět. Přihlaste se a podívejte se na své monitory."
+
+[setup]
+site_name_placeholder = "Stav služeb Acme…"
+tz_after = ". Změnit to můžete v nastavení."
+
+[users]
+roles_help = "Čtenáři se mohou dívat, ale nic neměnit. Editoři spravují monitory, stavové stránky, údržbu a oznámení. Správci mohou všechno, včetně uživatelů a nastavení."
+
+[tokens]
+sub = "Umožněte skriptům, přehledům a Prometheu číst nebo měnit vaše monitory."
+scope_read_sub = "Monitory, stav, metriky"
+
+[auth]
+all_set = "Hotovo. Přidejte první monitor a můžete začít."
+setup_token_required = "Tato instance vyžaduje token nastavení. Otevřete /setup?token=… s hodnotou VV_SETUP_TOKEN z konfigurace serveru."
+
+[error]
+back = "Zpět na přehled"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Nastavení Vigilant Vole"
+
+[common]
+recent_checks = "Poslední kontroly"
+
+[nav]
+dashboard = "Přehled"
+status_pages = "Stavové stránky"
+status_short = "Stav"
+maintenance = "Údržba"
+agents = "Vzdálení agenti"
+browsers = "Vzdálené prohlížeče"
+
+[count]
+monitors.one = "{n} monitor"
+monitors.few = "{n} monitory"
+monitors.many = "{n} monitoru"
+monitors.other = "{n} monitorů"
+checks.one = "{n} kontrola"
+checks.few = "{n} kontroly"
+checks.many = "{n} kontroly"
+checks.other = "{n} kontrol"
+status_pages.one = "{n} stavová stránka"
+status_pages.few = "{n} stavové stránky"
+status_pages.many = "{n} stavové stránky"
+status_pages.other = "{n} stavových stránek"
+incidents.one = "{n} incident"
+incidents.few = "{n} incidenty"
+incidents.many = "{n} incidentu"
+incidents.other = "{n} incidentů"
+outages.one = "{n} výpadek"
+outages.few = "{n} výpadky"
+outages.many = "{n} výpadku"
+outages.other = "{n} výpadků"
+agents.one = "{n} agent"
+agents.few = "{n} agenti"
+agents.many = "{n} agenta"
+agents.other = "{n} agentů"
+
+[notif]
+sub = "Kam se posílají upozornění, když monitor přestane fungovat, znovu se rozběhne nebo potřebuje pozornost."
+delete_msg = "Monitory přestanou posílat upozornění do tohoto kanálu."
+used_by = "Právě ho používá: {monitors}."
+add_new = "Přidat k novým monitorům"
+add_new_help = "Každý monitor, který odteď vytvoříte, použije tento kanál."
+add_existing = "Přidat ke všem stávajícím monitorům"
+add_existing_help = "Přidá ho monitorům, které ho ještě nepoužívají. Nic se neodebírá."
+add_existing_help_new = "Později to můžete změnit u každého monitoru zvlášť."
+empty_text = "Přidejte Slack, Discord, e-mail, ntfy, PagerDuty nebo jednu z 20 dalších služeb a o výpadku se dozvíte v okamžiku, kdy nastane."
+default_tip = "Automaticky se přidává k novým monitorům"
+foot = "Výchozí kanály se automaticky přidávají k novým monitorům. Kanály pro jeden monitor vyberete v jeho nastavení."
+no_monitors = "Žádné monitory"

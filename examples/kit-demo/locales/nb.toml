@@ -1,0 +1,29 @@
+# Kit Demos egne tekster; alt annet er kitets.
+
+[demo]
+welcome = "Velkommen til Kit Demo. Du har {n} notater."
+notes = "Notater"
+
+# Tekster kitets felles sider henter fra produktet
+# (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Velkommen tilbake. Logg inn for å se notatene dine."
+
+[setup]
+site_name_placeholder = "Teamnotater…"
+tz_after = "."
+
+[users]
+roles_help = "Lesere kan lese notater. Redaktører kan også skrive og slette dem. Administratorer kan gjøre alt, også brukere."
+
+[tokens]
+sub = "La skript lese eller endre notatene dine."
+scope_read_sub = "Notater"
+
+[auth]
+all_set = "Alt er klart. Skriv ditt første notat."
+setup_token_required = "Denne instansen krever en oppsettsnøkkel. Åpne /setup?token=… med verdien av KD_SETUP_TOKEN fra serverens konfigurasjon."
+
+[error]
+back = "Tilbake til notatene"

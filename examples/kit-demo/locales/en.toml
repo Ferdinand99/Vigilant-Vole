@@ -2,3 +2,28 @@
 
 [demo]
 welcome = "Welcome to Kit Demo. You have {n} notes."
+notes = "Notes"
+
+# Texts the kit's shared pages take from the product
+# (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Welcome back. Log in to see your notes."
+
+[setup]
+site_name_placeholder = "Team notes…"
+tz_after = "."
+
+[users]
+roles_help = "Viewers can read notes. Editors can also write and delete them. Admins can do everything, including users."
+
+[tokens]
+sub = "Let scripts read or change your notes."
+scope_read_sub = "Notes"
+
+[auth]
+all_set = "You’re all set. Write your first note."
+setup_token_required = "This instance needs a setup token. Open /setup?token=… with the value of KD_SETUP_TOKEN from the server’s configuration."
+
+[error]
+back = "Back to your notes"

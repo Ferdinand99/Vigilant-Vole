@@ -968,50 +968,22 @@ fn parser_rejects_bad_lines() {
     assert_eq!(parsed["s.k"], "say \"hi\" \\ ok");
 }
 
-/// Prints the coverage of every language (`cargo test --lib coverage -- --nocapture`).
-fn coverage(lang: Lang) -> (usize, usize) {
-    let plain = english_plain_keys();
-    let bases = english_plural_bases();
-    let cat = catalog::all(lang);
-    let required = lang.plural_rule().categories();
-    let total = plain.len() + bases.len() * required.len();
-    let done = plain.iter().filter(|k| cat.contains_key(*k)).count()
-        + bases
-            .iter()
-            .map(|b| {
-                required
-                    .iter()
-                    .filter(|p| cat.contains_key(&format!("{b}.{}", p.as_str())))
-                    .count()
-            })
-            .sum::<usize>();
-    (done, total)
-}
-
+/// Prints the coverage of every language (`cargo test --lib coverage -- --nocapture`)
+/// and checks, with the kit's helper, that every shipped translation is
+/// complete. New English strings must be translated in the same change (or a
+/// follow-up) before this passes; see docs/translating.md.
 #[test]
 fn coverage_report() {
     let mut rows = BTreeMap::new();
     for lang in Lang::all() {
-        let (done, total) = coverage(lang);
-        #[allow(clippy::cast_precision_loss)]
-        rows.insert(
-            lang.code(),
-            (done, total, 100.0 * done as f64 / total as f64),
-        );
+        let c = catalog::coverage(lang);
+        rows.insert(lang.code(), (c.done, c.total, c.percent()));
     }
     for (code, (done, total, pct)) in &rows {
         println!("{code:>6}: {done:>5}/{total:<5} {pct:5.1}%");
     }
     assert_eq!(rows["en"].2, 100.0);
-    // Every shipped translation is complete. New English strings added later
-    // must be translated in the same change (or follow-up) before this passes.
-    for lang in translated() {
-        let (done, total, pct) = rows[lang.code()];
-        assert_eq!(
-            done, total,
-            "{lang} is only {pct:.1}% translated: run `cargo test --lib coverage_report -- --nocapture` and see docs/translating.md"
-        );
-    }
+    catalog::assert_full_coverage();
 }
 
 // ---------------------------------------------------------------------------

@@ -49,7 +49,7 @@
     <summary>{{ tr("docs.errors") }} <span class="disclosure-sub">{{ tr("docs.errors_sub") }}</span>{{ m::icon("chevron-down") }}</summary>
     <div class="disclosure-body stack-sm">
       <pre class="code"><code>{{ error_example }}</code></pre>
-      <p class="help">{{ tr("docs.codes") }} <code>bad_request</code> 400, <code>unauthorized</code> 401, <code>forbidden</code> 403, <code>not_found</code> 404, <code>conflict</code> 409, <code>validation_failed</code> 422, <code>delivery_failed</code> 502.</p>
+      <p class="help">{{ tr("docs.codes") }} {% for c in error_codes %}{% if !loop.first %}, {% endif %}<code>{{ c.code }}</code> {{ c.status }}{% endfor %}.</p>
     </div>
   </details>
 </section>

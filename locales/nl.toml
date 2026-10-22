@@ -1507,3 +1507,69 @@ remove_msg = "De abonnee ontvangt geen updates meer, maar kan zich opnieuw aanme
 removed = "Abonnee verwijderd."
 approve = "Goedkeuren"
 approved = "Webhook goedgekeurd. Hij krijgt een bericht met zijn afmeldlink."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Welkom terug. Log in om je monitors te zien."
+
+[setup]
+site_name_placeholder = "Acme-status…"
+tz_after = ". Je kunt dit later wijzigen in Instellingen."
+
+[users]
+roles_help = "Kijkers kunnen alles zien maar niets wijzigen. Bewerkers beheren monitors, statuspagina’s, onderhoud en meldingen. Beheerders kunnen alles, inclusief gebruikers en instellingen."
+
+[tokens]
+sub = "Laat scripts, dashboards en Prometheus je monitors lezen of wijzigen."
+scope_read_sub = "Monitors, status, metrics"
+
+[auth]
+all_set = "Alles is klaar. Voeg je eerste monitor toe om te beginnen."
+setup_token_required = "Deze instantie heeft een setuptoken nodig. Open /setup?token=… met de waarde van VV_SETUP_TOKEN uit de configuratie van de server."
+
+[error]
+back = "Terug naar dashboard"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Vigilant Vole instellen"
+
+[common]
+recent_checks = "Recente controles"
+
+[nav]
+dashboard = "Dashboard"
+status_pages = "Statuspagina’s"
+status_short = "Status"
+maintenance = "Onderhoud"
+agents = "Externe agents"
+browsers = "Externe browsers"
+
+[count]
+monitors.one = "{n} monitor"
+monitors.other = "{n} monitors"
+checks.one = "{n} controle"
+checks.other = "{n} controles"
+status_pages.one = "{n} statuspagina"
+status_pages.other = "{n} statuspagina’s"
+incidents.one = "{n} incident"
+incidents.other = "{n} incidenten"
+outages.one = "{n} storing"
+outages.other = "{n} storingen"
+agents.one = "{n} agent"
+agents.other = "{n} agents"
+
+[notif]
+sub = "Waar meldingen naartoe gaan als een monitor offline gaat, weer online komt of aandacht nodig heeft."
+delete_msg = "Monitors sturen geen meldingen meer naar dit kanaal."
+used_by = "Wordt nu gebruikt door {monitors}."
+add_new = "Toevoegen aan nieuwe monitors"
+add_new_help = "Elke monitor die je vanaf nu maakt gebruikt dit kanaal."
+add_existing = "Toevoegen aan alle bestaande monitors"
+add_existing_help = "Voegt het toe aan monitors die het nog niet gebruiken. Er wordt niets verwijderd."
+add_existing_help_new = "Je kunt dit later per monitor wijzigen."
+empty_text = "Voeg Slack, Discord, e-mail, ntfy, PagerDuty of een van 20 andere diensten toe om downtime meteen te horen."
+default_tip = "Wordt automatisch aan nieuwe monitors toegevoegd"
+foot = "Standaardkanalen worden automatisch aan nieuwe monitors toegevoegd. Kies kanalen voor één monitor in de instellingen ervan."
+no_monitors = "Geen monitors"

@@ -1491,3 +1491,63 @@ remove_msg = "对方将不再收到更新，但可以重新订阅。"
 removed = "订阅者已移除。"
 approve = "批准"
 approved = "Webhook 已批准。它会收到一条附有退订链接的消息。"
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "欢迎回来。登录后查看监控项。"
+
+[setup]
+site_name_placeholder = "Acme 状态…"
+tz_after = "显示。可在“设置”中更改。"
+
+[users]
+roles_help = "查看者只能查看，不能更改任何内容。编辑者管理监控项、状态页、维护和通知。管理员可执行所有操作，包括管理用户和设置。"
+
+[tokens]
+sub = "让脚本、仪表盘和 Prometheus 读取或更改你的监控项。"
+scope_read_sub = "监控项、状态、指标"
+
+[auth]
+all_set = "一切就绪。添加第一个监控项开始使用吧。"
+setup_token_required = "此实例需要设置令牌。请打开 /setup?token=…，其值取自服务器配置中的 VV_SETUP_TOKEN。"
+
+[error]
+back = "返回仪表盘"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "设置 Vigilant Vole"
+
+[common]
+recent_checks = "最近检查"
+
+[nav]
+dashboard = "仪表盘"
+status_pages = "状态页"
+status_short = "状态"
+maintenance = "维护"
+agents = "远程探针"
+browsers = "远程浏览器"
+
+[count]
+monitors.other = "{n} 个监控项"
+checks.other = "{n} 次检查"
+status_pages.other = "{n} 个状态页"
+incidents.other = "{n} 个事件"
+outages.other = "{n} 次中断"
+agents.other = "{n} 个探针"
+
+[notif]
+sub = "监控项出现故障、恢复正常或需要关注时，告警发往何处。"
+delete_msg = "监控项将不再向此渠道发送告警。"
+used_by = "目前用于 {monitors}。"
+add_new = "添加到新监控项"
+add_new_help = "此后创建的每个监控项都会使用此渠道。"
+add_existing = "添加到所有现有监控项"
+add_existing_help = "加入尚未使用它的监控项，不会移除任何内容。"
+add_existing_help_new = "之后可以按监控项单独更改。"
+empty_text = "添加 Slack、Discord、邮件、ntfy、PagerDuty 或其他 20 种服务，故障一发生就能知道。"
+default_tip = "自动添加到新监控项"
+foot = "默认渠道会自动添加到新监控项。如需为单个监控项选择渠道，请在其设置中操作。"
+no_monitors = "没有监控项"

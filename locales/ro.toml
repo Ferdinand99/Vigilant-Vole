@@ -1523,3 +1523,75 @@ remove_msg = "Nu mai primește actualizări, dar se poate abona din nou."
 removed = "Abonat eliminat."
 approve = "Aprobă"
 approved = "Webhook aprobat. Primește un mesaj cu linkul de dezabonare."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Bine ai revenit. Autentifică-te pentru a-ți vedea monitoarele."
+
+[setup]
+site_name_placeholder = "Starea Acme…"
+tz_after = ". Poți schimba asta în Setări."
+
+[users]
+roles_help = "Cititorii pot vedea, dar nu pot modifica nimic. Editorii gestionează monitoare, pagini de stare, mentenanță și notificări. Administratorii pot face orice, inclusiv utilizatori și setări."
+
+[tokens]
+sub = "Lasă scripturile, panourile și Prometheus să citească sau să modifice monitoarele tale."
+scope_read_sub = "Monitoare, stare, metrici"
+
+[auth]
+all_set = "Totul este gata. Adaugă primul monitor pentru a începe."
+setup_token_required = "Această instanță are nevoie de un token de configurare. Deschide /setup?token=… cu valoarea VV_SETUP_TOKEN din configurația serverului."
+
+[error]
+back = "Înapoi la panou"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Configurează Vigilant Vole"
+
+[common]
+recent_checks = "Verificări recente"
+
+[nav]
+dashboard = "Panou"
+status_pages = "Pagini de stare"
+status_short = "Stare"
+maintenance = "Mentenanță"
+agents = "Agenți la distanță"
+browsers = "Browsere la distanță"
+
+[count]
+monitors.one = "{n} monitor"
+monitors.few = "{n} monitoare"
+monitors.other = "{n} de monitoare"
+checks.one = "{n} verificare"
+checks.few = "{n} verificări"
+checks.other = "{n} de verificări"
+status_pages.one = "{n} pagină de stare"
+status_pages.few = "{n} pagini de stare"
+status_pages.other = "{n} de pagini de stare"
+incidents.one = "{n} incident"
+incidents.few = "{n} incidente"
+incidents.other = "{n} de incidente"
+outages.one = "{n} întrerupere"
+outages.few = "{n} întreruperi"
+outages.other = "{n} de întreruperi"
+agents.one = "{n} agent"
+agents.few = "{n} agenți"
+agents.other = "{n} de agenți"
+
+[notif]
+sub = "Unde ajung alertele când un monitor devine indisponibil, revine sau necesită atenție."
+delete_msg = "Monitoarele nu vor mai trimite alerte către acest canal."
+used_by = "Folosit acum de {monitors}."
+add_new = "Adaugă la monitoarele noi"
+add_new_help = "Fiecare monitor creat de acum încolo folosește acest canal."
+add_existing = "Adaugă la toate monitoarele existente"
+add_existing_help = "Îl adaugă la monitoarele care nu îl folosesc încă. Nu se elimină nimic."
+add_existing_help_new = "Poți schimba asta mai târziu, pentru fiecare monitor."
+empty_text = "Adaugă Slack, Discord, e-mail, ntfy, PagerDuty sau unul dintre încă 20 de servicii ca să afli de o întrerupere în clipa în care apare."
+default_tip = "Adăugat automat la monitoarele noi"
+foot = "Canalele implicite sunt adăugate automat la monitoarele noi. Alege canale pentru un singur monitor în setările lui."
+no_monitors = "Niciun monitor"

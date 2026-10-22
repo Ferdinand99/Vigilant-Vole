@@ -9,7 +9,9 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::SignedCookieJar;
 
-use super::{RouteDoc, groups, instance_url, openapi_document, routes, spec};
+use super::{
+    ErrorCode, RouteDoc, error_codes, groups, instance_url, openapi_document, routes, spec,
+};
 use crate::auth::CurrentUser;
 use crate::http::rest::{cached_ok, json_ok};
 use crate::http::{ApiResult, HtmlTemplate};
@@ -32,6 +34,8 @@ struct DocsTemplate {
     groups: Vec<GroupView>,
     base_url: String,
     error_example: &'static str,
+    /// The codes the page lists under the error example.
+    error_codes: Vec<ErrorCode>,
     subtitle: &'static str,
     openapi_path: &'static str,
     api_base: &'static str,
@@ -74,6 +78,7 @@ pub(crate) async fn page(
             groups,
             base_url,
             error_example: spec.error_example,
+            error_codes: error_codes().into_iter().filter(|c| c.on_page).collect(),
             subtitle: crate::i18n::t(spec.page_subtitle),
             openapi_path: spec.openapi_path,
             api_base: spec.api_base,

@@ -119,8 +119,10 @@ fn main() {
 does nothing; installing a different one panics.
 
 The first installation also checks the translations: every catalog must
-parse, and no key may be in both the kit's and the product's file. A problem
-panics, so a broken build doesn't start.
+parse, no key may be in both the kit's and the product's file, and the
+product's English file must define the texts the kit's pages take from it
+(see "Texts a product must supply"). A problem panics, so a broken build
+doesn't start.
 
 `get()` without an installed configuration panics with a message that says
 what to do. The kit's own tests fall back to their test configuration
@@ -154,18 +156,48 @@ No test can forget it.
 | `static_file` | looks up one of the product's static files | `crate::api::static_file` |
 | `machine_path_prefixes`, `machine_paths`, `browser_language_prefixes` | which paths stay English, which prefer `Accept-Language` | `/static/`, `/api/`; `/metrics`, `/healthz`; `/status/` |
 | `docs` | `DocsSpec` (below) | `crate::api::v1::DOCS` |
-| `locales` | `(code, text)` of the product's own strings per language | `locales/*.toml` |
+| `locales` | `(code, text)` of the product's own strings per language, including the texts the kit's pages take from it (see "Translations") | `locales/*.toml` |
 | `ui` | `Ui` (below) | `src/product.rs` |
+| `public_url_setting` | where an admin sets the public URL, named by the MCP endpoint's refusal of a foreign browser origin; `None` says "the instance's public URL" | `Some("Settings → General")` |
 
-`DocsSpec` holds the routes, the OpenAPI texts, the error example, the config
-file name and the `curl` placeholders. It also holds the product's Markdown
-sections and, for the shared pages:
+`DocsSpec` holds the routes, the OpenAPI texts, the error example and the
+`curl` placeholders. It also holds the product's Markdown sections and, for
+the shared pages:
 
 * `page_subtitle`, a translation key in the product's catalog;
 * `openapi_path`, `api_base` and `example_path` (Vigilant Vole:
   `/api/v1/openapi.json`, `/api/v1`, `/api/v1/monitors`);
 * `metrics_path` (`Some("/metrics")`; `None` drops the Prometheus hint on the
   Tokens page).
+
+The parts only some products have are optional:
+
+* `credentials`: machine credentials besides API tokens and sessions, each a
+  `Credential` named by the `access` of its routes, with the Markdown's words
+  for it and, if it is sent as a bearer token, a `BearerScheme` (OpenAPI
+  scheme name and description, and the `$<PREFIX>_…` variable of the `curl`
+  examples). The OpenAPI document declares `bearerAuth`, `sessionCookie` and
+  only the schemes listed here. Vigilant Vole lists `push token` (in the URL,
+  no scheme) and `agent token` (`agentToken`, `$VV_AGENT_TOKEN`); a product
+  without either leaves it empty (`&[]`).
+* `config_document`: `Some(ConfigDocument { path, file, body })` for an
+  endpoint that takes and returns a whole configuration document as YAML
+  (`RouteDoc::is_yaml` is true for that path only). `file` is what the `curl`
+  examples save and send (`POST` examples add `?dry_run=1`), `body` how the
+  Markdown describes the request. Vigilant Vole: `/api/v1/config`,
+  `vigilant.yml`. `None` for none.
+* `error_codes`: the product's rows of the error code table. The kit has the
+  generic ones (`docs::GENERIC_ERROR_CODES`: `bad_request`, `unauthorized`,
+  `forbidden`, `not_found`, `conflict`, `unsupported_media_type`,
+  `validation_failed`, `internal`). A product row with one of those codes
+  replaces it in place; any other goes after the last row with the same or a
+  lower HTTP status, and `internal` stays last (`docs::error_codes()`).
+  `on_page` puts a code in the short list on `/api-docs` too. Vigilant Vole
+  adds `too_large`, `invalid_document` and `delivery_failed` and words
+  `conflict` its own way, so its reference is unchanged. `&[]` for none.
+* `fallback_host`: the host the reference names when a request has no `Host`
+  header and no public URL is set (Vigilant Vole: `Some("localhost:3001")`;
+  `None` says `localhost`).
 
 `Ui` holds what the layouts show:
 
@@ -314,6 +346,65 @@ A language's catalog is two files:
 doesn't translate shows the kit's strings, and its own keys fall back to
 English.
 
+The kit's strings name no product and none of its concepts (a kit test
+checks the English ones for monitors, dashboards, status pages, heartbeats
+and the product's names; providers' own fields may use their service's
+words).
+
+#### Texts a product must supply
+
+A few texts on the kit's pages depend on what the product is about. Their
+keys are in `vole_kit::i18n::catalog::PRODUCT_KEYS`, and the product's
+catalog defines them. `install` checks that its English catalog has every
+one and refuses to start otherwise, as it does for a key in both catalogs.
+Other languages fall back to English like any product key.
+
+| Key | Where | Vigilant Vole (English) |
+| --- | --- | --- |
+| `login.subtitle` | sign-in page, under the title | Welcome back. Log in to see your monitors. |
+| `setup.site_name_placeholder` | setup page, site name placeholder | Acme status… |
+| `setup.tz_after` | setup page, after "Times are shown in *zone*" (with the full stop) | . You can change this in Settings. |
+| `users.roles_help` | Users page, what each role may do | Viewers can look but not change anything. Editors manage monitors, … |
+| `tokens.sub` | Tokens page subtitle | Let scripts, dashboards and Prometheus read or change your monitors. |
+| `tokens.scope_read_sub` | Tokens page, what a read-only token reads | Monitors, status, metrics |
+| `auth.all_set` | flash message after setup | You're all set. Add your first monitor to get started. |
+| `auth.setup_token_required` | locked setup page: how to open it with `<PREFIX>_SETUP_TOKEN` | This instance needs a setup token. Open /setup?token=… with the value of VV_SETUP_TOKEN … |
+| `error.back` | error pages, the link to `/` | Back to dashboard |
+
+Vigilant Vole keeps these, unchanged in all 26 languages, at the end of its
+locale files, together with its own words that the kit's catalog used to
+hold but the kit never uses: `setup.title`, `common.recent_checks`,
+`nav.dashboard`, `nav.status_pages`, `nav.status_short`, `nav.maintenance`,
+`nav.agents`, `nav.browsers`, the `count.` plurals `monitors`, `checks`,
+`status_pages`, `incidents`, `outages` and `agents`, and the notification
+page's `notif.` texts about monitors (`sub`, `delete_msg`, `used_by`,
+`add_new`, `add_new_help`, `add_existing`, `add_existing_help`,
+`add_existing_help_new`, `empty_text`, `default_tip`, `foot`,
+`no_monitors`). The keys kept their names, so the joined catalogs and the
+i18n snapshots are the same as before.
+
+#### Coverage
+
+`vole_kit::i18n::catalog::coverage(lang)` measures one language against
+English, over the joined catalog: `total` strings it needs (plural keys once
+per CLDR form), `done`, and `problems`, one line each (missing keys, keys
+English lacks, plural forms the language doesn't use, empty values,
+placeholders other than English's). `assert_full_coverage()` panics with
+every gap unless each language the product ships (`KitConfig::locales`) is
+complete. A product's test suite calls it after installing its
+configuration:
+
+```rust
+#[test]
+fn every_language_is_complete() {
+    my_product::install();
+    vole_kit::i18n::catalog::assert_full_coverage();
+}
+```
+
+Vigilant Vole's `coverage_report` and kit-demo's
+`every_language_the_demo_ships_is_complete` use it.
+
 ### Static files
 
 The kit embeds the design system and serves it first at `/static/…`:
@@ -438,10 +529,10 @@ and prints the release PRs it would open. It was used to check this setup:
 ```toml
 # Cargo.toml
 [dependencies]
-vole-kit = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.1.0" }
+vole-kit = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.1.1" }
 
 [build-dependencies]
-vole-kit-build = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.1.0" }
+vole-kit-build = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.1.1" }
 ```
 
 ```toml
@@ -464,10 +555,14 @@ Then:
    * names: `Keen Kestrel`, `keen-kestrel`, `kk_session`, `kk_`,
      `KeenKestrel/<version>`, `version: env!("CARGO_PKG_VERSION")`, …;
    * a `MigrationSet` with `core: migrate::CORE` and `adopt_core: None`;
-   * a `DocsSpec`, the product's locales and a `Ui`.
+   * a `DocsSpec` (with only the optional parts the product has), the
+     product's locales and a `Ui`;
+   * `public_url_setting`, if the product has a place to set its public URL.
 
-   Call `vole_kit::config::install(&KIT)` first thing in `main` (and in test
-   set-up).
+   The English locale file defines the texts in "Texts a product must
+   supply". Call `vole_kit::config::install(&KIT)` first thing in `main` (and
+   in test set-up), and call `vole_kit::i18n::catalog::assert_full_coverage()`
+   from a test.
 2. Build `Core` (or implement `FromRef<AppState> for Core` and `Key`), run
    `vole_kit::db::migrate`, and merge `auth::pages::public_router()` and,
    behind `guard::require_auth`, `auth::pages::router()`.
@@ -486,6 +581,13 @@ proof:
 * setup creates the first admin;
 * sign-in works with a password and then a TOTP code;
 * every shared page says "Kit Demo" and never "Vigilant Vole" or `vv_`;
+* no shared page, error page, API reference (`/api-docs`, `/api-docs.md`,
+  `/llms.txt`, the OpenAPI document) or MCP refusal says "monitor",
+  "dashboard", "Vigilant", "Vole" or other Vigilant Vole words: the texts a
+  product supplies are the demo's own (in English and Norwegian), its error
+  table has only the kit's generic codes, and its OpenAPI document declares
+  no `agentToken`;
+* both of its languages are complete (`assert_full_coverage`);
 * `/static/style.css` is served;
 * the OpenAPI and MCP versions are the demo's (0.3.7);
 * a fresh database has the core tables plus `notes`, with
@@ -501,12 +603,19 @@ dependency uses.
   neutral prefix (`vk-`) means changing those scripts, the layouts and
   Vigilant Vole's templates that listen for `vv:sheet-open` and
   `vv:reorder`. That changes the golden static asset hashes.
-* **Unused or product-flavoured strings in the kit's catalog.**
-  * `setup.title` ("Set up Vigilant Vole") is used nowhere. Removing it
-    changes the i18n key snapshot.
-  * Some kit keys keep their old section names (`detail.expires`,
-    `monitor_form.edit_heading` …). Renaming them is the same kind of
-    snapshot change.
+* **Old key names in the kit's catalog.** Some kit keys keep their old
+  section names (`detail.expires`, `dashboard.response`,
+  `monitor_form.edit_heading` …), though their texts are neutral. Renaming
+  them changes the i18n key snapshot. `setup.title` ("Set up Vigilant Vole")
+  is now Vigilant Vole's and still used nowhere; removing it is the same kind
+  of snapshot change.
+* **The webhook's template placeholders** (`{{monitor_name}}`,
+  `{{monitor_id}}`, `{{monitor_type}}`, `{{downtime}}` …) are the kit's
+  webhook provider's actual variable names, so its help text names them.
+  Neutral names (`{{subject}}` …) with the old ones as aliases would be a
+  feature of their own.
+* **Path parameter types** in the API reference: `kind`, `token` and `slug`
+  are strings, anything else an integer (`docs::path_param_type`).
 * **Example placeholders** like `vigilant-alerts…` (ntfy topic) or
   `https://example.com/hooks/vigilant…` stay. They don't name the product.
 * **`src/mcp_bridge.rs`** (the stdio bridge) is generic and could join
@@ -517,8 +626,10 @@ dependency uses.
 ## Status
 
 Phase 3b is done: shared templates and pages, the core migration set, two
-release components, kit-demo, and product-neutral notification forms. Next:
-merge, then let release-please tag `vole-kit-v0.1.0` for Keen Kestrel.
+release components, kit-demo, and product-neutral notification forms.
+vole-kit 0.1.0 is tagged. 0.1.1 makes the shared texts and the API reference
+product-neutral (the texts a product supplies, the optional `DocsSpec`
+parts, product error codes, the coverage helper), as Keen Kestrel needed.
 
 ## Risks where behaviour could differ without a test noticing
 

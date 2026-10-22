@@ -7,7 +7,7 @@ use rust_embed::Embed;
 
 use crate::config::KitConfig;
 use crate::db::migrate::{Baseline, MigrationError, MigrationSet};
-use crate::docs::{DocsSpec, RouteDoc};
+use crate::docs::{BearerScheme, Credential, DocsSpec, RouteDoc};
 use crate::page::{NavItem, SettingsTab, TabAccess, Ui};
 
 #[derive(Embed)]
@@ -54,10 +54,18 @@ static DOCS: DocsSpec = DocsSpec {
     openapi_title: "Test API",
     openapi_description: "",
     bearer_description: "API token (vv_…)",
-    agent_token_description: "Remote agent token (vva_…)",
+    credentials: &[Credential {
+        access: "agent token",
+        words: "agent token",
+        bearer: Some(BearerScheme {
+            name: "agentToken",
+            description: "Remote agent token (vva_…)",
+            variable: "AGENT_TOKEN",
+        }),
+    }],
     error_example: "{}",
-    config_file: "test.yml",
-    agent_token_access: "agent token",
+    error_codes: &[],
+    config_document: None,
     curl_path_param: no_param,
     markdown_intro: no_intro,
     markdown_middle: no_markdown,
@@ -67,6 +75,7 @@ static DOCS: DocsSpec = DocsSpec {
     api_base: "/api/v1",
     example_path: "/api/v1/monitors",
     metrics_path: Some("/metrics"),
+    fallback_host: Some("localhost:3001"),
 };
 
 fn csrf_exempt_path(path: &str) -> bool {
@@ -201,4 +210,5 @@ pub static CONFIG: KitConfig = KitConfig {
         ],
         home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
     },
+    public_url_setting: Some("Settings → General"),
 };

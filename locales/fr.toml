@@ -1522,3 +1522,75 @@ remove_msg = "Il ne recevra plus de mises à jour. Il pourra se réabonner."
 removed = "Abonné retiré."
 approve = "Approuver"
 approved = "Webhook approuvé. Il reçoit un message avec son lien de désabonnement."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Bon retour. Se connecter pour voir les moniteurs."
+
+[setup]
+site_name_placeholder = "État d’Acme…"
+tz_after = ". Modifiable dans les réglages."
+
+[users]
+roles_help = "Les lecteurs consultent sans rien modifier. Les éditeurs gèrent les moniteurs, pages d’état, maintenances et notifications. Les admins peuvent tout faire, y compris gérer utilisateurs et réglages."
+
+[tokens]
+sub = "Permettre à des scripts, tableaux de bord et Prometheus de lire ou modifier les moniteurs."
+scope_read_sub = "Moniteurs, état, métriques"
+
+[auth]
+all_set = "Tout est prêt. Ajouter un premier moniteur pour commencer."
+setup_token_required = "Cette instance exige un jeton de configuration. Ouvrir /setup?token=… avec la valeur de VV_SETUP_TOKEN dans la configuration du serveur."
+
+[error]
+back = "Retour au tableau de bord"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Configurer Vigilant Vole"
+
+[common]
+recent_checks = "Vérifications récentes"
+
+[nav]
+dashboard = "Tableau de bord"
+status_pages = "Pages d’état"
+status_short = "État"
+maintenance = "Maintenance"
+agents = "Agents distants"
+browsers = "Navigateurs distants"
+
+[count]
+monitors.one = "{n} moniteur"
+monitors.many = "{n} de moniteurs"
+monitors.other = "{n} moniteurs"
+checks.one = "{n} vérification"
+checks.many = "{n} de vérifications"
+checks.other = "{n} vérifications"
+status_pages.one = "{n} page d’état"
+status_pages.many = "{n} de pages d’état"
+status_pages.other = "{n} pages d’état"
+incidents.one = "{n} incident"
+incidents.many = "{n} d’incidents"
+incidents.other = "{n} incidents"
+outages.one = "{n} panne"
+outages.many = "{n} de pannes"
+outages.other = "{n} pannes"
+agents.one = "{n} agent"
+agents.many = "{n} d’agents"
+agents.other = "{n} agents"
+
+[notif]
+sub = "Où vont les alertes quand un moniteur passe hors ligne, revient en ligne ou demande de l’attention."
+delete_msg = "Les moniteurs cessent d’envoyer des alertes vers ce canal."
+used_by = "Utilisé actuellement par {monitors}."
+add_new = "Ajouter aux nouveaux moniteurs"
+add_new_help = "Chaque moniteur créé à partir de maintenant utilise ce canal."
+add_existing = "Ajouter à tous les moniteurs existants"
+add_existing_help = "L’ajoute aux moniteurs qui ne l’utilisent pas encore. Rien n’est retiré."
+add_existing_help_new = "Modifiable ensuite pour chaque moniteur."
+empty_text = "Ajouter Slack, Discord, e-mail, ntfy, PagerDuty ou l’un des 20 autres services pour être prévenu dès qu’une panne survient."
+default_tip = "Ajouté automatiquement aux nouveaux moniteurs"
+foot = "Les canaux par défaut sont ajoutés automatiquement aux nouveaux moniteurs. Choisir les canaux d’un moniteur dans ses réglages."
+no_monitors = "Aucun moniteur"
