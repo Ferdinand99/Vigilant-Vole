@@ -41,8 +41,8 @@ async fn upgrade(f: &Fixture) -> (DataDir, db::MigrationReport) {
 async fn migrate(dir: &DataDir) -> Result<db::MigrationReport, db::UpgradeError> {
     let pool = db::build_pool(&dir.db());
     let result = db::migrate(&pool, &dir.backups()).await;
-    pool.close();
-    common::wait_closed(&dir.db()).await;
+    db::close(&pool).await;
+    common::assert_closed(&dir.db());
     result
 }
 

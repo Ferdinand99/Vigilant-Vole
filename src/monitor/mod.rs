@@ -245,7 +245,8 @@ impl Scheduler {
     /// Stop everything (graceful shutdown). Running probes are abandoned;
     /// heartbeat writes are atomic, so nothing is half-recorded. Later
     /// `reload`/`start_all` calls are no-ops. Closes the engine's connection
-    /// pool (the server gives the engine its own, see `db::build_engine_pool`).
+    /// pool (the server gives the engine its own, see `db::build_engine_pool`)
+    /// and waits for its idle connections to close (see `db::close`).
     pub async fn shutdown(&self) {
         self.inner.shut_down.store(true, Ordering::Release);
         let _guard = self.inner.reload_lock.lock().await;
@@ -256,7 +257,7 @@ impl Scheduler {
             }
         }
         self.inner.permits.close();
-        self.inner.pool.close();
+        db::close(&self.inner.pool).await;
         metrics::set_running_tasks(0);
         tracing::info!(tasks = tasks.len(), "scheduler stopped");
     }

@@ -302,18 +302,17 @@ pub fn copy_db(from: &Path, to: &Path) {
         .unwrap();
 }
 
-/// Waits until SQLite has closed `db` (the last connection removes the WAL
-/// file), as when the process exits. Pooled connections close on blocking
-/// threads, after any monitor task that still uses one has been cancelled.
-pub async fn wait_closed(db: &Path) {
+/// Asserts that SQLite has closed `db`, as when the process exits: the last
+/// connection to close checkpoints the database and removes its WAL file.
+/// Call it after `db::close`, which returns once the pool's connections are
+/// closed, so a WAL file still there means a connection outlived shutdown.
+pub fn assert_closed(db: &Path) {
     let wal = PathBuf::from(format!("{}-wal", db.display()));
-    for _ in 0..1200 {
-        if !wal.exists() {
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-    panic!("{} is still open", db.display());
+    assert!(
+        !wal.exists(),
+        "{} is still open: a connection outlived shutdown",
+        db.display()
+    );
 }
 
 /// Every row of every table in `a` compared with `b` (all columns). Returns
@@ -390,12 +389,12 @@ impl Server {
         self.shutdown().await;
     }
 
-    /// [`Server::stop`], then waits until the database file is closed, so it
+    /// [`Server::stop`], then checks that the database file is closed, so it
     /// can be moved as on a real restart. Only for instances whose scheduler
     /// never ran monitors (a cancelled check can keep its connection a while).
     pub async fn stop_and_release(mut self) {
         self.shutdown().await;
-        wait_closed(&self.state.config.db_path()).await;
+        assert_closed(&self.state.config.db_path());
     }
 
     async fn shutdown(&mut self) {
@@ -406,7 +405,7 @@ impl Server {
             let _ = task.await;
         }
         self.state.scheduler.shutdown().await;
-        self.state.db.close();
+        vigilant_vole::db::close(&self.state.db).await;
     }
 }
 
