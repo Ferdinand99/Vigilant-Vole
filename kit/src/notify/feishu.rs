@@ -4,9 +4,9 @@ use base64::Engine as _;
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, hmac_sha256, opt, req};
-use super::message::{Severity, markdown_details, severity, title};
+use super::message::{Severity, markdown_details, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "feishu",
@@ -32,9 +32,9 @@ pub fn sign(timestamp: i64, secret: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(hmac_sha256(key.as_bytes(), b""))
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
-    let template = match severity(event.kind) {
+    let template = match event.level {
         Severity::Critical => "red",
         Severity::Warning => "orange",
         Severity::Ok => "green",
@@ -45,7 +45,7 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
     ];
     if let Some(link) = &event.url {
         elements.push(json!({ "tag": "action", "actions": [{
-            "tag": "button", "text": { "tag": "plain_text", "content": crate::i18n::t("msg.view_monitor") }, "url": link, "type": "primary"
+            "tag": "button", "text": { "tag": "plain_text", "content": event.link_label.as_str() }, "url": link, "type": "primary"
         }]}));
     }
     let mut body = json!({
@@ -67,14 +67,14 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn card_with_template_colour_and_signature() {
         let req = &build(
             &json!({"url": "https://open.feishu.cn/x", "secret": "s"}),
-            &event(EventKind::Down),
+            &event(AlertKind::Problem),
         )
         .unwrap()[0];
         let body = req.json().unwrap();

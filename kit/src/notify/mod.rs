@@ -1,11 +1,13 @@
-//! Notification providers. Owned by the notifications agent.
+//! Notification providers.
 //!
-//! Contract: [`send`] delivers one event to one channel; [`send_all`] fans out
-//! to several channels concurrently and logs (never propagates) failures.
+//! Contract: [`send`] delivers one [`Alert`](alert::Alert) to one channel;
+//! [`send_all`] fans out to several channels concurrently and logs (never
+//! propagates) failures. An alert arrives finished: the product has written
+//! its title, detail and facts in the reader's language.
 //!
 //! Every provider is a module with a `SCHEMA: ProviderSchema` (form fields,
 //! labels, secret flags — rendered generically by the settings UI) and a pure
-//! `build(&config, &event) -> Vec<OutRequest>` (or, for email, its own
+//! `build(&config, &alert) -> Vec<OutRequest>` (or, for email, its own
 //! `send`). [`PROVIDERS`] is the registry; [`SUPPORTED_KINDS`] derives from it.
 //!
 //! Errors returned by [`send`] are safe to log and show: they never contain
@@ -52,10 +54,10 @@ pub(crate) mod tests;
 use futures_util::future::join_all;
 use serde_json::Value;
 
-pub use message::{format_duration, summary, test_event};
+pub use message::{format_duration, summary};
 pub use schema::{Category, Field, FieldKind, ProviderSchema, SECRET_MASK, Transport};
 
-use crate::notify::alert::{NotificationChannel, NotificationEvent};
+use crate::notify::alert::{Alert, NotificationChannel};
 
 /// Every provider, in picker order within each category.
 pub const PROVIDERS: &[&ProviderSchema] = &[
@@ -131,7 +133,7 @@ pub fn redacted_config(channel: &NotificationChannel) -> Value {
 pub async fn send(
     http: &reqwest::Client,
     channel: &NotificationChannel,
-    event: &NotificationEvent,
+    event: &Alert,
 ) -> Result<(), String> {
     let config: Value = serde_json::from_str(&channel.config)
         .map_err(|e| format!("invalid channel config: {e}"))?;
@@ -144,7 +146,7 @@ pub async fn send_config(
     http: &reqwest::Client,
     kind: &str,
     config: &Value,
-    event: &NotificationEvent,
+    event: &Alert,
 ) -> Result<(), String> {
     // Messages use the request's language ("Send test") or, from background
     // jobs, the site default (Settings → General → Language).
@@ -156,12 +158,12 @@ async fn send_config_in_scope(
     http: &reqwest::Client,
     kind: &str,
     config: &Value,
-    event: &NotificationEvent,
+    event: &Alert,
 ) -> Result<(), String> {
     let schema = provider(kind).ok_or_else(|| format!("unsupported channel kind '{kind}'"))?;
     // Monitor targets can carry credentials (`https://user:pass@…`, `?token=`);
     // they never leave in a notification.
-    let event = &NotificationEvent {
+    let event = &Alert {
         target: message::public_target(&event.target),
         ..event.clone()
     };
@@ -177,11 +179,7 @@ async fn send_config_in_scope(
 }
 
 /// Deliver one event to every channel concurrently; failures are logged.
-pub async fn send_all(
-    http: &reqwest::Client,
-    channels: &[NotificationChannel],
-    event: &NotificationEvent,
-) {
+pub async fn send_all(http: &reqwest::Client, channels: &[NotificationChannel], event: &Alert) {
     let results = join_all(channels.iter().map(|c| send(http, c, event))).await;
     for (channel, result) in channels.iter().zip(results) {
         if let Err(err) = result {

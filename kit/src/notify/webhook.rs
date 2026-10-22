@@ -9,9 +9,9 @@ use serde_json::{Value, json};
 use time::format_description::well_known::Rfc3339;
 
 use super::http::{OutBody, OutRequest, opt, pairs, req};
-use super::message::{format_duration, headline, status_word, summary};
+use super::message::{format_duration, headline, summary};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "webhook",
@@ -97,26 +97,47 @@ fn check(config: &Value) -> Vec<FieldError> {
     errors
 }
 
-fn sample_event() -> NotificationEvent {
-    let mut event = super::message::test_event("Sample \"monitor\"", Some("https://example.com"));
-    event.monitor_id = Some(1);
-    event
+/// A sample alert with characters that need escaping, to check templates.
+fn sample_event() -> Alert {
+    let kind = super::alert::AlertKind::Test;
+    Alert {
+        kind,
+        event: "test".into(),
+        event_label: "Test".into(),
+        status: "test".into(),
+        level: kind.level(),
+        colour: kind.level().colour(),
+        emoji: kind.emoji().into(),
+        title: "Test notification from Sample \"monitor\"".into(),
+        detail: Some("A \"quoted\" line\nand a second one".into()),
+        facts: Vec::new(),
+        link_label: "View".into(),
+        subject_id: Some(1),
+        subject: "Sample \"monitor\"".into(),
+        subject_type: String::new(),
+        target: String::new(),
+        message: Some("A \"quoted\" line\nand a second one".into()),
+        duration: None,
+        expires_in_days: None,
+        url: Some("https://example.com".into()),
+        occurred_at: time::OffsetDateTime::now_utc(),
+    }
 }
 
 /// The standard body. `monitor` / `status` / `message` are the original
 /// (pre-0002) fields; the rest were added alongside them.
-pub fn default_body(event: &NotificationEvent) -> Value {
+pub fn default_body(event: &Alert) -> Value {
     json!({
-        "monitor": event.monitor_name,
-        "status": status_word(event.kind),
+        "monitor": event.subject,
+        "status": event.status.as_str(),
         "message": event.message,
-        "event": event.kind.as_str(),
+        "event": event.event.as_str(),
         "summary": summary(event),
-        "monitor_id": event.monitor_id,
-        "monitor_type": event.monitor_type,
+        "monitor_id": event.subject_id,
+        "monitor_type": event.subject_type,
         "target": event.target,
         "url": event.url,
-        "downtime_seconds": event.downtime.map(|d| d.as_secs()),
+        "downtime_seconds": event.duration.map(|d| d.as_secs()),
         "expires_in_days": event.expires_in_days,
         "occurred_at": event.occurred_at.format(&Rfc3339).ok(),
     })
@@ -132,22 +153,22 @@ pub enum Escape {
     None,
 }
 
-fn placeholder_value(name: &str, event: &NotificationEvent) -> Option<String> {
+fn placeholder_value(name: &str, event: &Alert) -> Option<String> {
     let opt_num = |n: Option<i64>| n.map(|v| v.to_string()).unwrap_or_default();
     Some(match name {
-        "monitor_name" => event.monitor_name.clone(),
-        "monitor_id" => opt_num(event.monitor_id),
-        "monitor_type" => event.monitor_type.clone(),
+        "monitor_name" => event.subject.clone(),
+        "monitor_id" => opt_num(event.subject_id),
+        "monitor_type" => event.subject_type.clone(),
         "target" => event.target.clone(),
-        "status" => status_word(event.kind).to_string(),
-        "event" => event.kind.as_str().to_string(),
+        "status" => event.status.as_str().to_string(),
+        "event" => event.event.as_str().to_string(),
         "message" => event.message.clone().unwrap_or_default(),
         "summary" => summary(event),
         "headline" => headline(event),
         "url" => event.url.clone().unwrap_or_default(),
-        "downtime" => event.downtime.map(format_duration).unwrap_or_default(),
+        "downtime" => event.duration.map(format_duration).unwrap_or_default(),
         "downtime_seconds" => event
-            .downtime
+            .duration
             .map(|d| d.as_secs().to_string())
             .unwrap_or_default(),
         "expires_in_days" => opt_num(event.expires_in_days),
@@ -157,7 +178,7 @@ fn placeholder_value(name: &str, event: &NotificationEvent) -> Option<String> {
 }
 
 /// Substitutes `{{name}}` placeholders; unknown ones are left as written.
-pub fn render(template: &str, event: &NotificationEvent, escape: Escape) -> String {
+pub fn render(template: &str, event: &Alert, escape: Escape) -> String {
     PLACEHOLDER_RE
         .replace_all(template, |caps: &regex::Captures| {
             let name = caps.get(1).map_or("", |m| m.as_str());
@@ -196,7 +217,7 @@ fn flatten(value: &Value) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     let method = match opt(config, "method").unwrap_or("POST") {
         "PUT" => Method::PUT,
@@ -233,13 +254,13 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn default_body_keeps_legacy_fields() {
-        let mut e = event(EventKind::Up);
-        e.downtime = Some(Duration::from_secs(90));
+        let mut e = event(AlertKind::Recovered);
+        e.duration = Some(Duration::from_secs(90));
         let reqs = build(&json!({"url": "https://x.test/h"}), &e).unwrap();
         assert_eq!(reqs[0].method, Method::POST);
         let body = reqs[0].json().unwrap();
@@ -252,7 +273,7 @@ mod tests {
 
     #[test]
     fn template_values_are_json_escaped() {
-        let mut e = event(EventKind::Down);
+        let mut e = event(AlertKind::Problem);
         e.message = Some("said \"no\"\nnewline".into());
         let out = render(
             r#"{"t": "{{ monitor_name }} {{message}}", "id": {{monitor_id}}, "x": "{{nope}}"}"#,
@@ -267,7 +288,7 @@ mod tests {
 
     #[test]
     fn form_template_is_url_encoded() {
-        let e = event(EventKind::Down);
+        let e = event(AlertKind::Problem);
         assert_eq!(
             render("name={{monitor_name}}&s={{status}}", &e, Escape::Form),
             "name=Payments+API&s=down"
@@ -276,7 +297,7 @@ mod tests {
 
     #[test]
     fn custom_headers_method_and_form_body() {
-        let e = event(EventKind::Down);
+        let e = event(AlertKind::Problem);
         let config = json!({"url": "https://x.test/h", "method": "PUT", "content_type": "form",
             "headers": {"Authorization": "Bearer t"}});
         let req = &build(&config, &e).unwrap()[0];

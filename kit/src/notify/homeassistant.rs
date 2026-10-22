@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, join, opt, path_segment, req};
 use super::message::{body_text, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "homeassistant",
@@ -30,7 +30,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let base = req(config, "url")?;
     let token = req(config, "token")?;
     let service = opt(config, "service").unwrap_or("notify");
@@ -55,14 +55,14 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn calls_named_service() {
         let config =
             json!({"url": "http://ha:8123/", "token": "t", "service": "notify.mobile_app_x"});
-        let req = &build(&config, &event(EventKind::Down)).unwrap()[0];
+        let req = &build(&config, &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(req.url, "http://ha:8123/api/services/notify/mobile_app_x");
         assert_eq!(req.header_value("authorization"), Some("Bearer t"));
     }

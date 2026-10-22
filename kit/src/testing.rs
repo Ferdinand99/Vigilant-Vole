@@ -103,7 +103,6 @@ pub static CONFIG: KitConfig = KitConfig {
     machine_paths: &["/metrics", "/healthz"],
     browser_language_prefixes: &["/status/"],
     docs: &DOCS,
-    subject_type_label: |t| crate::i18n::t_or(&format!("monitor_type.{t}"), t).to_string(),
     locales: locales!(
         "en", "nb", "ar", "cs", "da", "de", "es", "fa", "fi", "fr", "he", "hu", "it", "ja", "ko",
         "nl", "pl", "pt-BR", "pt-PT", "ro", "ru", "sv", "tr", "uk", "zh-CN", "zh-TW"

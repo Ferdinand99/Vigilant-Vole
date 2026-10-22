@@ -6,7 +6,7 @@ use super::http::{OutRequest, opt, req};
 use super::mattermost::attachment;
 use super::message::summary;
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "rocketchat",
@@ -28,7 +28,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     let mut body = json!({ "text": summary(event), "attachments": [attachment(event)] });
     if let Some(v) = opt(config, "channel") {
@@ -46,14 +46,14 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn uses_alias_for_username() {
         let req = &build(
             &json!({"url": "https://rc/hooks/x", "username": "Vole"}),
-            &event(EventKind::Up),
+            &event(AlertKind::Recovered),
         )
         .unwrap()[0];
         let body = req.json().unwrap();

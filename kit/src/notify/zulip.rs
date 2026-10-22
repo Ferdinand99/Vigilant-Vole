@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::http::{OutRequest, join, opt, req};
 use super::message::{markdown_details, title};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "zulip",
@@ -44,7 +44,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let site = req(config, "site")?;
     let email = req(config, "bot_email")?;
     let key = req(config, "api_key")?;
@@ -68,14 +68,14 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::http::OutBody;
     use crate::notify::tests::event;
     use serde_json::json;
 
     #[test]
     fn posts_a_markdown_stream_message_as_the_bot() {
-        let mut e = event(EventKind::Down);
+        let mut e = event(AlertKind::Problem);
         e.url = Some("https://vv.example/monitors/7".into());
         let reqs = build(
             &json!({"site": "https://org.zulipchat.com/", "bot_email": "bot@org.zulipchat.com", "api_key": "KEY", "stream": "#ops"}),

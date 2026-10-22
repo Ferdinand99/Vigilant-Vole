@@ -4,9 +4,9 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, num, opt, req};
-use super::message::{Severity, body_text, severity, title};
+use super::message::{Severity, body_text, title};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 const DOWN_PRIORITIES: &[(&str, &str)] = &[
     ("0", "Normal"),
@@ -68,10 +68,10 @@ fn check(config: &Value) -> Vec<FieldError> {
     errors
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let user = req(config, "user_key")?;
     let token = req(config, "app_token")?;
-    let priority: i64 = if severity(event.kind) == Severity::Critical {
+    let priority: i64 = if event.level == Severity::Critical {
         opt(config, "down_priority")
             .and_then(|p| p.parse().ok())
             .unwrap_or(1)
@@ -94,7 +94,7 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
     }
     if let Some(url) = &event.url {
         body["url"] = json!(url);
-        body["url_title"] = json!(crate::i18n::t("msg.view_monitor"));
+        body["url_title"] = json!(event.link_label.as_str());
     }
     for key in ["device", "sound"] {
         if let Some(v) = opt(config, key) {
@@ -110,18 +110,18 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn emergency_priority_adds_retry_and_expire_for_down_only() {
         let config = json!({"user_key": "u", "app_token": "t", "down_priority": "2", "priority": "-1", "retry": 10});
-        let down = build(&config, &event(EventKind::Down)).unwrap();
+        let down = build(&config, &event(AlertKind::Problem)).unwrap();
         let body = down[0].json().unwrap();
         assert_eq!(body["priority"], 2);
         assert_eq!(body["retry"], 30, "clamped to Pushover's minimum");
         assert_eq!(body["expire"], 3600);
-        let up = build(&config, &event(EventKind::Up)).unwrap();
+        let up = build(&config, &event(AlertKind::Recovered)).unwrap();
         let body = up[0].json().unwrap();
         assert_eq!(body["priority"], -1);
         assert!(body.get("retry").is_none());

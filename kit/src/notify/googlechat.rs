@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, opt, req};
 use super::message::{detail, escape_html, facts, product, title};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "googlechat",
@@ -32,7 +32,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     let mut widgets: Vec<Value> = Vec::new();
     if let Some(d) = detail(event) {
@@ -43,12 +43,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
     }
     if let Some(link) = &event.url {
         widgets.push(json!({ "buttonList": { "buttons": [
-            { "text": crate::i18n::t("msg.view_monitor"), "onClick": { "openLink": { "url": link } } }
+            { "text": event.link_label.as_str(), "onClick": { "openLink": { "url": link } } }
         ]}}));
     }
     let body = json!({
         "cardsV2": [{
-            "cardId": format!("vv-{}", event.kind.as_str()),
+            "cardId": format!("{}-{}", super::message::id_prefix(), event.event.as_str()),
             "card": {
                 "header": { "title": title(event), "subtitle": product() },
                 "sections": [{ "widgets": widgets }],
@@ -61,12 +61,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn builds_cards_v2() {
-        let mut e = event(EventKind::Down);
+        let mut e = event(AlertKind::Problem);
         e.url = Some("https://vv.example/monitors/7".into());
         let req = &build(
             &json!({"url": "https://chat.googleapis.com/v1/spaces/x"}),

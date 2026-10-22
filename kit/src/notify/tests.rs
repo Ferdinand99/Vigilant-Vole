@@ -14,22 +14,128 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 use super::*;
-use crate::notify::alert::{EventKind, NotificationChannel, NotificationEvent};
+use crate::notify::alert::{Alert, AlertKind, NotificationChannel};
 
-/// "Payments API" (http, id 7) at a fixed time.
-pub fn event(kind: EventKind) -> NotificationEvent {
-    NotificationEvent {
+/// The machine name a product like Vigilant Vole gives each kind.
+fn event_name(kind: AlertKind) -> &'static str {
+    match kind {
+        AlertKind::Problem => "down",
+        AlertKind::Recovered => "up",
+        AlertKind::Reminder => "reminder",
+        AlertKind::Escalation => "escalation",
+        AlertKind::Expiring => "cert_expiring",
+        AlertKind::Unstable => "flapping",
+        AlertKind::MaintenanceStarted => "maintenance_start",
+        AlertKind::MaintenanceEnded => "maintenance_end",
+        AlertKind::Test => "test",
+    }
+}
+
+/// An alert about "Payments API" (http, id 7) at a fixed time, worded the
+/// way Vigilant Vole words it in English. `message` and `downtime` shape
+/// the title, detail and facts like the product does.
+pub fn alert(kind: AlertKind, message: Option<&str>, downtime: Option<Duration>) -> Alert {
+    let name = "Payments API";
+    let tf = |key: &'static str| crate::i18n::tf(key, &[("name", name)]);
+    let title = match kind {
+        AlertKind::Problem => tf("msg.down"),
+        AlertKind::Recovered if downtime.is_some() => tf("msg.back_up"),
+        AlertKind::Recovered => tf("msg.up"),
+        AlertKind::Reminder => tf("msg.still_down"),
+        AlertKind::Escalation => match downtime {
+            Some(d) => crate::i18n::tf(
+                "msg.down_for_long",
+                &[("name", name), ("duration", &message::format_duration(d))],
+            ),
+            None => tf("msg.down_too_long"),
+        },
+        AlertKind::Expiring => crate::i18n::tf(
+            "msg.cert",
+            &[
+                ("name", name),
+                ("phrase", crate::i18n::t("msg.expiring_soon")),
+            ],
+        ),
+        AlertKind::Unstable => tf("msg.flapping"),
+        AlertKind::MaintenanceStarted => tf("msg.maintenance"),
+        AlertKind::MaintenanceEnded => tf("msg.maintenance_ended"),
+        AlertKind::Test => tf("msg.test"),
+    };
+    let down_for = |d: Duration| {
+        crate::i18n::tf(
+            "msg.down_for",
+            &[("duration", &message::format_duration(d))],
+        )
+    };
+    let detail = match kind {
+        AlertKind::Recovered => downtime.map(down_for).or(message.map(str::to_string)),
+        AlertKind::Reminder => match (message, downtime.map(down_for)) {
+            (Some(m), Some(d)) => Some(format!("{m} · {d}")),
+            (Some(m), None) => Some(m.to_string()),
+            (None, d) => d,
+        },
+        AlertKind::Unstable => Some(message.map_or_else(
+            || crate::i18n::t("msg.flap_paused").to_string(),
+            str::to_string,
+        )),
+        _ => message.map(str::to_string),
+    };
+    let mut facts = vec![
+        (
+            crate::i18n::t("msg.fact_target").to_string(),
+            "https://pay.example/health".to_string(),
+        ),
+        (
+            crate::i18n::t("msg.fact_type").to_string(),
+            "HTTP(S)".to_string(),
+        ),
+    ];
+    if let (AlertKind::Recovered | AlertKind::Reminder | AlertKind::Escalation, Some(d)) =
+        (kind, downtime)
+    {
+        facts.push((
+            crate::i18n::t("msg.fact_downtime").to_string(),
+            message::format_duration(d),
+        ));
+    }
+    facts.push((
+        crate::i18n::t("msg.fact_time").to_string(),
+        "2026-10-19 14:03:12 UTC".to_string(),
+    ));
+    let event = event_name(kind);
+    let status = match kind {
+        AlertKind::Recovered => "up",
+        AlertKind::Problem | AlertKind::Reminder | AlertKind::Escalation => "down",
+        AlertKind::MaintenanceStarted => "maintenance",
+        _ => event,
+    };
+    Alert {
         kind,
-        monitor_id: Some(7),
-        monitor_name: "Payments API".into(),
-        monitor_type: "http".into(),
+        event: event.to_string(),
+        event_label: crate::i18n::t_or(&format!("event_kind.{event}"), event).to_string(),
+        status: status.to_string(),
+        level: kind.level(),
+        colour: kind.level().colour(),
+        emoji: kind.emoji().to_string(),
+        title,
+        detail,
+        facts,
+        link_label: crate::i18n::t("msg.view_monitor").to_string(),
+        subject_id: Some(7),
+        subject: name.into(),
+        subject_type: "http".into(),
         target: "https://pay.example/health".into(),
-        message: None,
-        downtime: None,
+        message: message.map(str::to_string),
+        duration: downtime,
         expires_in_days: None,
         url: None,
         occurred_at: datetime!(2026-10-19 14:03:12 UTC),
     }
+}
+
+/// [`alert`] without a message or downtime.
+pub fn event(kind: AlertKind) -> Alert {
+    alert(kind, None, None)
 }
 
 #[derive(Debug, Clone)]
@@ -145,16 +251,16 @@ fn every_http_provider_builds_for_every_event_kind() {
     // Fill every field with something plausible and make sure no provider
     // errors or panics for any event.
     let kinds = [
-        EventKind::Down,
-        EventKind::Up,
-        EventKind::Reminder,
-        EventKind::Escalation,
-        EventKind::CertExpiring,
-        EventKind::DomainExpiring,
-        EventKind::MaintenanceStart,
-        EventKind::MaintenanceEnd,
-        EventKind::Flapping,
-        EventKind::Test,
+        AlertKind::Problem,
+        AlertKind::Recovered,
+        AlertKind::Reminder,
+        AlertKind::Escalation,
+        AlertKind::Expiring,
+        AlertKind::Expiring,
+        AlertKind::MaintenanceStarted,
+        AlertKind::MaintenanceEnded,
+        AlertKind::Unstable,
+        AlertKind::Test,
     ];
     for p in PROVIDERS {
         let Transport::Http(build) = p.transport else {
@@ -177,7 +283,7 @@ fn every_http_provider_builds_for_every_event_kind() {
             let mut e = event(kind);
             e.url = Some("https://vv.example/monitors/7".into());
             let result = build(&config, &e);
-            assert!(result.is_ok(), "{} / {kind}: {result:?}", p.kind);
+            assert!(result.is_ok(), "{} / {kind:?}: {result:?}", p.kind);
         }
     }
 }
@@ -190,8 +296,7 @@ async fn webhook_end_to_end_with_headers_and_template() {
         json!({"url": format!("{base}/hook"), "headers": {"Authorization": "Bearer s3cret"},
             "body_template": "{\"text\": \"{{summary}}\", \"id\": {{monitor_id}}}"}),
     );
-    let mut e = event(EventKind::Down);
-    e.message = Some("HTTP 503".into());
+    let e = alert(AlertKind::Problem, Some("HTTP 503"), None);
     send(&client(), &ch, &e).await.unwrap();
     let reqs = captured.lock().unwrap().clone();
     assert_eq!(reqs.len(), 1);
@@ -208,7 +313,7 @@ async fn webhook_end_to_end_with_headers_and_template() {
 #[tokio::test]
 async fn discord_and_slack_end_to_end() {
     let (base, captured) = capture_server(StatusCode::NO_CONTENT, "").await;
-    let e = event(EventKind::Up);
+    let e = event(AlertKind::Recovered);
     send(
         &client(),
         &channel(
@@ -236,7 +341,7 @@ async fn discord_and_slack_end_to_end() {
 #[tokio::test]
 async fn telegram_and_matrix_end_to_end() {
     let (base, captured) = capture_server(StatusCode::OK, "{\"ok\":true}").await;
-    let e = event(EventKind::Down);
+    let e = event(AlertKind::Problem);
     send(
         &client(),
         &channel(
@@ -277,7 +382,7 @@ async fn ntfy_end_to_end_with_basic_auth() {
         "ntfy",
         json!({"server": base, "topic": "alerts", "username": "u", "password": "p"}),
     );
-    send(&client(), &ch, &event(EventKind::CertExpiring))
+    send(&client(), &ch, &event(AlertKind::Expiring))
         .await
         .unwrap();
     let reqs = captured.lock().unwrap().clone();
@@ -298,7 +403,7 @@ async fn errors_include_status_and_scrub_secrets() {
         "telegram",
         json!({"bot_token": "1:SECRETTOKEN", "chat_id": "42", "server_url": base}),
     );
-    let err = send(&client(), &ch, &event(EventKind::Down))
+    let err = send(&client(), &ch, &event(AlertKind::Problem))
         .await
         .unwrap_err();
     assert!(err.starts_with("HTTP 401 Unauthorized"), "{err}");
@@ -312,7 +417,7 @@ async fn connection_errors_never_leak_the_url() {
         "telegram",
         json!({"bot_token": "1:SECRETTOKEN", "chat_id": "42", "server_url": "http://127.0.0.1:9"}),
     );
-    let err = send(&client(), &ch, &event(EventKind::Down))
+    let err = send(&client(), &ch, &event(AlertKind::Problem))
         .await
         .unwrap_err();
     assert!(!err.contains("SECRETTOKEN"), "{err}");
@@ -321,7 +426,7 @@ async fn connection_errors_never_leak_the_url() {
 
 #[tokio::test]
 async fn unknown_kind_and_bad_config_are_errors() {
-    let e = event(EventKind::Down);
+    let e = event(AlertKind::Problem);
     assert!(
         send(&client(), &channel("carrier-pigeon", json!({})), &e)
             .await
@@ -342,7 +447,7 @@ async fn unknown_kind_and_bad_config_are_errors() {
 async fn maintenance_to_pagerduty_sends_nothing() {
     // No server needed: PagerDuty has nothing to send for maintenance.
     let ch = channel("pagerduty", json!({"routing_key": "R"}));
-    send(&client(), &ch, &event(EventKind::MaintenanceStart))
+    send(&client(), &ch, &event(AlertKind::MaintenanceStarted))
         .await
         .unwrap();
 }
@@ -410,8 +515,7 @@ async fn email_end_to_end_over_plain_smtp() {
         "email",
         json!({"host": "127.0.0.1", "port": port, "security": "none", "from": "vv@example.com", "to": "ops@example.com"}),
     );
-    let mut e = event(EventKind::Down);
-    e.message = Some("HTTP 503".into());
+    let e = alert(AlertKind::Problem, Some("HTTP 503"), None);
     send(&client(), &ch, &e).await.unwrap();
     let data = tokio::time::timeout(Duration::from_secs(5), server)
         .await
@@ -446,7 +550,7 @@ fn public_target_drops_credentials_query_and_fragment() {
 #[tokio::test]
 async fn webhook_never_sends_target_credentials() {
     let (base, captured) = capture_server(StatusCode::OK, "ok").await;
-    let mut e = event(EventKind::Down);
+    let mut e = event(AlertKind::Problem);
     e.target = "https://bot:hunter2@pay.example/health?api_key=K3Y".into();
     for config in [
         json!({"url": format!("{base}/hook")}),
@@ -538,7 +642,7 @@ fn print_missing_provider_locale_blocks() {
 #[tokio::test]
 async fn zulip_nextcloud_waha_and_evolution_end_to_end() {
     let (base, captured) = capture_server(StatusCode::OK, "{}").await;
-    let e = event(EventKind::Down);
+    let e = event(AlertKind::Problem);
     send(&client(), &channel("zulip", json!({"site": base, "bot_email": "bot@org.example", "api_key": "ZKEY", "stream": "ops", "topic": "Alerts"})), &e)
         .await
         .unwrap();
@@ -635,7 +739,7 @@ async fn a_failing_zulip_server_cannot_leak_the_bot_key() {
         "zulip",
         json!({"site": base, "bot_email": "bot@org.example", "api_key": "ZKEY-SECRET", "stream": "ops"}),
     );
-    let err = send(&client(), &ch, &event(EventKind::Down))
+    let err = send(&client(), &ch, &event(AlertKind::Problem))
         .await
         .unwrap_err();
     assert!(err.contains("401") && !err.contains("ZKEY-SECRET"), "{err}");
@@ -644,8 +748,8 @@ async fn a_failing_zulip_server_cannot_leak_the_bot_key() {
 #[tokio::test]
 async fn incident_webhooks_end_to_end() {
     let (base, captured) = capture_server(StatusCode::OK, "{}").await;
-    let down = event(EventKind::Down);
-    let up = event(EventKind::Up);
+    let down = event(AlertKind::Problem);
+    let up = event(AlertKind::Recovered);
     send(
         &client(),
         &channel(
@@ -684,7 +788,7 @@ async fn incident_webhooks_end_to_end() {
     send(
         &client(),
         &channel("keep", json!({"server": base, "api_key": "KKEY"})),
-        &event(EventKind::MaintenanceStart),
+        &event(AlertKind::MaintenanceStarted),
     )
     .await
     .unwrap();
@@ -721,7 +825,7 @@ async fn a_failing_on_call_tool_cannot_leak_its_key() {
     let err = send(
         &client(),
         &channel("goalert", json!({"server": base, "token": "GKEY-1234"})),
-        &event(EventKind::Down),
+        &event(AlertKind::Problem),
     )
     .await
     .unwrap_err();
@@ -738,7 +842,7 @@ async fn email_sms_and_push_apis_end_to_end_with_their_hosts_overridden() {
             "gorush",
             json!({"server": base, "platform": "android", "tokens": "t1,t2"}),
         ),
-        &event(EventKind::Down),
+        &event(AlertKind::Problem),
     )
     .await
     .unwrap();
@@ -771,7 +875,7 @@ async fn email_sms_and_push_apis_end_to_end_with_their_hosts_overridden() {
         let schema::Transport::Http(build) = p.transport else {
             panic!("{kind} is HTTP")
         };
-        let requests = build(&config, &event(EventKind::Down)).unwrap();
+        let requests = build(&config, &event(AlertKind::Problem)).unwrap();
         assert!(
             !requests.is_empty() && requests[0].url.starts_with("https://"),
             "{kind}"

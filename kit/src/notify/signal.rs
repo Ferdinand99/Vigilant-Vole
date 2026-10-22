@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, join, list, req};
 use super::message::text_body;
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "signal",
@@ -41,7 +41,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     let number = req(config, "number")?;
     let recipients = list(config, "recipients");
@@ -55,13 +55,13 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn sends_to_every_recipient() {
         let config = json!({"url": "http://sig:8080/", "number": "+1", "recipients": "+2, +3"});
-        let req = &build(&config, &event(EventKind::Down)).unwrap()[0];
+        let req = &build(&config, &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(req.url, "http://sig:8080/v2/send");
         assert_eq!(req.json().unwrap()["recipients"], json!(["+2", "+3"]));
     }

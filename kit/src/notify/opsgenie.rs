@@ -4,10 +4,10 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, list, opt, path_segment, req};
-use super::message::{Severity, body_text, headline, product, severity};
+use super::message::{Severity, body_text, headline, product};
 use super::pagerduty::dedup_key;
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::{EventKind, NotificationEvent};
+use crate::notify::alert::{Alert, AlertKind};
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "opsgenie",
@@ -39,7 +39,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let key = req(config, "api_key")?;
     let base = match opt(config, "region") {
         Some("eu") => "https://api.eu.opsgenie.com/v2/alerts",
@@ -48,13 +48,13 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
     let alias = dedup_key(event);
     let auth = format!("GenieKey {key}");
     let request = match event.kind {
-        EventKind::MaintenanceStart | EventKind::MaintenanceEnd => return Ok(Vec::new()),
-        EventKind::Up => OutRequest::post_json(
+        AlertKind::MaintenanceStarted | AlertKind::MaintenanceEnded => return Ok(Vec::new()),
+        AlertKind::Recovered => OutRequest::post_json(
             format!("{base}/{}/close?identifierType=alias", path_segment(&alias)),
             json!({ "source": product(), "note": super::message::summary(event) }),
         ),
         _ => {
-            let priority = match severity(event.kind) {
+            let priority = match event.level {
                 Severity::Critical => opt(config, "priority").unwrap_or("P1"),
                 Severity::Warning => "P3",
                 _ => "P5",
@@ -69,8 +69,8 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
                 "priority": priority,
                 "source": product(),
                 "tags": tags,
-                "entity": event.monitor_name,
-                "details": { "event": event.kind.as_str(), "target": event.target },
+                "entity": event.subject,
+                "details": { "event": event.event.as_str(), "target": event.target },
             });
             if let Some(url) = &event.url {
                 body["details"]["url"] = json!(url);
@@ -89,14 +89,14 @@ mod tests {
     #[test]
     fn creates_then_closes_by_alias() {
         let config = json!({"api_key": "k", "region": "eu", "tags": "prod"});
-        let down = &build(&config, &event(EventKind::Down)).unwrap()[0];
+        let down = &build(&config, &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(down.url, "https://api.eu.opsgenie.com/v2/alerts");
         assert_eq!(down.header_value("authorization"), Some("GenieKey k"));
         let body = down.json().unwrap();
         assert_eq!(body["alias"], "vv-monitor-7");
         assert_eq!(body["priority"], "P1");
         assert_eq!(body["tags"], json!(["vigilant-vole", "prod"]));
-        let up = &build(&config, &event(EventKind::Up)).unwrap()[0];
+        let up = &build(&config, &event(AlertKind::Recovered)).unwrap()[0];
         assert_eq!(
             up.url,
             "https://api.eu.opsgenie.com/v2/alerts/vv-monitor-7/close?identifierType=alias"

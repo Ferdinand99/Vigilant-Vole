@@ -6,21 +6,21 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, join, opt, path_segment, req};
-use super::message::{Severity, body_text, detail, headline, link, product, severity, summary};
+use super::message::{Severity, body_text, detail, headline, link, product, summary};
 use super::pagerduty::dedup_key;
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::{EventKind, NotificationEvent};
+use crate::notify::alert::{Alert, AlertKind};
 
 /// `true` for the recovery that closes an alert.
-fn is_recovery(event: &NotificationEvent) -> bool {
-    event.kind == EventKind::Up
+fn is_recovery(event: &Alert) -> bool {
+    event.kind == AlertKind::Recovered
 }
 
 /// Maintenance start/end never page anyone.
-fn is_quiet(event: &NotificationEvent) -> bool {
+fn is_quiet(event: &Alert) -> bool {
     matches!(
         event.kind,
-        EventKind::MaintenanceStart | EventKind::MaintenanceEnd
+        AlertKind::MaintenanceStarted | AlertKind::MaintenanceEnded
     )
 }
 
@@ -65,7 +65,7 @@ fn check_signl4(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build_signl4(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_signl4(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     if is_quiet(event) {
         return Ok(Vec::new());
@@ -76,7 +76,7 @@ pub fn build_signl4(config: &Value, event: &NotificationEvent) -> Result<Vec<Out
         "X-S4-ExternalID": dedup_key(event),
         "X-S4-Status": if is_recovery(event) { "resolved" } else { "new" },
         "X-S4-SourceSystem": product(),
-        "X-S4-Service": event.monitor_name,
+        "X-S4-Service": event.subject,
     });
     if let Some(url) = link(event) {
         body["Link"] = json!(url);
@@ -112,15 +112,12 @@ fn check_squadcast(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build_squadcast(
-    config: &Value,
-    event: &NotificationEvent,
-) -> Result<Vec<OutRequest>, String> {
+pub fn build_squadcast(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     if is_quiet(event) {
         return Ok(Vec::new());
     }
-    let mut tags = json!({ "monitor": { "value": event.monitor_name }, "severity": { "value": format!("{:?}", severity(event.kind)).to_lowercase() } });
+    let mut tags = json!({ "monitor": { "value": event.subject }, "severity": { "value": format!("{:?}", event.level).to_lowercase() } });
     if !event.target.is_empty() {
         tags["AlertAddress"] = json!(super::message::public_target(&event.target));
     }
@@ -153,10 +150,7 @@ pub const GRAFANA_ONCALL: ProviderSchema = ProviderSchema {
     check: Some(check_squadcast),
 };
 
-pub fn build_grafana_oncall(
-    config: &Value,
-    event: &NotificationEvent,
-) -> Result<Vec<OutRequest>, String> {
+pub fn build_grafana_oncall(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     if is_quiet(event) {
         return Ok(Vec::new());
@@ -194,7 +188,7 @@ pub const GOALERT: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build_goalert(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_goalert(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "server")?;
     let token = req(config, "token")?;
     if is_quiet(event) {
@@ -244,15 +238,15 @@ pub const SPLUNK: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build_splunk(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_splunk(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let key = req(config, "api_key")?;
     let routing = req(config, "routing_key")?;
     if is_quiet(event) {
         return Ok(Vec::new());
     }
-    let message_type = match (event.kind, severity(event.kind)) {
-        (EventKind::Up, _) => "RECOVERY",
-        (EventKind::Test, _) => "INFO",
+    let message_type = match (event.kind, event.level) {
+        (AlertKind::Recovered, _) => "RECOVERY",
+        (AlertKind::Test, _) => "INFO",
         (_, Severity::Critical) => opt(config, "severity")
             .filter(|s| *s == "WARNING")
             .unwrap_or("CRITICAL"),
@@ -303,13 +297,13 @@ pub const KEEP: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build_keep(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_keep(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "server")?;
     let key = req(config, "api_key")?;
     if is_quiet(event) {
         return Ok(Vec::new());
     }
-    let level = match severity(event.kind) {
+    let level = match event.level {
         Severity::Critical => "critical",
         Severity::Warning => "warning",
         Severity::Ok | Severity::Info => "info",
@@ -320,7 +314,7 @@ pub fn build_keep(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRe
         "severity": level,
         "description": body_text(event),
         "source": [super::message::slug()],
-        "service": event.monitor_name,
+        "service": event.subject,
         "fingerprint": dedup_key(event),
     });
     if let Some(url) = link(event) {
@@ -340,7 +334,7 @@ mod tests {
     #[test]
     fn signl4_opens_and_resolves_by_external_id() {
         let c = json!({"url": "https://connect.signl4.com/webhook/team-secret"});
-        let down = &build_signl4(&c, &event(EventKind::Down)).unwrap()[0];
+        let down = &build_signl4(&c, &event(AlertKind::Problem)).unwrap()[0];
         let body = down.json().unwrap();
         assert_eq!(
             (
@@ -350,11 +344,11 @@ mod tests {
             (Some("new"), Some("vv-monitor-7"))
         );
         assert_eq!(body["Title"], "Payments API is down");
-        let up = &build_signl4(&c, &event(EventKind::Up)).unwrap()[0];
+        let up = &build_signl4(&c, &event(AlertKind::Recovered)).unwrap()[0];
         assert_eq!(up.json().unwrap()["X-S4-Status"], "resolved");
         assert_eq!(up.json().unwrap()["X-S4-ExternalID"], "vv-monitor-7");
         assert!(
-            build_signl4(&c, &event(EventKind::MaintenanceStart))
+            build_signl4(&c, &event(AlertKind::MaintenanceStarted))
                 .unwrap()
                 .is_empty()
         );
@@ -365,7 +359,7 @@ mod tests {
     #[test]
     fn squadcast_and_grafana_oncall_trigger_and_resolve() {
         let sq = json!({"url": "https://api.squadcast.com/v3/incidents/api/abc"});
-        let t = build_squadcast(&sq, &event(EventKind::Down))
+        let t = build_squadcast(&sq, &event(AlertKind::Problem))
             .unwrap()
             .remove(0);
         assert_eq!(
@@ -376,13 +370,13 @@ mod tests {
             (Some("trigger"), Some("vv-monitor-7"))
         );
         assert_eq!(
-            build_squadcast(&sq, &event(EventKind::Up)).unwrap()[0]
+            build_squadcast(&sq, &event(AlertKind::Recovered)).unwrap()[0]
                 .json()
                 .unwrap()["status"],
             "resolve"
         );
         let gr = json!({"url": "https://oncall.example/integrations/v1/webhook/abc/"});
-        let a = build_grafana_oncall(&gr, &event(EventKind::Down))
+        let a = build_grafana_oncall(&gr, &event(AlertKind::Problem))
             .unwrap()
             .remove(0);
         assert_eq!(
@@ -393,13 +387,13 @@ mod tests {
             (Some("alerting"), Some("vv-monitor-7"))
         );
         assert_eq!(
-            build_grafana_oncall(&gr, &event(EventKind::Up)).unwrap()[0]
+            build_grafana_oncall(&gr, &event(AlertKind::Recovered)).unwrap()[0]
                 .json()
                 .unwrap()["state"],
             "ok"
         );
         assert!(
-            build_grafana_oncall(&gr, &event(EventKind::MaintenanceEnd))
+            build_grafana_oncall(&gr, &event(AlertKind::MaintenanceEnded))
                 .unwrap()
                 .is_empty()
         );
@@ -412,7 +406,7 @@ mod tests {
     #[test]
     fn goalert_sends_a_form_with_the_key_in_the_body() {
         let c = json!({"server": "https://goalert.example/", "token": "KEY-123"});
-        let r = &build_goalert(&c, &event(EventKind::Down)).unwrap()[0];
+        let r = &build_goalert(&c, &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(r.url, "https://goalert.example/api/v2/generic/incoming");
         assert!(!r.url.contains("KEY-123"));
         let OutBody::Form(f) = &r.body else {
@@ -424,7 +418,8 @@ mod tests {
             (Some("KEY-123"), Some("vv-monitor-7"), None)
         );
         assert!(get("summary").unwrap().chars().count() <= 130);
-        let OutBody::Form(up) = &build_goalert(&c, &event(EventKind::Up)).unwrap()[0].body else {
+        let OutBody::Form(up) = &build_goalert(&c, &event(AlertKind::Recovered)).unwrap()[0].body
+        else {
             panic!("form")
         };
         assert!(up.iter().any(|(k, v)| k == "action" && v == "close"));
@@ -434,7 +429,7 @@ mod tests {
     #[test]
     fn splunk_maps_severity_and_recovery() {
         let c = json!({"api_key": "KEY", "routing_key": "ops team"});
-        let r = &build_splunk(&c, &event(EventKind::Down)).unwrap()[0];
+        let r = &build_splunk(&c, &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(
             r.url,
             "https://alert.victorops.com/integrations/generic/20131114/alert/KEY/ops%20team"
@@ -443,31 +438,31 @@ mod tests {
         assert_eq!(r.json().unwrap()["entity_id"], "vv-monitor-7");
         let warn = json!({"api_key": "KEY", "routing_key": "r", "severity": "WARNING"});
         assert_eq!(
-            build_splunk(&warn, &event(EventKind::Down)).unwrap()[0]
+            build_splunk(&warn, &event(AlertKind::Problem)).unwrap()[0]
                 .json()
                 .unwrap()["message_type"],
             "WARNING"
         );
         assert_eq!(
-            build_splunk(&c, &event(EventKind::Up)).unwrap()[0]
+            build_splunk(&c, &event(AlertKind::Recovered)).unwrap()[0]
                 .json()
                 .unwrap()["message_type"],
             "RECOVERY"
         );
         assert_eq!(
-            build_splunk(&c, &event(EventKind::CertExpiring)).unwrap()[0]
+            build_splunk(&c, &event(AlertKind::Expiring)).unwrap()[0]
                 .json()
                 .unwrap()["message_type"],
             "WARNING"
         );
         assert_eq!(
-            build_splunk(&c, &event(EventKind::Test)).unwrap()[0]
+            build_splunk(&c, &event(AlertKind::Test)).unwrap()[0]
                 .json()
                 .unwrap()["message_type"],
             "INFO"
         );
         assert!(
-            build_splunk(&c, &event(EventKind::MaintenanceStart))
+            build_splunk(&c, &event(AlertKind::MaintenanceStarted))
                 .unwrap()
                 .is_empty()
         );
@@ -476,7 +471,7 @@ mod tests {
     #[test]
     fn keep_posts_firing_and_resolved_alerts_with_the_key_header() {
         let c = json!({"server": "https://keep.example/", "api_key": "K"});
-        let mut e = event(EventKind::Down);
+        let mut e = event(AlertKind::Problem);
         e.url = Some("https://vv.example/monitors/7".into());
         let r = &build_keep(&c, &e).unwrap()[0];
         assert_eq!(r.url, "https://keep.example/alerts/event");
@@ -493,7 +488,7 @@ mod tests {
         assert_eq!(b["source"], json!(["vigilant-vole"]));
         assert_eq!(b["url"], "https://vv.example/monitors/7");
         assert_eq!(
-            build_keep(&c, &event(EventKind::Up)).unwrap()[0]
+            build_keep(&c, &event(AlertKind::Recovered)).unwrap()[0]
                 .json()
                 .unwrap()["status"],
             "resolved"

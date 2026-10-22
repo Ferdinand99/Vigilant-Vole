@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, opt, req};
 use super::message::{color_hex, detail, facts, summary, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "slack",
@@ -37,7 +37,7 @@ fn esc(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     let mut text = format!("*{}*", esc(&title(event)));
     if let Some(d) = detail(event) {
@@ -59,12 +59,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
     ]}));
     if let Some(url) = &event.url {
         blocks.push(json!({ "type": "actions", "elements": [
-            { "type": "button", "text": { "type": "plain_text", "text": crate::i18n::t("msg.view_monitor") }, "url": url }
+            { "type": "button", "text": { "type": "plain_text", "text": event.link_label.as_str() }, "url": url }
         ]}));
     }
     let mut body = json!({
         "text": summary(event),
-        "attachments": [{ "color": color_hex(event.kind), "blocks": blocks }],
+        "attachments": [{ "color": color_hex(event), "blocks": blocks }],
     });
     for key in ["channel", "username", "icon_emoji"] {
         if let Some(v) = opt(config, key) {
@@ -77,13 +77,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
-    use crate::notify::tests::event;
+    use crate::notify::alert::AlertKind;
+    use crate::notify::tests::alert;
 
     #[test]
     fn builds_blocks_with_fallback_text_and_button() {
-        let mut e = event(EventKind::Down);
-        e.message = Some("<timeout>".into());
+        let mut e = alert(AlertKind::Problem, Some("<timeout>"), None);
         e.url = Some("https://vv.example/monitors/7".into());
         let reqs = build(
             &json!({"url": "https://hooks.slack.com/services/x", "channel": "#ops"}),

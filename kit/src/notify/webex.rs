@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, opt, req};
 use super::message::markdown_body;
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "webex",
@@ -38,7 +38,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let token = req(config, "token")?;
     let mut body = json!({ "markdown": markdown_body(event) });
     if let Some(room) = opt(config, "room_id") {
@@ -54,20 +54,20 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn posts_markdown_to_room_or_person() {
         let room = &build(
             &json!({"token": "t", "room_id": "r"}),
-            &event(EventKind::Down),
+            &event(AlertKind::Problem),
         )
         .unwrap()[0];
         assert_eq!(room.json().unwrap()["roomId"], "r");
         let dm = &build(
             &json!({"token": "t", "person_email": "a@b.c"}),
-            &event(EventKind::Down),
+            &event(AlertKind::Problem),
         )
         .unwrap()[0];
         assert_eq!(dm.json().unwrap()["toPersonEmail"], "a@b.c");

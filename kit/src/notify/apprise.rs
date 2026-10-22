@@ -3,9 +3,9 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, join, opt, path_segment, req};
-use super::message::{Severity, body_text, severity, title};
+use super::message::{Severity, body_text, title};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "apprise",
@@ -44,9 +44,9 @@ fn check(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "url")?;
-    let kind = match severity(event.kind) {
+    let kind = match event.level {
         Severity::Critical => "failure",
         Severity::Warning => "warning",
         Severity::Ok => "success",
@@ -74,12 +74,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn stateless_and_keyed_modes() {
-        let e = event(EventKind::Down);
+        let e = event(AlertKind::Problem);
         let stateless = &build(
             &json!({"url": "http://a:8000", "urls": "tgram://x/y\nmailto://z"}),
             &e,

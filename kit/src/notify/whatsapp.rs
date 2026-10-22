@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, join, opt, path_segment, req};
 use super::message::{link, summary};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const WAHA: ProviderSchema = ProviderSchema {
     kind: "waha",
@@ -63,7 +63,7 @@ fn waha_chat_id(raw: &str) -> String {
     }
 }
 
-fn message(event: &NotificationEvent) -> String {
+fn message(event: &Alert) -> String {
     let mut text = summary(event);
     if let Some(url) = link(event) {
         text.push('\n');
@@ -84,7 +84,7 @@ fn check_evolution(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build_waha(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_waha(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "server")?;
     let chat = req(config, "chat_id")?;
     let session = opt(config, "session").unwrap_or("default");
@@ -98,10 +98,7 @@ pub fn build_waha(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRe
     Ok(vec![request])
 }
 
-pub fn build_evolution(
-    config: &Value,
-    event: &NotificationEvent,
-) -> Result<Vec<OutRequest>, String> {
+pub fn build_evolution(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "server")?;
     let instance = req(config, "instance")?;
     let key = req(config, "api_key")?;
@@ -126,12 +123,12 @@ pub fn build_evolution(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn waha_posts_to_send_text_with_a_chat_id() {
-        let mut e = event(EventKind::Down);
+        let mut e = event(AlertKind::Problem);
         e.url = Some("https://vv.example/monitors/7".into());
         let r = &build_waha(
             &json!({"server": "http://waha:3000/", "chat_id": "+47 123 45 678", "api_key": "K"}),
@@ -166,7 +163,7 @@ mod tests {
     fn evolution_posts_to_the_instance_with_an_api_key() {
         let r = &build_evolution(
             &json!({"server": "https://evo.example/", "instance": "my inst", "api_key": "K", "number": "+47 123 45 678"}),
-            &event(EventKind::Up),
+            &event(AlertKind::Recovered),
         )
         .unwrap()[0];
         assert_eq!(r.url, "https://evo.example/message/sendText/my%20inst");

@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, opt, req};
 use super::message::{body_text, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "pushbullet",
@@ -25,7 +25,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let token = req(config, "access_token")?;
     let mut body = json!({ "type": "note", "title": title(event), "body": body_text(event) });
     if let Some(url) = &event.url {
@@ -46,19 +46,19 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn link_push_when_deep_link_exists() {
-        let mut e = event(EventKind::Down);
+        let mut e = event(AlertKind::Problem);
         e.url = Some("https://vv.example/monitors/7".into());
         let req = &build(&json!({"access_token": "o.x", "device_iden": "d1"}), &e).unwrap()[0];
         assert_eq!(req.header_value("Access-Token"), Some("o.x"));
         let body = req.json().unwrap();
         assert_eq!(body["type"], "link");
         assert_eq!(body["device_iden"], "d1");
-        let note = &build(&json!({"access_token": "o.x"}), &event(EventKind::Down)).unwrap()[0];
+        let note = &build(&json!({"access_token": "o.x"}), &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(note.json().unwrap()["type"], "note");
     }
 }

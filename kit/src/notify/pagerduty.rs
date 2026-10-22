@@ -5,9 +5,9 @@ use serde_json::{Value, json};
 use time::format_description::well_known::Rfc3339;
 
 use super::http::{OutRequest, opt, req};
-use super::message::{Severity, link, product, severity, summary};
+use super::message::{Severity, link, product, summary};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::{EventKind, NotificationEvent};
+use crate::notify::alert::{Alert, AlertKind};
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "pagerduty",
@@ -38,27 +38,33 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 };
 
 /// Stable incident key: `vv-monitor-{id}` (expiry alerts get their own).
-pub fn dedup_key(event: &NotificationEvent) -> String {
-    let base = match event.monitor_id {
-        Some(id) => format!("vv-monitor-{id}"),
-        None => "vv-test".to_string(),
+pub fn dedup_key(event: &Alert) -> String {
+    let base = match event.subject_id {
+        Some(id) => format!("{}-monitor-{id}", super::message::id_prefix()),
+        None => format!("{}-test", super::message::id_prefix()),
     };
     match event.kind {
-        EventKind::CertExpiring => format!("{base}-cert"),
-        EventKind::DomainExpiring => format!("{base}-domain"),
+        // "cert_expiring" → "-cert", "domain_expiring" → "-domain".
+        AlertKind::Expiring => format!(
+            "{base}-{}",
+            event
+                .event
+                .strip_suffix("_expiring")
+                .unwrap_or(&event.event)
+        ),
         _ => base,
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let routing_key = req(config, "routing_key")?;
     let url = match opt(config, "region") {
         Some("eu") => "https://events.eu.pagerduty.com/v2/enqueue",
         _ => "https://events.pagerduty.com/v2/enqueue",
     };
     let action = match event.kind {
-        EventKind::Up => "resolve",
-        EventKind::MaintenanceStart | EventKind::MaintenanceEnd => return Ok(Vec::new()),
+        AlertKind::Recovered => "resolve",
+        AlertKind::MaintenanceStarted | AlertKind::MaintenanceEnded => return Ok(Vec::new()),
         _ => "trigger",
     };
     let mut body = json!({
@@ -68,7 +74,7 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
         "client": product(),
     });
     if action == "trigger" {
-        let sev = match severity(event.kind) {
+        let sev = match event.level {
             Severity::Critical => opt(config, "severity").unwrap_or("critical"),
             Severity::Warning => "warning",
             _ => "info",
@@ -82,16 +88,16 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
             "source": if event.target.is_empty() { product().to_string() } else { event.target.clone() },
             "severity": sev,
             "timestamp": event.occurred_at.format(&Rfc3339).unwrap_or_default(),
-            "component": event.monitor_name,
-            "class": event.monitor_type,
+            "component": event.subject,
+            "class": event.subject_type,
             "custom_details": {
-                "event": event.kind.as_str(),
+                "event": event.event.as_str(),
                 "message": event.message,
                 "expires_in_days": event.expires_in_days,
             },
         });
         if let Some(href) = link(event) {
-            body["links"] = json!([{ "href": href, "text": crate::i18n::t("msg.view_monitor") }]);
+            body["links"] = json!([{ "href": href, "text": event.link_label.as_str() }]);
         }
         if let Some(url) = &event.url {
             body["client_url"] = json!(url);
@@ -108,13 +114,13 @@ mod tests {
     #[test]
     fn triggers_on_down_and_resolves_on_up_with_same_key() {
         let config = json!({"routing_key": "R0UT1NG", "severity": "error"});
-        let down = build(&config, &event(EventKind::Down)).unwrap();
+        let down = build(&config, &event(AlertKind::Problem)).unwrap();
         let body = down[0].json().unwrap();
         assert_eq!(down[0].url, "https://events.pagerduty.com/v2/enqueue");
         assert_eq!(body["event_action"], "trigger");
         assert_eq!(body["dedup_key"], "vv-monitor-7");
         assert_eq!(body["payload"]["severity"], "error");
-        let up = build(&config, &event(EventKind::Up)).unwrap();
+        let up = build(&config, &event(AlertKind::Recovered)).unwrap();
         let body = up[0].json().unwrap();
         assert_eq!(body["event_action"], "resolve");
         assert_eq!(body["dedup_key"], "vv-monitor-7");
@@ -125,11 +131,11 @@ mod tests {
     fn maintenance_sends_nothing_and_eu_region_switches_host() {
         let config = json!({"routing_key": "R", "region": "eu"});
         assert!(
-            build(&config, &event(EventKind::MaintenanceStart))
+            build(&config, &event(AlertKind::MaintenanceStarted))
                 .unwrap()
                 .is_empty()
         );
-        let cert = build(&config, &event(EventKind::CertExpiring)).unwrap();
+        let cert = build(&config, &event(AlertKind::Expiring)).unwrap();
         assert_eq!(cert[0].url, "https://events.eu.pagerduty.com/v2/enqueue");
         assert_eq!(cert[0].json().unwrap()["dedup_key"], "vv-monitor-7-cert");
         assert_eq!(cert[0].json().unwrap()["payload"]["severity"], "warning");

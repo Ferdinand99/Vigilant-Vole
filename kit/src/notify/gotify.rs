@@ -3,9 +3,9 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, join, num, req};
-use super::message::{Severity, markdown_details, severity, title};
+use super::message::{Severity, markdown_details, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "gotify",
@@ -29,10 +29,10 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "server")?;
     let token = req(config, "app_token")?;
-    let priority = num(config, "priority").unwrap_or(match severity(event.kind) {
+    let priority = num(config, "priority").unwrap_or(match event.level {
         Severity::Critical => 8,
         Severity::Ok => 5,
         _ => 4,
@@ -55,12 +55,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn posts_markdown_with_key_header() {
-        let mut e = event(EventKind::Down);
+        let mut e = event(AlertKind::Problem);
         e.url = Some("https://vv.example/monitors/7".into());
         let req = &build(
             &json!({"server": "https://g.example/", "app_token": "AbC"}),

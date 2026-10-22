@@ -12,7 +12,7 @@ use serde_json::Value;
 use super::http::{flag, list, num, opt, req};
 use super::message::{color_hex, detail, escape_html, facts, headline, product, text_body, title};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "email",
@@ -104,7 +104,7 @@ fn mailboxes(config: &Value, key: &str) -> Result<Vec<Mailbox>, String> {
 }
 
 /// The message (pure, testable).
-pub fn build_message(config: &Value, event: &NotificationEvent) -> Result<Message, String> {
+pub fn build_message(config: &Value, event: &Alert) -> Result<Message, String> {
     let from: Mailbox = req(config, "from")?
         .parse()
         .map_err(|e| format!("invalid from address: {e}"))?;
@@ -136,15 +136,15 @@ pub fn build_message(config: &Value, event: &NotificationEvent) -> Result<Messag
 
 /// A calm, single-column HTML email (inline styles — mail clients ignore
 /// stylesheets).
-pub fn html_body(event: &NotificationEvent) -> String {
+pub fn html_body(event: &Alert) -> String {
     let font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-    let accent = color_hex(event.kind);
+    let accent = color_hex(event);
     let mut rows = String::new();
     for (label, value) in facts(event) {
         rows.push_str(&format!(
             "<tr><td style=\"padding:10px 0;border-top:1px solid #e5e5ea;color:#6e6e73;font-size:14px;width:96px;vertical-align:top\">{}</td>\
              <td style=\"padding:10px 0;border-top:1px solid #e5e5ea;color:#1d1d1f;font-size:14px;word-break:break-word\">{}</td></tr>",
-            escape_html(label),
+            escape_html(&label),
             escape_html(&value)
         ));
     }
@@ -163,7 +163,7 @@ pub fn html_body(event: &NotificationEvent) -> String {
             format!(
                 "<p style=\"margin:24px 0 0\"><a href=\"{}\" style=\"display:inline-block;padding:11px 20px;border-radius:980px;background:#1d1d1f;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600\">{}</a></p>",
                 escape_html(u),
-                escape_html(crate::i18n::t("msg.view_monitor"))
+                escape_html(event.link_label.as_str())
             )
         })
         .unwrap_or_default();
@@ -182,13 +182,13 @@ pub fn html_body(event: &NotificationEvent) -> String {
 <p style=\"margin:16px 0 0;font-size:12px;color:#86868b\">{sent_by}</p>\
 </td></tr></table></body></html>",
         title = escape_html(&title(event)),
-        status = escape_html(event.kind.label()),
+        status = escape_html(event.event_label.as_str()),
         headline = escape_html(&headline(event)),
         sent_by = escape_html(&crate::i18n::tf("msg.sent_by", &[("product", product())])),
     )
 }
 
-pub async fn send(config: &Value, event: &NotificationEvent) -> Result<(), String> {
+pub async fn send(config: &Value, event: &Alert) -> Result<(), String> {
     deliver(config, build_message(config, event)?).await
 }
 
@@ -249,8 +249,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::notify::alert::EventKind;
-    use crate::notify::tests::event;
+    use crate::notify::alert::AlertKind;
+    use crate::notify::tests::alert;
 
     fn config() -> Value {
         json!({"host": "smtp.test", "from": "Vole <vv@example.com>", "to": "a@example.com, b@example.com",
@@ -259,8 +259,7 @@ mod tests {
 
     #[test]
     fn builds_multipart_message_with_recipients() {
-        let mut e = event(EventKind::Down);
-        e.message = Some("<HTTP 503>".into());
+        let mut e = alert(AlertKind::Problem, Some("<HTTP 503>"), None);
         e.url = Some("https://vv.example/monitors/7".into());
         let msg = build_message(&config(), &e).unwrap();
         let raw = String::from_utf8(msg.formatted()).unwrap();
@@ -274,8 +273,7 @@ mod tests {
 
     #[test]
     fn html_is_escaped_and_has_button() {
-        let mut e = event(EventKind::Down);
-        e.message = Some("<script>".into());
+        let mut e = alert(AlertKind::Problem, Some("<script>"), None);
         e.url = Some("https://vv.example/monitors/7".into());
         let html = html_body(&e);
         assert!(html.contains("&lt;script&gt;"));

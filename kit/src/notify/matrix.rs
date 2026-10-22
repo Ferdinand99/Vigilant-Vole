@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use super::http::{OutBody, OutRequest, join, opt, path_segment, req};
 use super::message::{detail, escape_html, facts, text_body, title};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "matrix",
@@ -46,35 +46,36 @@ fn check(config: &Value) -> Vec<FieldError> {
 static TXN: AtomicU64 = AtomicU64::new(0);
 
 /// Unique per process and event; Matrix de-duplicates retries by it.
-fn txn_id(event: &NotificationEvent) -> String {
+fn txn_id(event: &Alert) -> String {
     format!(
-        "vv{}-{}",
+        "{}{}-{}",
+        super::message::id_prefix(),
         event.occurred_at.unix_timestamp_nanos(),
         TXN.fetch_add(1, Ordering::Relaxed)
     )
 }
 
-pub fn html(event: &NotificationEvent) -> String {
+pub fn html(event: &Alert) -> String {
     let mut out = format!("<strong>{}</strong>", escape_html(&title(event)));
     if let Some(d) = detail(event) {
         out.push_str(&format!("<br>{}", escape_html(&d)));
     }
     let items: String = facts(event)
         .into_iter()
-        .map(|(l, v)| format!("<li>{}: {}</li>", escape_html(l), escape_html(&v)))
+        .map(|(l, v)| format!("<li>{}: {}</li>", escape_html(&l), escape_html(&v)))
         .collect();
     out.push_str(&format!("<ul>{items}</ul>"));
     if let Some(url) = &event.url {
         out.push_str(&format!(
             "<a href=\"{}\">{}</a>",
             escape_html(url),
-            escape_html(crate::i18n::t("msg.view_monitor"))
+            escape_html(event.link_label.as_str())
         ));
     }
     out
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let homeserver = req(config, "homeserver")?;
     let room = req(config, "room_id")?;
     let token = req(config, "access_token")?;
@@ -106,12 +107,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn puts_formatted_message_with_unique_txn() {
-        let e = event(EventKind::Down);
+        let e = event(AlertKind::Problem);
         let config = json!({"homeserver": "https://hs.example", "room_id": "!r:hs.example", "access_token": "syt_x"});
         let a = &build(&config, &e).unwrap()[0];
         let b = &build(&config, &e).unwrap()[0];

@@ -6,7 +6,7 @@
 use serde_json::{Map, Value};
 
 use super::http::OutRequest;
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 /// Shown in place of a saved secret. Submitting it back (or leaving the field
 /// empty) keeps the stored value.
@@ -17,7 +17,7 @@ pub const FIELD_PREFIX: &str = "c_";
 
 /// Builds the outgoing HTTP requests for one event. An empty list means "this
 /// provider has nothing to send for this event" (e.g. PagerDuty and maintenance).
-pub type BuildFn = fn(&Value, &NotificationEvent) -> Result<Vec<OutRequest>, String>;
+pub type BuildFn = fn(&Value, &Alert) -> Result<Vec<OutRequest>, String>;
 
 /// Extra provider-specific validation on top of the schema's generic checks.
 pub type CheckFn = fn(&Value) -> Vec<FieldError>;
@@ -608,7 +608,7 @@ mod tests {
         Field::key_value("headers", "Headers").sensitive(),
     ];
 
-    fn no_build(_: &Value, _: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+    fn no_build(_: &Value, _: &Alert) -> Result<Vec<OutRequest>, String> {
         Ok(Vec::new())
     }
 

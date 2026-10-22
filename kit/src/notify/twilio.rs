@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::http::{OutRequest, list, opt, path_segment, req};
 use super::message::summary;
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "twilio",
@@ -50,7 +50,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     errors
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let sid = req(config, "account_sid")?;
     let token = req(config, "auth_token")?;
     let from = req(config, "from")?;
@@ -93,7 +93,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::http::OutBody;
     use crate::notify::tests::event;
 
@@ -101,7 +101,7 @@ mod tests {
     fn one_form_request_per_recipient() {
         let config =
             json!({"account_sid": "AC1", "auth_token": "tok", "from": "+1", "to": "+2, +3"});
-        let reqs = build(&config, &event(EventKind::Down)).unwrap();
+        let reqs = build(&config, &event(AlertKind::Problem)).unwrap();
         assert_eq!(reqs.len(), 2);
         assert_eq!(
             reqs[0].url,

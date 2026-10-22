@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::http::{OutRequest, opt, req};
 use super::message::{link, summary};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "threema",
@@ -63,7 +63,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     errors
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let from = req(config, "gateway_id")?;
     let secret = req(config, "secret")?;
     let to = req(config, "recipient")?;
@@ -91,7 +91,7 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::http::OutBody;
     use crate::notify::tests::event;
     use serde_json::json;
@@ -110,7 +110,7 @@ mod tests {
             ("phone", "+4712345678", "phone"),
             ("email", "me@example.com", "email"),
         ] {
-            let r = &build(&json!({"gateway_id": "*VOLE123", "secret": "S", "recipient_type": kind, "recipient": to}), &event(EventKind::Down)).unwrap()[0];
+            let r = &build(&json!({"gateway_id": "*VOLE123", "secret": "S", "recipient_type": kind, "recipient": to}), &event(AlertKind::Problem)).unwrap()[0];
             assert_eq!(r.url, "https://msgapi.threema.ch/send_simple");
             let f = fields(r);
             let get = |k: &str| f.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());

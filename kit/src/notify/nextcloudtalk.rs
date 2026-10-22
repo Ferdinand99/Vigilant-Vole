@@ -5,9 +5,9 @@ use rand::RngExt;
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, flag, hmac_sha256, join, path_segment, req};
-use super::message::{Severity, markdown_details, severity, title};
+use super::message::{Severity, markdown_details, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "nextcloudtalk",
@@ -49,20 +49,16 @@ fn random_hex() -> String {
         .collect()
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     build_with(config, event, &random_hex())
 }
 
-fn build_with(
-    config: &Value,
-    event: &NotificationEvent,
-    random: &str,
-) -> Result<Vec<OutRequest>, String> {
+fn build_with(config: &Value, event: &Alert, random: &str) -> Result<Vec<OutRequest>, String> {
     let host = req(config, "host")?;
     let token = req(config, "conversation_token")?;
     let secret = req(config, "bot_secret")?;
     let message = format!("**{}**\n{}", title(event), markdown_details(event));
-    let silent = flag(config, "silent_up") && severity(event.kind) == Severity::Ok;
+    let silent = flag(config, "silent_up") && event.level == Severity::Ok;
     let signature = sign(secret, random, &message);
     let url = join(
         host,
@@ -82,7 +78,7 @@ fn build_with(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     fn config() -> Value {
@@ -91,7 +87,7 @@ mod tests {
 
     #[test]
     fn signs_the_random_value_and_the_message() {
-        let r = &build_with(&config(), &event(EventKind::Down), "00ff").unwrap()[0];
+        let r = &build_with(&config(), &event(AlertKind::Problem), "00ff").unwrap()[0];
         assert_eq!(
             r.url,
             "https://cloud.example.com/ocs/v2.php/apps/spreed/api/v1/bot/abcd1234/message"
@@ -120,17 +116,19 @@ mod tests {
         let mut c = config();
         c["silent_up"] = json!(true);
         assert_eq!(
-            build(&c, &event(EventKind::Up)).unwrap()[0].json().unwrap()["silent"],
+            build(&c, &event(AlertKind::Recovered)).unwrap()[0]
+                .json()
+                .unwrap()["silent"],
             true
         );
         assert_eq!(
-            build(&c, &event(EventKind::Down)).unwrap()[0]
+            build(&c, &event(AlertKind::Problem)).unwrap()[0]
                 .json()
                 .unwrap()["silent"],
             false
         );
         assert_eq!(
-            build(&config(), &event(EventKind::Up)).unwrap()[0]
+            build(&config(), &event(AlertKind::Recovered)).unwrap()[0]
                 .json()
                 .unwrap()["silent"],
             false

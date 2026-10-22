@@ -1,9 +1,8 @@
 //! The alert model every notification provider works with: the channel a
-//! message goes to, what happened (`EventKind`) and the facts about it
-//! (`NotificationEvent`). The `monitor_*` fields name the thing being
-//! watched: the kit family's products all watch something.
+//! message goes to ([`NotificationChannel`]) and one finished alert
+//! ([`Alert`]): what happened, how bad it is, and the texts and facts to
+//! show, already written in the reader's language by the product.
 
-use std::fmt;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -24,87 +23,117 @@ pub struct NotificationChannel {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EventKind {
-    Down,
-    Up,
+/// What kind of thing happened. Providers decide with it whether to open,
+/// resolve or skip an incident, which priority and which icon to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AlertKind {
+    /// Something broke.
+    Problem,
+    /// It works again.
+    Recovered,
+    /// It is still broken (a repeat).
     Reminder,
+    /// It has been broken for too long.
     Escalation,
-    CertExpiring,
-    DomainExpiring,
-    MaintenanceStart,
-    MaintenanceEnd,
-    Flapping,
+    /// Something will expire (a certificate, a domain).
+    Expiring,
+    /// It keeps changing state.
+    Unstable,
+    /// Planned work began.
+    MaintenanceStarted,
+    /// Planned work ended.
+    MaintenanceEnded,
+    /// A test message.
     Test,
 }
 
-impl EventKind {
-    pub fn as_str(self) -> &'static str {
+/// How serious an alert is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Level {
+    Critical,
+    Warning,
+    Ok,
+    Info,
+}
+
+impl AlertKind {
+    /// The default level of this kind of alert.
+    pub fn level(self) -> Level {
         match self {
-            EventKind::Down => "down",
-            EventKind::Up => "up",
-            EventKind::Reminder => "reminder",
-            EventKind::Escalation => "escalation",
-            EventKind::CertExpiring => "cert_expiring",
-            EventKind::DomainExpiring => "domain_expiring",
-            EventKind::MaintenanceStart => "maintenance_start",
-            EventKind::MaintenanceEnd => "maintenance_end",
-            EventKind::Flapping => "flapping",
-            EventKind::Test => "test",
+            AlertKind::Problem | AlertKind::Reminder | AlertKind::Escalation => Level::Critical,
+            AlertKind::Expiring | AlertKind::Unstable => Level::Warning,
+            AlertKind::Recovered => Level::Ok,
+            AlertKind::MaintenanceStarted | AlertKind::MaintenanceEnded | AlertKind::Test => {
+                Level::Info
+            }
         }
     }
 
-    pub fn label(self) -> &'static str {
+    /// The default emoji of this kind of alert.
+    pub fn emoji(self) -> &'static str {
         match self {
-            EventKind::Down => crate::i18n::t("event_kind.down"),
-            EventKind::Up => crate::i18n::t("event_kind.up"),
-            EventKind::Reminder => crate::i18n::t("event_kind.reminder"),
-            EventKind::Escalation => crate::i18n::t("event_kind.escalation"),
-            EventKind::CertExpiring => crate::i18n::t("event_kind.cert_expiring"),
-            EventKind::DomainExpiring => crate::i18n::t("event_kind.domain_expiring"),
-            EventKind::MaintenanceStart => crate::i18n::t("event_kind.maintenance_start"),
-            EventKind::MaintenanceEnd => crate::i18n::t("event_kind.maintenance_end"),
-            EventKind::Flapping => crate::i18n::t("event_kind.flapping"),
-            EventKind::Test => crate::i18n::t("event_kind.test"),
+            AlertKind::Problem | AlertKind::Reminder => "\u{1f534}",
+            AlertKind::Escalation => "\u{1f6a8}",
+            AlertKind::Recovered => "\u{1f7e2}",
+            AlertKind::Expiring => "\u{1f7e1}",
+            AlertKind::Unstable => "\u{1f7e0}",
+            AlertKind::MaintenanceStarted | AlertKind::MaintenanceEnded => "\u{1f535}",
+            AlertKind::Test => "\u{1f514}",
         }
     }
+}
 
-    /// Whether this event signals a problem (used for colour/severity).
-    pub fn is_problem(self) -> bool {
-        matches!(
-            self,
-            EventKind::Down
-                | EventKind::Reminder
-                | EventKind::Escalation
-                | EventKind::CertExpiring
-                | EventKind::DomainExpiring
-                | EventKind::Flapping
-        )
+impl Level {
+    /// RGB colour (Apple system colours) for embeds and cards.
+    pub fn colour(self) -> u32 {
+        match self {
+            Level::Critical => 0xFF3B30,
+            Level::Warning => 0xFF9500,
+            Level::Ok => 0x34C759,
+            Level::Info => 0x007AFF,
+        }
     }
 }
 
-impl fmt::Display for EventKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Everything a notification provider needs to render one alert.
+/// One alert, ready to send: every text is final (translated, with the
+/// product's wording), so providers only lay it out.
 #[derive(Debug, Clone, PartialEq)]
-pub struct NotificationEvent {
-    pub kind: EventKind,
-    pub monitor_id: Option<i64>,
-    pub monitor_name: String,
-    /// `MonitorType::as_str()` of the monitor (empty for non-monitor events).
-    pub monitor_type: String,
+pub struct Alert {
+    pub kind: AlertKind,
+    /// Machine name of the event ("down", "new_issue"): webhook `event`,
+    /// card ids.
+    pub event: String,
+    /// The event's name for people ("Down").
+    pub event_label: String,
+    /// The coarse status a receiver can switch on ("down", "up", …).
+    pub status: String,
+    pub level: Level,
+    /// RGB colour for embeds and cards.
+    pub colour: u32,
+    pub emoji: String,
+    /// "Payments API is down": no emoji, no detail.
+    pub title: String,
+    /// The part after the dash: the check message, how long it was down, …
+    pub detail: Option<String>,
+    /// Facts worth showing as fields: `(label, value)`.
+    pub facts: Vec<(String, String)>,
+    /// Text of the button or link that opens [`Self::url`] ("View monitor").
+    pub link_label: String,
+    /// Id of the thing the alert is about (dedup keys, webhooks).
+    pub subject_id: Option<i64>,
+    /// Name of the thing the alert is about.
+    pub subject: String,
+    /// Machine name of its type ("http"); empty when it has none.
+    pub subject_type: String,
+    /// What is being watched (a URL, `host:port`), safe to send.
     pub target: String,
+    /// The raw message of the check or event, if any.
     pub message: Option<String>,
-    /// On `Up`: how long the monitor was down.
-    pub downtime: Option<Duration>,
-    /// On `CertExpiring` / `DomainExpiring`.
+    /// How long the problem lasted (on recovery) or has lasted.
+    pub duration: Option<Duration>,
+    /// Days until something expires.
     pub expires_in_days: Option<i64>,
-    /// Deep link (`base_url + /monitors/{id}`), when a base URL is configured.
+    /// Deep link into the product, when it knows its own address.
     pub url: Option<String>,
     pub occurred_at: OffsetDateTime,
 }

@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, flag, join, num, opt, req};
 use super::message::{detail, escape_html, facts, title};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "telegram",
@@ -46,7 +46,7 @@ fn check(config: &Value) -> Vec<FieldError> {
 }
 
 /// HTML message: bold title, detail, facts, link.
-pub fn html(event: &NotificationEvent) -> String {
+pub fn html(event: &Alert) -> String {
     let mut out = format!("<b>{}</b>", escape_html(&title(event)));
     if let Some(d) = detail(event) {
         out.push('\n');
@@ -59,13 +59,13 @@ pub fn html(event: &NotificationEvent) -> String {
         out.push_str(&format!(
             "\n\n<a href=\"{}\">{}</a>",
             escape_html(url),
-            escape_html(crate::i18n::t("msg.view_monitor"))
+            escape_html(event.link_label.as_str())
         ));
     }
     out
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let token = req(config, "bot_token")?;
     let chat_id = req(config, "chat_id")?;
     let server = opt(config, "server_url").unwrap_or("https://api.telegram.org");
@@ -86,13 +86,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
-    use crate::notify::tests::event;
+    use crate::notify::alert::AlertKind;
+    use crate::notify::tests::alert;
 
     #[test]
     fn builds_html_message_with_topic_and_silence() {
-        let mut e = event(EventKind::Down);
-        e.message = Some("<503>".into());
+        let mut e = alert(AlertKind::Problem, Some("<503>"), None);
         e.url = Some("https://vv.example/monitors/7".into());
         let config = json!({"bot_token": "1:abc", "chat_id": "-100", "message_thread_id": 5, "silent": true});
         let reqs = build(&config, &e).unwrap();

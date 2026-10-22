@@ -4,9 +4,9 @@ use serde_json::{Value, json};
 use time::format_description::well_known::Rfc3339;
 
 use super::http::{OutRequest, opt, req};
-use super::message::{color, detail, emoji, facts, headline, link};
+use super::message::{detail, facts, headline, link};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "discord",
@@ -44,7 +44,7 @@ fn check(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let mut url = req(config, "url")?.to_string();
     if let Some(thread) = opt(config, "thread_id") {
         url.push(if url.contains('?') { '&' } else { '?' });
@@ -62,15 +62,15 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 
 /// Title = emoji + headline (links to the monitor), description = detail,
 /// inline fields for target/type/downtime.
-fn embed(event: &NotificationEvent) -> Value {
+fn embed(event: &Alert) -> Value {
     let fields: Vec<Value> = facts(event)
         .into_iter()
         .filter(|(label, _)| *label != "Time")
         .map(|(label, value)| json!({ "name": label, "value": truncate(&value, 1000), "inline": label != "Target" }))
         .collect();
     let mut embed = json!({
-        "title": truncate(&format!("{} {}", emoji(event.kind), headline(event)), 250),
-        "color": color(event.kind),
+        "title": truncate(&format!("{} {}", event.emoji, headline(event)), 250),
+        "color": event.colour,
         "fields": fields,
         "footer": { "text": super::message::product() },
         "timestamp": event.occurred_at.format(&Rfc3339).unwrap_or_default(),
@@ -94,13 +94,12 @@ fn truncate(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
-    use crate::notify::tests::event;
+    use crate::notify::alert::AlertKind;
+    use crate::notify::tests::alert;
 
     #[test]
     fn builds_embed_with_overrides() {
-        let mut e = event(EventKind::Down);
-        e.message = Some("HTTP 503".into());
+        let mut e = alert(AlertKind::Problem, Some("HTTP 503"), None);
         e.url = Some("https://vv.example/monitors/7".into());
         let config = json!({"url": "https://discord.com/api/webhooks/1/abc", "username": "Vole", "avatar_url": "https://a/x.png", "thread_id": "99"});
         let reqs = build(&config, &e).unwrap();

@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use super::http::{OutRequest, hmac_sha256, opt, req, urlencode};
 use super::message::{markdown_body, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "dingtalk",
@@ -37,7 +37,7 @@ pub fn sign(timestamp_ms: i64, secret: &str) -> String {
     )
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let mut url = req(config, "url")?.to_string();
     if let Some(secret) = opt(config, "secret") {
         let ts = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
@@ -51,12 +51,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn appends_signature_to_url() {
-        let req = &build(&json!({"url": "https://oapi.dingtalk.com/robot/send?access_token=a", "secret": "SECx"}), &event(EventKind::Down)).unwrap()[0];
+        let req = &build(&json!({"url": "https://oapi.dingtalk.com/robot/send?access_token=a", "secret": "SECx"}), &event(AlertKind::Problem)).unwrap()[0];
         assert!(
             req.url
                 .starts_with("https://oapi.dingtalk.com/robot/send?access_token=a&timestamp=")

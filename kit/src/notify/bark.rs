@@ -3,9 +3,9 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, join, opt, req};
-use super::message::{Severity, body_text, product, severity, title};
+use super::message::{Severity, body_text, product, title};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "bark",
@@ -30,10 +30,10 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = opt(config, "server").unwrap_or("https://api.day.app");
     let key = req(config, "device_key")?;
-    let critical = severity(event.kind) == Severity::Critical;
+    let critical = event.level == Severity::Critical;
     let level = match (critical, super::http::flag(config, "critical")) {
         (true, true) => "critical",
         (true, false) => "timeSensitive",
@@ -58,23 +58,23 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn down_is_time_sensitive_or_critical() {
-        let req = &build(&json!({"device_key": "k"}), &event(EventKind::Down)).unwrap()[0];
+        let req = &build(&json!({"device_key": "k"}), &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(req.url, "https://api.day.app/push");
         assert_eq!(req.json().unwrap()["level"], "timeSensitive");
         let crit = &build(
             &json!({"device_key": "k", "critical": true}),
-            &event(EventKind::Down),
+            &event(AlertKind::Problem),
         )
         .unwrap()[0];
         assert_eq!(crit.json().unwrap()["level"], "critical");
         let up = &build(
             &json!({"device_key": "k", "critical": true}),
-            &event(EventKind::Up),
+            &event(AlertKind::Recovered),
         )
         .unwrap()[0];
         assert_eq!(up.json().unwrap()["level"], "active");

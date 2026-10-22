@@ -3,9 +3,9 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, join, list, opt, req};
-use super::message::{Severity, body_text, headline, link, severity};
+use super::message::{Severity, body_text, headline, link};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::{EventKind, NotificationEvent};
+use crate::notify::alert::{Alert, AlertKind};
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "ntfy",
@@ -60,9 +60,9 @@ fn check(config: &Value) -> Vec<FieldError> {
     }
 }
 
-fn auto_priority(kind: EventKind) -> i64 {
-    match (kind, severity(kind)) {
-        (EventKind::Escalation, _) => 5,
+fn auto_priority(kind: AlertKind, level: Severity) -> i64 {
+    match (kind, level) {
+        (AlertKind::Escalation, _) => 5,
         (_, Severity::Critical) => 5,
         (_, Severity::Warning) => 4,
         (_, Severity::Ok) => 3,
@@ -70,24 +70,24 @@ fn auto_priority(kind: EventKind) -> i64 {
     }
 }
 
-fn emoji_tag(kind: EventKind) -> &'static str {
+fn emoji_tag(kind: AlertKind) -> &'static str {
     match kind {
-        EventKind::Down | EventKind::Reminder => "red_circle",
-        EventKind::Escalation => "rotating_light",
-        EventKind::Up => "green_circle",
-        EventKind::CertExpiring | EventKind::DomainExpiring => "warning",
-        EventKind::Flapping => "orange_circle",
-        EventKind::MaintenanceStart | EventKind::MaintenanceEnd => "wrench",
-        EventKind::Test => "bell",
+        AlertKind::Problem | AlertKind::Reminder => "red_circle",
+        AlertKind::Escalation => "rotating_light",
+        AlertKind::Recovered => "green_circle",
+        AlertKind::Expiring => "warning",
+        AlertKind::Unstable => "orange_circle",
+        AlertKind::MaintenanceStarted | AlertKind::MaintenanceEnded => "wrench",
+        AlertKind::Test => "bell",
     }
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = opt(config, "server").unwrap_or("https://ntfy.sh");
     let topic = req(config, "topic")?;
     let priority = match opt(config, "priority") {
         Some(p) if p != "auto" => p.parse().unwrap_or(3),
-        _ => auto_priority(event.kind),
+        _ => auto_priority(event.kind, event.level),
     };
     let mut tags = vec![emoji_tag(event.kind).to_string()];
     tags.extend(list(config, "tags"));
@@ -114,12 +114,11 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::tests::event;
+    use crate::notify::tests::{alert, event};
 
     #[test]
     fn publishes_json_with_auto_priority_and_tags() {
-        let mut e = event(EventKind::Down);
-        e.message = Some("HTTP 503".into());
+        let mut e = alert(AlertKind::Problem, Some("HTTP 503"), None);
         e.url = Some("https://vv.example/monitors/7".into());
         let reqs = build(
             &json!({"topic": "alerts", "tags": "prod", "access_token": "tk_x"}),
@@ -144,7 +143,7 @@ mod tests {
 
     #[test]
     fn fixed_priority_and_basic_auth_on_custom_server() {
-        let e = event(EventKind::Up);
+        let e = event(AlertKind::Recovered);
         let config = json!({"server": "https://ntfy.example/", "topic": "t", "priority": "2", "username": "u", "password": "p"});
         let req = &build(&config, &e).unwrap()[0];
         assert_eq!(req.url, "https://ntfy.example/");

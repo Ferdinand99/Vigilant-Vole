@@ -4,9 +4,9 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, req};
-use super::message::{Severity, detail, emoji, facts, headline, severity};
+use super::message::{Severity, detail, facts, headline};
 use super::schema::{Category, Field, ProviderSchema, Transport};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "teams",
@@ -24,15 +24,15 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn card(event: &NotificationEvent) -> Value {
-    let color = match severity(event.kind) {
+pub fn card(event: &Alert) -> Value {
+    let color = match event.level {
         Severity::Critical => "Attention",
         Severity::Warning => "Warning",
         Severity::Ok => "Good",
         Severity::Info => "Accent",
     };
     let mut body = vec![json!({
-        "type": "TextBlock", "text": format!("{} {}", emoji(event.kind), headline(event)),
+        "type": "TextBlock", "text": format!("{} {}", event.emoji, headline(event)),
         "weight": "Bolder", "size": "Medium", "color": color, "wrap": true
     })];
     if let Some(d) = detail(event) {
@@ -51,12 +51,13 @@ pub fn card(event: &NotificationEvent) -> Value {
         "msteams": { "width": "Full" },
     });
     if let Some(url) = &event.url {
-        card["actions"] = json!([{ "type": "Action.OpenUrl", "title": crate::i18n::t("msg.view_monitor"), "url": url }]);
+        card["actions"] =
+            json!([{ "type": "Action.OpenUrl", "title": event.link_label.as_str(), "url": url }]);
     }
     card
 }
 
-pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let url = req(config, "url")?;
     let body = json!({
         "type": "message",
@@ -72,12 +73,12 @@ pub fn build(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::tests::event;
 
     #[test]
     fn wraps_adaptive_card_in_message() {
-        let mut e = event(EventKind::Up);
+        let mut e = event(AlertKind::Recovered);
         e.url = Some("https://vv.example/monitors/7".into());
         let req = &build(&json!({"url": "https://flow.example/x"}), &e).unwrap()[0];
         let body = req.json().unwrap();

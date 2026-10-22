@@ -56,10 +56,6 @@ pub static KIT: KitConfig = KitConfig {
     machine_paths: &["/metrics", "/healthz"],
     browser_language_prefixes: &["/status/"],
     docs: &crate::api::v1::DOCS,
-    subject_type_label: |t| {
-        crate::db::models::MonitorType::parse(t)
-            .map_or_else(|| t.to_string(), |m| m.label().to_string())
-    },
     locales: &[
         ("en", include_str!("../locales/en.toml")),
         ("nb", include_str!("../locales/nb.toml")),

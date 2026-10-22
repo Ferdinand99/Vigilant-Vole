@@ -4,9 +4,9 @@
 use serde_json::{Value, json};
 
 use super::http::{OutRequest, join, list, opt, req};
-use super::message::{Severity, body_text, headline, link, product, severity, summary};
+use super::message::{Severity, body_text, headline, link, product, summary};
 use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
-use crate::notify::alert::NotificationEvent;
+use crate::notify::alert::Alert;
 
 fn valid_email(addr: &str) -> bool {
     let Some((local, domain)) = addr.split_once('@') else {
@@ -37,11 +37,11 @@ fn check_addresses(config: &Value) -> Vec<FieldError> {
     errors
 }
 
-fn email_subject(event: &NotificationEvent) -> String {
-    format!("{} {}", super::message::emoji(event.kind), headline(event))
+fn email_subject(event: &Alert) -> String {
+    format!("{} {}", event.emoji, headline(event))
 }
 
-fn plain_text(event: &NotificationEvent) -> String {
+fn plain_text(event: &Alert) -> String {
     let mut text = format!("{}\n{}", headline(event), body_text(event));
     if let Some(url) = link(event)
         && !text.contains(&url)
@@ -80,10 +80,7 @@ pub const SENDGRID: ProviderSchema = ProviderSchema {
     check: Some(check_addresses),
 };
 
-pub fn build_sendgrid(
-    config: &Value,
-    event: &NotificationEvent,
-) -> Result<Vec<OutRequest>, String> {
+pub fn build_sendgrid(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let key = req(config, "api_key")?;
     let from = req(config, "from")?;
     let to = list(config, "to");
@@ -132,7 +129,7 @@ pub const BREVO: ProviderSchema = ProviderSchema {
     check: Some(check_addresses),
 };
 
-pub fn build_brevo(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_brevo(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let key = req(config, "api_key")?;
     let from = req(config, "from")?;
     let to = list(config, "to");
@@ -184,10 +181,7 @@ fn check_numbers(config: &Value) -> Vec<FieldError> {
     }
 }
 
-pub fn build_clicksend(
-    config: &Value,
-    event: &NotificationEvent,
-) -> Result<Vec<OutRequest>, String> {
+pub fn build_clicksend(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let user = req(config, "username")?;
     let key = req(config, "api_key")?;
     let to = list(config, "to");
@@ -215,7 +209,7 @@ pub fn build_clicksend(
 }
 
 /// SMS text: the summary and the deep link.
-fn sms_text(event: &NotificationEvent) -> String {
+fn sms_text(event: &Alert) -> String {
     let mut text = summary(event);
     if let Some(url) = &event.url {
         text.push('\n');
@@ -252,7 +246,7 @@ pub const ELKS: ProviderSchema = ProviderSchema {
     check: Some(check_numbers),
 };
 
-pub fn build_elks(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_elks(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let user = req(config, "username")?;
     let pass = req(config, "password")?;
     let from = req(config, "from")?;
@@ -307,7 +301,7 @@ pub const GORUSH: ProviderSchema = ProviderSchema {
     check: None,
 };
 
-pub fn build_gorush(config: &Value, event: &NotificationEvent) -> Result<Vec<OutRequest>, String> {
+pub fn build_gorush(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
     let server = req(config, "server")?;
     let tokens = list(config, "tokens");
     if tokens.is_empty() {
@@ -323,7 +317,7 @@ pub fn build_gorush(config: &Value, event: &NotificationEvent) -> Result<Vec<Out
         "platform": platform,
         "title": headline(event),
         "message": body_text(event),
-        "priority": if severity(event.kind) == Severity::Critical { "high" } else { "normal" },
+        "priority": if event.level == Severity::Critical { "high" } else { "normal" },
     });
     if platform == 1
         && let Some(topic) = opt(config, "topic")
@@ -339,14 +333,14 @@ pub fn build_gorush(config: &Value, event: &NotificationEvent) -> Result<Vec<Out
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::alert::EventKind;
+    use crate::notify::alert::AlertKind;
     use crate::notify::http::OutBody;
     use crate::notify::tests::event;
 
     #[test]
     fn sendgrid_sends_one_mail_to_all_recipients_with_a_bearer_key() {
         let c = json!({"api_key": "SG.key", "from": "alerts@example.com", "from_name": "Vole", "to": "a@example.com, b@example.com"});
-        let r = &build_sendgrid(&c, &event(EventKind::Down)).unwrap()[0];
+        let r = &build_sendgrid(&c, &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(r.url, "https://api.sendgrid.com/v3/mail/send");
         assert_eq!(r.header_value("Authorization"), Some("Bearer SG.key"));
         let b = r.json().unwrap();
@@ -371,7 +365,7 @@ mod tests {
     fn brevo_uses_the_api_key_header_and_text_content() {
         let c =
             json!({"api_key": "xkeysib-1", "from": "alerts@example.com", "to": "ops@example.com"});
-        let r = &build_brevo(&c, &event(EventKind::Up)).unwrap()[0];
+        let r = &build_brevo(&c, &event(AlertKind::Recovered)).unwrap()[0];
         assert_eq!(r.url, "https://api.brevo.com/v3/smtp/email");
         assert_eq!(r.header_value("api-key"), Some("xkeysib-1"));
         let b = r.json().unwrap();
@@ -410,7 +404,7 @@ mod tests {
     #[test]
     fn clicksend_batches_the_recipients_into_one_request() {
         let c = json!({"username": "u", "api_key": "K", "to": "+4711111111, +4722222222", "from": "Vole"});
-        let reqs = build_clicksend(&c, &event(EventKind::Down)).unwrap();
+        let reqs = build_clicksend(&c, &event(AlertKind::Problem)).unwrap();
         assert_eq!(reqs.len(), 1);
         assert!(
             reqs[0]
@@ -434,7 +428,7 @@ mod tests {
     #[test]
     fn elks_sends_one_form_request_per_number() {
         let c = json!({"username": "u1", "password": "pw", "from": "Vole", "to": "+46701111111,+46702222222"});
-        let reqs = build_elks(&c, &event(EventKind::Down)).unwrap();
+        let reqs = build_elks(&c, &event(AlertKind::Problem)).unwrap();
         assert_eq!(reqs.len(), 2);
         assert_eq!(reqs[0].url, "https://api.46elks.com/a1/sms");
         let OutBody::Form(f) = &reqs[1].body else {
@@ -451,7 +445,7 @@ mod tests {
     #[test]
     fn gorush_maps_platforms_and_only_sends_topics_to_ios() {
         let base = json!({"server": "http://gorush:8088/", "tokens": "t1, t2", "topic": "com.example.app"});
-        let android = &build_gorush(&base, &event(EventKind::Down)).unwrap()[0];
+        let android = &build_gorush(&base, &event(AlertKind::Problem)).unwrap()[0];
         assert_eq!(android.url, "http://gorush:8088/api/push");
         let n = &android.json().unwrap()["notifications"][0];
         assert_eq!(
@@ -462,7 +456,7 @@ mod tests {
         assert!(n.get("topic").is_none());
         let mut ios = base.clone();
         ios["platform"] = json!("ios");
-        let built = build_gorush(&ios, &event(EventKind::Up)).unwrap();
+        let built = build_gorush(&ios, &event(AlertKind::Recovered)).unwrap();
         let n = &built[0].json().unwrap()["notifications"][0];
         assert_eq!(
             (
@@ -474,7 +468,7 @@ mod tests {
         );
         ios["platform"] = json!("huawei");
         assert_eq!(
-            build_gorush(&ios, &event(EventKind::Up)).unwrap()[0]
+            build_gorush(&ios, &event(AlertKind::Recovered)).unwrap()[0]
                 .json()
                 .unwrap()["notifications"][0]["platform"],
             3
