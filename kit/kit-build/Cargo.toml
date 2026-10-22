@@ -1,6 +1,6 @@
 [package]
 name = "vole-kit-build"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 description = "Build-script helper for products of vole-kit: makes the kit's templates available to askama."
 license = "MIT"
