@@ -1,6 +1,6 @@
 {#- Status page sections editor. Re-rendered (outerHTML) after every structural change.
     Needs `page`, `sections`. Drag results post to /order via the vv:reorder event. -#}
-{%- import "macros.html" as m -%}
+{%- import "kit/macros.html" as m -%}
 <div class="stack" id="sp-sections">
   <form class="stack" hx-post="/status-pages/{{ page.id }}/order" hx-trigger="vv:reorder, submit" hx-swap="none" data-no-progress>
     {%- if sections.is_empty() %}

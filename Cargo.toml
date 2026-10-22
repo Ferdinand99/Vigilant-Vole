@@ -1,7 +1,7 @@
 [workspace]
-members = [".", "kit"]
-# `cargo test`, `cargo clippy` … without `-p` cover both crates.
-default-members = [".", "kit"]
+members = [".", "kit", "kit/kit-build"]
+# `cargo test`, `cargo clippy` … without `-p` cover every crate.
+default-members = [".", "kit", "kit/kit-build"]
 resolver = "3"
 
 # Versions shared by Vigilant Vole and the kit (`kit/`, the `vole-kit` crate).
@@ -101,6 +101,10 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = { workspace = true }
 webpki-root-certs = { workspace = true }
 x509-parser = "0.18.1"
+
+[build-dependencies]
+# Copies the kit's templates into templates/kit/ for askama (build.rs).
+vole-kit-build = { path = "kit/kit-build" }
 
 [dev-dependencies]
 # Installs the kit's configuration before tests run (tests have no `main`).

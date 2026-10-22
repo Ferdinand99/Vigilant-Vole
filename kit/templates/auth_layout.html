@@ -8,11 +8,15 @@
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
   <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
   <meta name="robots" content="noindex">
-  <title>{{ title }} · Vigilant Vole</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-  <link rel="manifest" href="/static/site.webmanifest">
-  <meta name="apple-mobile-web-app-title" content="Vigilant Vole">
+  <title>{{ title }} · {{ product_name() }}</title>
+  <link rel="icon" href="{{ kit_ui().favicon }}" type="image/svg+xml">
+  {%- if !kit_ui().apple_touch_icon.is_empty() %}
+  <link rel="apple-touch-icon" href="{{ kit_ui().apple_touch_icon }}">
+  {%- endif %}
+  {%- if !kit_ui().manifest.is_empty() %}
+  <link rel="manifest" href="{{ kit_ui().manifest }}">
+  {%- endif %}
+  <meta name="apple-mobile-web-app-title" content="{{ product_name() }}">
   <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/theme.js"></script>
@@ -25,7 +29,7 @@
     <div>
       <div class="auth-card">
         <div class="auth-head">
-          <img class="auth-logo" src="/static/favicon.svg" alt="" width="56" height="56">
+          <img class="auth-logo" src="{{ kit_ui().logo }}" alt="" width="56" height="56">
           <h1 class="auth-title">{{ title }}</h1>
           {% block subtitle %}{% endblock %}
         </div>
@@ -37,7 +41,7 @@
         {%- endif %}
         {% block content %}{% endblock %}
       </div>
-      <p class="auth-foot">Vigilant Vole</p>
+      <p class="auth-foot">{{ product_name() }}</p>
     </div>
   </main>
   <div class="toaster" id="toaster" aria-live="polite"></div>

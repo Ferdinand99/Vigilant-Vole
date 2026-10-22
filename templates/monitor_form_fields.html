@@ -2,7 +2,7 @@
     and served alone by /monitors/form-fields?type=…. Expects `f`
     (api::monitors::FormData). Sections toggle with data-show-when on the
     monitor_type radios; the server pre-hides the ones that don't apply. -#}
-{% import "macros.html" as m %}
+{% import "kit/macros.html" as m %}
 {% import "partials/monitor_form_macros.html" as fm %}
 
 <section class="form-section" aria-labelledby="sec-keyword" data-show-when="monitor_type=keyword"{% if !f.shows("keyword") %} hidden{% endif %}>

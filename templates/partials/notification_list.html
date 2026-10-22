@@ -1,5 +1,5 @@
 {#- Channel list; swapped whole (#channels) after create/delete. Needs: rows, can_edit. -#}
-{%- import "macros.html" as m -%}
+{%- import "kit/macros.html" as m -%}
 <section class="section" id="channels" aria-labelledby="channels-title">
 {%- if rows.is_empty() %}
   <h2 class="vh" id="channels-title">{{ tr("notif.channels") }}</h2>

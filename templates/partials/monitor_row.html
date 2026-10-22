@@ -22,7 +22,7 @@
       {%- if r.more_tags > 0 %}<span class="badge" data-tip="{{ r.more_tags_tip }}" aria-label="{{ tr2("dashboard.more_tags", "n", r.more_tags, "tags", r.more_tags_tip) }}">+{{ r.more_tags }}</span>{% endif %}</span>
     {%- endif %}
   </div>
-  <div class="list-beats">{{ m::heartbeat_bar(&r.recent, tr("dashboard.recent_checks_oldest")) }}</div>
+  <div class="list-beats">{{ st::heartbeat_bar(&r.recent, tr("dashboard.recent_checks_oldest")) }}</div>
   <div class="list-value">
     <strong><bdi>{{ r.uptime_label }}</bdi></strong>
     <small>{{ tr("dashboard.h24") }}</small>

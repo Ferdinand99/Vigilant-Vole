@@ -8,6 +8,7 @@ use rust_embed::Embed;
 use crate::config::KitConfig;
 use crate::db::migrate::{Baseline, MigrationError, MigrationSet};
 use crate::docs::{DocsSpec, RouteDoc};
+use crate::page::{NavItem, SettingsTab, TabAccess, Ui};
 
 #[derive(Embed)]
 #[folder = "../migrations/"]
@@ -110,4 +111,88 @@ pub static CONFIG: KitConfig = KitConfig {
         "en", "nb", "ar", "cs", "da", "de", "es", "fa", "fi", "fr", "he", "hu", "it", "ja", "ko",
         "nl", "pl", "pt-BR", "pt-PT", "ro", "ru", "sv", "tr", "uk", "zh-CN", "zh-TW"
     ),
+    ui: &Ui {
+        logo: "/static/favicon.svg",
+        favicon: "/static/favicon.svg",
+        apple_touch_icon: "/static/apple-touch-icon.png",
+        manifest: "/static/site.webmanifest",
+        nav: &[
+            NavItem {
+                id: "dashboard",
+                href: "/",
+                label: "nav.dashboard",
+                short_label: "nav.dashboard",
+                icon: "pulse",
+            },
+            NavItem {
+                id: "status-pages",
+                href: "/status-pages",
+                label: "nav.status_pages",
+                short_label: "nav.status_short",
+                icon: "globe",
+            },
+            NavItem {
+                id: "maintenance",
+                href: "/maintenance",
+                label: "nav.maintenance",
+                short_label: "nav.maintenance",
+                icon: "wrench",
+            },
+            NavItem {
+                id: "settings",
+                href: "/settings",
+                label: "nav.settings",
+                short_label: "nav.settings",
+                icon: "gear",
+            },
+        ],
+        settings_tabs: &[
+            SettingsTab {
+                id: "general",
+                href: "/settings/general",
+                label: "nav.general",
+                icon: "sliders",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "notifications",
+                href: "/settings/notifications",
+                label: "nav.notifications",
+                icon: "bell",
+                access: TabAccess::Editors,
+            },
+            SettingsTab::USERS,
+            SettingsTab::SECURITY,
+            SettingsTab::TOKENS,
+            SettingsTab {
+                id: "agents",
+                href: "/settings/agents",
+                label: "nav.agents",
+                icon: "server",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "integrations",
+                href: "/settings/integrations",
+                label: "nav.integrations",
+                icon: "plug",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "browsers",
+                href: "/settings/browsers",
+                label: "nav.browsers",
+                icon: "browser",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "backup",
+                href: "/settings/backup",
+                label: "nav.backup",
+                icon: "archive",
+                access: TabAccess::Admins,
+            },
+        ],
+        home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
+    },
 };

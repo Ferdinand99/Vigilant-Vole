@@ -5,6 +5,8 @@ edition = "2024"
 description = "The shared product kit of Vigilant Vole and its sibling products: auth, i18n, database, HTTP conventions, API docs, MCP and notifications."
 license = "MIT"
 publish = false
+# Products read DEP_VOLE_KIT_TEMPLATES (build.rs) to compile the kit's templates.
+links = "vole-kit"
 
 [dependencies]
 argon2 = { workspace = true }

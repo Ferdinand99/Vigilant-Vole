@@ -313,6 +313,14 @@ pub trait Tr {
     fn lang_dir(&self) -> &'static str {
         current().dir().as_str()
     }
+    /// The product's layout settings (logo, navigation, settings tabs).
+    fn kit_ui(&self) -> &'static crate::page::Ui {
+        crate::config::get().ui
+    }
+    /// The product's name ("Vigilant Vole").
+    fn product_name(&self) -> &'static str {
+        crate::config::get().product
+    }
     /// `window.VV_I18N` payload (embed with `|safe`).
     fn i18n_js(&self) -> String {
         js_bundle(current())

@@ -1,5 +1,5 @@
 {#- Live region of a public status page; re-fetched by htmx every refresh_seconds. -#}
-{%- import "macros.html" as m -%}
+{%- import "kit/macros.html" as m -%}{%- import "status_macros.html" as st -%}
 <div class="stack" id="sp-live" hx-get="{{ v.fragment_url }}" hx-trigger="every {{ v.page.refresh_seconds }}s" hx-swap="outerHTML" data-no-progress>
   <div class="banner status-{{ v.overall.class }}">
     <span class="banner-icon">{{ m::icon(v.overall.icon) }}</span>
@@ -22,7 +22,7 @@
     <div class="incident-body prose">{{ n.body_html|safe }}</div>
     {%- endif %}
     {%- if !n.updates.is_empty() %}
-    <div class="incident-body">{{ m::incident_updates(&n.updates) }}</div>
+    <div class="incident-body">{{ st::incident_updates(&n.updates) }}</div>
     {%- endif %}
   </article>
   {%- endfor %}
@@ -106,7 +106,7 @@
                 {%- if !n.body_html.is_empty() %}
                 <div class="timeline-text">{{ n.body_html|safe }}</div>
                 {%- endif %}
-                {{ m::incident_updates(&n.updates) }}
+                {{ st::incident_updates(&n.updates) }}
               </div>
             </li>
             {%- endfor %}

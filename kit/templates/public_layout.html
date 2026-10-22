@@ -17,8 +17,10 @@
   <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
   <title>{{ page_title }}</title>
   {%- block icons %}
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="icon" href="{{ kit_ui().favicon }}" type="image/svg+xml">
+  {%- if !kit_ui().apple_touch_icon.is_empty() %}
+  <link rel="apple-touch-icon" href="{{ kit_ui().apple_touch_icon }}">
+  {%- endif %}
   {%- endblock %}
   <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
@@ -39,7 +41,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="public-foot container container-narrow">
-    {% block footer %}{{ tr("common.powered_by") }} <a href="https://github.com/Ferdinand99/Vigilant-Vole">Vigilant Vole</a>{% endblock %}
+    {% block footer %}{{ tr("common.powered_by") }} <a href="{{ kit_ui().home_url }}">{{ product_name() }}</a>{% endblock %}
   </footer>
   <div class="toaster" id="toaster" aria-live="polite"></div>
   <script type="application/json" id="vv-i18n">{{ i18n_js()|safe }}</script>

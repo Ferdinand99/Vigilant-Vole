@@ -1,5 +1,5 @@
 {#- Step 2 of "Add channel": the service's settings. Re-rendered with errors on a failed save. Needs: form (ChannelForm). -#}
-{%- import "macros.html" as m -%}
+{%- import "kit/macros.html" as m -%}
 <div class="sheet-body" id="channel-sheet-body">
   <form id="channel-form" class="form" hx-post="/settings/notifications" hx-target="#channel-sheet-body" hx-swap="outerHTML">
     <input type="hidden" name="kind" value="{{ form.kind }}">

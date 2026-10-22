@@ -1,7 +1,7 @@
 {#- Fields of the bulk edit sheet (content of #bulk-edit-fields). Expects `b`
     (api::monitors::BulkSheet). The sheet sits inside #bulk-form, which also
     carries the selection. Empty / "Unchanged" leaves a setting alone. -#}
-{% import "macros.html" as m %}
+{% import "kit/macros.html" as m %}
 {% import "partials/monitor_form_macros.html" as fm %}
 {%- if !b.errors.is_empty() %}
 {{ m::callout("danger", &b.error_summary, tr("bulk.not_applied")) }}
