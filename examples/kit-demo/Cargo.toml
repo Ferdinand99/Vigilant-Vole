@@ -1,0 +1,27 @@
+[package]
+name = "kit-demo"
+# Its own version, so tests can tell it from Vigilant Vole's and the kit's.
+version = "0.3.7"
+edition = "2024"
+description = "The smallest product on vole-kit: proves the kit stands on its own."
+license = "MIT"
+publish = false
+
+[dependencies]
+vole-kit = { path = "../../kit" }
+askama = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true }
+
+[build-dependencies]
+# The same template mechanism a product with a git dependency uses.
+vole-kit-build = { path = "../../kit/kit-build" }
+
+[dev-dependencies]
+tower = { workspace = true }
+url = { workspace = true }

@@ -1,0 +1,4 @@
+# Kit Demo's own strings; everything else is the kit's.
+
+[demo]
+welcome = "Welcome to Kit Demo. You have {n} notes."

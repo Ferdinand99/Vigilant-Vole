@@ -1,0 +1,6 @@
+{% extends "kit/layout.html" %}
+{% import "kit/macros.html" as m %}
+
+{% block content %}
+{% call m::page_header(ctx.title, tr1("demo.welcome", "n", notes)) %}{% endcall %}
+{% endblock %}

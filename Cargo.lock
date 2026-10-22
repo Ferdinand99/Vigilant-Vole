@@ -1773,6 +1773,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "kit-demo"
+version = "0.3.7"
+dependencies = [
+ "askama",
+ "axum",
+ "axum-extra",
+ "reqwest",
+ "rusqlite",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "tower",
+ "url",
+ "vole-kit",
+ "vole-kit-build",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
