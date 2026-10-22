@@ -1,6 +1,6 @@
 [package]
 name = "vole-kit"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 description = "The shared product kit of Vigilant Vole and its sibling products: auth, i18n, database, HTTP conventions, API docs, MCP and notifications."
 license = "MIT"
