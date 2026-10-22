@@ -157,7 +157,7 @@ fn error_page(status: StatusCode, message: &str) -> String {
         "<!doctype html>\n<html lang=\"{lang}\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
          <meta name=\"color-scheme\" content=\"light dark\">\
-         <title>{code} · {title}</title><link rel=\"icon\" href=\"/static/favicon.svg\" type=\"image/svg+xml\">\
+         <title>{code} · {title}</title><link rel=\"icon\" href=\"{icon}\" type=\"image/svg+xml\">\
          <link rel=\"stylesheet\" href=\"/static/style.css\"><script src=\"/static/theme.js\"></script></head>\
          <body class=\"error-page\"><main class=\"container\"><div class=\"card empty-state\">\
          <h1>{code} · {title}</h1><p>{message}</p><p><a class=\"btn\" href=\"/\">{back}</a></p>\
@@ -167,6 +167,7 @@ fn error_page(status: StatusCode, message: &str) -> String {
         message = escape_html(message),
         lang = crate::i18n::current().code(),
         back = escape_html(crate::i18n::t("error.back")),
+        icon = escape_html(crate::config::get().ui.favicon),
     )
 }
 
