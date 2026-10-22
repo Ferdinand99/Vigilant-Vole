@@ -115,8 +115,8 @@ async fn upgraded_schemas_and_backup_names() {
         let report = db::migrate(&pool, &dir.backups())
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", f.version));
-        pool.close();
-        crate::common::wait_closed(&dir.db()).await;
+        db::close(&pool).await;
+        crate::common::assert_closed(&dir.db());
 
         let upgraded = dump(&open_ro(&dir.db()));
         assert_eq!(

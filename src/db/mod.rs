@@ -25,8 +25,8 @@ pub use crate::kit::db::migrate::{
 };
 pub use crate::kit::db::{
     CONNECTION_PRAGMAS, DbError, MigrationError, MigrationReport, MigrationSet, UpgradeError,
-    api_tokens, apply_migrations, build_engine_pool, build_pool, interact, migrate, run_migrations,
-    users,
+    api_tokens, apply_migrations, build_engine_pool, build_pool, close, interact, migrate,
+    run_migrations, users,
 };
 
 #[derive(Embed)]
