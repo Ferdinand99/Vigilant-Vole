@@ -1,7 +1,18 @@
-# Keeps a release PR open on main (version bump in Cargo.toml/Cargo.lock + CHANGELOG
-# from Conventional Commits). Merging it tags vX.Y.Z, creates the GitHub release,
-# publishes the Docker image for that tag and attaches the static Linux binaries
-# (release-binaries.yml) to the release.
+# Keeps release PRs open on main, one per component (version bump, CHANGELOG
+# from Conventional Commits):
+#
+#   "."   vigilant-vole  tags vX.Y.Z            CHANGELOG.md
+#   "kit" vole-kit       tags vole-kit-vX.Y.Z   kit/CHANGELOG.md
+#
+# Merging Vigilant Vole's PR tags vX.Y.Z, creates the GitHub release (the
+# repository's "Latest"), publishes the Docker image for that tag and
+# attaches the static Linux binaries (release-binaries.yml).
+#
+# Merging the kit's PR tags vole-kit-vX.Y.Z and nothing else: no image, no
+# binaries. Its GitHub release is created as a draft (release-please has no
+# way to say "not Latest") and published here with make_latest=false, so
+# /releases/latest (deploy/install.sh, docs/install-linux.md, the site, the
+# Proxmox scripts) keeps pointing at Vigilant Vole.
 #
 # Image and binaries are built from this workflow (not from the tag push) because
 # tags created with GITHUB_TOKEN don't trigger other workflows.
@@ -19,8 +30,14 @@ jobs:
   release-please:
     runs-on: ubuntu-24.04
     outputs:
+      # release-please-action v4 names the root package's outputs plainly
+      # (release_created, tag_name) and other paths' "<path>--<name>": these
+      # two are set only when Vigilant Vole itself was released.
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      kit_release_created: ${{ steps.release.outputs['kit--release_created'] }}
+      kit_tag_name: ${{ steps.release.outputs['kit--tag_name'] }}
+      kit_release_id: ${{ steps.release.outputs['kit--id'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -30,7 +47,7 @@ jobs:
 
   docker:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: needs.release-please.outputs.release_created == 'true' && !startsWith(needs.release-please.outputs.tag_name, 'vole-kit-')
     permissions:
       contents: read
       packages: write
@@ -40,9 +57,40 @@ jobs:
 
   binaries:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: needs.release-please.outputs.release_created == 'true' && !startsWith(needs.release-please.outputs.tag_name, 'vole-kit-')
     permissions:
       contents: write
     uses: ./.github/workflows/release-binaries.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
+
+  vole-kit:
+    needs: release-please
+    if: needs.release-please.outputs.kit_release_created == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release without making it Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.kit_tag_name }}
+          RELEASE_ID: ${{ needs.release-please.outputs.kit_release_id }}
+        run: |
+          if ! [[ "$TAG" =~ ^vole-kit-v[0-9]+\.[0-9]+\.[0-9]+$ && "$RELEASE_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::unexpected kit release '$TAG' (id '$RELEASE_ID')"
+            exit 1
+          fi
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false -f make_latest=false --jq '"published \(.tag_name), draft=\(.draft)"'
+
+      - name: Check that Latest is still a Vigilant Vole release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          echo "Latest release: $latest"
+          if ! [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::'$latest' is marked Latest; mark the newest vX.Y.Z release as Latest again"
+            exit 1
+          fi

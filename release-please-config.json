@@ -1,13 +1,36 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
   "packages": {
     ".": {
-      "release-type": "rust",
+      "release-type": "simple",
       "package-name": "vigilant-vole",
+      "component": "vigilant-vole",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
-      "include-component-in-tag": false
+      "include-component-in-tag": false,
+      "exclude-paths": ["kit", "examples"],
+      "extra-files": [
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value == 'vigilant-vole')].version" }
+      ]
+    },
+    "kit": {
+      "release-type": "rust",
+      "package-name": "vole-kit",
+      "component": "vole-kit",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "include-component-in-tag": true,
+      "tag-separator": "-",
+      "draft": true,
+      "force-tag-creation": true,
+      "extra-files": [
+        { "type": "toml", "path": "kit-build/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "/Cargo.lock", "jsonpath": "$.package[?(@.name.value == 'vole-kit' || @.name.value == 'vole-kit-build')].version" }
+      ]
     }
   }
 }
