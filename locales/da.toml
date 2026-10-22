@@ -1507,3 +1507,69 @@ remove_msg = "Vedkommende modtager ikke længere opdateringer og kan abonnere ig
 removed = "Abonnent fjernet."
 approve = "Godkend"
 approved = "Webhook godkendt. Den får en besked med sit afmeldingslink."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Velkommen tilbage. Log ind for at se dine overvågninger."
+
+[setup]
+site_name_placeholder = "Acme status…"
+tz_after = ". Du kan ændre det i Indstillinger."
+
+[users]
+roles_help = "Læsere kan se, men ikke ændre noget. Redaktører administrerer overvågninger, statussider, vedligeholdelse og notifikationer. Admins kan alt, også brugere og indstillinger."
+
+[tokens]
+sub = "Lad scripts, dashboards og Prometheus læse eller ændre dine overvågninger."
+scope_read_sub = "Overvågninger, status, metrikker"
+
+[auth]
+all_set = "Alt er klart. Tilføj din første overvågning for at komme i gang."
+setup_token_required = "Denne instans kræver et opsætningstoken. Åbn /setup?token=… med værdien af VV_SETUP_TOKEN fra serverens konfiguration."
+
+[error]
+back = "Tilbage til dashboardet"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Konfigurer Vigilant Vole"
+
+[common]
+recent_checks = "Seneste tjek"
+
+[nav]
+dashboard = "Dashboard"
+status_pages = "Statussider"
+status_short = "Status"
+maintenance = "Vedligeholdelse"
+agents = "Fjernagenter"
+browsers = "Fjernbrowsere"
+
+[count]
+monitors.one = "{n} overvågning"
+monitors.other = "{n} overvågninger"
+checks.one = "{n} tjek"
+checks.other = "{n} tjek"
+status_pages.one = "{n} statusside"
+status_pages.other = "{n} statussider"
+incidents.one = "{n} hændelse"
+incidents.other = "{n} hændelser"
+outages.one = "{n} nedbrud"
+outages.other = "{n} nedbrud"
+agents.one = "{n} agent"
+agents.other = "{n} agenter"
+
+[notif]
+sub = "Hvor alarmer sendes hen, når en overvågning går ned, kommer op igen eller kræver opmærksomhed."
+delete_msg = "Overvågninger holder op med at sende alarmer til denne kanal."
+used_by = "Bruges lige nu af {monitors}."
+add_new = "Føj til nye overvågninger"
+add_new_help = "Hver overvågning, du opretter fra nu af, bruger denne kanal."
+add_existing = "Føj til alle eksisterende overvågninger"
+add_existing_help = "Føjer den til overvågninger, der ikke bruger den endnu. Intet fjernes."
+add_existing_help_new = "Du kan ændre det pr. overvågning senere."
+empty_text = "Tilføj Slack, Discord, e-mail, ntfy, PagerDuty eller en af 20 andre tjenester for at høre om nedetid i samme øjeblik, den sker."
+default_tip = "Føjes automatisk til nye overvågninger"
+foot = "Standardkanaler føjes automatisk til nye overvågninger. Vælg kanaler til en enkelt overvågning i dens indstillinger."
+no_monitors = "Ingen overvågninger"

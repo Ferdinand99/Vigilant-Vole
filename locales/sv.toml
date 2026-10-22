@@ -1506,3 +1506,69 @@ remove_msg = "Personen slutar få uppdateringar men kan prenumerera igen."
 removed = "Prenumeranten har tagits bort."
 approve = "Godkänn"
 approved = "Webhooken har godkänts. Den får ett meddelande med sin avregistreringslänk."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Välkommen tillbaka. Logga in för att se dina övervakare."
+
+[setup]
+site_name_placeholder = "Acme status…"
+tz_after = ". Du kan ändra detta i Inställningar."
+
+[users]
+roles_help = "Läsare kan titta men inte ändra något. Redaktörer hanterar övervakare, statussidor, underhåll och aviseringar. Administratörer kan göra allt, inklusive användare och inställningar."
+
+[tokens]
+sub = "Låt skript, instrumentpaneler och Prometheus läsa eller ändra dina övervakare."
+scope_read_sub = "Övervakare, status, mätvärden"
+
+[auth]
+all_set = "Allt är klart. Lägg till din första övervakare för att komma igång."
+setup_token_required = "Den här instansen kräver en installationstoken. Öppna /setup?token=… med värdet av VV_SETUP_TOKEN från serverns konfiguration."
+
+[error]
+back = "Tillbaka till översikten"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Konfigurera Vigilant Vole"
+
+[common]
+recent_checks = "Senaste kontroller"
+
+[nav]
+dashboard = "Översikt"
+status_pages = "Statussidor"
+status_short = "Status"
+maintenance = "Underhåll"
+agents = "Fjärragenter"
+browsers = "Fjärrwebbläsare"
+
+[count]
+monitors.one = "{n} övervakare"
+monitors.other = "{n} övervakare"
+checks.one = "{n} kontroll"
+checks.other = "{n} kontroller"
+status_pages.one = "{n} statussida"
+status_pages.other = "{n} statussidor"
+incidents.one = "{n} incident"
+incidents.other = "{n} incidenter"
+outages.one = "{n} avbrott"
+outages.other = "{n} avbrott"
+agents.one = "{n} agent"
+agents.other = "{n} agenter"
+
+[notif]
+sub = "Vart larmen skickas när en övervakare går ner, kommer upp igen eller behöver uppmärksamhet."
+delete_msg = "Övervakare slutar skicka larm till den här kanalen."
+used_by = "Används just nu av {monitors}."
+add_new = "Lägg till i nya övervakare"
+add_new_help = "Varje övervakare du skapar från och med nu använder den här kanalen."
+add_existing = "Lägg till i alla befintliga övervakare"
+add_existing_help = "Lägger till den i övervakare som inte använder den än. Inget tas bort."
+add_existing_help_new = "Du kan ändra detta per övervakare senare."
+empty_text = "Lägg till Slack, Discord, e-post, ntfy, PagerDuty eller någon av 20 andra tjänster för att få veta om driftstopp i samma stund som det sker."
+default_tip = "Läggs till i nya övervakare automatiskt"
+foot = "Standardkanaler läggs till i nya övervakare automatiskt. Välj kanaler för en enskild övervakare i dess inställningar."
+no_monitors = "Inga övervakare"

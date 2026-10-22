@@ -1507,3 +1507,69 @@ remove_msg = "Güncelleme almayı bırakır, ancak yeniden abone olabilir."
 removed = "Abone kaldırıldı."
 approve = "Onayla"
 approved = "Webhook onaylandı. Abonelikten çıkma bağlantısını içeren bir ileti alır."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Tekrar hoş geldiniz. Monitörlerinizi görmek için giriş yapın."
+
+[setup]
+site_name_placeholder = "Acme durumu…"
+tz_after = ". Bunu Ayarlar’dan değiştirebilirsiniz."
+
+[users]
+roles_help = "Görüntüleyiciler bakabilir ama hiçbir şeyi değiştiremez. Editörler monitörleri, durum sayfalarını, bakımı ve bildirimleri yönetir. Yöneticiler kullanıcılar ve ayarlar dahil her şeyi yapabilir."
+
+[tokens]
+sub = "Betiklerin, panoların ve Prometheus’un monitörlerinizi okumasına veya değiştirmesine izin verin."
+scope_read_sub = "Monitörler, durum, metrikler"
+
+[auth]
+all_set = "Hazırsınız. Başlamak için ilk monitörünüzü ekleyin."
+setup_token_required = "Bu örnek bir kurulum belirteci gerektiriyor. /setup?token=… adresini, sunucu yapılandırmasındaki VV_SETUP_TOKEN değeriyle açın."
+
+[error]
+back = "Panele dön"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Vigilant Vole kurulumu"
+
+[common]
+recent_checks = "Son kontroller"
+
+[nav]
+dashboard = "Panel"
+status_pages = "Durum sayfaları"
+status_short = "Durum"
+maintenance = "Bakım"
+agents = "Uzak ajanlar"
+browsers = "Uzak tarayıcılar"
+
+[count]
+monitors.one = "{n} monitör"
+monitors.other = "{n} monitör"
+checks.one = "{n} kontrol"
+checks.other = "{n} kontrol"
+status_pages.one = "{n} durum sayfası"
+status_pages.other = "{n} durum sayfası"
+incidents.one = "{n} olay"
+incidents.other = "{n} olay"
+outages.one = "{n} kesinti"
+outages.other = "{n} kesinti"
+agents.one = "{n} ajan"
+agents.other = "{n} ajan"
+
+[notif]
+sub = "Bir monitör çalışmayı bıraktığında, geri geldiğinde veya ilgi gerektirdiğinde uyarıların gideceği yerler."
+delete_msg = "Monitörler bu kanala uyarı göndermeyi bırakır."
+used_by = "Şu an kullanan monitörler: {monitors}."
+add_new = "Yeni monitörlere ekle"
+add_new_help = "Bundan sonra oluşturduğunuz her monitör bu kanalı kullanır."
+add_existing = "Mevcut tüm monitörlere ekle"
+add_existing_help = "Henüz kullanmayan monitörlere ekler. Hiçbir şey kaldırılmaz."
+add_existing_help_new = "Bunu daha sonra her monitör için değiştirebilirsiniz."
+empty_text = "Kesintiyi anında öğrenmek için Slack, Discord, e-posta, ntfy, PagerDuty veya diğer 20 hizmetten birini ekleyin."
+default_tip = "Yeni monitörlere otomatik eklenir"
+foot = "Varsayılan kanallar yeni monitörlere otomatik eklenir. Tek bir monitör için kanalları ayarlarından seçin."
+no_monitors = "Monitör yok"

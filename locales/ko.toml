@@ -1491,3 +1491,63 @@ remove_msg = "더 이상 업데이트를 받지 않아요. 다시 구독할 수 
 removed = "구독자를 제거했어요."
 approve = "승인"
 approved = "웹훅을 승인했어요. 구독 취소 링크가 담긴 메시지를 받아요."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "다시 오신 것을 환영해요. 로그인하고 모니터를 확인하세요."
+
+[setup]
+site_name_placeholder = "Acme 상태…"
+tz_after = ". 설정에서 바꿀 수 있어요."
+
+[users]
+roles_help = "보기 전용은 확인만 할 수 있어요. 편집자는 모니터, 상태 페이지, 점검, 알림을 관리해요. 관리자는 사용자와 설정을 포함해 모든 것을 할 수 있어요."
+
+[tokens]
+sub = "스크립트, 대시보드, Prometheus가 모니터를 읽거나 변경할 수 있게 해요."
+scope_read_sub = "모니터, 상태, 메트릭"
+
+[auth]
+all_set = "준비가 끝났어요. 첫 모니터를 추가해 시작하세요."
+setup_token_required = "이 인스턴스에는 설정 토큰이 필요해요. 서버 구성의 VV_SETUP_TOKEN 값으로 /setup?token=… 을 여세요."
+
+[error]
+back = "대시보드로 돌아가기"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Vigilant Vole 설정"
+
+[common]
+recent_checks = "최근 확인"
+
+[nav]
+dashboard = "대시보드"
+status_pages = "상태 페이지"
+status_short = "상태"
+maintenance = "점검"
+agents = "원격 에이전트"
+browsers = "원격 브라우저"
+
+[count]
+monitors.other = "모니터 {n}개"
+checks.other = "확인 {n}회"
+status_pages.other = "상태 페이지 {n}개"
+incidents.other = "인시던트 {n}건"
+outages.other = "장애 {n}건"
+agents.other = "에이전트 {n}개"
+
+[notif]
+sub = "모니터가 다운되거나 복구되거나 확인이 필요할 때 알림이 가는 곳이에요."
+delete_msg = "모니터가 이 채널로 알림을 보내지 않게 돼요."
+used_by = "현재 사용 중인 모니터: {monitors}."
+add_new = "새 모니터에 추가"
+add_new_help = "앞으로 만드는 모든 모니터가 이 채널을 사용해요."
+add_existing = "기존 모든 모니터에 추가"
+add_existing_help = "아직 사용하지 않는 모니터에 추가해요. 제거되는 것은 없어요."
+add_existing_help_new = "나중에 모니터별로 바꿀 수 있어요."
+empty_text = "Slack, Discord, 이메일, ntfy, PagerDuty 등 20개 이상의 서비스를 추가해 다운타임을 바로 알아보세요."
+default_tip = "새 모니터에 자동으로 추가돼요"
+foot = "기본 채널은 새 모니터에 자동으로 추가돼요. 개별 모니터의 채널은 해당 모니터 설정에서 고르세요."
+no_monitors = "모니터 없음"

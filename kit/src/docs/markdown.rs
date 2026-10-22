@@ -11,50 +11,9 @@ use std::fmt::Write as _;
 use axum::http::StatusCode;
 use serde_json::Value;
 
-use super::{RouteDoc, groups, path_param_type, path_params, routes, spec};
-
-/// Error codes of the v1 envelope: code, HTTP status, when.
-const ERROR_CODES: &[(&str, u16, &str)] = &[
-    ("bad_request", 400, "malformed query, cursor or body"),
-    (
-        "unauthorized",
-        401,
-        "missing, invalid, expired or revoked token",
-    ),
-    (
-        "forbidden",
-        403,
-        "your role or the token's scope doesn't allow it",
-    ),
-    ("not_found", 404, "no such object or route"),
-    (
-        "conflict",
-        409,
-        "clashes with existing data or the object's state (duplicate tag name or slug, checking a paused monitor)",
-    ),
-    ("too_large", 413, "configuration document over 2 MB"),
-    (
-        "unsupported_media_type",
-        415,
-        "body without `Content-Type: application/json`",
-    ),
-    (
-        "validation_failed",
-        422,
-        "invalid fields; `fields` maps each field to its message",
-    ),
-    (
-        "invalid_document",
-        422,
-        "configuration document that can't be parsed",
-    ),
-    (
-        "delivery_failed",
-        502,
-        "a test notification the provider refused",
-    ),
-    ("internal", 500, "server error; try again"),
-];
+use super::{
+    RouteDoc, credential, error_codes, groups, path_param_type, path_params, routes, spec,
+};
 
 /// The whole reference for the instance at `base_url`.
 pub fn document(base_url: &str) -> String {
@@ -76,8 +35,8 @@ fn errors(out: &mut String) {
         spec().error_example
     );
     out.push_str("| Code | HTTP | When |\n|---|---|---|\n");
-    for (code, status, when) in ERROR_CODES {
-        let _ = writeln!(out, "| `{code}` | {status} | {when} |");
+    for code in error_codes() {
+        let _ = writeln!(out, "| `{}` | {} | {} |", code.code, code.status, code.when);
     }
     out.push('\n');
 }
@@ -145,10 +104,8 @@ fn access(r: &RouteDoc) -> &'static str {
         "viewer" => "viewer (any API token, read scope is enough)",
         "editor" => "editor (write token of an editor or admin)",
         "admin" => "admin (write token of an admin)",
-        "push token" => "the push monitor's token in the URL (no API token)",
-        "agent token" => spec().agent_token_access,
         "metrics token" => "API token as Bearer token or HTTP Basic password",
-        _ => "public (no token)",
+        other => credential(other).map_or("public (no token)", |c| c.words),
     }
 }
 
@@ -157,8 +114,10 @@ fn body_fields(r: &RouteDoc) -> Option<String> {
     if r.request.is_empty() {
         return None;
     }
-    if r.is_yaml() {
-        return Some("a configuration document in YAML or JSON (see the example and \"Config as code\" below)".into());
+    if r.is_yaml()
+        && let Some(doc) = spec().config_document
+    {
+        return Some(doc.body.into());
     }
     match serde_json::from_str::<Value>(r.request) {
         Ok(Value::Object(map)) => {
@@ -191,7 +150,7 @@ fn json_type(v: &Value) -> &'static str {
 /// `curl` for a route, with `$<PREFIX>_URL` / `$<PREFIX>_TOKEN` placeholders.
 pub fn curl(r: &RouteDoc) -> String {
     let p = crate::config::get().env_prefix;
-    let file = spec().config_file;
+    let file = spec().config_document.map_or("", |doc| doc.file);
     let path: Vec<String> = r
         .path
         .split('/')
@@ -206,10 +165,15 @@ pub fn curl(r: &RouteDoc) -> String {
         "viewer" | "editor" | "admin" | "metrics token" => {
             let _ = write!(cmd, " -H \"Authorization: Bearer ${p}_TOKEN\"");
         }
-        "agent token" => {
-            let _ = write!(cmd, " -H \"Authorization: Bearer ${p}_AGENT_TOKEN\"");
+        other => {
+            if let Some(scheme) = credential(other).and_then(|c| c.bearer) {
+                let _ = write!(
+                    cmd,
+                    " -H \"Authorization: Bearer ${p}_{}\"",
+                    scheme.variable
+                );
+            }
         }
-        _ => {}
     }
     if r.is_yaml() && r.method == "POST" {
         url.push_str("?dry_run=1");

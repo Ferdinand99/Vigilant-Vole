@@ -68,6 +68,10 @@ pub struct KitConfig {
     pub locales: &'static [(&'static str, &'static str)],
     /// What the shared layouts show: logo, icons, navigation, settings tabs.
     pub ui: &'static super::page::Ui,
+    /// Where an admin sets the instance's public URL, for messages that
+    /// point there ("Settings → General"). `None` if the product has no such
+    /// place; the messages then say "the instance's public URL".
+    pub public_url_setting: Option<&'static str>,
 }
 
 static CONFIG: OnceLock<&'static KitConfig> = OnceLock::new();

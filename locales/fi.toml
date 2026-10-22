@@ -1507,3 +1507,69 @@ remove_msg = "Päivitysten lähetys lakkaa. Tilaus voidaan tehdä uudelleen."
 removed = "Tilaaja poistettu."
 approve = "Hyväksy"
 approved = "Webhook hyväksytty. Se saa viestin, jossa on sen tilauksen peruutuslinkki."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Tervetuloa takaisin. Kirjaudu nähdäksesi seuraimesi."
+
+[setup]
+site_name_placeholder = "Acme-tila…"
+tz_after = ". Voit muuttaa tätä asetuksissa."
+
+[users]
+roles_help = "Katselijat voivat vain katsoa, ei muuttaa mitään. Muokkaajat hallinnoivat seuraimia, tilasivuja, huoltoa ja ilmoituksia. Ylläpitäjät voivat tehdä kaiken, myös käyttäjien ja asetusten hallinnan."
+
+[tokens]
+sub = "Anna skriptien, kojelautojen ja Prometheuksen lukea tai muuttaa seuraimiasi."
+scope_read_sub = "Seuraimet, tila, mittarit"
+
+[auth]
+all_set = "Kaikki valmista. Aloita lisäämällä ensimmäinen seurain."
+setup_token_required = "Tämä instanssi vaatii käyttöönottotunnuksen. Avaa /setup?token=… käyttäen palvelimen asetusten VV_SETUP_TOKEN-arvoa."
+
+[error]
+back = "Takaisin kojelautaan"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Vigilant Volen käyttöönotto"
+
+[common]
+recent_checks = "Viimeisimmät tarkistukset"
+
+[nav]
+dashboard = "Kojelauta"
+status_pages = "Tilasivut"
+status_short = "Tila"
+maintenance = "Huolto"
+agents = "Etäagentit"
+browsers = "Etäselaimet"
+
+[count]
+monitors.one = "{n} seurain"
+monitors.other = "{n} seurainta"
+checks.one = "{n} tarkistus"
+checks.other = "{n} tarkistusta"
+status_pages.one = "{n} tilasivu"
+status_pages.other = "{n} tilasivua"
+incidents.one = "{n} häiriö"
+incidents.other = "{n} häiriötä"
+outages.one = "{n} katko"
+outages.other = "{n} katkoa"
+agents.one = "{n} agentti"
+agents.other = "{n} agenttia"
+
+[notif]
+sub = "Minne hälytykset menevät, kun seurain menee alhaalle, palautuu tai vaatii huomiota."
+delete_msg = "Seuraimet lakkaavat lähettämästä hälytyksiä tälle kanavalle."
+used_by = "Tällä hetkellä käytössä: {monitors}."
+add_new = "Lisää uusiin seuraimiin"
+add_new_help = "Jokainen tästä lähtien luomasi seurain käyttää tätä kanavaa."
+add_existing = "Lisää kaikkiin nykyisiin seuraimiin"
+add_existing_help = "Lisää sen seuraimiin, jotka eivät vielä käytä sitä. Mitään ei poisteta."
+add_existing_help_new = "Voit muuttaa tätä myöhemmin seurainkohtaisesti."
+empty_text = "Lisää Slack, Discord, sähköposti, ntfy, PagerDuty tai jokin 20 muusta palvelusta, jotta kuulet seisokeista heti niiden alkaessa."
+default_tip = "Lisätään uusiin seuraimiin automaattisesti"
+foot = "Oletuskanavat lisätään uusiin seuraimiin automaattisesti. Valitse kanavat yksittäiselle seuraimelle sen asetuksissa."
+no_monitors = "Ei seuraimia"

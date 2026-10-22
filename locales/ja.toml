@@ -1491,3 +1491,63 @@ remove_msg = "更新情報は届かなくなります。再度購読すること
 removed = "購読者を削除しました。"
 approve = "承認"
 approved = "Webhookを承認しました。購読解除リンク付きのメッセージが届きます。"
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "おかえりなさい。ログインしてモニターを確認しましょう。"
+
+[setup]
+site_name_placeholder = "Acme ステータス…"
+tz_after = "で表示されます。設定で変更できます。"
+
+[users]
+roles_help = "閲覧者は表示のみで、変更はできません。編集者はモニター、ステータスページ、メンテナンス、通知を管理できます。管理者はユーザーや設定を含むすべての操作ができます。"
+
+[tokens]
+sub = "スクリプト、ダッシュボード、Prometheus からモニターの参照や変更ができるようにします。"
+scope_read_sub = "モニター、ステータス、メトリクス"
+
+[auth]
+all_set = "準備が整いました。最初のモニターを追加して始めましょう。"
+setup_token_required = "このインスタンスにはセットアップトークンが必要です。サーバー設定の VV_SETUP_TOKEN の値を使って /setup?token=… を開いてください。"
+
+[error]
+back = "ダッシュボードに戻る"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Vigilant Vole をセットアップ"
+
+[common]
+recent_checks = "最近のチェック"
+
+[nav]
+dashboard = "ダッシュボード"
+status_pages = "ステータスページ"
+status_short = "ステータス"
+maintenance = "メンテナンス"
+agents = "リモートエージェント"
+browsers = "リモートブラウザー"
+
+[count]
+monitors.other = "{n}件のモニター"
+checks.other = "{n}回のチェック"
+status_pages.other = "{n}件のステータスページ"
+incidents.other = "{n}件のインシデント"
+outages.other = "{n}件の障害"
+agents.other = "{n}件のエージェント"
+
+[notif]
+sub = "モニターがダウンしたとき、復旧したとき、確認が必要なときのアラート送信先です。"
+delete_msg = "モニターはこのチャンネルへのアラート送信を停止します。"
+used_by = "現在{monitors}で使用中です。"
+add_new = "新規モニターに追加"
+add_new_help = "今後作成するすべてのモニターでこのチャンネルを使います。"
+add_existing = "既存のすべてのモニターに追加"
+add_existing_help = "まだ使っていないモニターに追加します。削除されるものはありません。"
+add_existing_help_new = "後でモニターごとに変更できます。"
+empty_text = "Slack、Discord、メール、ntfy、PagerDuty、そのほか20のサービスを追加すると、ダウンの発生をすぐに知ることができます。"
+default_tip = "新規モニターに自動で追加されます"
+foot = "デフォルトのチャンネルは新規モニターに自動で追加されます。モニター単体のチャンネルは、その設定で選択してください。"
+no_monitors = "モニターなし"

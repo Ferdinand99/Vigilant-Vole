@@ -144,6 +144,18 @@ pub fn origin_allowed(headers: &HeaderMap, base_url: Option<&str>) -> bool {
             .is_some_and(|h| h == origin)
 }
 
+/// The message for a browser request from an origin that isn't allowed.
+pub fn origin_refused(cfg: &crate::config::KitConfig) -> String {
+    match cfg.public_url_setting {
+        Some(place) => format!(
+            "This Origin is not allowed. Browser clients must use the public URL from {place}."
+        ),
+        None => {
+            "This Origin is not allowed. Browser clients must use the instance's public URL.".into()
+        }
+    }
+}
+
 /// Checks everything about a request except its body: the browser origin,
 /// the Bearer API token (no cookies, no Basic), the per-token rate limit and
 /// the protocol version header. `instance` tells apart apps that share a
@@ -159,10 +171,7 @@ pub async fn authenticate(
     // be able to drive this endpoint.
     let base_url = core.base_url().await;
     if !origin_allowed(headers, base_url.as_deref()) {
-        return Err(http_error(
-            StatusCode::FORBIDDEN,
-            "This Origin is not allowed. Browser clients must use the public URL from Settings → General.",
-        ));
+        return Err(http_error(StatusCode::FORBIDDEN, &origin_refused(core.cfg)));
     }
 
     let need_token = format!("Send your API token as `Authorization: Bearer {prefix}…`.");

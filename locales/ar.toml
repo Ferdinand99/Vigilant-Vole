@@ -1570,3 +1570,93 @@ remove_msg = "سيتوقف عن تلقي التحديثات. يمكنه الاش
 removed = "تمت إزالة المشترك."
 approve = "موافقة"
 approved = "تمت الموافقة على الـ webhook. ستصله رسالة فيها رابط إلغاء الاشتراك."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "مرحبًا بعودتك. سجّل الدخول لعرض مراقباتك."
+
+[setup]
+site_name_placeholder = "حالة Acme…"
+tz_after = ". يمكنك تغيير ذلك من الإعدادات."
+
+[users]
+roles_help = "المشاهدون يستطيعون الاطلاع دون تغيير أي شيء. المحررون يديرون المراقبات وصفحات الحالة والصيانة والإشعارات. المسؤولون يستطيعون كل شيء، بما فيه المستخدمون والإعدادات."
+
+[tokens]
+sub = "اسمح للنصوص البرمجية ولوحات المعلومات وPrometheus بقراءة مراقباتك أو تغييرها."
+scope_read_sub = "المراقبات والحالة والمقاييس"
+
+[auth]
+all_set = "اكتمل الإعداد. أضف أول مراقب للبدء."
+setup_token_required = "يحتاج هذا التثبيت إلى رمز إعداد. افتح /setup?token=… بقيمة VV_SETUP_TOKEN من إعدادات الخادم."
+
+[error]
+back = "العودة إلى لوحة المعلومات"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "إعداد Vigilant Vole"
+
+[common]
+recent_checks = "آخر الفحوصات"
+
+[nav]
+dashboard = "لوحة المعلومات"
+status_pages = "صفحات الحالة"
+status_short = "الحالة"
+maintenance = "الصيانة"
+agents = "الوكلاء البعيدون"
+browsers = "المتصفحات البعيدة"
+
+[count]
+monitors.zero = "{n} مراقب"
+monitors.one = "{n} مراقب"
+monitors.two = "{n} مراقبين"
+monitors.few = "{n} مراقبات"
+monitors.many = "{n} مراقبًا"
+monitors.other = "{n} مراقب"
+checks.zero = "{n} فحص"
+checks.one = "{n} فحص"
+checks.two = "{n} فحصين"
+checks.few = "{n} فحوصات"
+checks.many = "{n} فحصًا"
+checks.other = "{n} فحص"
+status_pages.zero = "{n} صفحة حالة"
+status_pages.one = "{n} صفحة حالة"
+status_pages.two = "{n} صفحتي حالة"
+status_pages.few = "{n} صفحات حالة"
+status_pages.many = "{n} صفحة حالة"
+status_pages.other = "{n} صفحة حالة"
+incidents.zero = "{n} حادثة"
+incidents.one = "{n} حادثة"
+incidents.two = "{n} حادثتين"
+incidents.few = "{n} حوادث"
+incidents.many = "{n} حادثة"
+incidents.other = "{n} حادثة"
+outages.zero = "{n} انقطاع"
+outages.one = "{n} انقطاع"
+outages.two = "{n} انقطاعين"
+outages.few = "{n} انقطاعات"
+outages.many = "{n} انقطاعًا"
+outages.other = "{n} انقطاع"
+agents.zero = "{n} وكيل"
+agents.one = "{n} وكيل"
+agents.two = "{n} وكيلين"
+agents.few = "{n} وكلاء"
+agents.many = "{n} وكيلًا"
+agents.other = "{n} وكيل"
+
+[notif]
+sub = "إلى أين تذهب التنبيهات عندما يتعطل مراقب أو يعود للعمل أو يحتاج إلى انتباه."
+delete_msg = "تتوقف المراقبات عن إرسال التنبيهات إلى هذه القناة."
+used_by = "تستخدمها {monitors} حاليًا."
+add_new = "إضافتها إلى المراقبات الجديدة"
+add_new_help = "كل مراقب تنشئه من الآن يستخدم هذه القناة."
+add_existing = "إضافتها إلى كل المراقبات الحالية"
+add_existing_help = "تُضاف إلى المراقبات التي لا تستخدمها بعد. لا يُزال شيء."
+add_existing_help_new = "يمكنك تغيير ذلك لكل مراقب لاحقًا."
+empty_text = "أضف Slack أو Discord أو البريد الإلكتروني أو ntfy أو PagerDuty أو إحدى 20 خدمة أخرى لتعرف بالتعطل لحظة حدوثه."
+default_tip = "تُضاف إلى المراقبات الجديدة تلقائيًا"
+foot = "تُضاف القنوات الافتراضية إلى المراقبات الجديدة تلقائيًا. اختر قنوات لمراقب واحد من إعداداته."
+no_monitors = "لا مراقبات"

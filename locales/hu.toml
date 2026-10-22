@@ -1506,3 +1506,69 @@ remove_msg = "Nem kap több frissítést. Újra feliratkozhat."
 removed = "Feliratkozó eltávolítva."
 approve = "Jóváhagyás"
 approved = "Webhook jóváhagyva. Kap egy üzenetet a leiratkozási hivatkozásával."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Üdv újra. Jelentkezzen be a monitorok megtekintéséhez."
+
+[setup]
+site_name_placeholder = "Acme állapot…"
+tz_after = ". Ez a Beállításokban módosítható."
+
+[users]
+roles_help = "A megtekintők nézhetnek, de nem módosíthatnak semmit. A szerkesztők kezelik a monitorokat, állapotoldalakat, karbantartást és értesítéseket. Az adminok mindent tehetnek, a felhasználókat és beállításokat is beleértve."
+
+[tokens]
+sub = "Szkriptek, irányítópultok és a Prometheus olvashatják vagy módosíthatják a monitorokat."
+scope_read_sub = "Monitorok, állapot, metrikák"
+
+[auth]
+all_set = "Minden kész. Kezdéshez adja hozzá az első monitort."
+setup_token_required = "Ehhez a példányhoz beállítási token kell. Nyissa meg a /setup?token=… címet a kiszolgáló konfigurációjában lévő VV_SETUP_TOKEN értékével."
+
+[error]
+back = "Vissza az irányítópulthoz"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Vigilant Vole beállítása"
+
+[common]
+recent_checks = "Legutóbbi ellenőrzések"
+
+[nav]
+dashboard = "Irányítópult"
+status_pages = "Állapotoldalak"
+status_short = "Állapot"
+maintenance = "Karbantartás"
+agents = "Távoli ügynökök"
+browsers = "Távoli böngészők"
+
+[count]
+monitors.one = "{n} monitor"
+monitors.other = "{n} monitor"
+checks.one = "{n} ellenőrzés"
+checks.other = "{n} ellenőrzés"
+status_pages.one = "{n} állapotoldal"
+status_pages.other = "{n} állapotoldal"
+incidents.one = "{n} incidens"
+incidents.other = "{n} incidens"
+outages.one = "{n} kiesés"
+outages.other = "{n} kiesés"
+agents.one = "{n} ügynök"
+agents.other = "{n} ügynök"
+
+[notif]
+sub = "Hová menjenek a riasztások, ha egy monitor leáll, helyreáll, vagy figyelmet igényel."
+delete_msg = "A monitorok nem küldenek több riasztást erre a csatornára."
+used_by = "Jelenleg használja: {monitors}."
+add_new = "Hozzáadás az új monitorokhoz"
+add_new_help = "Minden ezután létrehozott monitor ezt a csatornát használja."
+add_existing = "Hozzáadás az összes meglévő monitorhoz"
+add_existing_help = "Hozzáadja azokhoz a monitorokhoz, amelyek még nem használják. Semmi nem törlődik."
+add_existing_help_new = "Ezt később monitoronként módosíthatja."
+empty_text = "Adjon hozzá Slacket, Discordot, e-mailt, ntfy-t, PagerDutyt vagy 20 másik szolgáltatást, hogy azonnal értesüljön a kiesésről."
+default_tip = "Automatikusan hozzáadódik az új monitorokhoz"
+foot = "Az alapértelmezett csatornák automatikusan hozzáadódnak az új monitorokhoz. Egyetlen monitorhoz a beállításaiban választhat csatornákat."
+no_monitors = "Nincs monitor"

@@ -5,7 +5,9 @@
 
 mod markdown;
 
-use crate::kit::docs::{DocsSpec, RouteDoc, r};
+use crate::kit::docs::{
+    BearerScheme, ConfigDocument, Credential, DocsSpec, ErrorCode, RouteDoc, r,
+};
 
 const LIMIT_Q: &str = "limit: page size (1–500, default 50)";
 const CURSOR_Q: &str = "cursor: next_cursor from the previous page";
@@ -252,16 +254,66 @@ fn curl_path_param(route: &RouteDoc, segment: &str) -> Option<String> {
     )
 }
 
+/// Remote agents' tokens and push monitors' URL tokens.
+const CREDENTIALS: &[Credential] = &[
+    Credential {
+        access: "push token",
+        words: "the push monitor's token in the URL (no API token)",
+        bearer: None,
+    },
+    Credential {
+        access: "agent token",
+        words: "remote agent token (`Authorization: Bearer vva_…`)",
+        bearer: Some(BearerScheme {
+            name: "agentToken",
+            description: "Remote agent token (vva_…)",
+            variable: "AGENT_TOKEN",
+        }),
+    },
+];
+
+/// Vigilant Vole's error codes besides the kit's generic ones.
+const ERROR_CODES: &[ErrorCode] = &[
+    ErrorCode {
+        code: "conflict",
+        status: 409,
+        when: "clashes with existing data or the object's state (duplicate tag name or slug, checking a paused monitor)",
+        on_page: true,
+    },
+    ErrorCode {
+        code: "too_large",
+        status: 413,
+        when: "configuration document over 2 MB",
+        on_page: false,
+    },
+    ErrorCode {
+        code: "invalid_document",
+        status: 422,
+        when: "configuration document that can't be parsed",
+        on_page: false,
+    },
+    ErrorCode {
+        code: "delivery_failed",
+        status: 502,
+        when: "a test notification the provider refused",
+        on_page: true,
+    },
+];
+
 /// What Vigilant Vole contributes to the kit's API reference.
 pub static DOCS: DocsSpec = DocsSpec {
     routes: ROUTES,
     openapi_title: "Vigilant Vole API",
     openapi_description: "REST API for Vigilant Vole. Authenticate with `Authorization: Bearer vv_…` (create tokens under Settings → API tokens). Read-only tokens act as viewers. Errors use `{\"error\": {\"code\", \"message\", \"fields\"}}`; lists use `?limit=&cursor=` and return `next_cursor`.",
     bearer_description: "API token (vv_…)",
-    agent_token_description: "Remote agent token (vva_…)",
+    credentials: CREDENTIALS,
     error_example: ERROR_EXAMPLE,
-    config_file: "vigilant.yml",
-    agent_token_access: "remote agent token (`Authorization: Bearer vva_…`)",
+    error_codes: ERROR_CODES,
+    config_document: Some(ConfigDocument {
+        path: "/api/v1/config",
+        file: "vigilant.yml",
+        body: "a configuration document in YAML or JSON (see the example and \"Config as code\" below)",
+    }),
     curl_path_param,
     markdown_intro: markdown::intro,
     markdown_middle: markdown::middle,
@@ -271,4 +323,5 @@ pub static DOCS: DocsSpec = DocsSpec {
     api_base: "/api/v1",
     example_path: "/api/v1/monitors",
     metrics_path: Some("/metrics"),
+    fallback_host: Some("localhost:3001"),
 };

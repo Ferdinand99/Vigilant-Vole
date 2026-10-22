@@ -1491,3 +1491,63 @@ remove_msg = "對方將不再收到更新，但可以重新訂閱。"
 removed = "已移除訂閱者。"
 approve = "核准"
 approved = "Webhook 已核准。它會收到一則附有取消訂閱連結的訊息。"
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "歡迎回來。登入後即可查看你的監控項目。"
+
+[setup]
+site_name_placeholder = "Acme 狀態…"
+tz_after = "顯示。可在「設定」中變更。"
+
+[users]
+roles_help = "檢視者只能查看，無法變更任何內容。編輯者可管理監控項目、狀態頁面、維護與通知。管理員可執行所有操作，包括使用者與設定。"
+
+[tokens]
+sub = "讓指令碼、儀表板與 Prometheus 讀取或變更你的監控項目。"
+scope_read_sub = "監控項目、狀態、指標"
+
+[auth]
+all_set = "一切就緒。新增第一個監控項目即可開始。"
+setup_token_required = "此站台需要設定權杖。請開啟 /setup?token=…，其值為伺服器設定中的 VV_SETUP_TOKEN。"
+
+[error]
+back = "返回儀表板"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "設定 Vigilant Vole"
+
+[common]
+recent_checks = "最近檢查"
+
+[nav]
+dashboard = "儀表板"
+status_pages = "狀態頁面"
+status_short = "狀態"
+maintenance = "維護"
+agents = "遠端代理程式"
+browsers = "遠端瀏覽器"
+
+[count]
+monitors.other = "{n} 個監控項目"
+checks.other = "{n} 次檢查"
+status_pages.other = "{n} 個狀態頁面"
+incidents.other = "{n} 個事件"
+outages.other = "{n} 次中斷"
+agents.other = "{n} 個代理程式"
+
+[notif]
+sub = "監控項目故障、恢復或需要注意時，警報送達的位置。"
+delete_msg = "監控項目將不再向此管道發送警報。"
+used_by = "目前由 {monitors} 使用。"
+add_new = "加入新的監控項目"
+add_new_help = "之後建立的每個監控項目都會使用此管道。"
+add_existing = "加入所有現有的監控項目"
+add_existing_help = "加到尚未使用它的監控項目。不會移除任何項目。"
+add_existing_help_new = "之後可針對各監控項目個別調整。"
+empty_text = "新增 Slack、Discord、電子郵件、ntfy、PagerDuty 或其他 20 種服務，在停機發生的當下就收到通知。"
+default_tip = "自動加入新的監控項目"
+foot = "預設管道會自動加入新的監控項目。若要為單一監控項目挑選管道，請到該項目的設定。"
+no_monitors = "沒有監控項目"

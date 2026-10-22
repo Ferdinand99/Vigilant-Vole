@@ -1522,3 +1522,75 @@ remove_msg = "Ele deixa de receber atualizações, mas pode assinar de novo."
 removed = "Assinante removido."
 approve = "Aprovar"
 approved = "Webhook aprovado. Ele recebe uma mensagem com o link para cancelar a assinatura."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Que bom ver você de novo. Entre para ver seus monitores."
+
+[setup]
+site_name_placeholder = "Status da Acme…"
+tz_after = ". Você pode mudar isso em Configurações."
+
+[users]
+roles_help = "Leitores podem ver, mas não alterar nada. Editores gerenciam monitores, páginas de status, manutenção e notificações. Administradores podem tudo, incluindo usuários e configurações."
+
+[tokens]
+sub = "Permita que scripts, painéis e o Prometheus leiam ou alterem seus monitores."
+scope_read_sub = "Monitores, status, métricas"
+
+[auth]
+all_set = "Tudo pronto. Adicione seu primeiro monitor para começar."
+setup_token_required = "Esta instância precisa de um token de configuração. Abra /setup?token=… com o valor de VV_SETUP_TOKEN da configuração do servidor."
+
+[error]
+back = "Voltar ao painel"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Configurar o Vigilant Vole"
+
+[common]
+recent_checks = "Verificações recentes"
+
+[nav]
+dashboard = "Painel"
+status_pages = "Páginas de status"
+status_short = "Status"
+maintenance = "Manutenção"
+agents = "Agentes remotos"
+browsers = "Navegadores remotos"
+
+[count]
+monitors.one = "{n} monitor"
+monitors.many = "{n} de monitores"
+monitors.other = "{n} monitores"
+checks.one = "{n} verificação"
+checks.many = "{n} de verificações"
+checks.other = "{n} verificações"
+status_pages.one = "{n} página de status"
+status_pages.many = "{n} de páginas de status"
+status_pages.other = "{n} páginas de status"
+incidents.one = "{n} incidente"
+incidents.many = "{n} de incidentes"
+incidents.other = "{n} incidentes"
+outages.one = "{n} queda"
+outages.many = "{n} de quedas"
+outages.other = "{n} quedas"
+agents.one = "{n} agente"
+agents.many = "{n} de agentes"
+agents.other = "{n} agentes"
+
+[notif]
+sub = "Para onde vão os alertas quando um monitor cai, volta ou precisa de atenção."
+delete_msg = "Os monitores deixam de enviar alertas para este canal."
+used_by = "Em uso por {monitors} agora."
+add_new = "Adicionar a novos monitores"
+add_new_help = "Todo monitor que você criar a partir de agora usa este canal."
+add_existing = "Adicionar a todos os monitores existentes"
+add_existing_help = "Adiciona aos monitores que ainda não o usam. Nada é removido."
+add_existing_help_new = "Você poderá mudar isso em cada monitor depois."
+empty_text = "Adicione Slack, Discord, e-mail, ntfy, PagerDuty ou um dos outros 20 serviços para saber de uma queda no instante em que acontece."
+default_tip = "Adicionado automaticamente a novos monitores"
+foot = "Os canais padrão são adicionados automaticamente a novos monitores. Escolha os canais de um monitor específico nas configurações dele."
+no_monitors = "Nenhum monitor"

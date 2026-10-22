@@ -1509,3 +1509,69 @@ remove_msg = "They stop receiving updates. They can subscribe again."
 removed = "Subscriber removed."
 approve = "Approve"
 approved = "Webhook approved. It gets a message with its unsubscribe link."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "Welcome back. Log in to see your monitors."
+
+[setup]
+site_name_placeholder = "Acme status…"
+tz_after = ". You can change this in Settings."
+
+[users]
+roles_help = "Viewers can look but not change anything. Editors manage monitors, status pages, maintenance and notifications. Admins can do everything, including users and settings."
+
+[tokens]
+sub = "Let scripts, dashboards and Prometheus read or change your monitors."
+scope_read_sub = "Monitors, status, metrics"
+
+[auth]
+all_set = "You’re all set. Add your first monitor to get started."
+setup_token_required = "This instance needs a setup token. Open /setup?token=… with the value of VV_SETUP_TOKEN from the server’s configuration."
+
+[error]
+back = "Back to dashboard"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Set up Vigilant Vole"
+
+[common]
+recent_checks = "Recent checks"
+
+[nav]
+dashboard = "Dashboard"
+status_pages = "Status pages"
+status_short = "Status"
+maintenance = "Maintenance"
+agents = "Remote agents"
+browsers = "Remote browsers"
+
+[count]
+monitors.one = "{n} monitor"
+monitors.other = "{n} monitors"
+checks.one = "{n} check"
+checks.other = "{n} checks"
+status_pages.one = "{n} status page"
+status_pages.other = "{n} status pages"
+incidents.one = "{n} incident"
+incidents.other = "{n} incidents"
+outages.one = "{n} outage"
+outages.other = "{n} outages"
+agents.one = "{n} agent"
+agents.other = "{n} agents"
+
+[notif]
+sub = "Where alerts go when a monitor goes down, comes back up or needs attention."
+delete_msg = "Monitors stop sending alerts to this channel."
+used_by = "Used by {monitors} right now."
+add_new = "Add to new monitors"
+add_new_help = "Every monitor you create from now on uses this channel."
+add_existing = "Add to all existing monitors"
+add_existing_help = "Adds it to monitors that don’t use it yet. Nothing is removed."
+add_existing_help_new = "You can change this per monitor later."
+empty_text = "Add Slack, Discord, email, ntfy, PagerDuty or one of 20 other services to hear about downtime the moment it happens."
+default_tip = "Added to new monitors automatically"
+foot = "Default channels are added to new monitors automatically. Pick channels for a single monitor in its settings."
+no_monitors = "No monitors"

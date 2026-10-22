@@ -1523,3 +1523,75 @@ remove_msg = "הוא יפסיק לקבל עדכונים. אפשר להירשם �
 removed = "המנוי הוסר."
 approve = "אישור"
 approved = "ה־Webhook אושר. הוא יקבל הודעה עם קישור לביטול המנוי."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "ברוכים השבים. יש להתחבר כדי לראות את המוניטורים."
+
+[setup]
+site_name_placeholder = "סטטוס Acme…"
+tz_after = ". אפשר לשנות זאת בהגדרות."
+
+[users]
+roles_help = "צופים יכולים לראות אך לא לשנות דבר. עורכים מנהלים מוניטורים, דפי סטטוס, תחזוקה והתראות. מנהלים יכולים הכול, כולל משתמשים והגדרות."
+
+[tokens]
+sub = "מאפשרים לסקריפטים, ללוחות בקרה ול-Prometheus לקרוא או לשנות את המוניטורים."
+scope_read_sub = "מוניטורים, סטטוס, מדדים"
+
+[auth]
+all_set = "הכול מוכן. יש להוסיף את המוניטור הראשון כדי להתחיל."
+setup_token_required = "המופע הזה דורש אסימון הגדרה. יש לפתוח /setup?token=… עם הערך של VV_SETUP_TOKEN מתצורת השרת."
+
+[error]
+back = "חזרה ללוח הבקרה"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "הגדרת Vigilant Vole"
+
+[common]
+recent_checks = "בדיקות אחרונות"
+
+[nav]
+dashboard = "לוח בקרה"
+status_pages = "דפי סטטוס"
+status_short = "סטטוס"
+maintenance = "תחזוקה"
+agents = "סוכנים מרוחקים"
+browsers = "דפדפנים מרוחקים"
+
+[count]
+monitors.one = "{n} מוניטור"
+monitors.two = "{n} מוניטורים"
+monitors.other = "{n} מוניטורים"
+checks.one = "{n} בדיקה"
+checks.two = "{n} בדיקות"
+checks.other = "{n} בדיקות"
+status_pages.one = "{n} דף סטטוס"
+status_pages.two = "{n} דפי סטטוס"
+status_pages.other = "{n} דפי סטטוס"
+incidents.one = "{n} תקרית"
+incidents.two = "{n} תקריות"
+incidents.other = "{n} תקריות"
+outages.one = "{n} הפסקה"
+outages.two = "{n} הפסקות"
+outages.other = "{n} הפסקות"
+agents.one = "{n} סוכן"
+agents.two = "{n} סוכנים"
+agents.other = "{n} סוכנים"
+
+[notif]
+sub = "לאן נשלחות התראות כשמוניטור לא זמין, חוזר לפעול או דורש תשומת לב."
+delete_msg = "מוניטורים יפסיקו לשלוח התראות לערוץ הזה."
+used_by = "בשימוש כרגע ב-{monitors}."
+add_new = "הוספה למוניטורים חדשים"
+add_new_help = "כל מוניטור שייווצר מעכשיו ישתמש בערוץ הזה."
+add_existing = "הוספה לכל המוניטורים הקיימים"
+add_existing_help = "מוסיף למוניטורים שעדיין לא משתמשים בו. דבר לא מוסר."
+add_existing_help_new = "אפשר לשנות זאת בכל מוניטור בהמשך."
+empty_text = "אפשר להוסיף Slack, Discord, אימייל, ntfy, PagerDuty או אחד מ-20 שירותים נוספים כדי לשמוע על השבתה ברגע שהיא קורית."
+default_tip = "מתווסף אוטומטית למוניטורים חדשים"
+foot = "ערוצי ברירת מחדל מתווספים אוטומטית למוניטורים חדשים. ערוצים למוניטור בודד נבחרים בהגדרות שלו."
+no_monitors = "אין מוניטורים"

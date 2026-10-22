@@ -1538,3 +1538,81 @@ remove_msg = "Обновления приходить перестанут, но
 removed = "Подписчик убран."
 approve = "Одобрить"
 approved = "Вебхук одобрен. Он получит сообщение со ссылкой для отписки."
+
+# Texts the kit's shared pages take from the product (vole_kit::i18n::catalog::PRODUCT_KEYS).
+
+[login]
+subtitle = "С возвращением. Войдите, чтобы увидеть свои мониторы."
+
+[setup]
+site_name_placeholder = "Статус Acme…"
+tz_after = ". Его можно изменить в настройках."
+
+[users]
+roles_help = "Наблюдатели могут смотреть, но не менять. Редакторы управляют мониторами, страницами статуса, обслуживанием и уведомлениями. Админы могут все, включая пользователей и настройки."
+
+[tokens]
+sub = "Позвольте скриптам, панелям и Prometheus читать и менять ваши мониторы."
+scope_read_sub = "Мониторы, статус, метрики"
+
+[auth]
+all_set = "Все готово. Добавьте первый монитор, чтобы начать."
+setup_token_required = "Для этого экземпляра нужен токен настройки. Откройте /setup?token=… со значением VV_SETUP_TOKEN из конфигурации сервера."
+
+[error]
+back = "Назад к панели"
+
+# Vigilant Vole's own words that used to be in the kit's catalog.
+[setup]
+title = "Настройка Vigilant Vole"
+
+[common]
+recent_checks = "Последние проверки"
+
+[nav]
+dashboard = "Панель"
+status_pages = "Страницы статуса"
+status_short = "Статус"
+maintenance = "Обслуживание"
+agents = "Удаленные агенты"
+browsers = "Удаленные браузеры"
+
+[count]
+monitors.one = "{n} монитор"
+monitors.few = "{n} монитора"
+monitors.many = "{n} мониторов"
+monitors.other = "{n} монитора"
+checks.one = "{n} проверка"
+checks.few = "{n} проверки"
+checks.many = "{n} проверок"
+checks.other = "{n} проверки"
+status_pages.one = "{n} страница статуса"
+status_pages.few = "{n} страницы статуса"
+status_pages.many = "{n} страниц статуса"
+status_pages.other = "{n} страницы статуса"
+incidents.one = "{n} инцидент"
+incidents.few = "{n} инцидента"
+incidents.many = "{n} инцидентов"
+incidents.other = "{n} инцидента"
+outages.one = "{n} сбой"
+outages.few = "{n} сбоя"
+outages.many = "{n} сбоев"
+outages.other = "{n} сбоя"
+agents.one = "{n} агент"
+agents.few = "{n} агента"
+agents.many = "{n} агентов"
+agents.other = "{n} агента"
+
+[notif]
+sub = "Куда приходят оповещения, когда монитор становится недоступным, восстанавливается или требует внимания."
+delete_msg = "Мониторы перестанут отправлять оповещения в этот канал."
+used_by = "Сейчас используется: {monitors}."
+add_new = "Добавлять к новым мониторам"
+add_new_help = "Каждый создаваемый монитор будет использовать этот канал."
+add_existing = "Добавить ко всем существующим мониторам"
+add_existing_help = "Добавляется мониторам, которые его еще не используют. Ничего не удаляется."
+add_existing_help_new = "Позже это можно изменить для каждого монитора."
+empty_text = "Добавьте Slack, Discord, почту, ntfy, PagerDuty или один из 20 других сервисов, чтобы узнавать о простое сразу."
+default_tip = "Автоматически добавляется к новым мониторам"
+foot = "Каналы по умолчанию автоматически добавляются к новым мониторам. Каналы для отдельного монитора выбираются в его настройках."
+no_monitors = "Нет мониторов"

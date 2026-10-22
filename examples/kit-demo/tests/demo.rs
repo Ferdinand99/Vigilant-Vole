@@ -1,5 +1,6 @@
 //! Kit Demo driven in-process: setup, sign-in with two factors, the kit's
-//! pages under the demo's name, static files, versions and the schema.
+//! pages and API reference under the demo's name and in its words, static
+//! files, versions, the schema and the translations.
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -169,8 +170,32 @@ impl App {
 /// Branding checks for every page a product gets from the kit.
 fn assert_demo_branded(path: &str, html: &str) {
     assert!(html.contains("Kit Demo"), "{path}: no product name\n{html}");
-    for foreign in ["Vigilant", "vigilant", "Vole", "vv_", "VV_"] {
-        assert!(!html.contains(foreign), "{path}: contains {foreign:?}");
+    assert_no_foreign_words(path, html);
+}
+
+/// No other product's names or words. The demo itself never says
+/// "monitor" or "dashboard", so any that shows up came from the kit.
+fn assert_no_foreign_words(path: &str, text: &str) {
+    for foreign in ["Vigilant", "Vole", "vv_", "VV_", "vva_"] {
+        assert!(!text.contains(foreign), "{path}: contains {foreign:?}");
+    }
+    let lower = text.to_lowercase();
+    for word in [
+        "vigilant",
+        "vole",
+        "monitor",
+        "dashboard",
+        "status page",
+        "heartbeat",
+        "agent",
+        "settings → general",
+        "localhost:3001",
+    ] {
+        if let Some(at) = lower.find(word) {
+            let start = lower.floor_char_boundary(at.saturating_sub(80));
+            let end = lower.ceil_char_boundary((at + 80).min(lower.len()));
+            panic!("{path}: contains {word:?}: …{}…", &lower[start..end]);
+        }
     }
 }
 
@@ -183,6 +208,9 @@ async fn setup_creates_the_first_admin() {
     let page = app.get("/setup").await;
     assert_eq!(page.status, StatusCode::OK);
     assert_demo_branded("/setup", &page.body);
+    // The texts the kit's setup page takes from the product.
+    assert!(page.body.contains("placeholder=\"Team notes…\""));
+    assert!(!page.body.contains("You can change this in"));
 
     let res = app
         .post(
@@ -203,6 +231,11 @@ async fn setup_creates_the_first_admin() {
     let home = app.get("/").await;
     assert_eq!(home.status, StatusCode::OK);
     assert!(home.body.contains("Welcome to Kit Demo. You have 0 notes."));
+    assert!(
+        home.body.contains("Write your first note."),
+        "{}",
+        home.body
+    );
     assert_demo_branded("/", &home.body);
 
     let (users, admins, site, tz) = app
@@ -244,6 +277,7 @@ async fn login_and_the_second_factor() {
     let login = app.get("/login").await;
     assert_eq!(login.status, StatusCode::OK);
     assert_demo_branded("/login", &login.body);
+    assert!(login.body.contains("Log in to see your notes."));
     let wrong = app
         .post("/login", &[("username", ADMIN), ("password", "nope")])
         .await;
@@ -292,7 +326,13 @@ async fn the_kits_pages_carry_the_demos_name() {
     assert!(docs.contains(r#"download="kit-demo-openapi.json""#));
     assert!(docs.contains("Bearer kd_…"));
     assert!(docs.contains("/api/v1/notes"));
+    // Only the kit's generic error codes: the demo adds none.
+    assert!(docs.contains("<code>conflict</code> 409, <code>validation_failed</code> 422."));
+    assert!(!docs.contains("delivery_failed"));
+    let tokens = app.get("/settings/tokens").await.body;
+    assert!(tokens.contains("Let scripts read or change your notes."));
     let tabs = app.get("/settings/users").await.body;
+    assert!(tabs.contains("Editors can also write and delete them."));
     for tab in ["/settings/users", "/settings/security", "/settings/tokens"] {
         assert!(tabs.contains(&format!("href=\"{tab}\"")), "{tab}");
     }
@@ -309,10 +349,94 @@ async fn the_kits_pages_carry_the_demos_name() {
     assert!(res.body.contains("Bearer kd_"), "{}", res.body);
     assert!(!res.body.contains("/metrics"));
 
-    // Errors use the demo's icon.
+    // Errors use the demo's icon and words.
     let missing = app.get("/no-such-page").await;
     assert_eq!(missing.status, StatusCode::NOT_FOUND);
     assert!(missing.body.contains("/static/logo.svg"));
+    assert!(missing.body.contains("Back to your notes"));
+    assert_no_foreign_words("/no-such-page", &missing.body);
+}
+
+/// The API reference in every form: the demo's words and the kit's generic
+/// parts, nothing of Vigilant Vole's.
+#[tokio::test]
+async fn the_api_reference_is_the_demos_own() {
+    let mut app = App::set_up().await;
+    let token = app.token().await;
+    for path in ["/api-docs.md", "/llms.txt"] {
+        let res = app.get(path).await;
+        assert_eq!(res.status, StatusCode::OK, "{path}");
+        assert_no_foreign_words(path, &res.body);
+        assert!(res.body.starts_with("# Kit Demo API"), "{path}");
+        assert!(res.body.contains("http://demo.test"), "{path}");
+        assert!(
+            res.body.contains(
+                "| `conflict` | 409 | clashes with existing data or the object's state |"
+            )
+        );
+        for code in ["too_large", "invalid_document", "delivery_failed"] {
+            assert!(!res.body.contains(code), "{path}: {code}");
+        }
+        assert!(res.body.find("`validation_failed`") < res.body.find("`internal`"));
+    }
+
+    let res = app
+        .bearer("GET", "/api/v1/openapi.json", &token, None)
+        .await;
+    assert_no_foreign_words("/api/v1/openapi.json", &res.body);
+    let doc: Value = serde_json::from_str(&res.body).unwrap();
+    let schemes: Vec<&String> = doc["components"]["securitySchemes"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .collect();
+    assert_eq!(schemes, ["bearerAuth", "sessionCookie"]);
+
+    // Without a Host header or a public URL: the demo's own address.
+    assert_eq!(
+        vole_kit::docs::instance_url(None, &HeaderMap::new()),
+        "http://127.0.0.1:3101"
+    );
+}
+
+/// The MCP endpoint refuses a foreign browser origin without pointing to a
+/// settings page the demo doesn't have.
+#[tokio::test]
+async fn mcp_refuses_a_foreign_origin_in_neutral_words() {
+    let mut app = App::set_up().await;
+    let token = app.token().await;
+    let req = Request::post("/mcp")
+        .header(header::ORIGIN, "http://evil.example")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#))
+        .unwrap();
+    let saved = std::mem::take(&mut app.cookies);
+    let res = app.send(req).await;
+    app.cookies = saved;
+    assert_eq!(res.status, StatusCode::FORBIDDEN);
+    assert!(
+        res.body
+            .contains("Browser clients must use the instance's public URL."),
+        "{}",
+        res.body
+    );
+    assert_no_foreign_words("/mcp", &res.body);
+}
+
+/// Every language the demo ships translates all of its strings, checked
+/// with the kit's helper.
+#[test]
+fn every_language_the_demo_ships_is_complete() {
+    use vole_kit::i18n::{Lang, catalog};
+    kit_demo::install();
+    catalog::assert_full_coverage();
+    assert!(catalog::coverage(Lang::NB).is_complete());
+    // A language it doesn't ship lacks its strings (they fall back to English).
+    let gaps = catalog::coverage(Lang::from_code("de").unwrap()).problems;
+    for key in ["demo.notes", "error.back"] {
+        assert!(gaps.contains(&format!("missing {key}")), "{gaps:?}");
+    }
 }
 
 #[tokio::test]
