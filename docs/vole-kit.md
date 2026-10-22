@@ -1,180 +1,269 @@
-# The kit (`src/kit/`)
+# vole-kit
 
-`src/kit/` holds everything in Vigilant Vole that is not specific to one
-product: authentication, the i18n engine, the database plumbing, HTTP
-conventions, the API reference generator, the MCP protocol layer and the
-notification providers. It is phase 2 of the Keen Kestrel plan: the code is
-carved out *inside this crate* first, so that phase 3 can move the directory
-into its own workspace crate, `vole-kit`, without editing it.
+`vole-kit` is the shared product kit of Vigilant Vole and its sibling
+products (first of them Keen Kestrel): authentication, the i18n engine and
+the core translations, the database plumbing and migration runner, HTTP
+conventions, the API reference generator, the MCP protocol layer, the 40
+notification providers and the design system's static files.
 
-This was a pure refactoring: nothing a user, an API client or a database can
-see changed. `tests/golden/` (see [golden-tests.md](golden-tests.md)) proves it.
+It lives in this repository as a Cargo workspace member, `kit/`. Vigilant
+Vole depends on it by path; other products depend on it by git tag.
 
-## The one rule
+The kit was carved out without changing anything a user, an API client or a
+database can see. `tests/golden/` (see [golden-tests.md](golden-tests.md))
+proves it at every step.
 
-> Nothing under `src/kit/` names anything outside `crate::kit`.
+## Layout
 
-`tests/kit_boundary.rs` fails when a file there uses a `crate::` path that
-doesn't start with `crate::kit` (or `crate::{…}`). The product (Vigilant Vole)
-depends on the kit, never the other way round. What the kit needs to know
-about its product comes in through `KitConfig`, the traits and the specs
-listed below.
+```
+Cargo.toml          # [workspace] members "." and "kit"; [workspace.dependencies]; package vigilant-vole
+kit/
+├── Cargo.toml      # package vole-kit
+├── locales/        # the kit's core strings, one file per language
+└── src/            # the crate (lib.rs = the old src/kit/mod.rs)
+src/                # Vigilant Vole
+static/             # Vigilant Vole's files and the kit's design system (see "Static files")
+locales/            # Vigilant Vole's own strings
+migrations/         # Vigilant Vole's migrations (see "Migrations")
+templates/          # Vigilant Vole's templates
+```
+
+`cargo test`, `cargo clippy`, `cargo build` without `-p` cover both crates
+(`default-members`). CI runs `cargo clippy --workspace --all-targets` and
+`cargo test --workspace --lib`; the Dockerfile copies `kit/`.
+
+`vole-kit`'s dependencies are a subset of Vigilant Vole's, with versions and
+features from `[workspace.dependencies]`: axum, axum-extra, askama (the
+`Template` trait only), tokio, reqwest, rusqlite, deadpool-sqlite, rust-embed,
+serde, serde_json, time, jiff, url, tracing, thiserror, rand, hex, sha2,
+base64, argon2, totp-rs, qrcode, regex, lettre, rustls, rustls-native-certs,
+webpki-root-certs, futures-util. Test only: tower, tokio-rustls, rcgen.
+
+## The rule
+
+> The kit never depends on the product.
+
+The compiler enforces it now: `vole-kit` can't name `vigilant_vole` without a
+dependency on it. `tests/kit_boundary.rs` keeps that door shut (no
+`vigilant-vole` in `kit/Cargo.toml`, no `vigilant_vole` or leftover
+`crate::kit` in the kit's sources). The kit forbids `unsafe` code
+(`#![forbid(unsafe_code)]`).
+
+Vigilant Vole re-exports the crate as `crate::kit` (`pub use vole_kit as
+kit`), and keeps every older path (`crate::auth`, `crate::i18n`, `crate::db`,
+`crate::notification`, `crate::api::{ApiError, PageCtx, …}`,
+`crate::tls_roots`) as a re-export or a thin wrapper, so no test had to
+change.
 
 ## Module map
 
-| Module | What it is | Moved from |
-| --- | --- | --- |
-| `kit::config` | `KitConfig`, `register_config!`, `get()` | new |
-| `kit::state` | `Core` (pool, session key, HTTP client, config) and `with_conn` | new |
-| `kit::i18n` | languages, catalogs, plurals, number/date formats, `Tr`, `Accept-Language`, the request language middleware | `src/i18n/` |
-| `kit::db` | pool, `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens`, `migrate` (runner, `MigrationSet`) | `src/db/mod.rs`, `settings`, `users`, `api_tokens`, `Role` |
-| `kit::auth` | sessions, CSRF policy, rate limiting, TOTP, tokens, password rules, `CurrentUser`; `guard` has `require_auth`, `csrf_guard`, token and session resolution | `src/auth/`, the middleware half of `src/api/auth.rs` |
-| `kit::http` | `ApiError`, security headers/CSP, `HtmlTemplate`, static files, `healthz`; `rest` has the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard) | `src/api/error.rs`, `src/api/mod.rs`, `src/api/v1/mod.rs`, `src/api/v1/error.rs` |
-| `kit::page` | `PageCtx`, `UserView`, flash messages | `src/api/page.rs` |
-| `kit::docs` | `RouteDoc`, OpenAPI 3.1 document, Markdown reference | `src/api/v1/docs.rs`, `docs/markdown.rs` |
-| `kit::mcp` | MCP protocol: origin check, Bearer auth, rate limit, JSON-RPC, `Handler` trait | `src/mcp/mod.rs` |
-| `kit::notify` | the 40 providers, schemas, HTTP/SMTP transports, message voice, the alert model (`NotificationEvent`, `EventKind`, `NotificationChannel`) | `src/notification/`, `src/db/models.rs` |
-| `kit::tls_roots` | system CA store with bundled fallback | `src/tls_roots.rs` |
+| Module | What it is |
+| --- | --- |
+| `config` | `KitConfig`, `install`, `get` |
+| `state` | `Core` (pool, session key, HTTP client, config) and `with_conn` |
+| `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr`, `Accept-Language`, the request language middleware |
+| `db` | pool, `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens`, `migrate` (runner, `MigrationSet`) |
+| `auth` | sessions, CSRF policy, rate limiting, TOTP, API tokens, password rules, `CurrentUser`; `guard`: `require_auth`, `csrf_guard`, token and session resolution |
+| `http` | `ApiError`, security headers/CSP, `HtmlTemplate`, static files (`assets`), `healthz`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard) |
+| `page` | `PageCtx`, `UserView`, flash messages |
+| `docs` | `RouteDoc`, `DocsSpec`, the OpenAPI 3.1 document and the Markdown reference |
+| `mcp` | MCP protocol: origin check, Bearer auth, rate limit, JSON-RPC, the `Handler` trait |
+| `notify` | `Alert`, `AlertKind`, `Level`, the 40 providers, schemas, HTTP/SMTP transports, the message layout |
+| `tls_roots` | system CA store with the bundled fallback |
 
-The old paths still exist as re-exports (`crate::auth`, `crate::i18n`,
-`crate::db`, `crate::notification`, `crate::api::{ApiError, PageCtx, …}`,
-`crate::tls_roots`), so the product code, the tests and the golden tests did
-not have to change.
+## Configuration
 
-## `Core` and `AppState`
+A product describes itself once in a static `KitConfig` and installs it when
+it starts, before any kit code runs:
 
 ```rust
-// kit::state
-pub struct Core {
-    pub db: Pool,
-    pub session_key: Key,
-    pub http: reqwest::Client,
-    pub cfg: &'static KitConfig,
+static KIT: KitConfig = KitConfig { product: "Keen Kestrel", slug: "kestrel", /* … */ };
+
+fn main() {
+    vole_kit::config::install(&KIT);
+    // …
 }
 ```
 
-`AppState` keeps its fields (`db`, `scheduler`, `session_key`, `update_tx`,
-`http`, `config`); `impl FromRef<AppState> for Core` builds the kit's view of
-it, and `AppState::core()` is the shortcut. Kit middleware and extractors
-take `State<Core>`, so the product's routers stay `Router<AppState>`.
-`PageCtx::build` is generic over any state that converts into `Core`.
+`install` is a `OnceLock`: installing the same configuration again does
+nothing, a different one panics. The first installation also checks the
+translations (every catalog parses, no key is in both the kit's and the
+product's file) and panics on a problem, so a broken build doesn't start.
+`get()` without an installed configuration panics with a message that says
+what to do; the kit's own tests fall back to their test configuration
+(`kit/src/testing.rs`: Vigilant Vole's names, translations and migrations).
 
-## `KitConfig`
-
-The product describes itself once (`src/product.rs`) and registers it with
-`register_config!(KIT)`. The macro defines a link-time symbol that
-`kit::config::get()` calls, so the configuration exists in every binary that
-contains the kit (the server, unit tests, integration tests) without an
-`install()` call that someone could forget. The kit does not name the product;
-the build fails to link if no product registers one.
+Vigilant Vole installs in `main` and in `server::prepare`. Test binaries have
+no `main`, so its unit tests (`src/lib.rs`) and every integration test
+(`tests/common/mod.rs` and the three tests that don't use it) install from a
+constructor that runs before the tests (`ctor`, a dev-dependency), so no test
+can forget it.
 
 | Field | Used for | Vigilant Vole |
 | --- | --- | --- |
-| `product` | texts, TOTP issuer fallback, default site name, MCP server title, auth realm, TLS warning | `Vigilant Vole` |
+| `product` | texts, TOTP issuer fallback, default site name, MCP server title, auth realm, provider names, TLS warning | `Vigilant Vole` |
 | `slug` | MCP server name, tags/sources sent to providers, timing-equaliser hash | `vigilant-vole` |
 | `session_cookie`, `pending_2fa_cookie`, `flash_cookie` | cookie names | `vv_session`, `vv_2fa`, `vv_flash` |
 | `token_prefix`, `other_token_prefixes` | API token format, MCP messages, docs checks | `vv_`, `["vva_"]` |
-| `user_agent` | outbound `User-Agent` (the product's clients use it) | `VigilantVole/<version>` |
+| `user_agent` | outbound `User-Agent` (the product's clients) | `VigilantVole/<version>` |
 | `backup_prefix` | name of the copy taken before a migration | `vigilant-vole-before-` |
-| `env_prefix` | `<PREFIX>_TRUST_PROXY`, `<PREFIX>_SETUP_TOKEN`, `$<PREFIX>_URL` in examples | `VV` |
+| `env_prefix` | `<PREFIX>_TRUST_PROXY`, `<PREFIX>_SETUP_TOKEN`, `$<PREFIX>_URL` in examples, id prefixes sent to providers (`vv-monitor-7`) | `VV` |
 | `csrf_exempt_prefixes`, `csrf_exempt_path` | token endpoints and the one-click unsubscribe link | `/api/push`, `/api/agent`, `/api/v1`, `/api/badge`, `/metrics`, `/mcp`; the unsubscribe path |
 | `extra_common_passwords` | refused passwords besides the kit's list | `uptimekuma`, `vigilantvole` |
-| `migrations` | `MigrationSet` (below) | `crate::db::MIGRATIONS` |
+| `migrations` | `MigrationSet` | `crate::db::MIGRATIONS` |
 | `embeddable_prefixes` | paths that may be framed | `/status/`, `/api/status-page/` |
-| `static_file` | looks up an embedded static file | `crate::api::static_file` |
+| `static_file` | looks up one of the product's static files | `crate::api::static_file` |
 | `machine_path_prefixes`, `machine_paths`, `browser_language_prefixes` | which paths stay English, which prefer `Accept-Language` | `/static/`, `/api/`; `/metrics`, `/healthz`; `/status/` |
 | `docs` | `DocsSpec`: routes, OpenAPI texts, error example, config file name, `curl` placeholders, the product's Markdown sections | `crate::api::v1::DOCS` |
-| `subject_type_label` | label of a monitor type in notifications | `MonitorType::label` |
-| `locales` | `(code, locale file text)` for every language | `locales/*.toml` |
+| `locales` | `(code, text)` of the product's own strings per language | `locales/*.toml` |
 
-## What the product supplies besides `KitConfig`
+`Core` is the kit's view of the product's state: Vigilant Vole implements
+`FromRef<AppState> for Core` (`AppState::core()`), kit middleware takes
+`State<Core>`, and the product's routers stay `Router<AppState>`.
 
-* **Migrations.** `kit::db::migrate` owns the how (tracking table, safety
-  copy, newer-schema refusal, foreign key handling). A `MigrationSet` says
-  what: the migration files, the `-- vv:foreign_keys=off` marker, the legacy
-  baseline (`0001_init.sql`, detected by the `users`/`monitors` tables) and
-  the `after` hook for data fix-ups that SQL can't do (hashing old subscriber
-  tokens). All of it is in `src/db/mod.rs`.
-* **MCP tools.** `kit::mcp::Handler` is implemented by the product's `Ctx`
-  (`src/mcp/mod.rs`); the tool table and the in-process REST calls stay in
-  `src/mcp/tools.rs`.
-* **API routes.** The route table, the docs pages and `DOCS` are in
-  `src/api/v1/docs.rs`; the Markdown intro/middle/outro sections in
-  `src/api/v1/docs/markdown.rs`.
-* **Translations**, **static files** and the **monitor type labels**, through
-  `KitConfig`.
-* **Pages.** The login, setup and 2FA pages and the language/site-name
-  settings UI stay with the product; they use the kit's guards and cookies.
+## Alerts
 
-## How the cycles were broken
+Every provider builds from a `vole_kit::notify::alert::Alert`:
 
-* `auth ↔ api ↔ db`: the middleware moved with the primitives into
-  `kit::auth::guard` and works on `Core` (not `AppState`); `ApiError` moved to
-  `kit::http`; `Role`, `TokenScope`, users and API tokens moved to `kit::db`.
-  `crate::api::auth` keeps thin wrappers that take `&AppState`.
-* `i18n → api, db::settings`: the middleware uses `Core::with_conn` and the
-  kit's settings accessors; the catalogs come from `KitConfig::locales`
-  (`LangInfo::source` derefs to the registered text).
-* `db → notification`: `NotificationEvent`, `EventKind` and
-  `NotificationChannel` moved to `kit::notify::alert`; `crate::db::models`
-  re-exports them.
-* `notification → db::models::MonitorType`: replaced by
-  `KitConfig::subject_type_label`.
-* `mcp → api, auth, monitor`: the protocol part needs only `Core`; the tools
-  stayed.
+* `kind: AlertKind`: `Problem`, `Recovered`, `Reminder`, `Escalation`,
+  `Expiring`, `Unstable`, `MaintenanceStarted`, `MaintenanceEnded`, `Test`.
+  Providers use it to open, resolve or skip incidents and to pick priorities
+  and icons.
+* `level: Level` (`Critical`, `Warning`, `Ok`, `Info`), `colour`, `emoji`;
+  `AlertKind::level()`, `AlertKind::emoji()` and `Level::colour()` give the
+  family's defaults.
+* the finished texts: `title`, `detail`, `facts` (label/value pairs),
+  `link_label`, `event` (machine name, e.g. `down`), `event_label`, `status`;
+* the subject: `subject_id`, `subject`, `subject_type`, `target`, plus
+  `message`, `duration`, `expires_in_days`, `url`, `occurred_at`.
+
+The product writes the texts in the reader's language; the kit only lays them
+out (summary, title, plain-text, Markdown and HTML bodies). Vigilant Vole keeps
+its `NotificationEvent` and `EventKind`; `notification::message::alert` turns
+one into an `Alert` (headline, detail and facts in Vigilant Vole's wording), and
+`crate::notification` keeps `PROVIDERS`, `Transport`, `send`, `send_config`,
+`send_all` and `email::{build_message, send}` with their old signatures as
+wrappers. Every provider's request and the email MIME are byte-identical (the
+golden notification snapshots).
+
+## Resources
+
+### Translations
+
+A language's catalog is two files: the kit's core strings
+(`kit/locales/<code>.toml`: the sections `common`, `nav`, `js`, `fmt`,
+`count`, `login`, `setup`, `sec`, `users`, `tokens`, `auth`, `error`, `role`,
+`notif` and the key `msg.sent_by`), compiled into the kit, and the product's
+(`locales/<code>.toml`, handed over in `KitConfig::locales`). `LangInfo::source`
+is the two joined. A key in both is an error at start-up (with tests). All 26
+languages are split this way; keys and texts are unchanged.
+
+### Static files
+
+The kit embeds the design system: `style.css`, `app.js`, `theme.js`,
+`icons.svg`, `htmx.min.js`, `sse.js` and `fonts/` (`assets::KIT_FILES`), and
+serves it first at `/static/…`; Vigilant Vole embeds only its own files (icons,
+favicon, manifest). The files stay in the repository's `static/` folder: the
+golden test `static_assets` enumerates that folder, so moving them under
+`kit/` would change a golden test. The kit embeds them from `../static/`,
+which a git dependency checks out along with the kit. A test checks that every
+file in `static/` belongs to exactly one of the two. URLs, contents, content
+types, ETags and caching are unchanged.
+
+## Migrations
+
+Not done in phase 3, deliberately. `users`, `api_tokens` and `settings` are
+still created by Vigilant Vole's migrations, and the kit's runner applies the
+product's `MigrationSet`.
+
+A separate core set would add rows to `schema_migrations` (or another
+tracking table) on every database, and the golden schema test freezes both
+`sqlite_master` and the list of applied migrations for a fresh database and
+for every release fixture. Any core set therefore changes a golden snapshot,
+which the refactoring must not do. The plan, for when the owner accepts that
+snapshot change:
+
+1. `kit/migrations/` with the final schema of `users`, `api_tokens` and
+   `settings` (`CREATE TABLE IF NOT EXISTS`), tracked as `kit/0001_core.sql`
+   etc. in `schema_migrations`.
+2. `MigrationSet` grows a `core` list; the runner applies core first, then the
+   product's set.
+3. Vigilant Vole adds `01NN_adopt_kit_core.sql`, which only records the core
+   migrations as applied. Databases that already have the tables run it; fresh
+   databases run the core set and then Vigilant Vole's migrations, whose
+   `CREATE TABLE` statements for those tables are guarded by the adoption
+   (or rewritten to `IF NOT EXISTS`).
+4. `tests/upgrade.rs` must still give an identical schema and identical data
+   for every fixture; only the migration list in the golden schema snapshot
+   changes.
+
+## Using vole-kit in another product (Keen Kestrel)
+
+```toml
+# Cargo.toml
+[dependencies]
+vole-kit = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.1.0" }
+```
+
+```toml
+# .cargo/config.toml (not committed): work against a local checkout
+[patch."https://github.com/Ferdinand99/Vigilant-Vole"]
+vole-kit = { path = "../Vigilant-Vole/kit" }
+```
+
+Then:
+
+1. Write a `static KitConfig` (`kestrel`, `kk_session`, `kk_`,
+   `KeenKestrel/<version>`, …), its `MigrationSet`, `DocsSpec` and product
+   locales, and call `vole_kit::config::install(&KIT)` first thing in `main`
+   (and in test set-up).
+2. Implement `FromRef<AppState> for vole_kit::state::Core`; use
+   `require_auth`, `csrf_guard`, `security_headers`, `static_asset`,
+   `i18n::layer` and `ApiError` like Vigilant Vole's `api::build_router`.
+3. Send alerts by building `Alert`s and calling `vole_kit::notify::send`.
+4. Serve the design system with `vole_kit::http::assets::static_asset`.
+
+Until there is a tag, pin a commit (`rev = "…"`).
+
+## Not done (proposals)
+
+* **Templates.** `layout.html`, `macros.html`, the sign-in pages and
+  `api_docs.html` stay in `templates/`. askama compiles templates into the crate
+  that uses them, so sharing means the product reading the kit's template
+  directory at build time: vole-kit declares `links = "vole-kit"` and a
+  `build.rs` that exports its `templates/` path (`DEP_VOLE_KIT_TEMPLATES`), and
+  each product's `askama.toml` lists that directory after its own. A test in
+  each product would render the shared pages. Not attempted here.
+* **Releases.** release-please with two components: `.` (`vigilant-vole`,
+  tags `vX.Y.Z` as now) and `kit` (`vole-kit`, tags `vole-kit-vX.Y.Z`), each with
+  its own changelog and version (`release-please-config.json` packages, plus
+  `include-component-in-tag` for the kit). No version was bumped and nothing
+  was tagged.
+* **Product names outside the kit's reach:** the provider form placeholders
+  and two defaults that say "Vigilant Vole" (compile-time schema data the
+  golden tests read raw), the `localStorage` key in `static/theme.js`, the
+  `vv-i18n` element id in the layout, the `vv:` foreign key marker (that one is
+  configurable).
+* **`src/mcp_bridge.rs`** (the stdio bridge) is generic and could join
+  `vole_kit::mcp`.
 
 ## Status
 
-Done (all verified with the golden tests, the 1218 lib tests, `tests/upgrade.rs`,
-`backup_restore`, `db_concurrency`, `cargo fmt --check` and
-`cargo clippy --all-targets -- -D warnings`):
-
-* kit skeleton, `KitConfig`, `Core`, boundary test
-* `kit::i18n`, `kit::db`, `kit::http` (+ `rest`), `kit::auth`, `kit::page`,
-  `kit::docs`, `kit::mcp`, `kit::notify`, `kit::tls_roots`
-
-Left for phase 3 (not done now on purpose):
-
-1. **Workspace crate.** Move `src/kit/` to `crates/vole-kit/` and make
-   Vigilant Vole depend on it. `register_config!` already uses `$crate`, so
-   it keeps working; its path becomes `vole_kit::register_config!`.
-2. **Embedded resources.** Templates (`layout.html`, `macros.html`, the auth
-   pages, `api_docs.html`), `static/` (CSS, fonts, `theme.js`, `app.js`,
-   icons), `locales/` (the shared keys such as `error.*`, `users.err_*`,
-   `msg.*`, `notif.*`) and `migrations/` stay where they are. The kit refers
-   to translation keys that live in the product's catalogs (`error.not_found`,
-   `msg.down`, …). Phase 3 moves the shared ones into the crate and adds the
-   template/locale synchronisation.
-3. **Core migration set.** `users`, `api_tokens` and `settings` are created by
-   the product's `0001`–`00NN` migrations. The kit should own a core set and
-   the product append its own.
-4. **Kit tests.** Many tests moved with their code and rely on the registered
-   product configuration (cookie names, `vv_` tokens, English `msg.*` texts)
-   and on Vigilant Vole's migrations and locale files (`kit::db::test_conn`,
-   the i18n catalog tests in `src/i18n/tests.rs`, the notification fixtures in
-   `kit::notify::tests`). The kit crate needs its own test product config.
-5. **Texts fixed at compile time.** The example placeholders and two defaults
-   in the provider forms say "Vigilant Vole" (`bark` group, `zulip` topic,
-   bot-name examples). They are `const` data, which a link-time config can't
-   fill in; the golden tests read them raw. A build-time constant or locale
-   overrides (`notif.<kind>.<field>.placeholder`) would remove them.
-6. **Remaining product names outside the kit's reach:** the `localStorage`
-   key in `static/theme.js`, the `vv-i18n` element id in the layout, `vv:`
-   in the foreign key marker (that one *is* configurable).
-7. **`src/mcp_bridge.rs`** (the stdio bridge, `vigilant-vole mcp --url`) is
-   generic and could join `kit::mcp`.
-
-Next step: phase 3, in the order above.
+Phase 3 done: the workspace and crate; configuration without `unsafe`; the
+generic `Alert`; the kit's own translations and design system files. Left: the
+core migration set (plan above), template sharing and release-please (proposals
+above), then tagging `vole-kit`.
 
 ## Risks where behaviour could differ without a test noticing
 
-* `register_config!` is a link-time symbol (`#[unsafe(no_mangle)]` and one
-  `unsafe` call in `kit::config::get`). A second product linked into the same
-  binary would clash; none is.
-* Kit code calls `config::get()` per use instead of caching; it is a plain
-  function returning a static reference.
-* Environment variable names are built at run time from `env_prefix`; the
-  values (`VV_TRUST_PROXY`, `VV_SETUP_TOKEN`) are unchanged.
-* Message texts the kit builds from catalog keys (`users.err_*`, `error.*`,
-  `msg.*`) are only as complete as the product's locale files; the i18n
-  coverage test still checks every key used in Rust and templates.
+* The design system is embedded by name; a new design-system file added to
+  `static/` without adding it to `KIT_FILES` and Vigilant Vole's exclusions is
+  served by Vigilant Vole instead (still served; the split test notices).
+* Release builds embed files at compile time, debug builds read them from
+  disk; both read `static/` through the kit's path `../static/`.
+* `install` validates the catalogs; a duplicate key now stops the start where
+  before a broken file only logged an error and fell back to English.
+* Test binaries install the configuration from a `ctor` constructor (life
+  before `main`, test builds only).
+* Id prefixes sent to providers (`vv-monitor-7`, the Google Chat card id, the
+  Matrix transaction id) come from `env_prefix` lower-cased.
