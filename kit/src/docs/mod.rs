@@ -271,7 +271,7 @@ pub fn openapi_document(server_url: &str) -> Value {
         "openapi": "3.1.0",
         "info": {
             "title": spec().openapi_title,
-            "version": env!("CARGO_PKG_VERSION"),
+            "version": crate::config::get().version,
             "description": spec().openapi_description,
         },
         "servers": [{"url": server_url}],

@@ -105,6 +105,7 @@ can forget it.
 | `slug` | MCP server name, tags/sources sent to providers, timing-equaliser hash | `vigilant-vole` |
 | `session_cookie`, `pending_2fa_cookie`, `flash_cookie` | cookie names | `vv_session`, `vv_2fa`, `vv_flash` |
 | `token_prefix`, `other_token_prefixes` | API token format, MCP messages, docs checks | `vv_`, `["vva_"]` |
+| `version` | `info.version` in the OpenAPI document, MCP `serverInfo.version` | `CARGO_PKG_VERSION` of vigilant-vole |
 | `user_agent` | outbound `User-Agent` (the product's clients) | `VigilantVole/<version>` |
 | `backup_prefix` | name of the copy taken before a migration | `vigilant-vole-before-` |
 | `env_prefix` | `<PREFIX>_TRUST_PROXY`, `<PREFIX>_SETUP_TOKEN`, `$<PREFIX>_URL` in examples, id prefixes sent to providers (`vv-monitor-7`) | `VV` |

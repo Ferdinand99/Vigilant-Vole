@@ -23,6 +23,10 @@ pub struct KitConfig {
     /// Further token prefixes the API documents mention besides
     /// [`Self::token_prefix`] (agent tokens).
     pub other_token_prefixes: &'static [&'static str],
+    /// The product's version, reported by the API documents and the MCP
+    /// server (the kit's own `CARGO_PKG_VERSION` is the kit's, not the
+    /// product's).
+    pub version: &'static str,
     /// `User-Agent` of outgoing requests.
     pub user_agent: &'static str,
     /// Prefix of the database copy taken before a migration

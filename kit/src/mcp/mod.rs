@@ -404,7 +404,7 @@ fn initialize<H: Handler>(handler: &H, params: &Map<String, Value>) -> Value {
         "serverInfo": {
             "name": crate::config::get().slug,
             "title": crate::config::get().product,
-            "version": env!("CARGO_PKG_VERSION"),
+            "version": crate::config::get().version,
         },
         "instructions": handler.instructions(),
     })

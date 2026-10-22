@@ -82,6 +82,7 @@ pub static CONFIG: KitConfig = KitConfig {
     pending_2fa_cookie: "vv_2fa",
     token_prefix: "vv_",
     other_token_prefixes: &["vva_"],
+    version: env!("CARGO_PKG_VERSION"),
     user_agent: "VigilantVole/test",
     backup_prefix: "vigilant-vole-before-",
     flash_cookie: "vv_flash",

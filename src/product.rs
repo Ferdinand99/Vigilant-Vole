@@ -35,6 +35,7 @@ pub static KIT: KitConfig = KitConfig {
     pending_2fa_cookie: PENDING_2FA_COOKIE,
     token_prefix: TOKEN_PREFIX,
     other_token_prefixes: &["vva_"],
+    version: env!("CARGO_PKG_VERSION"),
     user_agent: USER_AGENT,
     backup_prefix: "vigilant-vole-before-",
     flash_cookie: FLASH_COOKIE,
