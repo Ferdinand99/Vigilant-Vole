@@ -24,9 +24,11 @@ ENV CARGO_PROFILE_RELEASE_STRIP=symbols \
     CARGO_TERM_COLOR=never
 
 # Everything the build reads: templates, static assets, migrations and
-# locales are compiled into the binary.
-COPY Cargo.toml Cargo.lock ./
+# locales are compiled into the binary. examples/ only so Cargo can load the
+# workspace (kit-demo is a member); it isn't built.
+COPY Cargo.toml Cargo.lock build.rs ./
 COPY kit ./kit
+COPY examples ./examples
 COPY src ./src
 COPY templates ./templates
 COPY static ./static
@@ -36,7 +38,7 @@ COPY locales ./locales
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    cargo build --release --locked \
+    cargo build --release --locked -p vigilant-vole \
     && cp target/release/vigilant-vole /usr/local/bin/vigilant-vole
 
 # --- Runtime -----------------------------------------------------------------

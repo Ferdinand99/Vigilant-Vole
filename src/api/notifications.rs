@@ -334,8 +334,9 @@ fn field_views(
         .map(|f| {
             let raw = values.get(f.key);
             let saved = f.secret && f.kind != FieldKind::KeyValue && !blank(stored.get(f.key));
+            let default = f.default_value();
             let mut value = if fresh {
-                f.default.to_string()
+                default.to_string()
             } else {
                 raw.map(display_value).unwrap_or_default()
             };
@@ -345,7 +346,7 @@ fn field_views(
             let options = match f.kind {
                 FieldKind::Select(opts) => {
                     let chosen = if value.is_empty() {
-                        f.default
+                        default.as_ref()
                     } else {
                         value.as_str()
                     };
@@ -365,7 +366,7 @@ fn field_views(
                 _ => Vec::new(),
             };
             let checked = if fresh {
-                f.default == "true"
+                default == "true"
             } else {
                 raw.is_some_and(|v| v.as_bool() == Some(true))
             };

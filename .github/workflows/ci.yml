@@ -44,6 +44,13 @@ jobs:
       - name: Golden snapshots
         run: cargo test --test golden
 
+      # vole-kit stays free of Vigilant Vole, and a second product
+      # (examples/kit-demo) runs on it alone.
+      - name: Kit boundary and kit demo
+        run: |
+          cargo test --test kit_boundary
+          cargo test -p kit-demo
+
   upgrade:
     # Databases saved by every release (tests/fixtures/upgrade, made by
     # tools/upgrade-fixtures/generate.sh) upgraded with this build, plus the

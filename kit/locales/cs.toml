@@ -943,3 +943,46 @@ topic.label = "Topic aplikace"
 topic.help = "Pouze iOS: bundle ID aplikace."
 server.required = "Zadejte URL Gorush"
 tokens.required = "Zadejte alespoň jeden token zařízení"
+
+[dashboard]
+response = "Odezva"
+
+[detail]
+expires = "Platí do"
+request = "Požadavek"
+
+[monitor_form]
+edit_heading = "Úprava: {name}"
+
+[general]
+language = "Jazyk"
+err_site_name = "Použijte nejvýše 80 znaků."
+
+[docs]
+title = "Reference API"
+create_token = "Vytvořit token"
+sections = "Sekce API"
+getting_started = "Začínáme"
+getting_started_sub = "Posílejte token jako bearer token. Tokeny jen pro čtení mohou volat každé GET."
+authenticate = "Ověření"
+session_help = "Jste přihlášeni? Stejné koncové body fungují s vaší relací v tomto prohlížeči, takže odkazy GET můžete otevírat přímo."
+conventions = "Konvence"
+base_url = "Základní URL"
+lists = "Seznamy"
+caching = "Mezipaměť"
+caching_text = "Požadavky GET posílají"
+times = "Časy"
+secrets = "Tajemství"
+secrets_1 = "Zobrazují se jako"
+secrets_2 = "; pošlete to zpět, aby se hodnota zachovala"
+errors = "Chyby"
+errors_sub = "Jednotný tvar pro každý koncový bod"
+codes = "Kódy:"
+details = "Podrobnosti"
+parameters = "Parametry"
+examples_lc = "příklady"
+examples = "Příklady"
+ai_lead = "Pracujete s asistentem AI?"
+ai_text = "Předejte mu celé API jedním vložením."
+copy_for_ai = "Kopírovat pro AI"
+open_markdown = "Otevřít jako Markdown"

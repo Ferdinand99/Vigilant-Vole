@@ -1773,6 +1773,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "kit-demo"
+version = "0.3.7"
+dependencies = [
+ "askama",
+ "axum",
+ "axum-extra",
+ "reqwest",
+ "rusqlite",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "tower",
+ "url",
+ "vole-kit",
+ "vole-kit-build",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3795,13 +3813,14 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "vole-kit",
+ "vole-kit-build",
  "webpki-root-certs",
  "x509-parser",
 ]
 
 [[package]]
 name = "vole-kit"
-version = "0.5.1"
+version = "0.0.0"
 dependencies = [
  "argon2",
  "askama",
@@ -3835,6 +3854,10 @@ dependencies = [
  "url",
  "webpki-root-certs",
 ]
+
+[[package]]
+name = "vole-kit-build"
+version = "0.0.0"
 
 [[package]]
 name = "walkdir"

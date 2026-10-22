@@ -202,4 +202,85 @@ mod split_tests {
         assert!(check_pair("[common]\nsave = \"Save\"\n", "[detail]\nsave = \"Keep\"\n").is_ok());
         assert!(check_pair("[common\n", "").is_err());
     }
+
+    fn files(dir: &std::path::Path, ext: &str, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("dir").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                files(&path, ext, out);
+            } else if path.extension().is_some_and(|e| e == ext) {
+                out.push(path);
+            }
+        }
+    }
+
+    /// `(key, plural)` for every `call("key"` in `src`.
+    fn keys(src: &str, calls: &[&str]) -> Vec<(String, bool)> {
+        let mut out = Vec::new();
+        for call in calls {
+            let needle = format!("{call}(\"");
+            let mut rest = src;
+            while let Some(i) = rest.find(&needle) {
+                let before = rest[..i].chars().next_back();
+                rest = &rest[i + needle.len()..];
+                if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                    continue;
+                }
+                if let Some(end) = rest.find('"') {
+                    out.push((rest[..end].to_string(), matches!(*call, "trn" | "i18n::tn")));
+                }
+            }
+        }
+        out
+    }
+
+    /// The kit's templates and code find every string they use in the kit's
+    /// own catalog, so a product with none of Vigilant Vole's strings (Keen
+    /// Kestrel) shows them too. Keys a product hands over (navigation and
+    /// settings tab labels, the API reference subtitle) are its own.
+    #[test]
+    fn the_kit_uses_only_its_own_strings() {
+        let core = parse(core_text("en")).unwrap();
+        let has = |key: &str, plural: bool| {
+            if plural {
+                core.contains_key(&format!("{key}.one"))
+                    && core.contains_key(&format!("{key}.other"))
+            } else {
+                core.contains_key(key)
+            }
+        };
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut missing = Vec::new();
+        let mut checked = 0;
+        let mut sources = Vec::new();
+        files(&root.join("templates"), "html", &mut sources);
+        let templates = sources.len();
+        files(&root.join("src"), "rs", &mut sources);
+        for (n, file) in sources.iter().enumerate() {
+            if file.ends_with("i18n/mod.rs")
+                || file.ends_with("tests.rs")
+                || file.ends_with("testing.rs")
+            {
+                continue;
+            }
+            let src = std::fs::read_to_string(file).unwrap();
+            let calls: &[&str] = if n < templates {
+                &["tr", "tr1", "tr2", "tr3", "trn"]
+            } else {
+                &["i18n::t", "i18n::tf", "i18n::tn", "t_in(lang, "]
+            };
+            for (key, plural) in keys(&src, calls) {
+                checked += 1;
+                if !has(&key, plural) {
+                    missing.push(format!("{}: {key}", file.display()));
+                }
+            }
+        }
+        assert!(checked > 200, "only {checked} keys found");
+        assert!(
+            missing.is_empty(),
+            "not in the kit's catalog:\n{}",
+            missing.join("\n")
+        );
+    }
 }

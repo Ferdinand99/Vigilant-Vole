@@ -1,4 +1,4 @@
-{% import "macros.html" as m %}
+{% import "kit/macros.html" as m %}
 {%- if !problem.is_empty() %}
 <div class="stack-sm">
   {{ m::callout("danger", problem, tr("backup.cant_preview")) }}

@@ -929,3 +929,46 @@ topic.label = "Topic dell’app"
 topic.help = "Solo iOS: il bundle ID dell’app."
 server.required = "Inserisci l’URL di Gorush"
 tokens.required = "Inserisci almeno un token del dispositivo"
+
+[dashboard]
+response = "Risposta"
+
+[detail]
+expires = "Scade"
+request = "Richiesta"
+
+[monitor_form]
+edit_heading = "Modifica {name}"
+
+[general]
+language = "Lingua"
+err_site_name = "Usa al massimo 80 caratteri."
+
+[docs]
+title = "Riferimento API"
+create_token = "Crea un token"
+sections = "Sezioni dell’API"
+getting_started = "Per iniziare"
+getting_started_sub = "Invia il tuo token come token bearer. I token di sola lettura possono chiamare ogni GET."
+authenticate = "Autenticazione"
+session_help = "Hai effettuato l’accesso? Gli stessi endpoint funzionano con la tua sessione in questo browser, quindi puoi aprire direttamente i link GET."
+conventions = "Convenzioni"
+base_url = "URL di base"
+lists = "Elenchi"
+caching = "Cache"
+caching_text = "I GET inviano un"
+times = "Orari"
+secrets = "Segreti"
+secrets_1 = "Mostrato come"
+secrets_2 = "; rinvialo per mantenere il valore"
+errors = "Errori"
+errors_sub = "Un’unica forma per ogni endpoint"
+codes = "Codici:"
+details = "Dettagli"
+parameters = "Parametri"
+examples_lc = "esempi"
+examples = "Esempi"
+ai_lead = "Sviluppi con un assistente IA?"
+ai_text = "Passagli tutta l’API con un solo incolla."
+copy_for_ai = "Copia per l’IA"
+open_markdown = "Apri come Markdown"

@@ -901,3 +901,46 @@ topic.label = "应用主题"
 topic.help = "仅 iOS：应用的 bundle ID。"
 server.required = "请输入 Gorush URL"
 tokens.required = "请至少输入一个设备令牌"
+
+[dashboard]
+response = "响应"
+
+[detail]
+expires = "到期时间"
+request = "请求"
+
+[monitor_form]
+edit_heading = "编辑{name}"
+
+[general]
+language = "语言"
+err_site_name = "最多使用 80 个字符。"
+
+[docs]
+title = "API 参考"
+create_token = "创建令牌"
+sections = "API 分区"
+getting_started = "快速开始"
+getting_started_sub = "以 Bearer 令牌的形式发送你的令牌。只读令牌可调用所有 GET 接口。"
+authenticate = "认证"
+session_help = "已登录？同样的接口也可使用此浏览器中的会话，因此可以直接打开 GET 链接。"
+conventions = "约定"
+base_url = "基础 URL"
+lists = "列表"
+caching = "缓存"
+caching_text = "GET 请求会发送"
+times = "时间"
+secrets = "密钥"
+secrets_1 = "显示为"
+secrets_2 = "；将其原样发回即可保留原值"
+errors = "错误"
+errors_sub = "所有接口采用统一格式"
+codes = "错误码："
+details = "详情"
+parameters = "参数"
+examples_lc = "示例"
+examples = "示例"
+ai_lead = "在用 AI 助手开发？"
+ai_text = "粘贴一次，就能把整个 API 交给它。"
+copy_for_ai = "复制给 AI"
+open_markdown = "以 Markdown 打开"

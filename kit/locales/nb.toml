@@ -916,3 +916,46 @@ topic.label = "App-topic"
 topic.help = "Bare iOS: appens bundle-ID."
 server.required = "Skriv inn Gorush-URL-en"
 tokens.required = "Skriv inn minst ett enhetstoken"
+
+[dashboard]
+response = "Respons"
+
+[detail]
+expires = "Utløper"
+request = "Forespørsel"
+
+[monitor_form]
+edit_heading = "Rediger {name}"
+
+[general]
+language = "Språk"
+err_site_name = "Bruk høyst 80 tegn."
+
+[docs]
+title = "API-referanse"
+create_token = "Lag et token"
+sections = "API-seksjoner"
+getting_started = "Kom i gang"
+getting_started_sub = "Send tokenet som et bearer-token. Lesetokener kan kalle alle GET-endepunkter."
+authenticate = "Autentisering"
+session_help = "Er du logget inn? De samme endepunktene virker med økten din i denne nettleseren, så du kan åpne GET-lenker direkte."
+conventions = "Konvensjoner"
+base_url = "Basis-URL"
+lists = "Lister"
+caching = "Hurtigbuffer"
+caching_text = "GET-svar sender en"
+times = "Tider"
+secrets = "Hemmeligheter"
+secrets_1 = "Vises som"
+secrets_2 = ". Send den tilbake for å beholde verdien"
+errors = "Feil"
+errors_sub = "Samme format for alle endepunkter"
+codes = "Koder:"
+details = "Detaljer"
+parameters = "Parametere"
+examples_lc = "eksempler"
+examples = "Eksempler"
+ai_lead = "Bygger du med en KI-assistent?"
+ai_text = "Gi den hele API-et i én innliming."
+copy_for_ai = "Kopier for KI"
+open_markdown = "Åpne som Markdown"

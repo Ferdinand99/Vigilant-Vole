@@ -1,0 +1,52 @@
+{#-
+  Vigilant Vole's own component macros: monitor status and incident
+  timelines. The design system's macros are the kit's ("kit/macros.html").
+      {% import "kit/macros.html" as m %}{% import "status_macros.html" as st %}
+-#}
+
+{#- Timeline of an incident's updates (newest first), public pages and editor. -#}
+{% macro incident_updates(updates, manage_url = "") -%}
+{%- if !updates.is_empty() %}
+<ol class="incident-updates">
+  {%- for u in updates %}
+  <li class="incident-update status-update-{{ u.status }}">
+    <div class="incident-update-head"><strong class="incident-update-status">{{ u.label }}</strong><time class="incident-update-time" datetime="{{ u.posted_at }}">{{ u.time }}</time>
+      {%- if !manage_url.is_empty() %}
+      <button type="button" class="btn btn-icon btn-plain btn-sm" hx-delete="{{ manage_url }}/{{ u.id }}" hx-swap="none"
+        hx-confirm="{{ tr("inc.update_delete_q") }}" data-confirm-message="{{ tr("inc.update_delete_msg") }}" aria-label="{{ tr("common.delete") }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+      {%- endif %}
+    </div>
+    {%- if !u.body_html.is_empty() %}
+    <div class="incident-update-body prose">{{ u.body_html|safe }}</div>
+    {%- endif %}
+  </li>
+  {%- endfor %}
+</ol>
+{%- endif %}
+{%- endmacro %}
+
+{#- Status pill: up | down | pending | maintenance | paused. The first letter is raised by CSS (.cap). -#}
+{% macro status_pill(status, size = "") -%}
+<span class="pill status-{{ status }}{% if size == "lg" %} pill-lg{% endif %}"><span class="dot"></span><span class="cap">{{ status_text(status) }}</span></span>
+{%- endmacro %}
+
+{#- Status for an Option<status>: None renders as "pending". -#}
+{% macro status_pill_opt(status, size = "") -%}
+{% match status %}{% when Some(s) %}<span class="pill status-{{ s }}{% if size == "lg" %} pill-lg{% endif %}"><span class="dot"></span><span class="cap">{{ status_text(s) }}</span></span>{% when None %}<span class="pill status-pending{% if size == "lg" %} pill-lg{% endif %}"><span class="dot"></span>{{ tr("status.pending") }}</span>{% endmatch %}
+{%- endmacro %}
+
+{#- Bare coloured dot with an accessible name. Pulses only for "down". -#}
+{% macro status_dot(status) -%}
+<span class="dot status-{{ status }}" role="img" aria-label="{{ status_text(status) }}"></span>
+{%- endmacro %}
+
+{% macro status_dot_opt(status) -%}
+{% match status %}{% when Some(s) %}<span class="dot status-{{ s }}" role="img" aria-label="{{ status_text(s) }}"></span>{% when None %}<span class="dot status-pending" role="img" aria-label="{{ tr("status.pending") }}"></span>{% endmatch %}
+{%- endmacro %}
+
+{#- Heartbeat strip from an oldest-first list of Option<status>. -#}
+{% macro heartbeat_bar(beats, label = "", size = "") -%}
+<div class="beats{% if size == "sm" %} beats-sm{% endif %}" role="img" aria-label="{% if label.is_empty() %}{{ tr("common.recent_checks") }}{% else %}{{ label }}{% endif %}">
+  {%- for b in beats %}{% match b %}{% when Some(s) %}<span class="beat status-{{ s }}" title="{{ status_text(s) }}"></span>{% when None %}<span class="beat"></span>{% endmatch %}{% endfor -%}
+</div>
+{%- endmacro %}

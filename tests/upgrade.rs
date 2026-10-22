@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use common::{
     DataDir, Fixture, Server, applied_migrations, columns, count, embedded_migrations, fixtures,
-    open_ro, rows, schema, tables,
+    open_ro, recorded_migrations, rows, schema, tables,
 };
 use rusqlite::Connection;
 use vigilant_vole::db;
@@ -100,7 +100,7 @@ async fn upgrade_applies_every_pending_migration_in_order_after_a_backup() {
         let conn = open_ro(&dir.db());
         assert_eq!(
             applied_migrations(&conn),
-            all,
+            recorded_migrations(),
             "{}: schema_migrations",
             f.version
         );
@@ -857,7 +857,7 @@ async fn failed_migration_is_rolled_back_and_retried() {
     let report = migrate(&dir).await.unwrap();
     assert_eq!(report.applied.first().map(String::as_str), Some(FAILING));
     let conn = open_ro(&dir.db());
-    assert_eq!(applied_migrations(&conn), embedded_migrations());
+    assert_eq!(applied_migrations(&conn), recorded_migrations());
     assert_eq!(count(&conn, "monitors"), f.count("monitors"));
     assert_eq!(count(&conn, "heartbeats"), f.count("heartbeats"));
 }

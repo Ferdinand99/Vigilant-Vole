@@ -22,7 +22,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
             .placeholder("https://discord.com/api/webhooks/…")
             .help("Channel settings → Integrations → Webhooks → Copy webhook URL."),
         Field::text("username", "Bot name")
-            .placeholder("Vigilant Vole…")
+            .placeholder("{product}…")
             .help("Overrides the webhook’s name."),
         Field::url("avatar_url", "Avatar URL")
             .cosmetic()

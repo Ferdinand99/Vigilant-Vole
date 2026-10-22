@@ -3242,10 +3242,8 @@ pub fn validate_backup_db(path: &Path) -> Result<i64, String> {
     if !applied.iter().any(|n| n == "0002_full_schema.sql") {
         return Err("This backup is from a very old version. Start that version once to upgrade it, then back up again.".into());
     }
-    let known: Vec<String> = MigrationFiles::iter()
-        .filter(|n| n.ends_with(".sql"))
-        .map(|n| n.into_owned())
-        .collect();
+    // Ours plus the kit's core set (`kit/0001_core.sql`, recorded by 0104).
+    let known = crate::kit::db::migrate::all_migration_names();
     if let Some(newer) = applied.iter().find(|n| !known.contains(n)) {
         return Err(format!(
             "This backup was made by a newer version of Vigilant Vole (migration {newer}). Upgrade first."
@@ -3312,11 +3310,6 @@ pub fn apply_pending_restore(data_dir: &Path) {
         Err(err) => tracing::error!(%err, "couldn't move the uploaded backup into place"),
     }
 }
-
-/// The migrations this build knows (to reject backups from newer versions).
-#[derive(rust_embed::Embed)]
-#[folder = "migrations/"]
-struct MigrationFiles;
 
 /// Which sections a document has, with their sizes (for previews).
 pub fn sections_present(doc: &Document) -> BTreeMap<&'static str, usize> {

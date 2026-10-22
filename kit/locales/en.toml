@@ -916,3 +916,46 @@ topic.label = "App topic"
 topic.help = "iOS only: the app’s bundle ID."
 server.required = "Enter the Gorush URL"
 tokens.required = "Enter at least one device token"
+
+[dashboard]
+response = "Response"
+
+[detail]
+expires = "Expires"
+request = "Request"
+
+[monitor_form]
+edit_heading = "Edit {name}"
+
+[general]
+language = "Language"
+err_site_name = "Use at most 80 characters."
+
+[docs]
+title = "API reference"
+create_token = "Create a token"
+sections = "API sections"
+getting_started = "Getting started"
+getting_started_sub = "Send your token as a bearer token. Read-only tokens can call every GET."
+authenticate = "Authenticate"
+session_help = "Signed in? The same endpoints work with your session in this browser, so you can open GET links directly."
+conventions = "Conventions"
+base_url = "Base URL"
+lists = "Lists"
+caching = "Caching"
+caching_text = "GETs send an"
+times = "Times"
+secrets = "Secrets"
+secrets_1 = "Shown as"
+secrets_2 = "; send it back to keep the value"
+errors = "Errors"
+errors_sub = "One shape for every endpoint"
+codes = "Codes:"
+details = "Details"
+parameters = "Parameters"
+examples_lc = "examples"
+examples = "Examples"
+ai_lead = "Building with an AI assistant?"
+ai_text = "Hand it the whole API in one paste."
+copy_for_ai = "Copy for AI"
+open_markdown = "Open as Markdown"

@@ -1,25 +1,22 @@
-//! API tokens. Owned by the auth agent.
-//!
-//! Routes:
-//! - `GET  /settings/tokens` — your tokens (admins also see everyone's)
-//! - `POST /settings/tokens` — create; the response shows the token once
-//! - `DELETE /settings/tokens/{id}` — revoke (owner or admin; htmx row removal)
-//!
-//! Tokens authenticate `/api/v1/*` and `/metrics` (see `api::auth`).
+//! API tokens:
+//! - `GET  /settings/tokens`: your tokens (admins also see everyone's)
+//! - `POST /settings/tokens`: create; the response shows the token once
+//! - `DELETE /settings/tokens/{id}`: revoke (owner or admin; htmx row removal)
 
-use crate::i18n::Tr as _;
 use askama::Template;
+use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{delete, get};
-use axum::{Form, Router};
 use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
-use super::{ApiError, ApiResult, AppState, HtmlTemplate, PageCtx, flash};
 use crate::auth::{CurrentUser, tokens};
 use crate::db::api_tokens::{self as db_tokens, ApiToken, TokenScope};
+use crate::http::{ApiError, ApiResult, HtmlTemplate};
+use crate::i18n::Tr as _;
+use crate::page::{PageCtx, flash};
+use crate::state::Core;
 
 /// Per-user cap, so a script gone wrong can't fill the table.
 const MAX_TOKENS_PER_USER: usize = 50;
@@ -30,12 +27,6 @@ const EXPIRY_CHOICES: &[(&str, Option<i64>)] = &[
     ("365", Some(365)),
     ("never", None),
 ];
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/settings/tokens", get(list).post(create))
-        .route("/settings/tokens/{id}", delete(revoke))
-}
 
 struct TokenRow {
     id: i64,
@@ -78,17 +69,20 @@ struct TokensTemplate {
     new_token: Option<String>,
     new_token_name: String,
     base_url: String,
+    /// What the `curl` example calls, and where Prometheus scrapes (if anywhere).
+    example_path: &'static str,
+    metrics_path: Option<&'static str>,
 }
 
 async fn render(
-    state: &AppState,
+    core: &Core,
     user: &CurrentUser,
     jar: SignedCookieJar,
     created: Option<(String, String)>,
 ) -> ApiResult<Response> {
     let uid = user.id;
     let is_admin = user.is_admin();
-    let (mine, all) = state
+    let (mine, all) = core
         .with_conn(move |c| {
             let mine = db_tokens::list_for_user(c, uid)?;
             let all = if is_admin {
@@ -104,9 +98,9 @@ async fn render(
         .filter(|t| t.user_id != uid)
         .map(TokenRow::from)
         .collect();
-    let base_url = state.settings().await?.base_url.unwrap_or_default();
+    let base_url = core.base_url().await.unwrap_or_default();
     let (ctx, jar) = PageCtx::build(
-        state,
+        core,
         Some(user),
         &jar,
         crate::i18n::t("nav.api_tokens"),
@@ -125,6 +119,8 @@ async fn render(
         new_token,
         new_token_name,
         base_url,
+        example_path: crate::docs::spec().example_path,
+        metrics_path: crate::docs::spec().metrics_path,
     };
     // The page may contain a secret: keep it out of caches and history snapshots.
     let mut response = (jar, HtmlTemplate(page)).into_response();
@@ -135,13 +131,13 @@ async fn render(
     Ok(response)
 }
 
-async fn list(
-    State(state): State<AppState>,
+pub(super) async fn list(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
 ) -> ApiResult<Response> {
     user.require(crate::auth::Role::Viewer)?;
-    render(&state, &user, jar, None).await
+    render(&core, &user, jar, None).await
 }
 
 #[derive(Deserialize)]
@@ -158,8 +154,8 @@ fn back(jar: SignedCookieJar, kind: &str, message: &str) -> Response {
     (flash(jar, kind, message), Redirect::to("/settings/tokens")).into_response()
 }
 
-async fn create(
-    State(state): State<AppState>,
+pub(super) async fn create(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Form(form): Form<CreateForm>,
@@ -180,7 +176,7 @@ async fn create(
         return Ok(back(jar, "error", crate::i18n::t("tokens.err_expiry")));
     };
     let uid = user.id;
-    let count = state
+    let count = core
         .with_conn(move |c| db_tokens::list_for_user(c, uid))
         .await?
         .len();
@@ -194,23 +190,22 @@ async fn create(
         tokens::display_prefix(&token),
         name.clone(),
     );
-    state
-        .with_conn(move |c| {
-            db_tokens::insert(c, uid, &stored_name, &prefix, &hash, scope, expires_in)
-        })
-        .await?;
+    core.with_conn(move |c| {
+        db_tokens::insert(c, uid, &stored_name, &prefix, &hash, scope, expires_in)
+    })
+    .await?;
     tracing::info!(user = %user.username, token = %name, scope = scope.as_str(), "API token created");
     let jar = flash(jar, "success", crate::i18n::t("tokens.created"));
-    render(&state, &user, jar, Some((token, name))).await
+    render(&core, &user, jar, Some((token, name))).await
 }
 
-async fn revoke(
-    State(state): State<AppState>,
+pub(super) async fn revoke(
+    State(core): State<Core>,
     user: CurrentUser,
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
-    let token = state
+    let token = core
         .with_conn(move |c| db_tokens::get(c, id))
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -218,13 +213,12 @@ async fn revoke(
     if token.user_id != user.id && !user.is_admin() {
         return Err(ApiError::NotFound);
     }
-    state.with_conn(move |c| db_tokens::delete(c, id)).await?;
+    core.with_conn(move |c| db_tokens::delete(c, id)).await?;
     tracing::info!(user = %user.username, token = %token.name, owner = %token.username, "API token revoked");
 
     if headers.contains_key("hx-request") {
         let mut response = StatusCode::OK.into_response();
-        let value =
-            super::status_pages::toast_trigger(crate::i18n::t("tokens.revoked"), "success", false);
+        let value = crate::http::toast_trigger(crate::i18n::t("tokens.revoked"), "success", false);
         response.headers_mut().insert("hx-trigger", value);
         return Ok(response);
     }
@@ -236,8 +230,8 @@ mod tests {
     use askama::Template as _;
 
     use super::{PageCtx, TokensTemplate};
-    use crate::api::page::UserView;
     use crate::auth::Role;
+    use crate::page::UserView;
 
     /// Regression: the shown-once token's copy field reused the sheet's id
     /// (`new-token`), so right after creating a token the "New token" button
@@ -266,6 +260,8 @@ mod tests {
             new_token: Some("vv_secret".into()),
             new_token_name: "CI".into(),
             base_url: String::new(),
+            example_path: "/api/v1/monitors",
+            metrics_path: Some("/metrics"),
         };
         let html = page.render().expect("template renders");
         assert_eq!(

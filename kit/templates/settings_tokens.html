@@ -14,8 +14,10 @@
     <p class="muted">“{{ new_token_name }}”</p>
     {{ m::copy_field("created-token", token) }}
     <p class="help">{{ tr("tokens.send_bearer") }}</p>
-    <pre class="code"><code>curl -H "Authorization: Bearer {{ token }}" {% if base_url.is_empty() %}http://your-host{% else %}{{ base_url }}{% endif %}/api/v1/monitors</code></pre>
-    <p class="help">{{ tr("tokens.prom_1") }} <code>basic_auth</code> {{ tr("tokens.prom_2") }} <code>/metrics</code>.</p>
+    <pre class="code"><code>curl -H "Authorization: Bearer {{ token }}" {% if base_url.is_empty() %}http://your-host{% else %}{{ base_url }}{% endif %}{{ example_path }}</code></pre>
+    {%- if let Some(metrics) = metrics_path %}
+    <p class="help">{{ tr("tokens.prom_1") }} <code>basic_auth</code> {{ tr("tokens.prom_2") }} <code>{{ metrics }}</code>.</p>
+    {%- endif %}
   </div>
 </section>
 {%- endif %}

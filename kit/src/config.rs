@@ -14,6 +14,8 @@ pub struct KitConfig {
     pub product: &'static str,
     /// Lower-case name for file names and the like ("vigilant-vole").
     pub slug: &'static str,
+    /// One short word for tight spots, like an SMS sender name ("Vole").
+    pub short_name: &'static str,
     /// Name of the signed session cookie.
     pub session_cookie: &'static str,
     /// Name of the short-lived cookie between password and second factor.
@@ -44,9 +46,6 @@ pub struct KitConfig {
     pub csrf_exempt_path: fn(&str) -> bool,
     /// Passwords (lower case) the product refuses besides the kit's list.
     pub extra_common_passwords: &'static [&'static str],
-    /// The product's translations: `(language code, locale file text)`,
-    /// added to the kit's core catalogs ([`super::i18n::LANGS`] lists the
-    /// languages). A key may not be in both.
     /// The product's database migrations and how to run them.
     pub migrations: &'static super::db::migrate::MigrationSet,
     /// Path prefixes that may be framed by other sites (public pages);
@@ -63,7 +62,12 @@ pub struct KitConfig {
     pub browser_language_prefixes: &'static [&'static str],
     /// The product's API reference.
     pub docs: &'static super::docs::DocsSpec,
+    /// The product's translations: `(language code, locale file text)`,
+    /// added to the kit's core catalogs ([`super::i18n::LANGS`] lists the
+    /// languages). A key may not be in both.
     pub locales: &'static [(&'static str, &'static str)],
+    /// What the shared layouts show: logo, icons, navigation, settings tabs.
+    pub ui: &'static super::page::Ui,
 }
 
 static CONFIG: OnceLock<&'static KitConfig> = OnceLock::new();

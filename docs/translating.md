@@ -9,8 +9,9 @@ contributions.
 
 1. Open `locales/<code>.toml` (`de`, `fr`, `es`, `it`, `nl`, `pt-BR`, `pl`, `sv`, `da`, `nb`) or, for the shared
    strings (menus, sign-in, users, tokens, formats, errors, notification providers: the sections `common`, `nav`,
-   `js`, `fmt`, `count`, `login`, `setup`, `sec`, `users`, `tokens`, `auth`, `error`, `role`, `notif`),
-   `kit/locales/<code>.toml`. Search for the text you want to change; the key above it tells you where it appears
+   `js`, `fmt`, `count`, `login`, `setup`, `sec`, `users`, `tokens`, `auth`, `error`, `role`, `notif`, plus the
+   API reference page's `docs.*` and a few keys the shared pages borrow, such as `detail.expires`),
+   `kit/locales/<code>.toml`. If a key isn't in one file, it's in the other. Search for the text you want to change; the key above it tells you where it appears
    (`nav.*` is the menu, `monitors.*` …).
 2. Edit the value inside the quotes. Keep every `{placeholder}` exactly as it is (you may move it), and keep
    product names and technical terms (HTTP, TLS, OAuth2, Docker, Prometheus …) as they are.

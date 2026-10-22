@@ -70,7 +70,7 @@ pub const SENDGRID: ProviderSchema = ProviderSchema {
             .required()
             .placeholder("alerts@example.com…")
             .help("A verified sender in SendGrid."),
-        Field::text("from_name", "Sender name").placeholder("Vigilant Vole…"),
+        Field::text("from_name", "Sender name").placeholder("{product}…"),
         Field::text("to", "To")
             .required()
             .placeholder("ops@example.com…")
@@ -119,7 +119,7 @@ pub const BREVO: ProviderSchema = ProviderSchema {
             .required()
             .placeholder("alerts@example.com…")
             .help("A sender you have added in Brevo."),
-        Field::text("from_name", "Sender name").placeholder("Vigilant Vole…"),
+        Field::text("from_name", "Sender name").placeholder("{product}…"),
         Field::text("to", "To")
             .required()
             .placeholder("ops@example.com…")
@@ -164,7 +164,7 @@ pub const CLICKSEND: ProviderSchema = ProviderSchema {
             .placeholder("+4712345678…")
             .help("Separate several numbers with commas."),
         Field::text("from", "Sender")
-            .placeholder("Vole…")
+            .placeholder("{short_name}…")
             .help("Optional: a sender ID or number you own."),
     ],
     transport: Transport::Http(build_clicksend),
@@ -235,7 +235,7 @@ pub const ELKS: ProviderSchema = ProviderSchema {
         Field::secret("password", "API password").required(),
         Field::text("from", "From")
             .required()
-            .placeholder("Vole…")
+            .placeholder("{short_name}…")
             .help("A number you own, or a name of up to 11 letters."),
         Field::text("to", "To")
             .required()

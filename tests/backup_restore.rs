@@ -235,7 +235,7 @@ async fn backup_from_the_oldest_release_restores_and_upgrades() {
     let conn = open_ro(&dir.db());
     assert_eq!(
         common::applied_migrations(&conn),
-        common::embedded_migrations()
+        common::recorded_migrations()
     );
     for table in [
         "users",

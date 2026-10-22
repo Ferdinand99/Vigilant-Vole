@@ -2,6 +2,7 @@
 //! (`crate::kit`) is concerned.
 
 use crate::kit::config::KitConfig;
+use crate::kit::page::{NavItem, SettingsTab, TabAccess, Ui};
 
 /// The product's name.
 pub const NAME: &str = "Vigilant Vole";
@@ -31,6 +32,7 @@ fn csrf_exempt_path(path: &str) -> bool {
 pub static KIT: KitConfig = KitConfig {
     product: NAME,
     slug: "vigilant-vole",
+    short_name: "Vole",
     session_cookie: SESSION_COOKIE,
     pending_2fa_cookie: PENDING_2FA_COOKIE,
     token_prefix: TOKEN_PREFIX,
@@ -85,6 +87,90 @@ pub static KIT: KitConfig = KitConfig {
         ("zh-CN", include_str!("../locales/zh-CN.toml")),
         ("zh-TW", include_str!("../locales/zh-TW.toml")),
     ],
+    ui: &Ui {
+        logo: "/static/favicon.svg",
+        favicon: "/static/favicon.svg",
+        apple_touch_icon: "/static/apple-touch-icon.png",
+        manifest: "/static/site.webmanifest",
+        nav: &[
+            NavItem {
+                id: "dashboard",
+                href: "/",
+                label: "nav.dashboard",
+                short_label: "nav.dashboard",
+                icon: "pulse",
+            },
+            NavItem {
+                id: "status-pages",
+                href: "/status-pages",
+                label: "nav.status_pages",
+                short_label: "nav.status_short",
+                icon: "globe",
+            },
+            NavItem {
+                id: "maintenance",
+                href: "/maintenance",
+                label: "nav.maintenance",
+                short_label: "nav.maintenance",
+                icon: "wrench",
+            },
+            NavItem {
+                id: "settings",
+                href: "/settings",
+                label: "nav.settings",
+                short_label: "nav.settings",
+                icon: "gear",
+            },
+        ],
+        settings_tabs: &[
+            SettingsTab {
+                id: "general",
+                href: "/settings/general",
+                label: "nav.general",
+                icon: "sliders",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "notifications",
+                href: "/settings/notifications",
+                label: "nav.notifications",
+                icon: "bell",
+                access: TabAccess::Editors,
+            },
+            SettingsTab::USERS,
+            SettingsTab::SECURITY,
+            SettingsTab::TOKENS,
+            SettingsTab {
+                id: "agents",
+                href: "/settings/agents",
+                label: "nav.agents",
+                icon: "server",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "integrations",
+                href: "/settings/integrations",
+                label: "nav.integrations",
+                icon: "plug",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "browsers",
+                href: "/settings/browsers",
+                label: "nav.browsers",
+                icon: "browser",
+                access: TabAccess::Admins,
+            },
+            SettingsTab {
+                id: "backup",
+                href: "/settings/backup",
+                label: "nav.backup",
+                icon: "archive",
+                access: TabAccess::Admins,
+            },
+        ],
+        home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
+    },
 };
 
 /// Installs [`KIT`] as the kit's configuration. Runs at start-up (`main`,

@@ -243,7 +243,7 @@ async fn providers(_user: CurrentUser, headers: HeaderMap) -> Response {
                     "type": field_kind(f.kind),
                     "required": f.required,
                     "secret": f.secret,
-                    "default": if f.default.is_empty() { Value::Null } else { json!(f.default) },
+                    "default": if f.default.is_empty() { Value::Null } else { json!(f.default_value()) },
                 })).collect::<Vec<_>>(),
             })
         })

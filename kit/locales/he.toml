@@ -930,3 +930,46 @@ topic.label = "נושא האפליקציה"
 topic.help = "iOS בלבד: ה-Bundle ID של האפליקציה."
 server.required = "יש להזין את ה-URL של Gorush"
 tokens.required = "יש להזין אסימון מכשיר אחד לפחות"
+
+[dashboard]
+response = "תגובה"
+
+[detail]
+expires = "פג תוקף"
+request = "בקשה"
+
+[monitor_form]
+edit_heading = "עריכת {name}"
+
+[general]
+language = "שפה"
+err_site_name = "עד 80 תווים."
+
+[docs]
+title = "מדריך API"
+create_token = "יצירת אסימון"
+sections = "מקטעי API"
+getting_started = "תחילת עבודה"
+getting_started_sub = "יש לשלוח את האסימון כאסימון Bearer. אסימוני קריאה בלבד יכולים לקרוא לכל בקשות ה-GET."
+authenticate = "אימות"
+session_help = "מחובר? אותן נקודות קצה עובדות עם הסשן שלך בדפדפן הזה, כך שאפשר לפתוח קישורי GET ישירות."
+conventions = "מוסכמות"
+base_url = "כתובת בסיס"
+lists = "רשימות"
+caching = "מטמון"
+caching_text = "בקשות GET שולחות"
+times = "זמנים"
+secrets = "סודות"
+secrets_1 = "מוצגים כ"
+secrets_2 = "; יש לשלוח זאת בחזרה כדי לשמור את הערך"
+errors = "שגיאות"
+errors_sub = "מבנה אחד לכל נקודת קצה"
+codes = "קודים:"
+details = "פרטים"
+parameters = "פרמטרים"
+examples_lc = "דוגמאות"
+examples = "דוגמאות"
+ai_lead = "עובדים עם עוזר AI?"
+ai_text = "אפשר למסור לו את כל ה-API בהדבקה אחת."
+copy_for_ai = "העתקה ל-AI"
+open_markdown = "פתיחה כ-Markdown"

@@ -5,14 +5,37 @@
 //! [`MigrationSet`] (registered in its [`KitConfig`](super::super::config::KitConfig));
 //! the runner owns *how*: tracking, the safety copy taken before upgrading,
 //! refusing databases from a newer release, and foreign key handling.
+//!
+//! Besides the product's own migrations the runner applies the kit's core
+//! set ([`CORE`]: users, API tokens, settings), recorded under `kit/…`
+//! names, before the product's. A product whose own migrations created those
+//! tables before the kit had them adopts the core set instead
+//! ([`MigrationSet::adopt_core`]).
 
 use std::path::{Path, PathBuf};
 
 use deadpool_sqlite::Pool;
 use rusqlite::{Connection, OptionalExtension, params};
 
+/// The kit's core migrations, `(name, sql)` in order. The names start with
+/// `kit/` so they never collide with a product's file names.
+pub const CORE: &[(&str, &str)] = &[(
+    "kit/0001_core.sql",
+    include_str!("../../migrations/0001_core.sql"),
+)];
+
 /// What a product tells the runner about its migrations.
 pub struct MigrationSet {
+    /// The kit's core migrations, normally [`CORE`]. They run before the
+    /// product's own pending migrations.
+    pub core: &'static [(&'static str, &'static str)],
+    /// The product migration that records the core migrations as applied,
+    /// for a product whose own (older) migrations already created the core
+    /// tables. While it is pending, the product's migrations run first and
+    /// the core migrations it records are skipped; core migrations it
+    /// doesn't record run after it. `None` for a product that starts from
+    /// the core set.
+    pub adopt_core: Option<&'static str>,
     /// Every migration as `(file name, sql)`, sorted by name.
     pub migrations: fn() -> Vec<(String, String)>,
     /// Marker a migration may contain to run with foreign keys off (the
@@ -145,9 +168,10 @@ pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, 
         let started = (|| -> Result<(), MigrationError> {
             // WAL is persistent per database file; set it once here rather than per connection.
             conn.pragma_update(None, "journal_mode", "WAL")?;
-            let existing = prepare_tracking(conn)?;
-            refuse_newer_schema(conn, &backup_dir.display().to_string())?;
-            let pending = pending_migrations(conn)?;
+            let set = set();
+            let existing = prepare_tracking_in(conn, set)?;
+            refuse_newer_schema(conn, set, &backup_dir.display().to_string())?;
+            let pending = pending_migrations(conn, set)?;
             if existing && !pending.is_empty() {
                 let first = pending
                     .first()
@@ -176,20 +200,36 @@ pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, 
     .map_err(|e| unavailable(e.to_string()))?
 }
 
-/// The newest migration recorded in `schema_migrations`.
+/// The migration recorded last in `schema_migrations` (insertion order: the
+/// `kit/…` core names sort after every product name).
 fn latest_applied(conn: &Connection) -> rusqlite::Result<Option<String>> {
-    conn.query_row("SELECT MAX(name) FROM schema_migrations", [], |r| r.get(0))
+    conn.query_row(
+        "SELECT name FROM schema_migrations ORDER BY rowid DESC LIMIT 1",
+        [],
+        |r| r.get(0),
+    )
+    .optional()
 }
 
 /// Refuses databases that record migrations this build doesn't embed (a
 /// newer release has opened them). `backups` names the backup folder in the
 /// message.
-fn refuse_newer_schema(conn: &Connection, backups: &str) -> Result<(), MigrationError> {
-    let known: Vec<String> = embedded_migrations()
+///
+/// Unknown names are what counts, not how names sort: the core set's
+/// `kit/…` names sort after every product migration and are known.
+fn refuse_newer_schema(
+    conn: &Connection,
+    set: &MigrationSet,
+    backups: &str,
+) -> Result<(), MigrationError> {
+    let product = (set.migrations)();
+    let known: Vec<String> = core_of(set)
         .into_iter()
+        .chain(product.iter().cloned())
         .map(|(name, _)| name)
         .collect();
-    let mut stmt = conn.prepare("SELECT name FROM schema_migrations ORDER BY name")?;
+    // Recording order, so the message names the newest unknown migration.
+    let mut stmt = conn.prepare("SELECT name FROM schema_migrations ORDER BY rowid")?;
     let applied = stmt
         .query_map([], |r| r.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -199,8 +239,10 @@ fn refuse_newer_schema(conn: &Connection, backups: &str) -> Result<(), Migration
     Err(MigrationError::NewerSchema {
         product: crate::config::get().product.to_string(),
         schema: newest.trim_end_matches(".sql").to_string(),
-        known: known
+        known: product
             .last()
+            .map(|(n, _)| n.as_str())
+            .or(known.last().map(String::as_str))
             .map(|n| n.trim_end_matches(".sql").to_string())
             .unwrap_or_default(),
         backups: backups.to_string(),
@@ -217,6 +259,8 @@ pub fn backup_before_migration(
     // A start that fails and is retried within the same second (a restart
     // loop) must not trip over the previous attempt's copy.
     let prefix = crate::config::get().backup_prefix;
+    // Core names (`kit/0001_core`) must not become directories.
+    let label = label.replace(['/', '\\'], "-");
     let mut path = dir.join(format!("{prefix}{label}-{stamp}.db"));
     let mut attempt = 1;
     while path.exists() {
@@ -237,61 +281,125 @@ pub fn embedded_migrations() -> Vec<(String, String)> {
     (set().migrations)()
 }
 
+/// The core migrations the product runs (normally [`CORE`]), in order.
+pub fn core_migrations() -> Vec<(String, String)> {
+    core_of(set())
+}
+
+fn core_of(set: &MigrationSet) -> Vec<(String, String)> {
+    set.core
+        .iter()
+        .map(|(name, sql)| (name.to_string(), sql.to_string()))
+        .collect()
+}
+
+/// The names `schema_migrations` holds once every migration is applied:
+/// core and product, sorted by name.
+pub fn all_migration_names() -> Vec<String> {
+    let mut names: Vec<String> = core_migrations()
+        .into_iter()
+        .chain(embedded_migrations())
+        .map(|(name, _)| name)
+        .collect();
+    names.sort();
+    names
+}
+
 /// Synchronous migration runner (also used directly by tests).
 ///
 /// Each migration runs exactly once, inside its own transaction, and is
 /// recorded in `schema_migrations`. Returns the names applied in this call.
 pub fn apply_migrations(conn: &mut Connection) -> Result<Vec<String>, MigrationError> {
-    prepare_tracking(conn)?;
-    refuse_newer_schema(conn, "DATA_DIR/backups")?;
+    apply_migrations_with(conn, set())
+}
+
+/// [`apply_migrations`] with an explicit set instead of the installed
+/// product's.
+pub fn apply_migrations_with(
+    conn: &mut Connection,
+    set: &MigrationSet,
+) -> Result<Vec<String>, MigrationError> {
+    prepare_tracking_in(conn, set)?;
+    refuse_newer_schema(conn, set, "DATA_DIR/backups")?;
     let mut applied = Vec::new();
-    for (name, sql) in pending_migrations(conn)? {
-        apply_one(conn, &name, &sql)?;
+    for (name, sql) in pending_migrations(conn, set)? {
+        // An adoption migration records core migrations as applied.
+        if is_recorded(conn, &name)? {
+            continue;
+        }
+        apply_one_in(conn, set, &name, &sql)?;
         tracing::info!(migration = %name, "applied database migration");
         applied.push(name);
     }
-    (set().after)(conn)?;
+    (set.after)(conn)?;
     Ok(applied)
 }
 
 /// Ensures `schema_migrations` exists and records the legacy baseline.
 /// Returns whether the database already had a schema (i.e. is not brand new).
 pub fn prepare_tracking(conn: &Connection) -> rusqlite::Result<bool> {
+    prepare_tracking_in(conn, set())
+}
+
+fn prepare_tracking_in(conn: &Connection, set: &MigrationSet) -> rusqlite::Result<bool> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
              name TEXT PRIMARY KEY,
              applied_at TEXT NOT NULL DEFAULT (datetime('now'))
          );",
     )?;
-    mark_legacy_baseline(conn)?;
+    mark_legacy_baseline(conn, set)?;
     let tracked: i64 =
         conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))?;
     Ok(tracked > 0)
 }
 
-/// Embedded migrations not yet recorded in `schema_migrations`, in order.
-fn pending_migrations(conn: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
-    let mut pending = Vec::new();
-    for (name, sql) in embedded_migrations() {
-        let done: Option<i64> = conn
-            .query_row(
-                "SELECT 1 FROM schema_migrations WHERE name = ?1",
-                params![name],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if done.is_none() {
-            pending.push((name, sql));
+fn is_recorded(conn: &Connection, name: &str) -> rusqlite::Result<bool> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM schema_migrations WHERE name = ?1",
+            params![name],
+            |r| r.get::<_, i64>(0),
+        )
+        .optional()?
+        .is_some())
+}
+
+/// Migrations not yet recorded in `schema_migrations`, in the order they
+/// run: the core set, then the product's; while the product's adoption
+/// migration is pending, the product's first (see
+/// [`MigrationSet::adopt_core`]).
+fn pending_migrations(
+    conn: &Connection,
+    set: &MigrationSet,
+) -> rusqlite::Result<Vec<(String, String)>> {
+    let mut core = Vec::new();
+    for (name, sql) in core_of(set) {
+        if !is_recorded(conn, &name)? {
+            core.push((name, sql));
         }
     }
-    Ok(pending)
+    let mut product = Vec::new();
+    for (name, sql) in (set.migrations)() {
+        if !is_recorded(conn, &name)? {
+            product.push((name, sql));
+        }
+    }
+    let adopting = set
+        .adopt_core
+        .is_some_and(|adopt| product.iter().any(|(name, _)| name == adopt));
+    Ok(if adopting {
+        product.into_iter().chain(core).collect()
+    } else {
+        core.into_iter().chain(product).collect()
+    })
 }
 
 /// Databases created before migration tracking existed already have the
 /// baseline schema; record it so it isn't re-run (it is idempotent, but
 /// tracking should reflect reality).
-fn mark_legacy_baseline(conn: &Connection) -> rusqlite::Result<()> {
-    let Some(baseline) = &set().baseline else {
+fn mark_legacy_baseline(conn: &Connection, set: &MigrationSet) -> rusqlite::Result<()> {
+    let Some(baseline) = &set.baseline else {
         return Ok(());
     };
     let tracked: i64 =
@@ -324,7 +432,16 @@ fn mark_legacy_baseline(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 pub fn apply_one(conn: &mut Connection, name: &str, sql: &str) -> Result<(), MigrationError> {
-    let fk_off = sql.contains(set().fk_off_marker);
+    apply_one_in(conn, set(), name, sql)
+}
+
+fn apply_one_in(
+    conn: &mut Connection,
+    set: &MigrationSet,
+    name: &str,
+    sql: &str,
+) -> Result<(), MigrationError> {
+    let fk_off = sql.contains(set.fk_off_marker);
     if fk_off {
         conn.pragma_update(None, "foreign_keys", "OFF")?;
     }
@@ -377,4 +494,208 @@ fn foreign_key_violations(conn: &Connection) -> rusqlite::Result<Vec<String>> {
         Ok(format!("{table} row {rowid:?} -> {parent}"))
     })?;
     rows.collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn no_fixups(_: &mut Connection) -> Result<(), MigrationError> {
+        Ok(())
+    }
+
+    fn names(conn: &Connection, order: &str) -> Vec<String> {
+        conn.prepare(&format!(
+            "SELECT name FROM schema_migrations ORDER BY {order}"
+        ))
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+    }
+
+    fn table_exists(conn: &Connection, name: &str) -> bool {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [name],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+            == 1
+    }
+
+    fn owned(list: &[(&str, &str)]) -> Vec<(String, String)> {
+        list.iter()
+            .map(|(n, s)| (n.to_string(), s.to_string()))
+            .collect()
+    }
+
+    /// A new product: the core set, then its own table.
+    static NEW_PRODUCT: MigrationSet = MigrationSet {
+        core: CORE,
+        adopt_core: None,
+        migrations: || {
+            owned(&[(
+                "0001_things.sql",
+                "CREATE TABLE things (id INTEGER PRIMARY KEY, owner INTEGER REFERENCES users(id));",
+            )])
+        },
+        fk_off_marker: "-- fk=off",
+        baseline: None,
+        after: no_fixups,
+    };
+
+    const ADOPT: &str =
+        "INSERT OR IGNORE INTO schema_migrations (name) VALUES ('kit/0001_core.sql');";
+
+    /// A product whose own first migration made the core tables, and which
+    /// adopts the core set with its second.
+    static OLD_PRODUCT: MigrationSet = MigrationSet {
+        core: CORE,
+        adopt_core: Some("0002_adopt.sql"),
+        migrations: || owned(&[("0001_own.sql", CORE[0].1), ("0002_adopt.sql", ADOPT)]),
+        fk_off_marker: "-- fk=off",
+        baseline: None,
+        after: no_fixups,
+    };
+
+    /// The same product once the kit has a second core migration that the
+    /// adoption doesn't record.
+    static OLD_PRODUCT_LATER: MigrationSet = MigrationSet {
+        core: &[
+            CORE[0],
+            (
+                "kit/0002_more.sql",
+                "ALTER TABLE users ADD COLUMN extra TEXT;",
+            ),
+        ],
+        adopt_core: Some("0002_adopt.sql"),
+        migrations: || owned(&[("0001_own.sql", CORE[0].1), ("0002_adopt.sql", ADOPT)]),
+        fk_off_marker: "-- fk=off",
+        baseline: None,
+        after: no_fixups,
+    };
+
+    #[test]
+    fn a_new_product_runs_the_core_set_first() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let applied = apply_migrations_with(&mut conn, &NEW_PRODUCT).unwrap();
+        assert_eq!(applied, ["kit/0001_core.sql", "0001_things.sql"]);
+        for table in ["users", "api_tokens", "settings", "things"] {
+            assert!(table_exists(&conn, table), "{table}");
+        }
+        assert!(
+            apply_migrations_with(&mut conn, &NEW_PRODUCT)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_adopting_product_records_the_core_set_instead_of_running_it() {
+        // Fresh: its own migrations, the adoption records core.
+        let mut conn = Connection::open_in_memory().unwrap();
+        let applied = apply_migrations_with(&mut conn, &OLD_PRODUCT).unwrap();
+        assert_eq!(applied, ["0001_own.sql", "0002_adopt.sql"]);
+        assert_eq!(
+            names(&conn, "name"),
+            ["0001_own.sql", "0002_adopt.sql", "kit/0001_core.sql"]
+        );
+        assert_eq!(
+            latest_applied(&conn).unwrap().as_deref(),
+            Some("0002_adopt.sql")
+        );
+
+        // An existing database from before the adoption.
+        let mut conn = Connection::open_in_memory().unwrap();
+        prepare_tracking_in(&conn, &OLD_PRODUCT).unwrap();
+        apply_one_in(&mut conn, &OLD_PRODUCT, "0001_own.sql", CORE[0].1).unwrap();
+        let applied = apply_migrations_with(&mut conn, &OLD_PRODUCT).unwrap();
+        assert_eq!(applied, ["0002_adopt.sql"]);
+        assert!(
+            apply_migrations_with(&mut conn, &OLD_PRODUCT)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn core_migrations_the_adoption_does_not_record_still_run() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let applied = apply_migrations_with(&mut conn, &OLD_PRODUCT_LATER).unwrap();
+        assert_eq!(
+            applied,
+            ["0001_own.sql", "0002_adopt.sql", "kit/0002_more.sql"]
+        );
+
+        // Adopted before the kit grew kit/0002: it runs first next time.
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply_migrations_with(&mut conn, &OLD_PRODUCT).unwrap();
+        let applied = apply_migrations_with(&mut conn, &OLD_PRODUCT_LATER).unwrap();
+        assert_eq!(applied, ["kit/0002_more.sql"]);
+        conn.execute("UPDATE users SET extra = 'x'", []).unwrap();
+    }
+
+    fn newer(conn: &Connection, set: &MigrationSet) -> Option<(String, String)> {
+        match refuse_newer_schema(conn, set, "backups") {
+            Ok(()) => None,
+            Err(MigrationError::NewerSchema { schema, known, .. }) => Some((schema, known)),
+            Err(e) => panic!("{e}"),
+        }
+    }
+
+    #[test]
+    fn core_names_sorting_last_do_not_look_newer() {
+        // `kit/0001_core.sql` sorts after every product name.
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply_migrations_with(&mut conn, &OLD_PRODUCT).unwrap();
+        assert_eq!(newer(&conn, &OLD_PRODUCT), None);
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply_migrations_with(&mut conn, &NEW_PRODUCT).unwrap();
+        assert_eq!(newer(&conn, &NEW_PRODUCT), None);
+
+        // A newer product migration is named, even though the core row
+        // sorts after it.
+        conn.execute(
+            "INSERT INTO schema_migrations (name) VALUES ('0200_future.sql')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            newer(&conn, &NEW_PRODUCT),
+            Some(("0200_future".into(), "0001_things".into()))
+        );
+
+        // So is a newer core migration.
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply_migrations_with(&mut conn, &OLD_PRODUCT).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (name) VALUES ('kit/0002_more.sql')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            newer(&conn, &OLD_PRODUCT),
+            Some(("kit/0002_more".into(), "0002_adopt".into()))
+        );
+        assert_eq!(newer(&conn, &OLD_PRODUCT_LATER), None);
+        assert!(matches!(
+            apply_migrations_with(&mut conn, &OLD_PRODUCT),
+            Err(MigrationError::NewerSchema { .. })
+        ));
+    }
+
+    #[test]
+    fn a_core_name_makes_a_flat_backup_file_name() {
+        let dir = std::env::temp_dir().join(format!("vole-kit-backup-{}", std::process::id()));
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (x)").unwrap();
+        let path = backup_before_migration(&conn, &dir, "kit/0002_more").unwrap();
+        let parent = path.parent().map(Path::to_path_buf);
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(parent, Some(dir));
+        assert!(name.contains("kit-0002_more-"), "{name}");
+    }
 }

@@ -34,3 +34,8 @@ tools/
 # Test suites and their artifacts
 e2e/
 test-results/
+
+# Copies of the kit templates made at build time (vole-kit-build)
+templates/kit/
+examples/kit-demo/templates/kit/
+kit-demo-data/

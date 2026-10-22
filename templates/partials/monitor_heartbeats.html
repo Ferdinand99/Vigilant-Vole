@@ -1,9 +1,9 @@
 {#- Rows of the "Recent checks" table plus a "Show older" row. Expects `id`,
     `rows` (Vec<HeartbeatView>) and `next_before` (Option<i64>). -#}
-{% import "macros.html" as m %}
+{% import "kit/macros.html" as m %}{% import "status_macros.html" as st %}
 {%- for h in rows %}
 <tr>
-  <td data-label="{{ tr("detail.col_status") }}">{{ m::status_pill(h.status) }}</td>
+  <td data-label="{{ tr("detail.col_status") }}">{{ st::status_pill(h.status) }}</td>
   <td data-label="{{ tr("detail.col_checked") }}">{{ m::time_ago(&h.checked_at) }}</td>
   <td class="num" data-label="{{ tr("detail.response") }}">{{ h.response }}</td>
   <td data-label="{{ tr("detail.col_message") }}">{% if h.message.is_empty() %}<span class="muted">—</span>{% else %}<span class="break">{{ h.message }}</span>{% endif %}</td>

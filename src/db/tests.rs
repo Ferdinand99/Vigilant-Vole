@@ -110,7 +110,11 @@ fn legacy_database_is_detected_and_baseline_not_rerun() {
         Some("0002_full_schema.sql")
     );
     assert!(!ran.iter().any(|name| name.starts_with("0001")));
-    assert_eq!(applied(&conn).len(), ran.len() + 1);
+    // Recorded besides what ran: the baseline and the kit's core set
+    // (adopted by 0104, not run).
+    assert_eq!(applied(&conn).len(), ran.len() + 2);
+    assert!(applied(&conn).contains(&"kit/0001_core.sql".to_string()));
+    assert!(!ran.contains(&"kit/0001_core.sql".to_string()));
 }
 
 #[test]
@@ -525,4 +529,142 @@ fn backups_taken_in_the_same_second_get_distinct_names() {
     std::fs::remove_dir_all(&dir).unwrap();
     assert_ne!(first, second);
     assert_eq!(files, 2);
+}
+
+/// `sqlite_master` rows and columns of the kit's core tables.
+fn core_objects(conn: &Connection) -> Vec<String> {
+    let mut out: Vec<String> = conn
+        .prepare(
+            "SELECT type, name, tbl_name, sql FROM sqlite_master
+             WHERE tbl_name IN ('users', 'api_tokens', 'settings') ORDER BY type, name",
+        )
+        .unwrap()
+        .query_map([], |r| {
+            Ok(format!(
+                "{} {} {} {:?}",
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?
+            ))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    for table in ["users", "api_tokens", "settings"] {
+        let cols: Vec<String> = conn
+            .prepare(&format!("SELECT * FROM pragma_table_xinfo('{table}')"))
+            .unwrap()
+            .query_map([], |r| {
+                Ok(format!(
+                    "{table}: {} {} {} {} {:?} {} {}",
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, i64>(6)?
+                ))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        out.extend(cols);
+        let fks: Vec<String> = conn
+            .prepare(&format!("SELECT * FROM pragma_foreign_key_list('{table}')"))
+            .unwrap()
+            .query_map([], |r| {
+                Ok(format!(
+                    "{table} fk: {:?} {:?} {:?} {:?}",
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, String>(6)?
+                ))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        out.extend(fks);
+    }
+    out
+}
+
+/// The kit's core set creates users, api_tokens and settings exactly as our
+/// migrations did, so adopting it (0104) instead of running it is right and
+/// a product that starts from it has the same tables.
+#[test]
+fn the_core_set_builds_our_users_tokens_and_settings_tables() {
+    let ours = test_conn();
+    let core = Connection::open_in_memory().unwrap();
+    for (_, sql) in crate::kit::db::migrate::CORE {
+        core.execute_batch(sql).unwrap();
+    }
+    let expected = core_objects(&ours);
+    assert!(expected.len() > 20, "{expected:#?}");
+    assert_eq!(core_objects(&core), expected);
+}
+
+#[test]
+fn a_fresh_database_adopts_the_core_set_after_our_migrations() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(CONNECTION_PRAGMAS).unwrap();
+    let ran = apply_migrations(&mut conn).unwrap();
+    assert_eq!(
+        ran.last().map(String::as_str),
+        Some("0104_adopt_kit_core.sql")
+    );
+    assert!(!ran.iter().any(|n| n.starts_with("kit/")), "{ran:?}");
+    assert!(applied(&conn).contains(&"kit/0001_core.sql".to_string()));
+}
+
+/// What 0.6.x knew: our migrations up to 0103 and no core set. It must
+/// refuse a database this release migrated.
+#[test]
+fn an_older_release_refuses_a_database_with_the_adopted_core_set() {
+    fn up_to_0103() -> Vec<(String, String)> {
+        super::embedded_migrations()
+            .into_iter()
+            .filter(|(name, _)| name.as_str() < "0104")
+            .collect()
+    }
+    fn no_fixups(_: &mut Connection) -> Result<(), super::MigrationError> {
+        Ok(())
+    }
+    static RELEASE_0_6: super::MigrationSet = super::MigrationSet {
+        core: &[],
+        adopt_core: None,
+        migrations: up_to_0103,
+        fk_off_marker: "-- vv:foreign_keys=off",
+        baseline: None,
+        after: no_fixups,
+    };
+    let mut conn = test_conn();
+    let err = crate::kit::db::migrate::apply_migrations_with(&mut conn, &RELEASE_0_6).unwrap_err();
+    assert!(
+        matches!(&err, super::MigrationError::NewerSchema { known, .. } if known == "0103_subscriber_tokens"),
+        "{err:?}"
+    );
+}
+
+/// The newer-schema guard counts unknown names, not how they sort:
+/// `kit/0001_core.sql` sorts after every one of ours.
+#[test]
+fn the_core_row_does_not_hide_a_newer_migration() {
+    let mut conn = test_conn();
+    let names = applied(&conn);
+    assert_eq!(names.last().map(String::as_str), Some("kit/0001_core.sql"));
+    assert!(apply_migrations(&mut conn).unwrap().is_empty());
+    conn.execute(
+        "INSERT INTO schema_migrations (name) VALUES ('0105_from_the_future.sql')",
+        [],
+    )
+    .unwrap();
+    let err = apply_migrations(&mut conn).unwrap_err();
+    assert!(
+        matches!(&err, super::MigrationError::NewerSchema { schema, known, .. }
+            if schema == "0105_from_the_future" && known == "0104_adopt_kit_core"),
+        "{err:?}"
+    );
 }

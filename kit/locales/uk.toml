@@ -943,3 +943,46 @@ topic.label = "Топік застосунку"
 topic.help = "Лише для iOS: bundle ID застосунку."
 server.required = "Введіть URL Gorush"
 tokens.required = "Введіть хоча б один токен пристрою"
+
+[dashboard]
+response = "Відповідь"
+
+[detail]
+expires = "Спливає"
+request = "Запит"
+
+[monitor_form]
+edit_heading = "Зміна: {name}"
+
+[general]
+language = "Мова"
+err_site_name = "Використайте не більше 80 символів."
+
+[docs]
+title = "Довідник API"
+create_token = "Створити токен"
+sections = "Розділи API"
+getting_started = "Початок роботи"
+getting_started_sub = "Надсилайте токен як Bearer. Токени лише для читання можуть викликати будь-який GET."
+authenticate = "Автентифікація"
+session_help = "Увійшли? Ті самі кінцеві точки працюють із вашим сеансом у цьому браузері, тож GET-посилання можна відкривати напряму."
+conventions = "Угоди"
+base_url = "Базовий URL"
+lists = "Списки"
+caching = "Кешування"
+caching_text = "GET надсилає"
+times = "Час"
+secrets = "Секрети"
+secrets_1 = "Показуються як"
+secrets_2 = "; надішліть це назад, щоб зберегти значення"
+errors = "Помилки"
+errors_sub = "Одна форма для кожної кінцевої точки"
+codes = "Коди:"
+details = "Подробиці"
+parameters = "Параметри"
+examples_lc = "приклади"
+examples = "Приклади"
+ai_lead = "Розробка з ШІ-асистентом?"
+ai_text = "Увесь API — однією вставкою."
+copy_for_ai = "Копіювати для ШІ"
+open_markdown = "Відкрити як Markdown"

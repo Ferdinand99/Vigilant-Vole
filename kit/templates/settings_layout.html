@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
+
+{% block content %}
+<div class="settings">
+  <aside class="settings-side">
+    <p class="settings-heading" aria-hidden="true">{{ tr("nav.settings") }}</p>
+    <nav class="settings-nav" aria-label="{{ tr("nav.settings") }}" hx-boost="true" hx-swap="innerHTML transition:true">
+      {%- for tab in kit_ui().settings_tabs %}
+      {%- if ctx.can_see(tab) %}
+      <a class="settings-link" href="{{ tab.href }}"{% if ctx.subnav == tab.id %} aria-current="page"{% endif %}>{{ m::icon(tab.icon) }}{{ tr(tab.label) }}</a>
+      {%- endif %}
+      {%- endfor %}
+    </nav>
+  </aside>
+  <div class="settings-content" id="settings-content">
+    {% block settings_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

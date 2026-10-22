@@ -1,5 +1,5 @@
-{% extends "layout.html" %}
-{% import "macros.html" as m %}
+{% extends "kit/layout.html" %}
+{% import "kit/macros.html" as m %}{% import "status_macros.html" as st %}
 
 {% block content %}
 {% include "partials/status_page_head.html" %}
@@ -28,7 +28,7 @@
       <div class="incident-body prose">{{ row.body_html|safe }}</div>
       {%- endif %}
       {%- if !row.updates.is_empty() %}
-      <div class="incident-body">{{ m::incident_updates(&row.updates, row.updates_url.as_str()) }}</div>
+      <div class="incident-body">{{ st::incident_updates(&row.updates, row.updates_url.as_str()) }}</div>
       {%- endif %}
       <details class="incident-body disclosure">
         <summary>{{ tr("inc.update_post") }}{{ m::icon("chevron-down") }}</summary>

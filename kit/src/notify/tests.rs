@@ -883,3 +883,37 @@ async fn email_sms_and_push_apis_end_to_end_with_their_hosts_overridden() {
         assert!(schema::validate(p, &config).is_ok(), "{kind}");
     }
 }
+
+/// Provider forms don't name a product: placeholders and defaults that show
+/// one use the `{product}` marker, filled in from the configuration.
+#[test]
+fn provider_fields_take_the_product_name_from_the_configuration() {
+    let mut marked = 0;
+    for p in PROVIDERS {
+        for f in p.fields {
+            for text in [f.placeholder, f.default] {
+                assert!(
+                    !text.contains("Vigilant") && !text.contains("Vole"),
+                    "{}.{}: {text}",
+                    p.kind,
+                    f.key
+                );
+            }
+            let raw = format!("{}{}", f.placeholder, f.default);
+            if raw.contains(schema::PRODUCT) || raw.contains(schema::SHORT_NAME) {
+                marked += 1;
+                let cfg = crate::config::get();
+                let shown = format!("{}{}", f.placeholder_text(), f.default_value());
+                assert!(
+                    shown.contains(cfg.product) || shown.contains(cfg.short_name),
+                    "{}.{}: {shown}",
+                    p.kind,
+                    f.key
+                );
+                assert!(!shown.contains('{'), "{}.{}: {shown}", p.kind, f.key);
+                assert!(!f.tr_placeholder(p.kind).contains('{'));
+            }
+        }
+    }
+    assert!(marked >= 10, "{marked}");
+}

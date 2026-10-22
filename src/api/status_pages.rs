@@ -13,7 +13,7 @@ use crate::i18n::Tr as _;
 use askama::Template;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post};
 use axum::{Form, Router};
@@ -108,32 +108,7 @@ pub fn form_pairs(raw: &[u8]) -> Vec<(String, String)> {
     url::form_urlencoded::parse(raw).into_owned().collect()
 }
 
-/// `HX-Trigger` header value for a toast (+ optionally closing the open sheet).
-pub fn toast_trigger(message: &str, kind: &str, close_sheet: bool) -> HeaderValue {
-    let mut v = serde_json::json!({ "vv:toast": { "message": message, "kind": kind } });
-    if close_sheet {
-        v["vv:close-sheet"] = serde_json::Value::Bool(true);
-    }
-    HeaderValue::from_str(&ascii_json(&v.to_string()))
-        .unwrap_or_else(|_| HeaderValue::from_static("{}"))
-}
-
-/// Escapes every non-ASCII character of a JSON text as `\uXXXX`, so it fits
-/// in an HTTP header without being mangled.
-pub fn ascii_json(json: &str) -> String {
-    let mut out = String::with_capacity(json.len());
-    for c in json.chars() {
-        if c.is_ascii() && !c.is_ascii_control() {
-            out.push(c);
-        } else {
-            let mut buf = [0u16; 2];
-            for unit in c.encode_utf16(&mut buf) {
-                out.push_str(&format!("\\u{unit:04x}"));
-            }
-        }
-    }
-    out
-}
+pub use crate::kit::http::{ascii_json, toast_trigger};
 
 fn with_trigger(mut resp: Response, message: &str, kind: &str, close_sheet: bool) -> Response {
     resp.headers_mut()

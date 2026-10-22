@@ -3,6 +3,8 @@
 //! merged on edit. Rendering is generic (see `api::notifications`), so adding a
 //! provider never needs a new template.
 
+use std::borrow::Cow;
+
 use serde_json::{Map, Value};
 
 use super::http::OutRequest;
@@ -110,6 +112,24 @@ pub enum FieldKind {
     KeyValue,
 }
 
+/// Stands for the product's name in a field's placeholder or default
+/// (`"{product}…"`); [`Field::placeholder_text`], [`Field::default_value`]
+/// and [`Field::tr_placeholder`] put the configured name in.
+pub const PRODUCT: &str = "{product}";
+/// The same for the product's short name (an SMS sender, "Vole").
+pub const SHORT_NAME: &str = "{short_name}";
+
+fn with_product(text: &'static str) -> Cow<'static, str> {
+    if !text.contains(PRODUCT) && !text.contains(SHORT_NAME) {
+        return Cow::Borrowed(text);
+    }
+    let cfg = crate::config::get();
+    Cow::Owned(
+        text.replace(PRODUCT, cfg.product)
+            .replace(SHORT_NAME, cfg.short_name),
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Field {
     pub key: &'static str,
@@ -118,9 +138,11 @@ pub struct Field {
     pub required: bool,
     /// Never echoed back to the browser; empty on save keeps the stored value.
     pub secret: bool,
+    /// May contain [`PRODUCT`]: read it with [`Field::placeholder_text`].
     pub placeholder: &'static str,
     pub help: &'static str,
-    /// Pre-filled for new channels ("true" for a Bool that starts on).
+    /// Pre-filled for new channels ("true" for a Bool that starts on). May
+    /// contain [`PRODUCT`]: read it with [`Field::default_value`].
     pub default: &'static str,
     /// `data-show-when` rule using provider keys, e.g. `"security=tls,starttls"`.
     pub show_when: &'static str,
@@ -243,11 +265,21 @@ impl Field {
     }
 
     /// Placeholder in the current language (most are untranslated examples).
-    pub fn tr_placeholder(&self, kind: &str) -> &'static str {
-        crate::i18n::t_or(
+    pub fn tr_placeholder(&self, kind: &str) -> Cow<'static, str> {
+        with_product(crate::i18n::t_or(
             &format!("notif.{kind}.{}.placeholder", self.key),
             self.placeholder,
-        )
+        ))
+    }
+
+    /// The placeholder with the product's name in it.
+    pub fn placeholder_text(&self) -> Cow<'static, str> {
+        with_product(self.placeholder)
+    }
+
+    /// The default with the product's name in it.
+    pub fn default_value(&self) -> Cow<'static, str> {
+        with_product(self.default)
     }
 
     /// A select option's label in the current language.

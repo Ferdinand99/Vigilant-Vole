@@ -8,9 +8,13 @@
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
   <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
   <title>{{ ctx.title }} · {{ ctx.site_name }}</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-  <link rel="manifest" href="/static/site.webmanifest">
+  <link rel="icon" href="{{ kit_ui().favicon }}" type="image/svg+xml">
+  {%- if !kit_ui().apple_touch_icon.is_empty() %}
+  <link rel="apple-touch-icon" href="{{ kit_ui().apple_touch_icon }}">
+  {%- endif %}
+  {%- if !kit_ui().manifest.is_empty() %}
+  <link rel="manifest" href="{{ kit_ui().manifest }}">
+  {%- endif %}
   <meta name="apple-mobile-web-app-title" content="{{ ctx.site_name }}">
   <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
@@ -26,15 +30,14 @@
   <header class="topbar">
     <div class="topbar-inner container">
       <a class="brand" href="/">
-        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <img src="{{ kit_ui().logo }}" alt="" width="28" height="28">
         <span>{{ ctx.site_name }}</span>
       </a>
 
       <nav class="topnav" aria-label="{{ tr("nav.main") }}" hx-boost="true" hx-swap="innerHTML transition:true">
-        <a class="topnav-link" href="/"{% if ctx.nav == "dashboard" %} aria-current="page"{% endif %}>{{ tr("nav.dashboard") }}</a>
-        <a class="topnav-link" href="/status-pages"{% if ctx.nav == "status-pages" %} aria-current="page"{% endif %}>{{ tr("nav.status_pages") }}</a>
-        <a class="topnav-link" href="/maintenance"{% if ctx.nav == "maintenance" %} aria-current="page"{% endif %}>{{ tr("nav.maintenance") }}</a>
-        <a class="topnav-link" href="/settings"{% if ctx.nav == "settings" %} aria-current="page"{% endif %}>{{ tr("nav.settings") }}</a>
+        {%- for item in kit_ui().nav %}
+        <a class="topnav-link" href="{{ item.href }}"{% if ctx.nav == item.id %} aria-current="page"{% endif %}>{{ tr(item.label) }}</a>
+        {%- endfor %}
       </nav>
 
       <div class="topbar-end">
@@ -80,10 +83,9 @@
   </main>
 
   <nav class="tabbar" aria-label="{{ tr("nav.main") }}" hx-boost="true" hx-swap="innerHTML transition:true">
-    <a class="tabbar-item" href="/"{% if ctx.nav == "dashboard" %} aria-current="page"{% endif %}>{{ m::icon("pulse") }}<span>{{ tr("nav.dashboard") }}</span></a>
-    <a class="tabbar-item" href="/status-pages"{% if ctx.nav == "status-pages" %} aria-current="page"{% endif %}>{{ m::icon("globe") }}<span>{{ tr("nav.status_short") }}</span></a>
-    <a class="tabbar-item" href="/maintenance"{% if ctx.nav == "maintenance" %} aria-current="page"{% endif %}>{{ m::icon("wrench") }}<span>{{ tr("nav.maintenance") }}</span></a>
-    <a class="tabbar-item" href="/settings"{% if ctx.nav == "settings" %} aria-current="page"{% endif %}>{{ m::icon("gear") }}<span>{{ tr("nav.settings") }}</span></a>
+    {%- for item in kit_ui().nav %}
+    <a class="tabbar-item" href="{{ item.href }}"{% if ctx.nav == item.id %} aria-current="page"{% endif %}>{{ m::icon(item.icon) }}<span>{{ tr(item.short_label) }}</span></a>
+    {%- endfor %}
   </nav>
 
   <div class="toaster" id="toaster" aria-live="polite">

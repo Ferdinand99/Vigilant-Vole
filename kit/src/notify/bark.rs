@@ -21,7 +21,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
         Field::secret("device_key", "Device key")
             .required()
             .help("Shown in the Bark app."),
-        Field::text("group", "Group").default("Vigilant Vole"),
+        Field::text("group", "Group").default("{product}"),
         Field::text("sound", "Sound").placeholder("alarm…"),
         Field::boolean("critical", "Critical alerts when down")
             .help("Plays a sound even when the phone is muted."),

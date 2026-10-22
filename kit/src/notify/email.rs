@@ -45,7 +45,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
         Field::secret("password", "Password"),
         Field::text("from", "From")
             .required()
-            .placeholder("Vigilant Vole <alerts@example.com>…"),
+            .placeholder("{product} <alerts@example.com>…"),
         Field::text("to", "To")
             .required()
             .placeholder("ops@example.com, oncall@example.com…")

@@ -1,5 +1,5 @@
 {#- Step 1 of "Add channel": choose a service. Swapped into #channel-sheet-body; the footer swaps out-of-band. Needs: query, groups. -#}
-{%- import "macros.html" as m -%}
+{%- import "kit/macros.html" as m -%}
 <div class="sheet-body" id="channel-sheet-body">
   <label class="search">{{ m::icon("search") }}<input type="search" name="q" value="{{ query }}" placeholder="{{ tr("notif.search_placeholder") }}" aria-label="{{ tr("notif.search_aria") }}"
     autocomplete="off" hx-get="/settings/notifications/providers?grid=true" hx-trigger="input changed delay:150ms, search"

@@ -1,5 +1,6 @@
 //! Rust side of the layout contract: `PageCtx` (required by `layout.html`),
-//! the current-user view and one-shot flash messages.
+//! the current-user view, one-shot flash messages and [`Ui`], what the
+//! shared layouts show for the product (logo, navigation, settings tabs).
 
 use axum_extra::extract::cookie::{Cookie, SameSite, SignedCookieJar};
 use base64::Engine as _;
@@ -22,10 +23,10 @@ fn flash_cookie() -> &'static str {
 pub struct PageCtx {
     /// Page title; the layout renders `<title>{title} · {site_name}</title>`.
     pub title: String,
-    /// Active top-nav item: "dashboard" | "status-pages" | "maintenance" | "settings".
+    /// Active main navigation item: a [`NavItem::id`] of the product's
+    /// [`Ui`] ("settings" on settings pages), or "".
     pub nav: &'static str,
-    /// Active settings tab: "general" | "notifications" | "users" | "security" |
-    /// "tokens" | "agents" | "integrations" | "backup" | "".
+    /// Active settings tab: a [`SettingsTab::id`], or "".
     pub subnav: &'static str,
     pub user: Option<UserView>,
     pub site_name: String,
@@ -35,6 +36,89 @@ pub struct PageCtx {
     pub lang: String,
     /// `<html dir>`: `ltr` or `rtl`.
     pub dir: &'static str,
+}
+
+/// What the kit's layouts (`templates/*layout.html`) show for the product.
+/// Part of [`KitConfig`](crate::config::KitConfig); templates reach it with
+/// `kit_ui()` (a [`Tr`](crate::i18n::Tr) helper).
+pub struct Ui {
+    /// Logo in the top bar and on the sign-in card (an image URL).
+    pub logo: &'static str,
+    /// `<link rel="icon">` (SVG).
+    pub favicon: &'static str,
+    /// `<link rel="apple-touch-icon">`; empty for none.
+    pub apple_touch_icon: &'static str,
+    /// `<link rel="manifest">`; empty for none.
+    pub manifest: &'static str,
+    /// Main navigation in order: the top bar, and the tab bar on phones.
+    pub nav: &'static [NavItem],
+    /// Settings tabs in order. The kit's own pages have theirs as
+    /// [`SettingsTab::USERS`], [`SettingsTab::SECURITY`] and
+    /// [`SettingsTab::TOKENS`]; leave one out and its page has no tab.
+    pub settings_tabs: &'static [SettingsTab],
+    /// Where the product name in the public pages' "Powered by" footer links.
+    pub home_url: &'static str,
+}
+
+/// One item of the main navigation.
+pub struct NavItem {
+    /// Matches [`PageCtx::nav`] on the item's pages.
+    pub id: &'static str,
+    pub href: &'static str,
+    /// Translation key of the label in the top bar.
+    pub label: &'static str,
+    /// Translation key of the (shorter) label in the phone tab bar.
+    pub short_label: &'static str,
+    /// Icon (from `icons.svg`) in the phone tab bar.
+    pub icon: &'static str,
+}
+
+/// One settings tab.
+pub struct SettingsTab {
+    /// Matches [`PageCtx::subnav`] on the tab's pages.
+    pub id: &'static str,
+    pub href: &'static str,
+    /// Translation key of the label.
+    pub label: &'static str,
+    /// Icon from `icons.svg`.
+    pub icon: &'static str,
+    /// Who sees the tab.
+    pub access: TabAccess,
+}
+
+/// Who sees a settings tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabAccess {
+    Everyone,
+    Editors,
+    Admins,
+}
+
+impl SettingsTab {
+    /// User management (`/settings/users`, admins).
+    pub const USERS: SettingsTab = SettingsTab {
+        id: "users",
+        href: "/settings/users",
+        label: "nav.users",
+        icon: "users",
+        access: TabAccess::Admins,
+    };
+    /// Your profile, password, 2FA and sessions (`/settings/security`).
+    pub const SECURITY: SettingsTab = SettingsTab {
+        id: "security",
+        href: "/settings/security",
+        label: "nav.security",
+        icon: "shield",
+        access: TabAccess::Everyone,
+    };
+    /// API tokens (`/settings/tokens`).
+    pub const TOKENS: SettingsTab = SettingsTab {
+        id: "tokens",
+        href: "/settings/tokens",
+        label: "nav.api_tokens",
+        icon: "key",
+        access: TabAccess::Everyone,
+    };
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +195,15 @@ impl PageCtx {
 
     pub fn is_admin(&self) -> bool {
         self.user.as_ref().is_some_and(|u| u.role.is_admin())
+    }
+
+    /// Whether the signed-in user sees `tab`.
+    pub fn can_see(&self, tab: &SettingsTab) -> bool {
+        match tab.access {
+            TabAccess::Everyone => true,
+            TabAccess::Editors => self.can_edit(),
+            TabAccess::Admins => self.is_admin(),
+        }
     }
 }
 

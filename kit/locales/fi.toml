@@ -915,3 +915,46 @@ topic.label = "Sovelluksen topic"
 topic.help = "Vain iOS: sovelluksen bundle ID."
 server.required = "Anna Gorushin URL"
 tokens.required = "Anna vähintään yksi laitteen token"
+
+[dashboard]
+response = "Vaste"
+
+[detail]
+expires = "Vanhenee"
+request = "Pyyntö"
+
+[monitor_form]
+edit_heading = "Muokkaa: {name}"
+
+[general]
+language = "Kieli"
+err_site_name = "Käytä enintään 80 merkkiä."
+
+[docs]
+title = "API-ohje"
+create_token = "Luo tunnus"
+sections = "API-osiot"
+getting_started = "Aloitus"
+getting_started_sub = "Lähetä tunnuksesi bearer-tunnuksena. Vain luku -tunnuksilla voi kutsua kaikkia GET-pyyntöjä."
+authenticate = "Todennus"
+session_help = "Kirjautuneena? Samat päätepisteet toimivat tämän selaimen istunnolla, joten voit avata GET-linkit suoraan."
+conventions = "Käytännöt"
+base_url = "Perus-URL"
+lists = "Luettelot"
+caching = "Välimuisti"
+caching_text = "GET-pyynnöt lähettävät"
+times = "Ajat"
+secrets = "Salaisuudet"
+secrets_1 = "Näytetään muodossa"
+secrets_2 = "; lähetä se takaisin säilyttääksesi arvon"
+errors = "Virheet"
+errors_sub = "Yksi muoto jokaiselle päätepisteelle"
+codes = "Koodit:"
+details = "Tiedot"
+parameters = "Parametrit"
+examples_lc = "esimerkit"
+examples = "Esimerkit"
+ai_lead = "Tekoälyavustaja apuna?"
+ai_text = "Anna sille koko API yhdellä liittämisellä."
+copy_for_ai = "Kopioi tekoälylle"
+open_markdown = "Avaa Markdownina"

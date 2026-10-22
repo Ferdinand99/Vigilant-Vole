@@ -8,8 +8,8 @@ the design owner — don't add CSS, colours or inline styles.
 - Behaviour: `static/app.js` (vanilla, `defer`, progressive enhancement; API on `window.VV`)
 - Icons: `static/icons.svg` (sprite) · Favicon/app mark: `static/favicon.svg` (a copy of `assets/brand/favicon.svg`) · Home-screen icons: `apple-touch-icon.png` (180, full-bleed), `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, linked with `site.webmanifest` from `layout.html` / `auth_layout.html` (rendered from the vole in `assets/brand/`; regenerate them if it changes)
 - Font: Inter variable, self-hosted in `static/fonts/` (OFL licence alongside), system-ui fallback
-- Macros: `templates/macros.html`
-- Layouts: `layout.html`, `settings_layout.html`, `auth_layout.html`, `public_layout.html`
+- Macros: `kit/templates/macros.html` (vole-kit), imported as `"kit/macros.html"`; Vigilant Vole's status and incident macros (`status_pill`, `status_dot`, `heartbeat_bar`, `incident_updates` …) are in `templates/status_macros.html`, imported as `st`
+- Layouts: `layout.html`, `settings_layout.html`, `auth_layout.html`, `public_layout.html` in `kit/templates/`, extended as `"kit/layout.html"` and so on. The build copies them into `templates/kit/` (git-ignored; see [vole-kit.md](vole-kit.md#templates)), so edit them in `kit/templates/`.
 
 The look: Apple-style and calm, matching sylobot.com. Dark first with an
 equally finished light theme. Hairline borders, 18px card radius, pill buttons
@@ -22,8 +22,8 @@ chart line only.
 ## 1. Rules (do / don't)
 
 **Do**
-- Extend `layout.html` for app pages and `settings_layout.html` for settings pages (Layout contract below).
-- Import macros once per template: `{% import "macros.html" as m %}`.
+- Extend `kit/layout.html` for app pages and `kit/settings_layout.html` for settings pages (Layout contract below).
+- Import macros once per template: `{% import "kit/macros.html" as m %}` (plus `{% import "status_macros.html" as st %}` for status pills, dots, heartbeat bars and incident timelines).
 - Use the status classes (`status-up` …) for anything status-coloured.
 - Write copy in sentence case, address the user as "you", use numerals ("3 monitors"), curly quotes (“ ” ’) and the ellipsis character (…). Name buttons for what they do ("Save monitor", "Add channel", "Revoke"), never "Submit" or "OK".
 - Give every icon-only button an `aria-label` (and `data-tip` for a tooltip). Decorative icons are `aria-hidden="true"` (the macro does this).
@@ -89,9 +89,11 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
   (renders `ctx.flash`), the request progress bar and a skip link.
 - `<main class="main container">` is a flex column with a 32px gap (24px on
   phones): just stack your top-level blocks inside `{% block content %}`; no wrapper needed.
-- Settings sidebar visibility: General, Users, Remote agents, Integrations,
-  Backup → admins; Notifications → editors and admins (`ctx.can_edit()`);
-  Security, API tokens → everyone. Settings pages still enforce roles server-side.
+- The brand logo, icons, top bar / tab bar items and settings tabs come from
+  `KitConfig::ui` (`src/product.rs`). Settings sidebar visibility (each tab's
+  `access`): General, Users, Remote agents, Integrations, Browsers, Backup →
+  admins; Notifications → editors and admins; Security, API tokens → everyone.
+  Settings pages still enforce roles server-side.
 - Navigation links in the top bar, tab bar and settings sidebar are
   `hx-boost`ed (body swap + view transition). Boosted pages don't re-run
   `{% block head %}`, so don't rely on it for anything but extra meta tags.
@@ -105,8 +107,8 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
 ### List page
 
 ```html
-{% extends "layout.html" %}
-{% import "macros.html" as m %}
+{% extends "kit/layout.html" %}
+{% import "kit/macros.html" as m %}
 
 {% block content %}
 {% call m::page_header("Status pages", "Public pages that show how your services are doing.") %}
@@ -139,8 +141,8 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
 ### Form page
 
 ```html
-{% extends "layout.html" %}
-{% import "macros.html" as m %}
+{% extends "kit/layout.html" %}
+{% import "kit/macros.html" as m %}
 
 {% block content %}
 {% call m::page_header("New maintenance window", "", "/maintenance", "Maintenance") %}{% endcall %}
@@ -191,8 +193,8 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
 ### Detail page
 
 ```html
-{% extends "layout.html" %}
-{% import "macros.html" as m %}
+{% extends "kit/layout.html" %}
+{% import "kit/macros.html" as m %}
 
 {% block content %}
 <header class="page-head">
@@ -201,7 +203,7 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
     <div class="page-head-text">
       <div class="page-title-group">
         <h1 class="page-title">{{ monitor.name }}</h1>
-        {{ m::status_pill_opt(status, "lg") }}
+        {{ st::status_pill_opt(status, "lg") }}
       </div>
       <p class="page-sub">{{ monitor.monitor_type.label() }} · <span class="break">{{ monitor.target }}</span></p>
     </div>
@@ -233,8 +235,8 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
 ### Settings page
 
 ```html
-{% extends "settings_layout.html" %}
-{% import "macros.html" as m %}
+{% extends "kit/settings_layout.html" %}
+{% import "kit/macros.html" as m %}
 
 {% block settings_content %}
 {% call m::page_header("API tokens", "Let scripts and dashboards read or change your monitors.") %}
@@ -376,11 +378,11 @@ Macro: `{% call m::card_head(title, subtitle="") %}actions{% endcall %}`.
 `dl.dl > div.dl-row > dt + dd` (label left, value right, hairlines between). `dl.dl.dl-stack`: values that are sentences go under their label on phones.
 
 ### Status
-- Pill: `{{ m::status_pill(s) }}` / `{{ m::status_pill_opt(opt_status, "lg") }}` → `<span class="pill status-up"><span class="dot"></span><span class="cap">up</span></span>` (first letter raised by `.cap`). Custom text is shown exactly as written, so write it in sentence case: `<span class="pill status-paused">Waiting for first sync</span>`.
-- Dot: `{{ m::status_dot(s) }}`, `{{ m::status_dot_opt(opt) }}` → `.dot.status-*` with `role="img"` + label. Only `down` pulses (off under reduced motion). `.dot-lg`.
+- Pill: `{{ st::status_pill(s) }}` / `{{ st::status_pill_opt(opt_status, "lg") }}` → `<span class="pill status-up"><span class="dot"></span><span class="cap">up</span></span>` (first letter raised by `.cap`). Custom text is shown exactly as written, so write it in sentence case: `<span class="pill status-paused">Waiting for first sync</span>`.
+- Dot: `{{ st::status_dot(s) }}`, `{{ st::status_dot_opt(opt) }}` → `.dot.status-*` with `role="img"` + label. Only `down` pulses (off under reduced motion). `.dot-lg`.
 - Badge / counter: `.badge` (gray), `.badge-brand`, `.badge.status-*` (tinted), `.badge.badge-solid.status-down` (iOS red counter).
 - Stat tiles: `.stats` grid > `.stat` (`.stat-label` with optional `.stat-dot`, `.stat-value` (+`<small>` unit), `.stat-meta`). Add `status-*` on `.stat` to colour the dot. `a.stat` is pressable. Macro `m::stat(label, value, status="", meta="")`.
-- Heartbeat bar: `{{ m::heartbeat_bar(&row.recent, "Recent checks", size="") }}` for an oldest-first `Vec<Option<HeartbeatStatus>>`; raw: `.beats > .beat.status-up` (`None` → `.beat` gray). `.beats-sm` for compact. Newest is on the right; narrow screens clip the oldest.
+- Heartbeat bar: `{{ st::heartbeat_bar(&row.recent, "Recent checks", size="") }}` for an oldest-first `Vec<Option<HeartbeatStatus>>`; raw: `.beats > .beat.status-up` (`None` → `.beat` gray). `.beats-sm` for compact. Newest is on the right; narrow screens clip the oldest.
 - Uptime bar (status pages, 90 days):
   ```html
   <div class="uptime">
@@ -549,9 +551,10 @@ Events to send from the server via `HX-Trigger`: `vv:toast` (`{message, kind}`),
 | Macro | Signature |
 |---|---|
 | icon | `m::icon(name, cls="")` |
-| status_pill / status_pill_opt | `(status, size="")` — size `"lg"` |
-| status_dot / status_dot_opt | `(status)` |
-| heartbeat_bar | `(beats, label="Recent checks", size="")` — size `"sm"` |
+| status_pill / status_pill_opt (`st::`) | `(status, size="")` — size `"lg"` |
+| status_dot / status_dot_opt (`st::`) | `(status)` |
+| heartbeat_bar (`st::`) | `(beats, label="Recent checks", size="")` — size `"sm"` |
+| incident_updates (`st::`) | `(updates, manage_url="")` |
 | uptime | `(Option<f64>)` → "99.95%" or — |
 | ms | `(Option<i64>)` → "120 ms" or — |
 | time_ago | `(datetime)` |
@@ -577,11 +580,11 @@ Events to send from the server via `HX-Trigger`: `vv:toast` (`{message, kind}`),
 
 Askama 0.16 notes (these bite):
 1. Macros without a body are expressions: `{{ m::icon("gear") }}`. Macros with a body (`page_header`, `section_head`, `card_head`) must be called as `{% call m::page_header("Title") %}…{% endcall %}` — even when the body is empty.
-2. Pass `String` fields by reference: `value=&monitor.name`, `m::avatar(&u.initials)`. `Copy` values (numbers, bools, `Option<f64>`, status enums) pass as is. Lists: `m::heartbeat_bar(&row.recent)`.
+2. Pass `String` fields by reference: `value=&monitor.name`, `m::avatar(&u.initials)`. `Copy` values (numbers, bools, `Option<f64>`, status enums) pass as is. Lists: `st::heartbeat_bar(&row.recent)`.
 3. An argument that is a **bare identifier equal to a parameter name of that macro** resolves to the macro's own parameter. `m::field_text("name", "Name", value=name)` renders the literal `"name"`. Write `value=&self.name`.
 4. `format!()` is not available in templates; build URLs inline (`href="/monitors/{{ id }}/edit"`) or pass a prepared string from Rust.
 5. Don't name a loop variable `m` (it shadows the macro import).
-6. Inside a template that extends a layout, import macros again at the top: `{% import "macros.html" as m %}`.
+6. Inside a template that extends a layout, import macros again at the top: `{% import "kit/macros.html" as m %}`.
 
 ---
 

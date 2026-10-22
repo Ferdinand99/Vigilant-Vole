@@ -915,3 +915,46 @@ topic.label = "Alkalmazás topic"
 topic.help = "Csak iOS: az alkalmazás bundle ID-ja."
 server.required = "Adja meg a Gorush URL-t"
 tokens.required = "Adjon meg legalább egy eszköztokent"
+
+[dashboard]
+response = "Válasz"
+
+[detail]
+expires = "Lejár"
+request = "Kérés"
+
+[monitor_form]
+edit_heading = "{name} szerkesztése"
+
+[general]
+language = "Nyelv"
+err_site_name = "Legfeljebb 80 karakter lehet."
+
+[docs]
+title = "API-referencia"
+create_token = "Token létrehozása"
+sections = "API-szakaszok"
+getting_started = "Első lépések"
+getting_started_sub = "Küldje a tokent bearer tokenként. A csak olvasható tokenek minden GET-et hívhatnak."
+authenticate = "Hitelesítés"
+session_help = "Be van jelentkezve? Ugyanezek a végpontok a böngészőbeli munkamenetével is működnek, így a GET hivatkozásokat közvetlenül megnyithatja."
+conventions = "Konvenciók"
+base_url = "Alap-URL"
+lists = "Listák"
+caching = "Gyorsítótárazás"
+caching_text = "A GET kérések küldenek egy"
+times = "Időpontok"
+secrets = "Titkok"
+secrets_1 = "Így jelenik meg:"
+secrets_2 = "; küldje vissza az érték megtartásához"
+errors = "Hibák"
+errors_sub = "Minden végponton azonos forma"
+codes = "Kódok:"
+details = "Részletek"
+parameters = "Paraméterek"
+examples_lc = "példák"
+examples = "Példák"
+ai_lead = "MI-asszisztenssel fejleszt?"
+ai_text = "Adja át neki a teljes API-t egyetlen beillesztéssel."
+copy_for_ai = "Másolás MI-nek"
+open_markdown = "Megnyitás Markdownként"

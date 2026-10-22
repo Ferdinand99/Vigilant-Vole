@@ -901,3 +901,46 @@ topic.label = "App 主題"
 topic.help = "僅限 iOS：App 的 bundle ID。"
 server.required = "請輸入 Gorush URL"
 tokens.required = "請至少輸入一個裝置權杖"
+
+[dashboard]
+response = "回應"
+
+[detail]
+expires = "到期"
+request = "請求"
+
+[monitor_form]
+edit_heading = "編輯 {name}"
+
+[general]
+language = "語言"
+err_site_name = "最多使用 80 個字元。"
+
+[docs]
+title = "API 參考"
+create_token = "建立權杖"
+sections = "API 區段"
+getting_started = "開始使用"
+getting_started_sub = "以 Bearer 權杖傳送你的權杖。唯讀權杖可呼叫所有 GET。"
+authenticate = "驗證"
+session_help = "已登入嗎？在此瀏覽器中，相同的端點也能使用你的工作階段，因此可直接開啟 GET 連結。"
+conventions = "慣例"
+base_url = "基底網址"
+lists = "清單"
+caching = "快取"
+caching_text = "GET 會傳送"
+times = "時間"
+secrets = "密鑰"
+secrets_1 = "顯示為"
+secrets_2 = "；傳回它即可保留原值"
+errors = "錯誤"
+errors_sub = "所有端點使用同一種格式"
+codes = "代碼："
+details = "詳細資料"
+parameters = "參數"
+examples_lc = "範例"
+examples = "範例"
+ai_lead = "正在用 AI 助理開發？"
+ai_text = "貼上一次，就能把整個 API 交給它。"
+copy_for_ai = "複製給 AI"
+open_markdown = "以 Markdown 開啟"

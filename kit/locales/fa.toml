@@ -916,3 +916,46 @@ topic.label = "موضوع برنامه (topic)"
 topic.help = "فقط iOS: bundle ID برنامه."
 server.required = "URL سرور Gorush را وارد کنید"
 tokens.required = "دست‌کم یک توکن دستگاه وارد کنید"
+
+[dashboard]
+response = "پاسخ"
+
+[detail]
+expires = "انقضا"
+request = "درخواست"
+
+[monitor_form]
+edit_heading = "ویرایش {name}"
+
+[general]
+language = "زبان"
+err_site_name = "حداکثر ۸۰ نویسه."
+
+[docs]
+title = "مرجع API"
+create_token = "ساخت توکن"
+sections = "بخش‌های API"
+getting_started = "شروع کار"
+getting_started_sub = "توکن را به‌صورت توکن bearer بفرستید. توکن‌های فقط‌خواندنی می‌توانند هر GET را فراخوانی کنند."
+authenticate = "احراز هویت"
+session_help = "وارد شده‌اید؟ همین نقطه‌های پایانی با نشست شما در این مرورگر هم کار می‌کنند، پس می‌توانید پیوندهای GET را مستقیم باز کنید."
+conventions = "قراردادها"
+base_url = "URL پایه"
+lists = "فهرست‌ها"
+caching = "کش"
+caching_text = "درخواست‌های GET این را می‌فرستند:"
+times = "زمان‌ها"
+secrets = "رمزها"
+secrets_1 = "به‌صورت"
+secrets_2 = "نمایش داده می‌شود؛ برای حفظ مقدار، همان را پس بفرستید"
+errors = "خطاها"
+errors_sub = "یک قالب برای همهٔ نقطه‌های پایانی"
+codes = "کدها:"
+details = "جزئیات"
+parameters = "پارامترها"
+examples_lc = "مثال‌ها"
+examples = "مثال‌ها"
+ai_lead = "با دستیار هوش مصنوعی کار می‌کنید؟"
+ai_text = "کل API را یک‌جا و با یک بار چسباندن به آن بدهید."
+copy_for_ai = "کپی برای هوش مصنوعی"
+open_markdown = "باز کردن به‌صورت Markdown"

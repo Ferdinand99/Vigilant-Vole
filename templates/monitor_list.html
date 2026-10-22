@@ -1,7 +1,7 @@
 {#- The dashboard's live region (stats + monitor lists). Rendered inside
     partials/monitor_results.html and on its own for every SSE update.
     Only `data` (api::dashboard::DashboardData) is in scope. -#}
-{% import "macros.html" as m %}
+{% import "kit/macros.html" as m %}{% import "status_macros.html" as st %}
 {%- if data.total_all == 0 %}
 <div class="empty-card">
   {%- if data.can_edit %}
