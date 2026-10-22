@@ -493,11 +493,11 @@ For local development with `cargo` installed (Rust 1.99+):
 ```bash
 cargo run                     # server on http://localhost:3001, data in ./data
 cargo run -- agent --help     # agent mode
-cargo test                    # both crates of the workspace (vigilant-vole, vole-kit)
+cargo test                    # the whole workspace (vigilant-vole, vole-kit, vole-kit-build, kit-demo)
 cargo clippy --workspace --all-targets
 ```
 
-Templates, static assets, migrations and translations (`templates/`, `static/`, `migrations/`, `locales/`, `kit/locales/`) are compiled into the binary, so rebuild after editing them. TLS everywhere is rustls (aws-lc-rs); there's no OpenSSL dependency, and the release build is a static musl binary in the image.
+Templates, static assets, migrations and translations (`templates/`, `kit/templates/`, `static/`, `migrations/`, `kit/migrations/`, `locales/`, `kit/locales/`) are compiled into the binary, so rebuild after editing them. TLS everywhere is rustls (aws-lc-rs); there's no OpenSSL dependency, and the release build is a static musl binary in the image.
 
 The binaries attached to releases come from the Dockerfile's `builder` stage ([`.github/workflows/release-binaries.yml`](.github/workflows/release-binaries.yml)). The same locally:
 
@@ -511,8 +511,12 @@ deploy/package-release.sh ./vigilant-vole x86_64-unknown-linux-musl v0.3.0 dist 
 
 ```
 kit/                     # vole-kit: the shared product kit (auth, i18n engine, db, HTTP, docs, MCP, notifications, design system)
-├── src/                 # see docs/vole-kit.md
-└── locales/             # the kit's core interface strings, one file per language
+├── src/                 # see docs/vole-kit.md; sign-in, users, tokens, Security and API docs pages in auth/pages/
+├── templates/           # shared layouts, macros and pages (copied into templates/kit/ at build time)
+├── migrations/          # the core tables: users, api_tokens, settings
+├── locales/             # the kit's core interface strings, one file per language
+└── kit-build/           # vole-kit-build: the build.rs helper that makes the kit's templates available
+examples/kit-demo/       # a second, tiny product on vole-kit (tests that the kit stands on its own)
 src/
 ├── main.rs              # CLI: `serve` (default) or `agent`
 ├── server.rs            # startup: migrations, scheduler, background jobs, HTTP listener, graceful shutdown
