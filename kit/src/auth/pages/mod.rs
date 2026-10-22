@@ -1,0 +1,98 @@
+//! The pages every product needs, with their handlers: the setup wizard,
+//! sign-in with two-factor authentication and sign-out
+//! ([`public_router`]), and user management, API tokens, the personal
+//! Security page and the API reference ([`router`], behind
+//! [`require_auth`](super::guard::require_auth)).
+//!
+//! The routers work with any product state `S` the kit's [`Core`] (and the
+//! cookie [`Key`]) can be taken from. Templates are in `templates/`; the
+//! product's parts (name, logo, navigation, settings tabs) come from its
+//! [`KitConfig`](crate::config::KitConfig).
+
+mod security;
+mod sign_in;
+mod tokens;
+mod users;
+
+use axum::Router;
+use axum::extract::FromRef;
+use axum::routing::{delete, get, post};
+use axum_extra::extract::cookie::Key;
+
+pub use sign_in::verify_second_factor;
+
+use crate::docs::page as docs;
+use crate::state::Core;
+
+/// Setup, sign-in, the second factor and sign-out: no session needed.
+pub fn public_router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+    Core: FromRef<S>,
+    Key: FromRef<S>,
+{
+    Router::new()
+        .route(
+            "/setup",
+            get(sign_in::setup_form).post(sign_in::setup_submit),
+        )
+        .route(
+            "/login",
+            get(sign_in::login_form).post(sign_in::login_submit),
+        )
+        .route(
+            "/login/2fa",
+            get(sign_in::two_factor_form).post(sign_in::two_factor_submit),
+        )
+        .route("/logout", post(sign_in::logout))
+}
+
+/// Users, API tokens, Security and the API reference. Mount it behind
+/// [`require_auth`](super::guard::require_auth): the handlers take the
+/// signed-in [`CurrentUser`](super::CurrentUser).
+pub fn router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+    Core: FromRef<S>,
+    Key: FromRef<S>,
+{
+    let spec = crate::docs::spec();
+    Router::new()
+        .route("/settings/users", get(users::list).post(users::create))
+        .route("/settings/users/{id}", post(users::update))
+        .route("/settings/users/{id}/password", post(users::reset_password))
+        .route(
+            "/settings/users/{id}/2fa/reset",
+            post(users::reset_two_factor),
+        )
+        .route("/settings/users/{id}/enable", post(users::enable))
+        .route("/settings/users/{id}/disable", post(users::disable))
+        .route("/settings/users/{id}/delete", post(users::delete))
+        .route("/settings/tokens", get(tokens::list).post(tokens::create))
+        .route("/settings/tokens/{id}", delete(tokens::revoke))
+        .route("/settings/security", get(security::security_page))
+        .route("/settings/security/profile", post(security::save_profile))
+        .route(
+            "/settings/security/password",
+            post(security::change_password),
+        )
+        .route(
+            "/settings/security/sessions",
+            post(security::sign_out_others),
+        )
+        .route("/settings/security/2fa/setup", post(security::totp_setup))
+        .route("/settings/security/2fa/cancel", post(security::totp_cancel))
+        .route("/settings/security/2fa/enable", post(security::totp_enable))
+        .route(
+            "/settings/security/2fa/disable",
+            post(security::totp_disable),
+        )
+        .route(
+            "/settings/security/2fa/recovery",
+            post(security::totp_new_recovery_codes),
+        )
+        .route("/api-docs", get(docs::page))
+        .route("/api-docs.md", get(docs::markdown_doc))
+        .route("/llms.txt", get(docs::llms_txt))
+        .route(spec.openapi_path, get(docs::openapi))
+}

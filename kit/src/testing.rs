@@ -62,6 +62,11 @@ static DOCS: DocsSpec = DocsSpec {
     markdown_intro: no_intro,
     markdown_middle: no_markdown,
     markdown_outro: no_markdown,
+    page_subtitle: "docs.sub",
+    openapi_path: "/api/v1/openapi.json",
+    api_base: "/api/v1",
+    example_path: "/api/v1/monitors",
+    metrics_path: Some("/metrics"),
 };
 
 fn csrf_exempt_path(path: &str) -> bool {

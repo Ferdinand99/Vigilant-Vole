@@ -4,6 +4,7 @@
 //! page, the OpenAPI document and the Markdown can't drift apart.
 
 pub mod markdown;
+pub mod page;
 
 use axum::http::HeaderMap;
 use serde_json::{Map, Value, json};
@@ -33,6 +34,17 @@ pub struct DocsSpec {
     pub markdown_middle: fn(out: &mut String),
     /// Markdown after the endpoints.
     pub markdown_outro: fn(out: &mut String),
+    /// Translation key of the `/api-docs` page's subtitle (the product's own
+    /// words, e.g. "Automate Vigilant Vole with a token …").
+    pub page_subtitle: &'static str,
+    /// Where the kit serves the OpenAPI document ("/api/v1/openapi.json").
+    pub openapi_path: &'static str,
+    /// Base path of the REST API ("/api/v1"), shown on the page.
+    pub api_base: &'static str,
+    /// The endpoint `curl` examples call ("/api/v1/monitors").
+    pub example_path: &'static str,
+    /// The Prometheus endpoint API tokens can scrape, if the product has one.
+    pub metrics_path: Option<&'static str>,
 }
 
 /// The product's reference spec.

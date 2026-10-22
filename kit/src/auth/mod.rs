@@ -21,6 +21,7 @@ use axum_extra::extract::cookie::Key;
 
 pub mod csrf;
 pub mod guard;
+pub mod pages;
 pub mod rate_limit;
 pub mod session;
 pub mod tokens;

@@ -25,8 +25,6 @@ pub mod remote_browsers;
 pub mod settings;
 pub mod status_pages;
 pub mod tags;
-pub mod tokens;
-pub mod users;
 pub mod v1;
 
 use std::sync::Arc;
@@ -119,9 +117,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(status_pages::router())
         .merge(maintenance::router())
         .merge(auth::router())
-        .merge(users::router())
         .merge(settings::router())
-        .merge(tokens::router())
         .merge(agents::router())
         .merge(metrics::router())
         .merge(remote_browsers::router())

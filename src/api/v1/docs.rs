@@ -1,31 +1,11 @@
 //! The API reference: one route table ([`ROUTES`]) drives the `/api-docs`
 //! page, `/api/v1/openapi.json` (OpenAPI 3.1) and the Markdown version for AI
-//! assistants (`/api-docs.md`, `/llms.txt`, see [`markdown`]).
+//! assistants (`/api-docs.md`, `/llms.txt`, see [`markdown`]). The kit serves
+//! all four ([`crate::kit::docs::page`]) from [`DOCS`].
 
 mod markdown;
 
-use crate::kit::docs::{DocsSpec, RouteDoc, groups, instance_url, openapi_document, r};
-
-use crate::i18n::Tr as _;
-use askama::Template;
-use axum::Router;
-use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum_extra::extract::cookie::SignedCookieJar;
-
-use super::{cached_ok, json_ok};
-use crate::api::{ApiResult, AppState, HtmlTemplate, PageCtx};
-use crate::auth::CurrentUser;
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/api-docs", get(page))
-        .route("/api-docs.md", get(markdown_doc))
-        .route("/llms.txt", get(llms_txt))
-        .route("/api/v1/openapi.json", get(openapi))
-}
+use crate::kit::docs::{DocsSpec, RouteDoc, r};
 
 const LIMIT_Q: &str = "limit: page size (1–500, default 50)";
 const CURSOR_Q: &str = "cursor: next_cursor from the previous page";
@@ -248,105 +228,9 @@ pub static ROUTES: &[RouteDoc] = &[
     r("GET", "/healthz", "public", "Push and machine endpoints", "Liveness probe: always \"ok\"."),
 ];
 
-/// A group of routes, for the template.
-pub struct GroupView {
-    pub name: &'static str,
-    pub anchor: String,
-    pub title_id: String,
-    pub routes: Vec<RouteDoc>,
-}
-
-#[derive(Template)]
-#[template(path = "api_docs.html")]
-struct DocsTemplate {
-    ctx: PageCtx,
-    groups: Vec<GroupView>,
-    base_url: String,
-    error_example: &'static str,
-}
-
-async fn page(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    jar: SignedCookieJar,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
-    let settings = state.settings().await?;
-    let base_url = instance_url(settings.base_url.clone(), &headers);
-    let (ctx, jar) = PageCtx::build(
-        &state,
-        Some(&user),
-        &jar,
-        crate::i18n::t("docs.title"),
-        "",
-        "",
-    )
-    .await;
-    let groups = groups()
-        .into_iter()
-        .map(|g| GroupView {
-            name: g,
-            anchor: g.to_ascii_lowercase().replace(' ', "-"),
-            title_id: format!("{}-title", g.to_ascii_lowercase().replace(' ', "-")),
-            routes: ROUTES.iter().filter(|r| r.group == g).copied().collect(),
-        })
-        .collect();
-    Ok((
-        jar,
-        HtmlTemplate(DocsTemplate {
-            ctx,
-            groups,
-            base_url,
-            error_example: ERROR_EXAMPLE,
-        }),
-    )
-        .into_response())
-}
-
-async fn openapi(
-    State(state): State<AppState>,
-    _user: CurrentUser,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
-    let server = state
-        .settings()
-        .await?
-        .base_url
-        .unwrap_or_else(|| "/".into());
-    Ok(json_ok(&headers, &openapi_document(&server)))
-}
-
 /// The reference as Markdown (also served as an MCP resource).
 pub fn reference_markdown(base_url: &str) -> String {
     crate::kit::docs::markdown::document(base_url)
-}
-
-/// The reference as Markdown, for AI assistants.
-async fn markdown_doc(
-    State(state): State<AppState>,
-    _user: CurrentUser,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
-    let base_url = instance_url(state.settings().await?.base_url, &headers);
-    Ok(cached_ok(
-        &headers,
-        crate::kit::docs::markdown::document(&base_url).into_bytes(),
-        "text/markdown; charset=utf-8",
-    ))
-}
-
-/// The same document at the conventional `llms.txt` address.
-async fn llms_txt(
-    State(state): State<AppState>,
-    _user: CurrentUser,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
-    let base_url = instance_url(state.settings().await?.base_url, &headers);
-    Ok(cached_ok(
-        &headers,
-        crate::kit::docs::markdown::document(&base_url).into_bytes(),
-        "text/plain; charset=utf-8",
-    ))
 }
 
 fn curl_path_param(route: &RouteDoc, segment: &str) -> Option<String> {
@@ -382,4 +266,9 @@ pub static DOCS: DocsSpec = DocsSpec {
     markdown_intro: markdown::intro,
     markdown_middle: markdown::middle,
     markdown_outro: markdown::outro,
+    page_subtitle: "docs.sub",
+    openapi_path: "/api/v1/openapi.json",
+    api_base: "/api/v1",
+    example_path: "/api/v1/monitors",
+    metrics_path: Some("/metrics"),
 };

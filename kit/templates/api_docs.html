@@ -1,9 +1,9 @@
-{% extends "kit/layout.html" %}
-{% import "kit/macros.html" as m %}
+{% extends "layout.html" %}
+{% import "macros.html" as m %}
 
 {% block content %}
-{% call m::page_header(tr("docs.title"), tr("docs.sub")) %}
-  <a class="btn btn-secondary" href="/api/v1/openapi.json" download="vigilant-vole-openapi.json">{{ m::icon("download") }}<span>OpenAPI 3.1</span></a>
+{% call m::page_header(tr("docs.title"), subtitle) %}
+  <a class="btn btn-secondary" href="{{ openapi_path }}" download="{{ slug }}-openapi.json">{{ m::icon("download") }}<span>OpenAPI 3.1</span></a>
   <a class="btn btn-primary" href="/settings/tokens">{{ m::icon("key") }}<span>{{ tr("docs.create_token") }}</span></a>
 {% endcall %}
 
@@ -12,7 +12,7 @@
   <p class="ai-strip-text" id="ai-strip-text"><strong>{{ tr("docs.ai_lead") }}</strong> {{ tr("docs.ai_text") }}</p>
   <div class="ai-strip-actions">
     <a class="btn btn-plain btn-sm" href="/api-docs.md" target="_blank" rel="noopener">{{ m::icon("external") }}<span>{{ tr("docs.open_markdown") }}</span></a>
-    <button type="button" class="btn btn-secondary btn-sm" data-copy-url="/api-docs.md" data-download-name="vigilant-vole-api.md">{{ m::icon("copy") }}<span>{{ tr("docs.copy_for_ai") }}</span></button>
+    <button type="button" class="btn btn-secondary btn-sm" data-copy-url="/api-docs.md" data-download-name="{{ slug }}-api.md">{{ m::icon("copy") }}<span>{{ tr("docs.copy_for_ai") }}</span></button>
   </div>
 </section>
 
@@ -28,7 +28,7 @@
   <div class="grid-2">
     <div class="card stack-sm">
       <h3>{{ tr("docs.authenticate") }}</h3>
-      <pre class="code"><code id="curl-example">curl -H "Authorization: Bearer vv_…" {{ base_url }}/api/v1/monitors</code></pre>
+      <pre class="code"><code id="curl-example">curl -H "Authorization: Bearer {{ token_prefix }}…" {{ base_url }}{{ example_path }}</code></pre>
       <div class="cluster">
         <button type="button" class="btn btn-secondary btn-sm" data-copy="#curl-example">{{ m::icon("copy") }}<span>{{ tr("common.copy") }}</span></button>
       </div>
@@ -37,7 +37,7 @@
     <div class="card stack-sm">
       <h3>{{ tr("docs.conventions") }}</h3>
       <dl class="dl">
-        <div class="dl-row"><dt>{{ tr("docs.base_url") }}</dt><dd class="break mono">{{ base_url }}/api/v1</dd></div>
+        <div class="dl-row"><dt>{{ tr("docs.base_url") }}</dt><dd class="break mono">{{ base_url }}{{ api_base }}</dd></div>
         <div class="dl-row"><dt>{{ tr("docs.lists") }}</dt><dd><code>?limit=&amp;cursor=</code> → <code>next_cursor</code></dd></div>
         <div class="dl-row"><dt>{{ tr("docs.caching") }}</dt><dd>{{ tr("docs.caching_text") }} <code>ETag</code></dd></div>
         <div class="dl-row"><dt>{{ tr("docs.times") }}</dt><dd>UTC, <code>YYYY-MM-DD HH:MM:SS</code></dd></div>

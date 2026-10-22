@@ -21,6 +21,7 @@ pub mod notify;
 pub mod page;
 pub mod state;
 pub mod tls_roots;
+pub mod tz;
 
 #[cfg(test)]
 mod testing;

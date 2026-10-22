@@ -1,6 +1,4 @@
-//! User management (admin). Owned by the auth agent.
-//!
-//! Routes (all admin-only, plain form posts → flash + redirect):
+//! User management (admin):
 //! - `GET  /settings/users`, `POST /settings/users` (create)
 //! - `POST /settings/users/{id}` (display name + role)
 //! - `POST /settings/users/{id}/password` (set a temporary password)
@@ -10,30 +8,19 @@
 //! The "last active admin" rule is enforced in `db::users`; admins also can't
 //! change their own role, disable or delete themselves here.
 
-use crate::i18n::Tr as _;
 use askama::Template;
+use axum::Form;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
-use axum::{Form, Router};
 use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
-use super::page::initials;
-use super::{ApiResult, AppState, HtmlTemplate, PageCtx, flash};
 use crate::auth::{self, CurrentUser, Role};
 use crate::db::users::{self as db_users, User, UserChangeError};
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/settings/users", get(list).post(create))
-        .route("/settings/users/{id}", post(update))
-        .route("/settings/users/{id}/password", post(reset_password))
-        .route("/settings/users/{id}/2fa/reset", post(reset_two_factor))
-        .route("/settings/users/{id}/enable", post(enable))
-        .route("/settings/users/{id}/disable", post(disable))
-        .route("/settings/users/{id}/delete", post(delete))
-}
+use crate::http::{ApiResult, HtmlTemplate};
+use crate::i18n::Tr as _;
+use crate::page::{PageCtx, flash, initials};
+use crate::state::Core;
 
 /// One row of the user list.
 struct UserRow {
@@ -78,19 +65,19 @@ struct UsersTemplate {
     roles: &'static [Role],
 }
 
-async fn list(
-    State(state): State<AppState>,
+pub(super) async fn list(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
 ) -> ApiResult<Response> {
     user.require_admin()?;
-    let users = state.with_conn(|c| db_users::list_users(c)).await?;
+    let users = core.with_conn(|c| db_users::list_users(c)).await?;
     let rows = users
         .into_iter()
         .map(|u| UserRow::from_user(u, user.id))
         .collect();
     let (ctx, jar) = PageCtx::build(
-        &state,
+        &core,
         Some(&user),
         &jar,
         crate::i18n::t("nav.users"),
@@ -136,8 +123,8 @@ pub struct CreateForm {
     password: String,
 }
 
-async fn create(
-    State(state): State<AppState>,
+pub(super) async fn create(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Form(form): Form<CreateForm>,
@@ -166,7 +153,7 @@ async fn create(
         ));
     }
     let lookup = username.clone();
-    if state
+    if core
         .with_conn(move |c| db_users::username_taken(c, &lookup))
         .await?
     {
@@ -178,8 +165,7 @@ async fn create(
     }
     let hash = auth::hash_password_async(form.password).await?;
     let (name, shown) = (username.clone(), display_name.clone());
-    state
-        .with_conn(move |c| db_users::insert_user_full(c, &name, &hash, role, &shown))
+    core.with_conn(move |c| db_users::insert_user_full(c, &name, &hash, role, &shown))
         .await?;
     tracing::info!(admin = %user.username, new_user = %username, role = %role, "user created");
     Ok(back(
@@ -197,8 +183,8 @@ pub struct UpdateForm {
     role: String,
 }
 
-async fn update(
-    State(state): State<AppState>,
+pub(super) async fn update(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Path(id): Path<i64>,
@@ -215,7 +201,7 @@ async fn update(
     if id == user.id && role != user.role {
         return Ok(back(jar, "error", crate::i18n::t("users.err_own_role")));
     }
-    let result = state
+    let result = core
         .with_conn(move |c| db_users::update_profile(c, id, &display_name, role))
         .await?;
     match result {
@@ -233,8 +219,8 @@ pub struct ResetPasswordForm {
     password: String,
 }
 
-async fn reset_password(
-    State(state): State<AppState>,
+pub(super) async fn reset_password(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Path(id): Path<i64>,
@@ -244,7 +230,7 @@ async fn reset_password(
     if id == user.id {
         return Ok(back(jar, "info", crate::i18n::t("users.own_password")));
     }
-    let Some(target) = state.with_conn(move |c| db_users::get_user(c, id)).await? else {
+    let Some(target) = core.with_conn(move |c| db_users::get_user(c, id)).await? else {
         return Ok(back(
             jar,
             "error",
@@ -259,8 +245,7 @@ async fn reset_password(
         ));
     }
     let hash = auth::hash_password_async(form.password).await?;
-    state
-        .with_conn(move |c| db_users::set_password(c, id, &hash))
+    core.with_conn(move |c| db_users::set_password(c, id, &hash))
         .await?;
     tracing::info!(admin = %user.username, user = %target.username, "password reset by admin");
     Ok(back(
@@ -270,26 +255,25 @@ async fn reset_password(
     ))
 }
 
-async fn reset_two_factor(
-    State(state): State<AppState>,
+pub(super) async fn reset_two_factor(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
     user.require_admin()?;
-    let Some(target) = state.with_conn(move |c| db_users::get_user(c, id)).await? else {
+    let Some(target) = core.with_conn(move |c| db_users::get_user(c, id)).await? else {
         return Ok(back(
             jar,
             "error",
             change_message(UserChangeError::NotFound),
         ));
     };
-    state
-        .with_conn(move |c| {
-            db_users::disable_totp(c, id)?;
-            db_users::bump_session_version(c, id)
-        })
-        .await?;
+    core.with_conn(move |c| {
+        db_users::disable_totp(c, id)?;
+        db_users::bump_session_version(c, id)
+    })
+    .await?;
     tracing::info!(admin = %user.username, user = %target.username, "two-factor reset by admin");
     if id == user.id {
         // Our own session version moved on; log in again.
@@ -303,7 +287,7 @@ async fn reset_two_factor(
 }
 
 async fn set_active(
-    state: AppState,
+    core: Core,
     user: CurrentUser,
     jar: SignedCookieJar,
     id: i64,
@@ -313,7 +297,7 @@ async fn set_active(
     if id == user.id && !active {
         return Ok(back(jar, "error", crate::i18n::t("users.err_disable_self")));
     }
-    let result = state
+    let result = core
         .with_conn(move |c| db_users::set_active(c, id, active))
         .await?;
     match result {
@@ -333,26 +317,26 @@ async fn set_active(
     }
 }
 
-async fn enable(
-    State(state): State<AppState>,
+pub(super) async fn enable(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
-    set_active(state, user, jar, id, true).await
+    set_active(core, user, jar, id, true).await
 }
 
-async fn disable(
-    State(state): State<AppState>,
+pub(super) async fn disable(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
-    set_active(state, user, jar, id, false).await
+    set_active(core, user, jar, id, false).await
 }
 
-async fn delete(
-    State(state): State<AppState>,
+pub(super) async fn delete(
+    State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     Path(id): Path<i64>,
@@ -361,7 +345,7 @@ async fn delete(
     if id == user.id {
         return Ok(back(jar, "error", crate::i18n::t("users.err_delete_self")));
     }
-    let result = state
+    let result = core
         .with_conn(move |c| db_users::delete_user(c, id))
         .await?;
     match result {

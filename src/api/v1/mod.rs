@@ -58,10 +58,7 @@ pub fn router() -> Router<AppState> {
         .route_layer(middleware::from_fn(
             crate::kit::http::rest::session_write_guard,
         ));
-    Router::new()
-        .nest("/api/v1", api)
-        .merge(docs::router())
-        .merge(backup::router())
+    Router::new().nest("/api/v1", api).merge(backup::router())
 }
 
 async fn fallback() -> V1Error {
