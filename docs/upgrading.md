@@ -63,6 +63,8 @@ version, set the repository to `ghcr.io/ferdinand99/vigilant-vole:<version>` in 
    `./data/backups/`, on Linux/Proxmox `/var/lib/vigilant-vole/backups/`, on Unraid
    `/mnt/user/appdata/vigilant-vole/backups/`).
 3. Each pending migration runs in its own transaction and is recorded in the `schema_migrations` table.
+   Besides Vigilant Vole's own migrations (`0001_init.sql` …) the table holds the shared kit's
+   (`kit/0001_core.sql` …); see [vole-kit.md](vole-kit.md#migrations).
 4. The server starts.
 
 If a migration fails, its transaction is rolled back: nothing of that migration is kept, the ones
@@ -138,6 +140,12 @@ Running an older version on a database a newer version has migrated is **not sup
   ```
 
   Settings → Backup also refuses to restore a backup made by a newer version.
+- **The release after 0.6.x** adds the migration `0104_adopt_kit_core.sql`. It changes no table: it
+  records that the users, API token and settings tables now belong to the shared kit (vole-kit), by
+  adding the row `kit/0001_core.sql` to `schema_migrations`. Upgrading from 0.6.x therefore takes the
+  usual copy (`vigilant-vole-before-0104_adopt_kit_core-….db`). **0.6.x and earlier can't open a
+  database migrated by it**: they don't know those two rows and refuse to start, as above (the message
+  names `schema kit/0001_core`). That is expected. To go back to 0.6.x, restore that copy.
 - **0.5.0 and older** don't check. They start, and in a test of 0.4.0 on a 0.5.0 database the dashboard,
   status pages and API writes worked, but anything the newer version stores (incident updates,
   subscribers, new maintenance options) is ignored and can end up inconsistent. Don't rely on it:

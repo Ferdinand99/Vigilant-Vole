@@ -103,6 +103,24 @@ pub fn embedded_migrations() -> Vec<String> {
     names
 }
 
+/// What `schema_migrations` holds once every migration has run: ours plus
+/// the kit's core set (`kit/…`, recorded by 0104 or run), sorted by name.
+pub fn recorded_migrations() -> Vec<String> {
+    let kit = Path::new(env!("CARGO_MANIFEST_DIR")).join("kit/migrations");
+    let mut names: Vec<String> = embedded_migrations()
+        .into_iter()
+        .chain(
+            std::fs::read_dir(kit)
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|e| format!("kit/{}", e.file_name().to_string_lossy()))
+                .filter(|n| n.ends_with(".sql")),
+        )
+        .collect();
+    names.sort();
+    names
+}
+
 // ---------------------------------------------------------------------------
 // Temp data directories
 // ---------------------------------------------------------------------------

@@ -31,6 +31,8 @@ fn no_fixups(_: &mut Connection) -> Result<(), MigrationError> {
 }
 
 static MIGRATIONS: MigrationSet = MigrationSet {
+    core: crate::db::migrate::CORE,
+    adopt_core: Some("0104_adopt_kit_core.sql"),
     migrations: migration_files,
     fk_off_marker: "-- vv:foreign_keys=off",
     baseline: Some(Baseline {
