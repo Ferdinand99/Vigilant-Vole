@@ -35,6 +35,7 @@ pub static KIT: KitConfig = KitConfig {
     pending_2fa_cookie: PENDING_2FA_COOKIE,
     token_prefix: TOKEN_PREFIX,
     other_token_prefixes: &["vva_"],
+    version: env!("CARGO_PKG_VERSION"),
     user_agent: USER_AGENT,
     backup_prefix: "vigilant-vole-before-",
     flash_cookie: FLASH_COOKIE,
@@ -56,10 +57,6 @@ pub static KIT: KitConfig = KitConfig {
     machine_paths: &["/metrics", "/healthz"],
     browser_language_prefixes: &["/status/"],
     docs: &crate::api::v1::DOCS,
-    subject_type_label: |t| {
-        crate::db::models::MonitorType::parse(t)
-            .map_or_else(|| t.to_string(), |m| m.label().to_string())
-    },
     locales: &[
         ("en", include_str!("../locales/en.toml")),
         ("nb", include_str!("../locales/nb.toml")),
@@ -90,4 +87,8 @@ pub static KIT: KitConfig = KitConfig {
     ],
 };
 
-crate::register_config!(KIT);
+/// Installs [`KIT`] as the kit's configuration. Runs at start-up (`main`,
+/// [`crate::server::prepare`]) and before every test binary's tests.
+pub fn install() {
+    crate::kit::config::install(&KIT);
+}

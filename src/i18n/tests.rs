@@ -63,13 +63,17 @@ fn every_catalog_parses() {
 
 #[test]
 fn every_language_has_a_locale_file_named_after_its_code() {
-    let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/locales"));
-    for lang in Lang::all() {
-        assert!(
-            dir.join(format!("{}.toml", lang.code())).is_file(),
-            "locales/{}.toml is missing",
-            lang.code()
-        );
+    // The product's strings and the kit's core strings.
+    for dir in ["locales", "kit/locales"] {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
+        for lang in Lang::all() {
+            assert!(
+                dir.join(format!("{}.toml", lang.code())).is_file(),
+                "{}/{}.toml is missing",
+                dir.display(),
+                lang.code()
+            );
+        }
     }
     let codes: BTreeSet<&str> = LANGS.iter().map(|l| l.code).collect();
     assert_eq!(codes.len(), LANGS.len(), "duplicate language codes");

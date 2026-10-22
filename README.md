@@ -493,11 +493,11 @@ For local development with `cargo` installed (Rust 1.99+):
 ```bash
 cargo run                     # server on http://localhost:3001, data in ./data
 cargo run -- agent --help     # agent mode
-cargo test
-cargo clippy --all-targets
+cargo test                    # both crates of the workspace (vigilant-vole, vole-kit)
+cargo clippy --workspace --all-targets
 ```
 
-Templates, static assets, migrations and translations (`templates/`, `static/`, `migrations/`, `locales/`) are compiled into the binary, so rebuild after editing them. TLS everywhere is rustls (aws-lc-rs); there's no OpenSSL dependency, and the release build is a static musl binary in the image.
+Templates, static assets, migrations and translations (`templates/`, `static/`, `migrations/`, `locales/`, `kit/locales/`) are compiled into the binary, so rebuild after editing them. TLS everywhere is rustls (aws-lc-rs); there's no OpenSSL dependency, and the release build is a static musl binary in the image.
 
 The binaries attached to releases come from the Dockerfile's `builder` stage ([`.github/workflows/release-binaries.yml`](.github/workflows/release-binaries.yml)). The same locally:
 
@@ -510,6 +510,9 @@ deploy/package-release.sh ./vigilant-vole x86_64-unknown-linux-musl v0.3.0 dist 
 ## 🧩 Architecture
 
 ```
+kit/                     # vole-kit: the shared product kit (auth, i18n engine, db, HTTP, docs, MCP, notifications, design system)
+├── src/                 # see docs/vole-kit.md
+└── locales/             # the kit's core interface strings, one file per language
 src/
 ├── main.rs              # CLI: `serve` (default) or `agent`
 ├── server.rs            # startup: migrations, scheduler, background jobs, HTTP listener, graceful shutdown
@@ -530,11 +533,11 @@ src/
 ├── maintenance.rs       # maintenance window evaluation
 ├── config_io.rs         # config as code: export, plan, import, restore
 ├── kuma_import.rs       # Uptime Kuma importer
-└── i18n/                # language registry, plural rules, number/date formats; strings in locales/<code>.toml
+└── i18n/                # tests of the translations (the engine is vole-kit's); strings in locales/<code>.toml + kit/locales/<code>.toml
 templates/               # Askama HTML templates (compiled in)
-static/                  # CSS, htmx, app.js, icons, fonts (embedded)
+static/                  # CSS, htmx, app.js, icons, fonts (embedded; the design system by vole-kit)
 migrations/              # SQL schema, run once each on startup
-locales/                 # interface strings, one file per language (+ glossary/ per language)
+locales/                 # Vigilant Vole's interface strings, one file per language (+ glossary/ per language)
 ```
 
 A `Scheduler` runs one `tokio` task per active monitor under a global concurrency limit. Every observation — local checks, push requests, missed-push timeouts, agent results, group recomputes — goes through one pure state machine (`monitor::alerting`) that decides the status to record and the notifications and events to emit, so all sources follow the same rules. Updates are broadcast to `/events`, which pushes fresh dashboard fragments to connected browsers over SSE. An hourly job rolls heartbeats up into daily stats and prunes old ones.

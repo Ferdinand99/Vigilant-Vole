@@ -10,7 +10,7 @@ pub mod config_io;
 pub mod db;
 pub mod discovery;
 pub mod i18n;
-pub mod kit;
+pub use vole_kit as kit;
 pub mod kuma_import;
 pub mod maintenance;
 pub mod mcp;
@@ -23,4 +23,12 @@ pub mod subscribers;
 pub mod tls_roots {
     //! Moved to [`crate::kit::tls_roots`].
     pub use crate::kit::tls_roots::*;
+}
+
+/// Unit tests have no `main`: install the kit's configuration before any of
+/// them runs, so no test can forget it.
+#[cfg(test)]
+#[ctor::ctor(unsafe)]
+fn install_kit_config_for_tests() {
+    product::install();
 }

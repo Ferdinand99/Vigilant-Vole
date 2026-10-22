@@ -27,6 +27,8 @@ enum Command {
 
 #[tokio::main]
 async fn main() {
+    // The shared kit needs to know which product it runs in before anything else.
+    vigilant_vole::product::install();
     let cli = Cli::parse();
     // Colours only on a terminal (logs go to stdout): `docker logs` and log
     // files get plain text. The `mcp` bridge keeps stdout for protocol

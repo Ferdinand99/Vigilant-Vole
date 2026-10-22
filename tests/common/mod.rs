@@ -537,3 +537,10 @@ pub fn totp_now(secret: &str, account: &str) -> String {
         .as_secs();
     vigilant_vole::auth::totp::code_at(&totp, now)
 }
+
+/// Test binaries have no `main`: install the kit's configuration before any
+/// test runs, so no test can forget it.
+#[ctor::ctor(unsafe)]
+fn install_kit_config() {
+    vigilant_vole::product::install();
+}

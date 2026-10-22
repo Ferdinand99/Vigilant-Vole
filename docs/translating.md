@@ -7,8 +7,11 @@ contributions.
 
 ## Fix or improve a translation
 
-1. Open `locales/<code>.toml` (`de`, `fr`, `es`, `it`, `nl`, `pt-BR`, `pl`, `sv`, `da`, `nb`). Search for the text
-   you want to change; the key above it tells you where it appears (`nav.*` is the menu, `monitors.*` …).
+1. Open `locales/<code>.toml` (`de`, `fr`, `es`, `it`, `nl`, `pt-BR`, `pl`, `sv`, `da`, `nb`) or, for the shared
+   strings (menus, sign-in, users, tokens, formats, errors, notification providers: the sections `common`, `nav`,
+   `js`, `fmt`, `count`, `login`, `setup`, `sec`, `users`, `tokens`, `auth`, `error`, `role`, `notif`),
+   `kit/locales/<code>.toml`. Search for the text you want to change; the key above it tells you where it appears
+   (`nav.*` is the menu, `monitors.*` …).
 2. Edit the value inside the quotes. Keep every `{placeholder}` exactly as it is (you may move it), and keep
    product names and technical terms (HTTP, TLS, OAuth2, Docker, Prometheus …) as they are.
 3. Check the wording against `locales/glossary/<code>.md`, which records which word was chosen for each core
@@ -27,8 +30,10 @@ shorter of two good wordings. Write every string yourself from the English: do n
 ## The file format
 
 A small TOML subset: `[section]` headers, `key = "value"` lines, `#` comments. Inside a value only `\"`, `\\`, `\n`
-and `\t` are escapes; typographic quotes can be typed directly. The sections, keys and order mirror
-`locales/en.toml`. A key missing from a language falls back to English, key by key, so a partial translation
+and `\t` are escapes; typographic quotes can be typed directly. Each language has two files: the shared kit's
+core strings in `kit/locales/<code>.toml` and Vigilant Vole's own in `locales/<code>.toml`; together they are the
+language's catalog, and a key may be in only one of them (the app refuses to start otherwise). The sections, keys
+and order mirror the English files. A key missing from a language falls back to English, key by key, so a partial translation
 works (debug builds log each fallback once), but every shipped language is kept at 100 %.
 
 ### Plurals
@@ -101,11 +106,12 @@ below 100 %. The key count differs per language because plural bases carry one k
 
 ## Add a language
 
-1. Copy `locales/en.toml` to `locales/<code>.toml` (BCP 47: `pt-BR`, `zh-Hans`) and translate it, starting with
-   `[fmt]`. Write `locales/glossary/<code>.md` first: about 60 core terms plus the style decisions.
-2. Add one entry to `LANGS` in `src/i18n/lang.rs`: the code, English and own name, writing direction, plural rule
-   (add a variant to `PluralRule` with its CLDR categories if the family is missing, plus a test vector), number
-   separators, `beta: true`, and `include_str!` of the file. Add the primary-language aliases (`aliases`) if people
+1. Copy `locales/en.toml` to `locales/<code>.toml` and `kit/locales/en.toml` to `kit/locales/<code>.toml` (BCP 47:
+   `pt-BR`, `zh-Hans`) and translate them, starting with `[fmt]` (in the kit's file). Write `locales/glossary/<code>.md` first: about 60 core terms plus the style decisions.
+2. Add one entry to `LANGS` in `kit/src/i18n/lang.rs`: the code, English and own name, writing direction, plural
+   rule (add a variant to `PluralRule` with its CLDR categories if the family is missing, plus a test vector), number
+   separators and `beta: true`; add the code to the kit's core list in `kit/src/i18n/catalog.rs` and to the
+   product's `locales` in `src/product.rs`. Add the primary-language aliases (`aliases`) if people
    write the language under other tags.
 3. `cargo test --lib i18n` and `cargo clippy --all-targets -- -D warnings`. The coverage test
    (`cargo test --lib coverage_report -- --nocapture`) prints the percentage per language.
@@ -149,5 +155,5 @@ and no letter-spacing. Keep labels short: there is no wrapping point inside a Ch
 * A few sentences are assembled from several keys around inline code (`push.help_1` / `push.help_2`,
   `backup.restore_help_*`, `docs.secrets_*` …), which assumes English word order. The translations reshape them to
   read correctly as rendered; a future change should turn them into single strings with a `{code}` placeholder.
-* New English strings are added to `locales/en.toml` first. Until they are translated, the other languages show
+* New English strings are added to `locales/en.toml` (or `kit/locales/en.toml`) first. Until they are translated, the other languages show
   the English text for those keys; the coverage test lists what is missing.

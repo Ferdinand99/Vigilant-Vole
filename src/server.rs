@@ -26,6 +26,7 @@ pub fn build_http_client() -> reqwest::Client {
 /// scheduler is created but not started. Fails when the database can't be
 /// brought to this version's schema (the error says how to recover).
 pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
+    crate::product::install();
     crate::tls_roots::init();
     std::fs::create_dir_all(&config.data_dir).expect("failed to create data dir");
     // Swap in a backup uploaded via Settings → Backup before the DB is opened.
