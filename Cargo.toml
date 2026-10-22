@@ -1,5 +1,7 @@
 [workspace]
 members = [".", "kit"]
+# `cargo test`, `cargo clippy` … without `-p` cover both crates.
+default-members = [".", "kit"]
 resolver = "3"
 
 # Versions shared by Vigilant Vole and the kit (`kit/`, the `vole-kit` crate).
