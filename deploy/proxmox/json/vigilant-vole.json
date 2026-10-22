@@ -8,7 +8,7 @@
   "privileged": false,
   "interface_port": 3001,
   "documentation": "https://github.com/Ferdinand99/Vigilant-Vole#readme",
-  "website": "https://ferdinand99.github.io/Vigilant-Vole/",
+  "website": "https://hedgerow.tools/Vigilant-Vole/",
   "repository": "https://github.com/Ferdinand99/Vigilant-Vole",
   "architectures": ["amd64", "arm64"],
   "platforms": ["pve"],
