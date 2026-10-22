@@ -32,6 +32,7 @@ fn csrf_exempt_path(path: &str) -> bool {
 pub static KIT: KitConfig = KitConfig {
     product: NAME,
     slug: "vigilant-vole",
+    short_name: "Vole",
     session_cookie: SESSION_COOKIE,
     pending_2fa_cookie: PENDING_2FA_COOKIE,
     token_prefix: TOKEN_PREFIX,

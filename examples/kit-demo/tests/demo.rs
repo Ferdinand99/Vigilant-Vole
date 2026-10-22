@@ -426,3 +426,27 @@ async fn migrate_again(app: &App) -> vole_kit::db::MigrationReport {
         .await
         .unwrap()
 }
+
+/// Provider forms name the demo, never Vigilant Vole.
+#[test]
+fn notification_forms_name_the_demo() {
+    kit_demo::install();
+    let mut shown = Vec::new();
+    for p in vole_kit::notify::PROVIDERS {
+        for f in p.fields {
+            let text = format!("{} {}", f.placeholder_text(), f.default_value());
+            assert!(
+                !text.contains("Vigilant") && !text.contains("Vole"),
+                "{}.{}: {text}",
+                p.kind,
+                f.key
+            );
+            if text.contains("Demo") {
+                shown.push(format!("{}.{}", p.kind, f.key));
+            }
+        }
+    }
+    assert!(shown.contains(&"slack.username".to_string()), "{shown:?}");
+    assert!(shown.contains(&"zulip.topic".to_string()), "{shown:?}");
+    assert!(shown.contains(&"clicksend.from".to_string()), "{shown:?}");
+}

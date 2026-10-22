@@ -79,7 +79,7 @@ fn config(p: &ProviderSchema, full: bool) -> Value {
         }
         pairs.push((
             f.form_name(),
-            sample(p, f.key, f.kind, f.placeholder, f.default),
+            sample(p, f.key, f.kind, &f.placeholder_text(), &f.default_value()),
         ));
     }
     parse_form(p, &pairs).config

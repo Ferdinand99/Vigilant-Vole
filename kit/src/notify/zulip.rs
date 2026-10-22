@@ -27,7 +27,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
             .required()
             .placeholder("monitoring…"),
         Field::text("topic", "Topic")
-            .default("Vigilant Vole")
+            .default("{product}")
             .help("Topics keep one subject together inside a stream."),
     ],
     transport: Transport::Http(build),

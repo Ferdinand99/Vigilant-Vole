@@ -109,6 +109,7 @@ fn no_exempt_path(_: &str) -> bool {
 pub static KIT: KitConfig = KitConfig {
     product: "Kit Demo",
     slug: "kit-demo",
+    short_name: "Demo",
     session_cookie: "kd_session",
     pending_2fa_cookie: "kd_2fa",
     token_prefix: "kd_",

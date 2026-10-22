@@ -86,6 +86,7 @@ macro_rules! locales {
 pub static CONFIG: KitConfig = KitConfig {
     product: "Vigilant Vole",
     slug: "vigilant-vole",
+    short_name: "Vole",
     session_cookie: "vv_session",
     pending_2fa_cookie: "vv_2fa",
     token_prefix: "vv_",

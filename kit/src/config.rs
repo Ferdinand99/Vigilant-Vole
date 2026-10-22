@@ -14,6 +14,8 @@ pub struct KitConfig {
     pub product: &'static str,
     /// Lower-case name for file names and the like ("vigilant-vole").
     pub slug: &'static str,
+    /// One short word for tight spots, like an SMS sender name ("Vole").
+    pub short_name: &'static str,
     /// Name of the signed session cookie.
     pub session_cookie: &'static str,
     /// Name of the short-lived cookie between password and second factor.

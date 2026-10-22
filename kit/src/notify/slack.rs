@@ -23,7 +23,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
         Field::text("channel", "Channel override")
             .placeholder("#alerts…")
             .help("Only works with legacy webhooks."),
-        Field::text("username", "Bot name").placeholder("Vigilant Vole…"),
+        Field::text("username", "Bot name").placeholder("{product}…"),
         Field::text("icon_emoji", "Icon emoji").placeholder(":rotating_light:…"),
     ],
     transport: Transport::Http(build),
