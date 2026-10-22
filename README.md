@@ -12,7 +12,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 [![Rust](https://img.shields.io/badge/rust-1.99%2B-orange.svg)](https://www.rust-lang.org/)
 [![Docker Image](https://img.shields.io/badge/docker%20image-~20MB-success.svg)](#-quick-start)
 [![Unraid Friendly](https://img.shields.io/badge/unraid-friendly-blueviolet.svg)](#-unraid)
-[![Website](https://img.shields.io/badge/website-ferdinand99.github.io%2FVigilant--Vole-black.svg)](https://ferdinand99.github.io/Vigilant-Vole/)
+[![Website](https://img.shields.io/badge/website-hedgerow.tools%2FVigilant--Vole-black.svg)](https://hedgerow.tools/Vigilant-Vole/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/dashboard-dark.png">
