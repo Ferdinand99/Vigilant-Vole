@@ -107,6 +107,7 @@ async fn referenced_assets_resolve() {
         "/static/theme.js",
         "/static/htmx.min.js",
         "/static/sse.js",
+        "/static/passkeys.js",
         "/static/icons.svg",
         "/static/favicon.svg",
         "/static/apple-touch-icon.png",

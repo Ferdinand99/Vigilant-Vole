@@ -96,7 +96,7 @@ def expect_status(page: Page, label: str) -> None:
 def ui_login(page: Page, username: str, password: str) -> None:
     page.get_by_label("Username").fill(username)
     page.get_by_label("Password", exact=True).fill(password)
-    page.get_by_role("button", name="Log in").click()
+    page.get_by_role("button", name="Log in", exact=True).click()
 
 
 def ui_logout(page: Page) -> None:

@@ -7,7 +7,7 @@
 //! refusing databases from a newer release, and foreign key handling.
 //!
 //! Besides the product's own migrations the runner applies the kit's core
-//! set ([`CORE`]: users, API tokens, settings), recorded under `kit/…`
+//! set ([`CORE`]: users, API tokens, settings, passkeys), recorded under `kit/…`
 //! names, before the product's. A product whose own migrations created those
 //! tables before the kit had them adopts the core set instead
 //! ([`MigrationSet::adopt_core`]).
@@ -35,10 +35,18 @@ pub const TOKEN_SCOPES: (&str, &str) = (
     include_str!("../../migrations/0002_token_scopes.sql"),
 );
 
+/// `passkeys` and `passkey_challenges`: sign-in with passkeys (WebAuthn).
+/// Every product runs it ([`crate::config::install`] checks), since the
+/// sign-in page and the Security page offer passkeys.
+pub const PASSKEYS: (&str, &str) = (
+    "kit/0003_passkeys.sql",
+    include_str!("../../migrations/0003_passkeys.sql"),
+);
+
 /// The kit's core migrations, `(name, sql)` in order: every product's
 /// default for [`MigrationSet::core`]. The names start with `kit/` so they
 /// never collide with a product's file names.
-pub const CORE: &[(&str, &str)] = &[CORE_TABLES, TOKEN_SCOPES];
+pub const CORE: &[(&str, &str)] = &[CORE_TABLES, TOKEN_SCOPES, PASSKEYS];
 
 /// What a product tells the runner about its migrations.
 pub struct MigrationSet {
@@ -671,6 +679,7 @@ mod tests {
             [
                 "kit/0001_core.sql",
                 "kit/0002_token_scopes.sql",
+                "kit/0003_passkeys.sql",
                 "0001_things.sql"
             ]
         );
@@ -679,6 +688,8 @@ mod tests {
             "api_tokens",
             "api_token_scopes",
             "settings",
+            "passkeys",
+            "passkey_challenges",
             "things",
         ] {
             assert!(table_exists(&conn, table), "{table}");
@@ -748,7 +759,7 @@ mod tests {
     #[test]
     fn the_token_scope_table_can_be_added_later() {
         static WITHOUT: MigrationSet = MigrationSet {
-            core: &[CORE_TABLES],
+            core: &[CORE_TABLES, PASSKEYS],
             adopt_core: None,
             migrations: NEW_PRODUCT.migrations,
             fk_off_marker: "-- fk=off",

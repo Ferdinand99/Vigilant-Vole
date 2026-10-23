@@ -129,6 +129,50 @@
   {%- endif %}
 </section>
 
+<section class="section" id="passkeys" aria-labelledby="passkeys-title">
+  {% call m::section_head(tr("sec.pk_title"), tr("sec.pk_sub"), "passkeys-title") %}
+    {%- if passkey_origin.is_some() %}
+    <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#add-passkey" commandfor="add-passkey" command="show-modal" data-passkey-add hidden>{{ m::icon("plus") }}<span>{{ tr("sec.pk_add") }}</span></button>
+    {%- endif %}
+  {% endcall %}
+  {%- match passkey_origin %}
+  {%- when Some(origin) %}
+  <div class="callout status-info" data-passkey-note data-origin="{{ origin }}">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#info"></use></svg>
+    <div class="callout-body">{{ tr1("sec.pk_where", "url", origin) }}</div>
+  </div>
+  {%- when None %}
+  {{ m::callout("info", tr("sec.pk_no_url")) }}
+  {%- endmatch %}
+  {%- if passkeys.is_empty() %}
+  <div class="card">
+    <div class="empty">
+      <div class="empty-icon">{{ m::icon("key") }}</div>
+      <p class="empty-title">{{ tr("sec.pk_none") }}</p>
+    </div>
+  </div>
+  {%- else %}
+  <ul class="list" role="list">
+    {%- for p in passkeys %}
+    <li class="list-row" id="passkey-{{ p.id }}">
+      <span class="list-icon">{{ m::icon("key") }}</span>
+      <span class="list-main">
+        <span class="list-title">{{ p.name }}</span>
+        <span class="list-sub">{{ tr("sec.pk_created") }} {{ m::time_ago(p.created_at) }} · {% match p.last_used_at %}{% when Some(at) %}{{ tr("sec.pk_last_used") }} {{ m::time_ago(at) }}{% when None %}{{ tr("sec.pk_never_used") }}{% endmatch %}</span>
+      </span>
+      <span class="list-actions cluster">
+        <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#rename-passkey-{{ p.id }}" commandfor="rename-passkey-{{ p.id }}" command="show-modal">{{ tr("sec.pk_rename") }}</button>
+        <form method="post" action="/settings/security/passkeys/{{ p.id }}/delete" data-confirm="{{ tr1("sec.pk_delete_q", "name", p.name) }}" data-confirm-message="{{ tr("sec.pk_delete_msg") }}" data-confirm-label="{{ tr("common.delete") }}">
+          {{ m::button(tr("common.delete"), "danger", "", "submit", "sm") }}
+        </form>
+      </span>
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  <p class="section-foot">{{ tr("sec.pk_fallback") }}</p>
+</section>
+
 <section class="section" aria-labelledby="sessions-title">
   {% call m::section_head(tr("sec.sessions"), "", "sessions-title") %}{% endcall %}
   <ul class="list" role="list">
@@ -195,6 +239,54 @@
   </footer>
 </dialog>
 {%- endif %}
+{%- if passkey_origin.is_some() %}
+<dialog class="sheet" id="add-passkey" aria-labelledby="add-passkey-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="add-passkey-title">{{ tr("sec.pk_add") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="add-passkey" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="add-passkey-form" class="form" method="post" action="/settings/security/passkeys/options" data-passkey-register data-msg-cancelled="{{ tr("sec.pk_cancelled") }}" data-msg-unsupported="{{ tr("sec.pk_unsupported") }}" data-msg-exists="{{ tr("sec.pk_exists") }}" data-msg-failed="{{ tr("sec.pk_failed") }}">
+      <p class="muted">{{ tr("sec.pk_add_text") }}</p>
+      <div class="field">
+        <label class="label" for="f-passkey-name">{{ tr("sec.pk_name") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <input id="f-passkey-name" name="name" type="text" maxlength="60" autocomplete="off" placeholder="{{ tr1("sec.pk_default_name", "n", passkeys.len() + 1) }}…">
+      </div>
+      <div class="field">
+        <label class="label" for="f-passkey-password">{{ tr("sec.current_password") }}</label>
+        <input id="f-passkey-password" name="password" type="password" required maxlength="1024" autocomplete="current-password">
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="add-passkey" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="add-passkey-form">{{ tr("sec.pk_continue") }}</button>
+  </footer>
+</dialog>
+{%- endif %}
+
+{%- for p in passkeys %}
+<dialog class="sheet" id="rename-passkey-{{ p.id }}" aria-labelledby="rename-passkey-{{ p.id }}-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="rename-passkey-{{ p.id }}-title">{{ tr("sec.pk_rename_title") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="rename-passkey-{{ p.id }}" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="rename-passkey-{{ p.id }}-form" class="form" method="post" action="/settings/security/passkeys/{{ p.id }}/rename">
+      <div class="field">
+        <label class="label" for="f-passkey-{{ p.id }}-name">{{ tr("sec.pk_name") }}</label>
+        <input id="f-passkey-{{ p.id }}-name" name="name" type="text" required maxlength="60" autocomplete="off" value="{{ p.name }}">
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="rename-passkey-{{ p.id }}" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="rename-passkey-{{ p.id }}-form">{{ tr("sec.pk_rename") }}</button>
+  </footer>
+</dialog>
+{%- endfor %}
 {% endblock %}
 
-
+{% block scripts %}{% if passkey_origin.is_some() %}<script src="/static/passkeys.js" defer></script>{% endif %}{% endblock %}

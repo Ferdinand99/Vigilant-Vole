@@ -40,6 +40,7 @@ The server log of a run lives in its temporary `DATA_DIR` (`server.log`) until t
 | `test_service_monitors.py` | Redis monitor through the form (password never echoed, mask kept on save, check goes Up against a fake Redis), wrong password explained, switching type swaps the RADIUS / SNMP / credential fields |
 | `test_maintenance.py` | Manual window puts a monitor into maintenance; ending it brings it back |
 | `test_users_security.py` | Viewer sees no edit controls and gets 403 on writes; TOTP 2FA enrol + login, recovery codes are single-use; read/write API token scopes; `/metrics` after enabling it |
+| `test_passkeys.py` | Chromium's virtual authenticator: public URL `http://localhost:<port>`, 2FA on, add a passkey under Security (password first), log out, log in with the passkey alone (no password, no code); no passkey button at another address |
 | `test_ui_misc.py` | Config export (YAML) → import preview reports everything unchanged; Norwegian user language and `Accept-Language: nb` on a public page; 375 px phone layout (no sideways scroll, sheet opens/closes); theme choice persists; reduced motion |
 
 ## Conventions

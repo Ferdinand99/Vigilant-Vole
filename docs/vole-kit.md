@@ -4,7 +4,7 @@
 products (first of them Keen Kestrel). It holds:
 
 * authentication, with the pages every product needs: setup, sign-in with two
-  factors, users, API tokens (with the product's own token scopes), Security,
+  factors or a passkey, users, API tokens (with the product's own token scopes), Security,
   the API reference and, for products that want it, General settings;
 * the i18n engine and the core translations;
 * the database plumbing, the migration runner and the core tables;
@@ -33,7 +33,8 @@ kit/
 ├── kit-build/          # package vole-kit-build: the build-script helper
 ├── locales/            # the kit's strings, one file per language
 ├── migrations/         # the core set: 0001_core.sql (users, api_tokens, settings),
-│                       #   0002_token_scopes.sql (api_token_scopes)
+│                       #   0002_token_scopes.sql (api_token_scopes),
+│                       #   0003_passkeys.sql (passkeys, passkey_challenges)
 ├── templates/          # layouts, macros, the shared pages
 └── src/
 examples/kit-demo/      # a second product on the kit (tests only, not released)
@@ -56,7 +57,8 @@ features from `[workspace.dependencies]`:
 * web: axum, axum-extra, askama, tokio, reqwest
 * database: rusqlite, deadpool-sqlite, rust-embed
 * data and errors: serde, serde_json, time, jiff, url, tracing, thiserror
-* crypto: rand, hex, sha2, base64, argon2, totp-rs, qrcode, regex
+* crypto: rand, hex, sha2, base64, argon2, totp-rs, qrcode, regex, aws-lc-rs
+  and ciborium (passkeys; aws-lc-rs is also rustls' crypto)
 * mail and TLS: lettre, rustls, rustls-native-certs, webpki-root-certs, futures-util
 
 Test only: tower, tokio-rustls, rcgen. `vole-kit-build` has no dependencies.
@@ -93,8 +95,8 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `config` | `KitConfig`, `install`, `get` |
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `migrate_with` + `MigrateOptions`) |
-| `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
+| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `migrate_with` + `MigrateOptions`) |
+| `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
 | `page` | `PageCtx`, `UserView`, flash messages, `Ui` (`NavItem`, `SettingsTab`, `TabAccess`) |
@@ -324,14 +326,16 @@ changing those files together with the layouts (see "Not done").
 `vole_kit::auth::pages` serves the pages every product needs, generic over
 the product's state (anything `Core` and `Key` can be taken from):
 
-* `public_router()`: `/setup`, `/login`, `/login/2fa`, `/logout`.
+* `public_router()`: `/setup`, `/login`, `/login/2fa`, `/login/passkey`
+  (and `/options`), `/logout`.
 * `router()` must sit behind `require_auth`. It serves:
   * `/settings/general` (admins), only with `KitConfig::general`;
-  * `/settings/users` (create, edit, password, 2FA reset, enable, disable,
-    delete);
+  * `/settings/users` (create, edit, password, 2FA reset, passkey reset,
+    enable, disable, delete);
   * `/settings/tokens` (list, create with the product's scopes, revoke);
   * `/settings/security` (profile and language, password, other sessions,
-    2FA set-up/cancel/enable/disable/recovery codes);
+    2FA set-up/cancel/enable/disable/recovery codes, passkeys:
+    add/rename/delete);
   * `/api-docs`, `/api-docs.md`, `/llms.txt` and `DocsSpec::openapi_path`.
 
 Vigilant Vole merges both into its routers (`api::auth::router()` and
@@ -405,9 +409,8 @@ static KIT: KitConfig = KitConfig {
   declared scopes without `TOKEN_SCOPES` in `MigrationSet::core`.
 
 Vigilant Vole declares no scopes and leaves `TOKEN_SCOPES` out of its core
-set (`core: &[CORE_TABLES]`), so its schema, migration list and pages are
-unchanged; the kit doesn't touch `api_token_scopes` when no scopes are
-declared.
+set (`core: &[CORE_TABLES, PASSKEYS]`), so it has no `api_token_scopes`;
+the kit doesn't touch that table when no scopes are declared.
 
 ## Sign-in throttling
 
@@ -505,6 +508,79 @@ username. A few unrelated words work well."); the strength meter
 refused password names the rule it broke (`users.err_password_short`,
 `err_password_long`, `err_password_username`, `err_password_weak`). Usernames
 are 1–64 characters of letters, digits, `.`, `_`, `-` and `@`.
+
+## Passkeys
+
+0.4 adds passkeys (WebAuthn) to every product: discoverable credentials
+with user verification, so a passkey sign-in counts as both factors and
+skips the TOTP step. Password plus TOTP stays exactly as it was, as the
+fallback.
+
+* **Sign-in.** `login.html` gets a "Log in with a passkey" button and
+  `autocomplete="username webauthn"` on the username field, so the browser
+  offers saved passkeys (conditional UI). `POST /login/passkey/options`
+  issues a challenge, `POST /login/passkey` verifies the assertion, sets
+  the session (with `next`) and answers `{"redirect": …}`.
+* **Security page.** A Passkeys section lists them (created, last used),
+  with rename and delete. Adding one asks for the current password first
+  (`confirm_password`, the re-authentication the other sensitive changes
+  there use), then runs `navigator.credentials.create`. The default name
+  is the passkey provider's when its AAGUID is a well-known one
+  ("iCloud Keychain", "Google Password Manager", "Windows Hello" …),
+  otherwise "Passkey N".
+* **Users page.** Admins can remove all of a user's passkeys (shown only
+  when the user has some). Like the 2FA reset, it signs the user out
+  everywhere and is logged (`tracing`, with the admin's name).
+* **Relying party.** The RP ID is the host of the public URL (`base_url`),
+  and the only accepted origin is that URL's origin
+  (`webauthn::RelyingParty::from_public_url`). It must be HTTPS with a
+  domain name, or `http://localhost`. Without such a URL the pages offer no
+  passkeys, and Security says "Passkeys need this site’s public URL over
+  HTTPS."; on another origin (`http://10.0.3.26:3001`) `static/passkeys.js`
+  keeps the buttons hidden and Security says "Passkeys work at <public URL>
+  over HTTPS.". The check is the browser's own origin, so reverse proxies
+  need nothing; the sign-in throttles use the client address as
+  `<PREFIX>_TRUST_PROXY` says. Changing the public URL's host makes
+  existing passkeys useless (they are bound to the old RP ID).
+* **Server side** (`auth::webauthn`): WebAuthn Level 3 §7.1 and §7.2
+  step by step: type, challenge, origin, no cross-origin, RP ID hash, the
+  UP and UV flags, consistent backup flags, the signature over
+  `authData || SHA-256(clientDataJSON)`, the user handle, and the signature
+  counter (it must grow unless both sides are 0, as with most synced
+  passkeys). Attestation "none": the statement isn't verified, any format
+  is accepted and only the credential's public key is taken. ES256, EdDSA
+  (Ed25519) and RS256, verified with aws-lc-rs; CBOR is read with
+  ciborium. No OpenSSL: `webauthn-rs` (0.5.5) needs it, so the kit has
+  its own small verifier.
+* **Challenges** are 32 random bytes in `passkey_challenges`, single use
+  (taken with `DELETE … RETURNING` before anything else is checked),
+  valid for five minutes, bound to their purpose and, for a registration,
+  to the user. Expired rows go when the next one is stored, and the table
+  keeps at most 10 000.
+* **Throttling.** Starting a sign-in is a request budget per client
+  address (30 a minute: the page asks for a challenge on every visit for
+  the autofill) and refused while the address is in sign-in backoff; a
+  failed sign-in counts against the address like a failed password
+  (`SignInLimits::ip`), a success undoes it. Failed registrations back off
+  per user (`passkey-setup:<id>`).
+* **Front end.** `static/passkeys.js` (a kit file, no inline script),
+  loaded only by the two pages when the public URL allows passkeys. Its
+  messages come from `data-msg-*` attributes: cancelled or timed out,
+  unsupported browser, already registered, failed; the login page shows
+  them in a callout, Security as a toast.
+* **Tests.** `webauthn::soft::SoftAuthenticator` makes real ES256, EdDSA
+  and RS256 credentials and assertions. The kit's unit tests check every
+  refusal (wrong origin, challenge, RP ID, type, missing UP or UV, a bad
+  signature, another user handle, a counter that didn't grow, changed
+  backup eligibility, malformed CBOR); kit-demo runs both ceremonies over
+  HTTP, including a reused challenge and the admin's reset. Products can
+  use the soft authenticator for their own tests.
+
+The core migration `kit/0003_passkeys.sql` (`migrate::PASSKEYS`, part of
+`CORE`) creates `passkeys` (credential id, COSE key, algorithm, user handle,
+name, sign count, transports, backup flags, created and last used) and
+`passkey_challenges`, both `ON DELETE CASCADE` with their user. `install`
+refuses a configuration whose `MigrationSet::core` lacks it.
 
 ## Alerts
 
@@ -620,8 +696,8 @@ Vigilant Vole's `coverage_report` and kit-demo's
 ### Static files
 
 The kit embeds the design system and serves it first at `/static/…`:
-`style.css`, `app.js`, `theme.js`, `icons.svg`, `htmx.min.js`, `sse.js` and
-`fonts/` (`assets::KIT_FILES`). Vigilant Vole embeds only its own files
+`style.css`, `app.js`, `theme.js`, `icons.svg`, `htmx.min.js`, `sse.js`,
+`passkeys.js` and `fonts/` (`assets::KIT_FILES`). Vigilant Vole embeds only its own files
 (icons, favicon, manifest).
 
 The files stay in the repository's `static/` folder, because the golden test
@@ -641,9 +717,14 @@ The kit has its own migration set, `vole_kit::db::migrate::CORE`:
 * `TOKEN_SCOPES`, `kit/migrations/0002_token_scopes.sql` (0.2), creates
   `api_token_scopes` (see "API token scopes"). A product that declares no
   token scopes may leave it out; Vigilant Vole does
-  (`core: &[CORE_TABLES]`), so its schema and migration list are unchanged.
+  (`core: &[CORE_TABLES, PASSKEYS]`).
   Adding it later just runs it; leaving it out after it ran makes the
   database look newer (refused), as for any migration.
+* `PASSKEYS`, `kit/migrations/0003_passkeys.sql` (0.4), creates `passkeys`
+  and `passkey_challenges` (see "Passkeys"). Every product runs it;
+  Vigilant Vole's set is `&[CORE_TABLES, PASSKEYS]`, and since its adoption
+  migration (0104) records only `kit/0001_core.sql`, this one runs after it
+  on databases that are still adopting and first on the others.
 
 Core migrations are recorded in `schema_migrations` under `kit/…` names, so
 they can't clash with a product's file names.
@@ -1063,9 +1144,18 @@ proof:
   access word (`strict_access`);
 * its home page draws a bar list, a two-line chart and highlighted code;
 * the OpenAPI and MCP versions are the demo's (0.3.7);
-* a fresh database has the core tables (with `api_token_scopes`) plus
-  `notes`, with `kit/0001_core.sql` and `kit/0002_token_scopes.sql`
-  recorded first.
+* a fresh database has the core tables (with `api_token_scopes`,
+  `passkeys` and `passkey_challenges`) plus `notes`, with
+  `kit/0001_core.sql`, `kit/0002_token_scopes.sql` and
+  `kit/0003_passkeys.sql` recorded first;
+* passkeys: without a public URL only the note; with one, adding a passkey
+  needs the password, the software authenticator's credential is stored
+  (transports filtered, the user handle kept for the next one), a replayed
+  registration is refused, a sign-in from another origin is refused and
+  uses up its challenge, the real sign-in skips password and TOTP and
+  lands on `next`, a replayed one is refused, rename and delete work, a
+  deleted passkey signs nobody in, and an admin's reset removes a user's
+  passkeys and signs them out.
 
 The demo depends on the kit by path; the template mechanism is the one a git
 dependency uses.
@@ -1191,6 +1281,32 @@ removes a workaround:
 Nothing else: no new strings, and the footer's style is in the kit's
 `style.css`. Snapshot tests of signed-in pages gain the footer's lines.
 
+### Upgrading from 0.3 to 0.4
+
+0.4 adds passkeys. A product whose `MigrationSet::core` is
+`migrate::CORE` (Keen Kestrel, Wise Wren) changes nothing: the new core
+migration `kit/0003_passkeys.sql` runs at the next start, before the
+product's own pending migrations, and the pages, routes, strings (26
+languages) and `static/passkeys.js` come with the kit. A product that lists
+its core set by hand adds `migrate::PASSKEYS` (`install` refuses to start
+otherwise); Vigilant Vole: `core: &[CORE_TABLES, PASSKEYS]`.
+
+What else a product may notice:
+
+* Snapshot tests change where they cover the Security page (the Passkeys
+  section and its note) and the Users page when a user has passkeys; the
+  sign-in page only changes when a public URL is set (HTTPS, or
+  `http://localhost`).
+* Schema snapshots and migration lists gain `passkeys`,
+  `passkey_challenges`, `idx_passkeys_user` and `kit/0003_passkeys.sql`.
+* A static-file list gains `/static/passkeys.js`.
+* The product's catalog must not define the kit's new keys
+  (`login.passkey`, `login.passkey_failed`, `sec.pk_*`, `users.reset_pk`,
+  `users.reset_pk_q`, `users.reset_pk_msg`, `users.pk_reset`).
+* Passkeys need the public URL. A product that sets it from its
+  environment (`KK_PUBLIC_URL`) should make sure it is the URL people
+  really open, since the RP ID and origin come from it.
+
 ## Not done (proposals)
 
 * **The design system's DOM names.** `vv-i18n`, `vv-progress`, `vv-theme`
@@ -1256,6 +1372,9 @@ It also adds the building blocks Keen Kestrel built itself (see
 * `install` validates the catalogs. A duplicate key stops the start, where
   before a broken file only logged an error and fell back to English. It also
   validates the token scopes and the General page's fields.
+* Passkeys are bound to the public URL's host (the RP ID). Changing it, or
+  the public URL being wrong, leaves them useless until users add new ones;
+  the password keeps working.
 * Vigilant Vole's core set leaves out `kit/0002_token_scopes.sql`. If it ever
   declares a token scope, `install` refuses to start until the migration is
   in its set, which changes its schema snapshots.

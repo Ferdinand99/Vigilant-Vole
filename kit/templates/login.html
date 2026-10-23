@@ -11,12 +11,17 @@
   <input type="hidden" name="next" value="{{ next }}">
   <div class="field">
     <label class="label" for="f-username">{{ tr("login.username") }}</label>
-    <input id="f-username" name="username" type="text" value="{{ username }}" required{% if username.is_empty() %} autofocus{% endif %} autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64">
+    <input id="f-username" name="username" type="text" value="{{ username }}" required{% if username.is_empty() %} autofocus{% endif %} autocomplete="username{% if passkey_origin.is_some() %} webauthn{% endif %}" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64">
   </div>
   <div class="field">
     <label class="label" for="f-password">{{ tr("login.password") }}</label>
     <input id="f-password" name="password" type="password" required{% if !username.is_empty() %} autofocus{% endif %} autocomplete="current-password" maxlength="1024">
   </div>
   <button type="submit" class="btn btn-primary btn-lg btn-block">{{ tr("login.submit") }}</button>
+  {%- if let Some(origin) = passkey_origin %}
+  <button type="button" class="btn btn-secondary btn-lg btn-block" data-passkey-signin data-origin="{{ origin }}" data-msg-cancelled="{{ tr("sec.pk_cancelled") }}" data-msg-unsupported="{{ tr("sec.pk_unsupported") }}" data-msg-failed="{{ tr("login.passkey_failed") }}" hidden>{{ m::icon("key") }}<span>{{ tr("login.passkey") }}</span></button>
+  {%- endif %}
 </form>
 {% endblock %}
+
+{% block scripts %}{% if passkey_origin.is_some() %}<script src="/static/passkeys.js" defer></script>{% endif %}{% endblock %}

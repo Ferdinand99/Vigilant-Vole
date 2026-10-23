@@ -94,7 +94,16 @@ async fn upgrade_applies_every_pending_migration_in_order_after_a_backup() {
     for f in fixtures() {
         let (dir, report) = upgrade(&f).await;
         let had = f.migrations();
-        let pending: Vec<String> = all.iter().filter(|m| !had.contains(m)).cloned().collect();
+        let mut pending: Vec<String> = all.iter().filter(|m| !had.contains(m)).cloned().collect();
+        // The kit's core migrations the adoption (0104) doesn't record run
+        // after ours: the passkeys (vole-kit 0.4).
+        pending.extend(
+            db::MIGRATIONS
+                .core
+                .iter()
+                .map(|(name, _)| name.to_string())
+                .filter(|name| name != "kit/0001_core.sql" && !had.contains(name)),
+        );
         assert_eq!(report.applied, pending, "{}: applied in order", f.version);
 
         let conn = open_ro(&dir.db());

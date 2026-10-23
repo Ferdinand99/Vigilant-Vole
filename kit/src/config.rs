@@ -187,8 +187,9 @@ pub fn install(config: &'static KitConfig) {
 }
 
 /// What [`install`] checks besides the catalogs: the token scopes (valid,
-/// distinct names with English texts, and their core migration) and the
-/// General page (the product's texts and fields).
+/// distinct names with English texts, and their core migration), the
+/// passkeys' core migration and the General page (the product's texts and
+/// fields).
 pub fn check(config: &KitConfig) -> Result<(), String> {
     use crate::i18n::{Lang, catalog};
     let source = Lang::EN.info().source;
@@ -216,6 +217,12 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
     {
         problems.push(format!(
             "token scopes need the core migration {migration} in MigrationSet::core"
+        ));
+    }
+    let passkeys = crate::db::migrate::PASSKEYS.0;
+    if !config.migrations.core.iter().any(|(n, _)| *n == passkeys) {
+        problems.push(format!(
+            "passkeys need the core migration {passkeys} in MigrationSet::core"
         ));
     }
     if let Some(general) = config.general {

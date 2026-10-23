@@ -12,6 +12,7 @@ expression: out
 /static/icon-512.png | image/png | 45474 bytes | sha256 23fa00cc3994ad61
 /static/icon-maskable-512.png | image/png | 29052 bytes | sha256 474743b037a078a4
 /static/icons.svg | image/svg+xml | 26563 bytes | sha256 0004c369cf130fc6
+/static/passkeys.js | text/javascript; charset=utf-8 | 9296 bytes | sha256 5f3a711fee517821
 /static/site.webmanifest | application/manifest+json | 623 bytes | sha256 5116097c7a0cd638
 /static/sse.js | text/javascript; charset=utf-8 | 8921 bytes | sha256 3b5992a541619bab
 /static/style.css | text/css; charset=utf-8 | 107876 bytes | sha256 b129302b20a4507c

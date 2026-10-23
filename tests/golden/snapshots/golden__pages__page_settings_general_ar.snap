@@ -181,7 +181,7 @@ content-type: text/html; charset=utf-8
             aria-describedby="f-retention-help">
           <span class="input-addon" aria-hidden="true">أيام</span>
         </div>
-        <p class="help" id="f-retention-help">تُحذف الفحوصات الأقدم من ذلك كل ساعة. تبقى ملخصات وقت التشغيل اليومية، فتظل أشرطة وقت التشغيل البعيد وصفحات الحالة دقيقة. قاعدة البيانات بحجم <span class="num">283 KB</span> وتحتوي على <span class="num">0</span> فحص.</p>
+        <p class="help" id="f-retention-help">تُحذف الفحوصات الأقدم من ذلك كل ساعة. تبقى ملخصات وقت التشغيل اليومية، فتظل أشرطة وقت التشغيل البعيد وصفحات الحالة دقيقة. قاعدة البيانات بحجم <span class="num">287 KB</span> وتحتوي على <span class="num">0</span> فحص.</p>
       </div>
       <label class="switch-row" for="f-badges_public">
   <span class="switch-row-text">

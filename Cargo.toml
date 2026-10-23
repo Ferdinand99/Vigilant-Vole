@@ -10,7 +10,11 @@ argon2 = "0.6.0"
 askama = "0.16.1"
 axum = { version = "0.8.9", features = ["multipart"] }
 axum-extra = { version = "0.12.6", features = ["cookie", "cookie-signed", "form"] }
+# Passkey signatures (ES256, Ed25519, RS256); already in the tree as rustls' crypto.
+aws-lc-rs = "1.18.1"
 base64 = "0.23.1"
+# CBOR of WebAuthn attestation objects and COSE keys (passkeys).
+ciborium = "0.2.2"
 deadpool-sqlite = "0.14.0"
 futures-util = "0.3.34"
 hex = "0.4.3"
