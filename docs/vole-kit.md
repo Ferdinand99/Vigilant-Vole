@@ -93,14 +93,15 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `config` | `KitConfig`, `install`, `get` |
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pool, `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`) |
+| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `migrate_with` + `MigrateOptions`) |
 | `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
-| `http` | `ApiError`, security headers/CSP, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard) |
+| `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
 | `page` | `PageCtx`, `UserView`, flash messages, `Ui` (`NavItem`, `SettingsTab`, `TabAccess`) |
 | `docs` | `RouteDoc`, `DocsSpec`, the OpenAPI 3.1 document, the Markdown reference; `page`: `/api-docs` and friends |
 | `mcp` | MCP protocol: origin check, Bearer auth, rate limit, JSON-RPC, the `Handler` trait |
-| `notify` | `Alert`, `AlertKind`, `Level`, the 40 providers, schemas, HTTP/SMTP transports, the message layout |
+| `notify` | `Alert` (with `Alert::test`), `AlertKind`, `Level`, the 40 providers, schemas, HTTP/SMTP transports, the message layout, `send_in`/`send_config_in` (a channel's language); `form`: the provider form's view-model; `webhook::Wording` |
+| `components` | view-models of the design system's data components: `BarRow`, `LineChart`, `CodeLine` |
 | `tls_roots` | system CA store with the bundled fallback |
 | `tz` | time zones for pickers and validation |
 
@@ -152,7 +153,7 @@ No test can forget it.
 | `user_agent` | outbound `User-Agent` (the product's clients) | `VigilantVole/<version>` |
 | `backup_prefix` | name of the copy taken before a migration | `vigilant-vole-before-` |
 | `env_prefix` | `<PREFIX>_TRUST_PROXY`, `<PREFIX>_SETUP_TOKEN`, `$<PREFIX>_URL` in examples, id prefixes sent to providers (`vv-monitor-7`) | `VV` |
-| `csrf_exempt_prefixes`, `csrf_exempt_path` | token endpoints and the one-click unsubscribe link | `/api/push`, `/api/agent`, `/api/v1`, `/api/badge`, `/metrics`, `/mcp`; the unsubscribe path |
+| `csrf_exempt_prefixes`, `csrf_exempt_path` | token endpoints and the one-click unsubscribe link. Prefixes match whole segments; a `*` segment matches any one segment (see "CSRF exemptions") | `/api/push`, `/api/agent`, `/api/v1`, `/api/badge`, `/metrics`, `/mcp`; the unsubscribe path |
 | `extra_common_passwords` | refused passwords besides the kit's list | `uptimekuma`, `vigilantvole` |
 | `migrations` | `MigrationSet` | `crate::db::MIGRATIONS` |
 | `embeddable_prefixes` | paths that may be framed | `/status/`, `/api/status-page/` |
@@ -162,6 +163,7 @@ No test can forget it.
 | `locales` | `(code, text)` of the product's own strings per language, including the texts the kit's pages take from it (see "Translations") | `locales/*.toml` |
 | `ui` | `Ui` (below) | `src/product.rs` |
 | `public_url_setting` | where an admin sets the public URL, named by the MCP endpoint's refusal of a foreign browser origin; `None` says "the instance's public URL" | `Some("Settings → General")` |
+| `webhook` | how the webhook provider names what alerts are about: the default body's fields, the body template's placeholders, the URL field's example (`notify::webhook::Wording`; `Wording::NEUTRAL` says `subject` and `duration`) | `subject: "monitor"`, `duration: "downtime"`, `url_example: "https://example.com/hooks/vigilant…"` |
 | `token_scopes` | the product's own API token scopes (see "API token scopes") | `&[]` |
 | `general` | the kit's General page with the product's fields (see "General settings"); `None` for none or the product's own | `None` (its own page) |
 
@@ -203,6 +205,25 @@ The parts only some products have are optional:
 * `fallback_host`: the host the reference names when a request has no `Host`
   header and no public URL is set (Vigilant Vole: `Some("localhost:3001")`;
   `None` says `localhost`).
+* `param_types`: JSON Schema types of path parameters by name, for those
+  that aren't integers (`&[("event_id", "string"), ("org", "string")]`).
+  `kind`, `token` and `slug` are strings anyway; a route can declare its
+  own with `RouteDoc::params`. Vigilant Vole: `&[]`.
+* `strict_access`: `true` makes `install` refuse to start when a route's
+  `access` is neither a role, `public`, `metrics token` nor one of
+  `credentials` (`docs::undeclared_access` lists them). With `false` such a
+  word is documented as "public (no token)", the old behaviour. Vigilant
+  Vole keeps `false`: its `POST /mcp` says `api token`, and its published
+  reference shows that as public. New products set `true`.
+
+A `Credential` is sent as a bearer token (`bearer`), in a header of its own
+(`header: Some(HeaderScheme { name, header, description, example })`: an
+`apiKey` scheme in the OpenAPI document, `-H "<header>: <example>"` in the
+`curl` examples), or in the URL (neither). A route whose body isn't JSON
+says so with `RouteDoc::body_type("application/x-sentry-envelope")`: the
+OpenAPI document gives the example as a string of that media type, the
+Markdown names the type, and `curl` sends the example as it is
+(`--data-binary`, newlines included).
 
 `Ui` holds what the layouts show:
 
@@ -264,7 +285,15 @@ What the kit shares:
   time, uptime, ms, live indicator);
 * the pages: `setup.html`, `login.html`, `login_2fa.html`,
   `settings_general.html`, `settings_users.html`, `settings_tokens.html`,
-  `settings_security.html`, `api_docs.html` and their partials.
+  `settings_security.html`, `api_docs.html` and their partials;
+* the provider form's partials, `partials/notification_picker.html`,
+  `notification_provider_grid.html`, `notification_name.html` and
+  `notification_fields.html` (see "Notification channels").
+
+A kit partial a product renders on its own (an htmx fragment) imports the
+macros as `"../macros.html"` and includes its neighbours by their bare file
+name: both resolve next to the file, in the kit and in a product's
+`templates/kit/` copy.
 
 Vigilant Vole keeps its monitoring macros (status pill and dot, heartbeat
 bar, incident timeline) in `templates/status_macros.html`, imported as `st`.
@@ -308,7 +337,9 @@ to be Vigilant Vole's: the API reference texts, `detail.expires`,
 `detail.request`, `dashboard.response`, `monitor_form.edit_heading`,
 `general.language` and `general.err_site_name`. They moved unchanged, in all
 26 languages, keeping their names, so the joined catalogs (and the i18n
-snapshots) didn't change.
+snapshots) didn't change. In 0.2 the provider form's key–value editor brought
+five more the same way: `form.value`, `form.header_name`,
+`form.header_value`, `form.remove_header` and `form.add_header`.
 
 ## API token scopes
 
@@ -495,9 +526,11 @@ notification snapshots).
 
 Provider forms don't name a product. A placeholder or default that shows one
 says `{product}` or `{short_name}` (the Slack bot name, the Zulip topic, the
-SMS sender …). Read fields through `Field::placeholder_text`,
-`Field::default_value` and `Field::tr_placeholder`, which fill in the
-configured names.
+SMS sender …), or `{webhook_url}` for the webhook's URL example. Read fields
+through `Field::placeholder_text`, `Field::default_value` and
+`Field::tr_placeholder`, which fill in the configured names, and help texts
+through `Field::tr_help`, which puts the product's webhook placeholders in
+(see "Notification channels").
 
 ## Resources
 
@@ -701,15 +734,241 @@ and prints the release PRs it would open. It was used to check this setup:
 * a Vigilant Vole fix proposes only 0.7.1;
 * a kit-demo change proposes nothing.
 
+## Building blocks for products (0.2)
+
+What Keen Kestrel had to build itself on 0.1, now in the kit. Vigilant Vole
+uses what fits without changing anything it sends; kit-demo uses and tests
+each one (`examples/kit-demo/tests/demo.rs`).
+
+### A second database
+
+A product may keep more than one SQLite file (Keen Kestrel's
+`store.sqlite`: raw payloads, disposable). The kit's pool and runner work
+for any of them:
+
+```rust
+pub static STORE: MigrationSet = MigrationSet {
+    core: &[],              // the kit's core tables belong in the main database
+    adopt_core: None,
+    migrations: store_migrations,
+    fk_off_marker: "-- kk:foreign_keys=off",
+    baseline: None,
+    after: no_fixups,
+};
+
+let pool = db::build_pool_with(&dir.join("store.sqlite"), PoolOptions {
+    max_size: Some(4),
+    pragmas: "",                                              // every connection
+    new_database_pragmas: "PRAGMA auto_vacuum = INCREMENTAL;", // before the first table
+});
+db::migrate_with(&pool, &STORE, MigrateOptions::default()).await?;
+```
+
+* `PoolOptions::new_database_pragmas` runs on every new connection while the
+  file has no schema, so whichever connection creates the first table has
+  it. `db::apply_new_database_pragmas(conn, sql)` does the same on a
+  connection of your own.
+* `MigrateOptions { backup: Some(dir), backup_prefix: Some("kestrel-store-before-") }`
+  takes a copy before migrating an existing file, as `migrate` does for the
+  main database; `backup: None` takes none.
+* A file from a newer release is refused as always. Without a backup
+  directory the message just says to upgrade again; it doesn't point at a
+  backup folder (`MigrationError::NewerSchema::backups` is an `Option`).
+* `migrate(pool, dir)` is `migrate_with(pool, <the product's set>,
+  MigrateOptions { backup: Some(dir), .. })`, unchanged.
+
+### CSRF exemptions
+
+`KitConfig::csrf_exempt_prefixes` match whole path segments, and a `*`
+segment matches any one non-empty segment (`csrf::prefix_matches`):
+`/api/*/envelope` exempts `/api/7/envelope`, `/api/7/envelope/` and
+`/api/7/envelope/x`, but not `/api//envelope`, `/api/7/8/envelope` or
+`/api/7/envelopes`. A prefix ending in `/` needs the slash. Prefixes
+without `*` behave as before. `csrf_exempt_path` stays for rules a pattern
+can't say (a numeric id only, a closed list of endings).
+
+### Request budgets
+
+`http::ratelimit::TokenBuckets<K>` keeps a token bucket per key (an IP
+address, a key id) in memory: a bucket holds `Rate::burst` requests and
+refills continuously over `Rate::per`. The rate is passed with every call,
+so it can differ per key and change at once. Full buckets are dropped when
+there are more than `DEFAULT_MAX_KEYS` keys (`with_max_keys` for another
+limit).
+
+```rust
+static BY_IP: LazyLock<TokenBuckets<IpAddr>> = LazyLock::new(TokenBuckets::new);
+
+if let Err(wait) = BY_IP.take(&ip, Rate::per_minute(600), Instant::now()) {
+    return ratelimit::too_many_requests(wait);   // 429, Retry-After, REST envelope
+}
+```
+
+`take_n` takes several tokens at once (a batch). `retry_after_secs(wait)`
+rounds up to whole seconds (at least 1), `retry_after(wait)` is the header
+for a response of your own (Keen Kestrel's Sentry-style ingest errors).
+`too_many_requests` answers with the REST error code `rate_limited`; a
+product that documents it adds `docs::RATE_LIMITED` to its error codes. The
+sign-in backoff (`auth::rate_limit`) is unchanged.
+
+### Header policies
+
+`http::headers::security_headers` gives app pages the app CSP and
+`X-Frame-Options: DENY`. A response marked with a `HeaderPolicy` gets
+headers that fit it instead:
+
+| Policy | CSP | `X-Frame-Options` | Also |
+| --- | --- | --- | --- |
+| `App` (default) | `APP_CSP` | `DENY` | |
+| `Embeddable` (as before: `embeddable_prefixes`, the `Embeddable` extension) | `PUBLIC_CSP` | none | |
+| `PublicAsset` (a script or image other sites load) | none | none | `Cross-Origin-Resource-Policy: cross-origin` |
+| `Machine` (ingest, webhooks, JSON for programs) | `MACHINE_CSP` (`default-src 'none'; frame-ancestors 'none'`) | none | |
+
+Every policy keeps `X-Content-Type-Options: nosniff` and
+`Referrer-Policy: same-origin`, and a CSP or CORP header the handler set is
+kept. Mark a whole router or one response:
+
+```rust
+Router::new()
+    .route("/ingest/v1/event", post(event))
+    .route_layer(axum::middleware::map_response(headers::machine));   // also public_asset, embeddable
+
+(HeaderPolicy::PublicAsset, [(header::CONTENT_TYPE, "text/javascript")], SNIPPET)
+```
+
+Vigilant Vole marks nothing, so its headers are the same.
+
+### Live updates
+
+`http::live` has the parts of a live view over server-sent events (htmx's
+`sse-connect`):
+
+* `Changes<T>`: a stream's view of a `broadcast` channel. `next()` waits for
+  a change `wanted` accepts (a lagged receiver counts as one), then for the
+  quiet period, drains what arrived meanwhile and returns when the first
+  change came. `Changes::all(rx)` takes every change; `.quiet(d)` sets the
+  quiet period (500 ms by default), `.set_quiet(d)` changes it between
+  updates, `.lifetime(d)` ends the stream so the browser reconnects and
+  authenticates again.
+* `SharedRenders<K>`: streams that wake for the same change and show the
+  same view (`K`: query, rights, language …) share one render; a render that
+  started before the change is never reused.
+* `StreamLimit` (in a `static`): a cap on open streams; `acquire()` gives a
+  `StreamSlot` to keep in the stream's state, `busy()` the `503` with
+  `Retry-After: 30`.
+* `sse(stream)`: the response, with a keep-alive comment every 15 s;
+  `html_event(name, html)` an event for `sse-swap`.
+
+Vigilant Vole's `/events` (dashboard) is built from them with the same
+coalescing, adaptive quiet period, shared renders, stream cap, lifetime and
+keep-alive as before. For Keen Kestrel's issue list:
+
+```rust
+let changes = Changes::new(ingest.writer().subscribe(), move |p: &i64| *p == project_id)
+    .quiet(Duration::from_secs(1));
+let lang = i18n::current();      // the stream runs outside the request's scope
+live::sse(stream::unfold((changes, live), move |(mut changes, mut live)| async move {
+    loop {
+        changes.next().await?;
+        if let Ok(html) = i18n::scope(lang, render(&live)).await {
+            return Some((live::html_event("issues-updated", &html), (changes, live)));
+        }
+    }
+}))
+```
+
+### Formats
+
+* `fmt_bytes(n)` / `fmt_bytes_in(lang, n)`: sizes in steps of 1024,
+  "512 B", "840 KB", "1.6 MB", "12.0 GB"; bytes and kilobytes whole,
+  bigger units with one decimal. The units are the language's
+  (`fmt.bytes` … `fmt.terabytes`: "Ko"/"Mo" in French, "КБ"/"МБ" in Russian
+  and Ukrainian, Arabic and Persian abbreviations).
+* `fmt_pct0(p)`: a whole-number percentage in the language's style
+  ("42%", "42 %", "%42", "۴۲٪"). It never reads a misleading 0 or 100: above
+  0 shows at least 1, below 100 at most 99.
+* `fmt_last_days(n)`: "Last {n} days" in the language's plural form for `n`
+  (`count.last_days`): "Last 1 day", "Последний 21 день",
+  "Ultimele 30 de zile", "آخر 7 أيام".
+* Templates: `{{ filesize(bytes) }}`, `{{ pct0(value) }}`,
+  `{{ last_days(7) }}` (`Tr` helpers).
+
+All 26 languages have the new strings, with tests per language
+(`i18n::format` tests).
+
+### Design system components
+
+The bar list, line charts with several lines, and code with highlighted
+lines are part of the design system (`static/style.css`), with macros and
+view-models (`components::BarRow`, `LineChart`, `CodeLine`). See
+[design-system.md](design-system.md#charts-svg) for the markup.
+
+### Notification channels
+
+The provider form is the kit's, so every product renders it the same way:
+
+* `notify::form`: `field_views(schema, values, stored, errors, fresh)`
+  (saved secrets render empty with the mask as placeholder),
+  `provider_groups(query)`, `FieldView`, `OptionView`, `ProviderGroup`,
+  `ProviderCard`.
+* Templates: `kit/partials/notification_picker.html` (needs `query`,
+  `groups`; includes the grid), `notification_provider_grid.html`,
+  `notification_name.html` (needs `form.name`, `form.name_error`,
+  `form.label`), `notification_fields.html` (needs `form.fields`). They load
+  `/settings/notifications/providers` (`?grid=true&q=`) and
+  `/settings/notifications/form?kind=` into `#channel-sheet-body`; the
+  product serves those routes, its channel list and its own toggles.
+* Vigilant Vole renders its picker, grid, name and fields from these; its
+  notification pages are byte-identical to before (compared page by page
+  for every provider, the list, edit pages and error states, in four
+  languages).
+
+The webhook provider's words are the product's (`KitConfig::webhook`): its
+default body sends the subject as `"<subject>"`, `"<subject>_id"`,
+`"<subject>_type"` and `"<duration>_seconds"`; its body template knows
+`{{<subject>_name}}`, `{{<subject>_id}}`, `{{<subject>_type}}`,
+`{{<duration>}}` and `{{<duration>_seconds}}` (`webhook::placeholders()`);
+its help text says the same; its URL field's example is `url_example`
+(marked `{webhook_url}` in the schema, like `{product}`). Vigilant Vole's
+wording (`monitor`, `downtime`) gives exactly its old requests and form.
+
+"Send test" without wrapping `send_config`:
+
+```rust
+notify::send_in(&core.http, kind, &config, lang, || {
+    Alert::test(title, body, event_label, link_label, url)
+})
+.await
+```
+
+`send_in` builds the alert inside `lang`'s scope, so its texts and the
+provider's own words (email footer, field labels) are in the channel's
+language. `send_config_in(http, kind, config, alert, lang)` sends an alert
+that is already built; `send_config` uses the request's or the site's
+language as before. `NotificationChannel::is_default` stays (Vigilant
+Vole's "attach to new monitors"); the kit never reads it, a product without
+such a flag leaves it `false`, and JSON without it reads as `false`.
+
+### API reference
+
+* Path parameter types: `DocsSpec::param_types` and `RouteDoc::params`
+  (see "Configuration").
+* Credentials in a header of their own: `Credential::header`.
+* Request bodies that aren't JSON: `RouteDoc::body_type`.
+* Access words: `DocsSpec::strict_access`, `docs::undeclared_access`.
+
+Vigilant Vole's reference (the page, `/api-docs.md`, the OpenAPI document)
+is unchanged.
+
 ## Using vole-kit in another product (Keen Kestrel)
 
 ```toml
 # Cargo.toml
 [dependencies]
-vole-kit = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.1.1" }
+vole-kit = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.2.0" }
 
 [build-dependencies]
-vole-kit-build = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.1.1" }
+vole-kit-build = { git = "https://github.com/Ferdinand99/Vigilant-Vole", tag = "vole-kit-v0.2.0" }
 ```
 
 ```toml
@@ -780,6 +1039,20 @@ proof:
 * sign-in throttling is per instance: one test server throttling doesn't
   hold up another;
 * `/static/style.css` is served;
+* a second database (`kit-demo-store.db`) has only its own migrations, no
+  backup and incremental auto-vacuum, and a newer one is refused without a
+  backup hint;
+* its ingest endpoint (`POST /api/{project}/envelope/`) needs no CSRF proof
+  (the `/api/*/envelope` pattern), answers with the machine headers, takes
+  its key in `X-Demo-Key` and allows five envelopes a minute per address
+  (`429`, `Retry-After`, `rate_limited`); `/js/d.js` is a public asset;
+* a project's live view merges a burst of envelopes into one update;
+* the provider picker and forms are the kit's partials, its webhook
+  speaks of a `note` and "Send test" arrives in the language asked for;
+* its API reference types `{project}` as a string, documents the
+  `X-Demo-Key` header scheme and the NDJSON body, and has no undeclared
+  access word (`strict_access`);
+* its home page draws a bar list, a two-line chart and highlighted code;
 * the OpenAPI and MCP versions are the demo's (0.3.7);
 * a fresh database has the core tables (with `api_token_scopes`) plus
   `notes`, with `kit/0001_core.sql` and `kit/0002_token_scopes.sql`
@@ -792,8 +1065,12 @@ dependency uses.
 
 0.2 is a breaking release (pre-1.0 minor):
 
-1. **`KitConfig` has two new fields.** Add `token_scopes` and `general`
-   (`&[]` and `None` keep 0.1's behaviour).
+1. **`KitConfig` has three new fields.** Add `token_scopes` and `general`
+   (`&[]` and `None` keep 0.1's behaviour), and `webhook`, how the webhook
+   provider names what alerts are about: `webhook: Wording { subject: "issue", duration: "duration",
+   url_example: "https://example.com/hooks/kestrel…" }` (or the words it
+   prefers). Its alert texts are unchanged; webhook receivers now get
+   `"issue"`, `"issue_id"`, `"issue_type"` and `"duration_seconds"`.
 2. **`Core` has a new field, `limits`.** Build it with
    `Core::new(pool, key, http, &KIT)` instead of a struct literal (Kestrel's
    `start_with`).
@@ -836,6 +1113,60 @@ dependency uses.
 7. **Tests**: the sign-in throttle is per `Core`, so separate test servers no
    longer need to wait for each other.
 
+From the building blocks (see "Building blocks for products"), each change
+removes a workaround:
+
+8. `DocsSpec`: add `param_types: &[("event_id", "string"), ("org", "string"),
+   ("version", "string")]` and `strict_access: true`. `Credential` gets
+   `header`: `dsn key` becomes `header: Some(HeaderScheme { name: "sentryAuth",
+   header: "X-Sentry-Auth", description: "…", example: "Sentry sentry_key=$KK_DSN_KEY, sentry_version=7" })`,
+   `api token` `header: None`. Mark the envelope route
+   `.body_type("application/x-sentry-envelope")` and the k.js event route
+   `.body_type("text/plain")` with their examples.
+9. `store.rs`: replace `prepare` and the hand-run `apply_migrations_with`
+   with `build_pool_with(…, PoolOptions { new_database_pragmas:
+   "PRAGMA auto_vacuum = INCREMENTAL;", .. })` and `migrate_with(&pool,
+   &MIGRATIONS, MigrateOptions::default())`.
+10. `product.rs`: `csrf_exempt_prefixes: &["/api/v1", "/api/0", "/mcp",
+    "/api/*/envelope", "/api/*/store", "/ingest/v1/event",
+    "/ingest/v1/signals"]` and `csrf_exempt_path: no_exempt_path`, or keep
+    `ingest::is_ingest_path` for its digits-only rule.
+11. `ingest/limit.rs`: delete it; use `TokenBuckets<i64>` and
+    `TokenBuckets<IpAddr>` with `Rate::per_minute(key.rate_limit_per_minute)`
+    and `ratelimit::retry_after_secs`. The ingest errors keep their own body
+    and `X-Sentry-Rate-Limits`.
+12. Mark `/js/k.js` with `headers::public_asset` and the ingest routes with
+    `headers::machine` (`map_response`).
+13. `issues/live.rs`: use `Changes::new(…).quiet(Duration::from_secs(1))`
+    and `live::sse`; `next_change` goes away.
+14. `alerts/channels.rs`: delete `FieldView`, `OptionView`, `ProviderCard`,
+    `ProviderGroup`, `matches_query`, `provider_groups`, `input_type`,
+    `display_value`, `blank` and `field_views`; import them from
+    `vole_kit::notify::form` (`OptionView` has `String` fields, as
+    Kestrel's). Delete `templates/partials/notification_fields.html`,
+    `notification_name.html`, `notification_picker.html` and
+    `notification_provider_grid.html` and include the kit's
+    (`kit/partials/…`); render the picker and grid fragments from
+    `kit/partials/…` paths. Its `channels.kv_*` strings go: the field
+    partial uses the kit's `form.value`, `form.header_name`,
+    `form.header_value`, `form.remove_header` and `form.add_header`.
+15. `Alerts::send_test`: `notify::send_in(&http, &kind, &config, lang, ||
+    message::test(base.as_deref()))` instead of the scope around
+    `send_config`; `message::test` can use `Alert::test`.
+16. `static/analytics.css`: delete the bar list rules (`.bars-head`, `.bars`,
+    `.bar-row`, `.bar-row-2`, `.bar-label`, `.bar-num`); the markup stays.
+    `m::bar_list` and `components::BarRow` can replace the hand-written
+    lists, `m::line_chart` and `components::LineChart` its chart macro, the
+    `series-N` classes its inline `--chart` colours, and `m::code_lines` the
+    `<strong>` current line in stack frames.
+17. Formats: `i18n::fmt_pct0` instead of `fmt_pct2(…).replace(".00", "")`,
+    `fmt_bytes` instead of `difs::pages::size_label`, `fmt_last_days(n)`
+    instead of `web.period_last_days` (delete that key in all 26 files).
+18. Kestrel's locale files must not define the kit's new keys
+    (`fmt.bytes` … `fmt.terabytes`, `count.last_days.*`, `form.value`,
+    `form.header_name`, `form.header_value`, `form.remove_header`,
+    `form.add_header`); `install` refuses a key in both catalogs.
+
 ## Not done (proposals)
 
 * **The design system's DOM names.** `vv-i18n`, `vv-progress`, `vv-theme`
@@ -849,15 +1180,13 @@ dependency uses.
   them changes the i18n key snapshot. `setup.title` ("Set up Vigilant Vole")
   is now Vigilant Vole's and still used nowhere; removing it is the same kind
   of snapshot change.
-* **The webhook's template placeholders** (`{{monitor_name}}`,
-  `{{monitor_id}}`, `{{monitor_type}}`, `{{downtime}}` …) are the kit's
-  webhook provider's actual variable names, so its help text names them.
-  Neutral names (`{{subject}}` …) with the old ones as aliases would be a
-  feature of their own.
-* **Path parameter types** in the API reference: `kind`, `token` and `slug`
-  are strings, anything else an integer (`docs::path_param_type`).
 * **Example placeholders** like `vigilant-alerts…` (ntfy topic) or
-  `https://example.com/hooks/vigilant…` stay. They don't name the product.
+  `vigilant…` (Apprise, WhatsApp) stay. They don't name the product.
+* **Vigilant Vole's `api token` access word** (`POST /mcp`) is documented as
+  "public (no token)". Declaring it as a `Credential` (and
+  `strict_access: true`) would fix the reference, and change it.
+* **A kit notification router.** Products serve the provider form's routes
+  themselves; the channel list, toggles and storage differ between them.
 * **`src/mcp_bridge.rs`** (the stdio bridge) is generic and could join
   `vole_kit::mcp`.
 * **Product settings pages.** `/settings` (the redirect) stays each
@@ -887,6 +1216,8 @@ parts, product error codes, the coverage helper), as Keen Kestrel needed.
 0.2 closes the gaps Keen Kestrel worked around: product token scopes, the
 owner's real role on token requests, sign-in throttling per instance, the
 General settings page and site settings for products without it.
+It also adds the building blocks Keen Kestrel built itself (see
+"Building blocks for products").
 
 ## Risks where behaviour could differ without a test noticing
 

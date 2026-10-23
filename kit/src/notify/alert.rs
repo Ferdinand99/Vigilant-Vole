@@ -18,7 +18,10 @@ pub struct NotificationChannel {
     /// JSON object text with provider-specific settings.
     pub config: String,
     pub active: bool,
-    /// Auto-attach to newly created monitors.
+    /// The product's own flag for the channel (Vigilant Vole: attach it to
+    /// new monitors). The kit doesn't read it; a product without such a
+    /// flag leaves it `false`, and JSON without it reads as `false`.
+    #[serde(default)]
     pub is_default: bool,
     pub created_at: String,
 }
@@ -136,4 +139,46 @@ pub struct Alert {
     /// Deep link into the product, when it knows its own address.
     pub url: Option<String>,
     pub occurred_at: OffsetDateTime,
+}
+
+impl Alert {
+    /// A test message ("Send test"): kind [`AlertKind::Test`], event and
+    /// status `test`, the kind's level, colour and emoji, no facts. The
+    /// texts are the product's, in the reader's language: `title` (also the
+    /// subject), `body` (the detail and message), `event_label` ("Test"),
+    /// `link_label` (the button that opens `url`).
+    pub fn test(
+        title: impl Into<String>,
+        body: impl Into<String>,
+        event_label: impl Into<String>,
+        link_label: impl Into<String>,
+        url: Option<String>,
+    ) -> Alert {
+        let kind = AlertKind::Test;
+        let level = kind.level();
+        let title = title.into();
+        let body = body.into();
+        Alert {
+            kind,
+            event: "test".into(),
+            event_label: event_label.into(),
+            status: "test".into(),
+            level,
+            colour: level.colour(),
+            emoji: kind.emoji().into(),
+            title: title.clone(),
+            detail: Some(body.clone()),
+            facts: Vec::new(),
+            link_label: link_label.into(),
+            subject_id: None,
+            subject: title,
+            subject_type: String::new(),
+            target: String::new(),
+            message: Some(body),
+            duration: None,
+            expires_in_days: None,
+            url,
+            occurred_at: OffsetDateTime::now_utc(),
+        }
+    }
 }

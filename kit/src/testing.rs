@@ -8,6 +8,7 @@ use rust_embed::Embed;
 use crate::config::KitConfig;
 use crate::db::migrate::{Baseline, MigrationError, MigrationSet};
 use crate::docs::{BearerScheme, Credential, DocsSpec, RouteDoc};
+use crate::notify::webhook::Wording;
 use crate::page::{NavItem, SettingsTab, TabAccess, Ui};
 
 #[derive(Embed)]
@@ -62,6 +63,7 @@ static DOCS: DocsSpec = DocsSpec {
             description: "Remote agent token (vva_…)",
             variable: "AGENT_TOKEN",
         }),
+        header: None,
     }],
     error_example: "{}",
     error_codes: &[],
@@ -76,6 +78,8 @@ static DOCS: DocsSpec = DocsSpec {
     example_path: "/api/v1/monitors",
     metrics_path: Some("/metrics"),
     fallback_host: Some("localhost:3001"),
+    param_types: &[],
+    strict_access: false,
 };
 
 fn csrf_exempt_path(path: &str) -> bool {
@@ -211,6 +215,11 @@ pub static CONFIG: KitConfig = KitConfig {
         home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
     },
     public_url_setting: Some("Settings → General"),
+    webhook: Wording {
+        subject: "monitor",
+        duration: "downtime",
+        url_example: "https://example.com/hooks/vigilant…",
+    },
     token_scopes: &[],
     general: None,
 };

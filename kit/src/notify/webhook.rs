@@ -1,17 +1,68 @@
 //! Generic webhook: JSON (or form) POST with optional custom headers and an
 //! optional body template with `{{placeholder}}` substitution.
+//!
+//! What the alert is about is named in the product's words
+//! ([`Wording`], `KitConfig::webhook`): the default body's fields and the
+//! placeholders.
 
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use regex::Regex;
 use reqwest::Method;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use time::format_description::well_known::Rfc3339;
 
 use super::http::{OutBody, OutRequest, opt, pairs, req};
 use super::message::{format_duration, headline, summary};
-use super::schema::{Category, Field, FieldError, ProviderSchema, Transport, field_error};
+use super::schema::{
+    Category, Field, FieldError, ProviderSchema, Transport, WEBHOOK_URL, field_error,
+};
 use crate::notify::alert::Alert;
+
+/// How the webhook provider names what an alert is about, in the
+/// product's [`KitConfig::webhook`](crate::config::KitConfig::webhook).
+/// Both names are lower-case identifiers (`[a-z_]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Wording {
+    /// The thing alerts are about ("monitor", "issue"): the default body's
+    /// `"<subject>"` (its name), `"<subject>_id"` and `"<subject>_type"`,
+    /// and the placeholders `{{<subject>_name}}`, `{{<subject>_id}}` and
+    /// `{{<subject>_type}}`.
+    pub subject: &'static str,
+    /// How long the problem lasted ("downtime", "duration"): the default
+    /// body's `"<duration>_seconds"` and the placeholders `{{<duration>}}`
+    /// and `{{<duration>_seconds}}`.
+    pub duration: &'static str,
+    /// The URL field's example ("https://example.com/hooks/…").
+    pub url_example: &'static str,
+}
+
+impl Wording {
+    /// Names that fit any product: `subject`, `duration`.
+    pub const NEUTRAL: Wording = Wording {
+        subject: "subject",
+        duration: "duration",
+        url_example: "https://example.com/hooks/…",
+    };
+}
+
+fn wording() -> Wording {
+    crate::config::get().webhook
+}
+
+/// `text` (a help text written with the neutral placeholders
+/// `{{subject_…}}` and `{{duration…}}`) with the product's names.
+pub(crate) fn with_wording(text: &'static str) -> Cow<'static, str> {
+    if !text.contains("{{subject_") && !text.contains("{{duration") {
+        return Cow::Borrowed(text);
+    }
+    let w = wording();
+    Cow::Owned(
+        text.replace("{{subject_", &format!("{{{{{}_", w.subject))
+            .replace("{{duration", &format!("{{{{{}", w.duration)),
+    )
+}
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
     kind: "webhook",
@@ -21,40 +72,100 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
     description: "POST JSON to any URL",
     docs_url: "",
     fields: &[
-        Field::url("url", "URL").required().sensitive().placeholder("https://example.com/hooks/vigilant…"),
+        Field::url("url", "URL").required().sensitive().placeholder(WEBHOOK_URL),
         Field::select("method", "Method", &[("POST", "POST"), ("PUT", "PUT"), ("PATCH", "PATCH")]).default("POST"),
         Field::select("content_type", "Body format", &[("json", "JSON"), ("form", "Form (URL-encoded)")]).default("json"),
         Field::key_value("headers", "Custom headers").sensitive().help("Sent with every request, e.g. Authorization."),
         Field::textarea("body_template", "Custom body")
             .placeholder("{\"text\": \"{{summary}}\"}…")
-            .help("Optional. Placeholders: {{monitor_name}}, {{monitor_id}}, {{monitor_type}}, {{target}}, {{status}}, {{event}}, {{message}}, {{summary}}, {{headline}}, {{url}}, {{downtime}}, {{downtime_seconds}}, {{expires_in_days}}, {{occurred_at}}. Leave empty for the default JSON."),
+            .help("Optional. Placeholders: {{subject_name}}, {{subject_id}}, {{subject_type}}, {{target}}, {{status}}, {{event}}, {{message}}, {{summary}}, {{headline}}, {{url}}, {{duration}}, {{duration_seconds}}, {{expires_in_days}}, {{occurred_at}}. Leave empty for the default JSON."),
     ],
     transport: Transport::Http(build),
     check: Some(check),
 };
 
-const PLACEHOLDERS: &[&str] = &[
-    "monitor_name",
-    "monitor_id",
-    "monitor_type",
-    "target",
-    "status",
-    "event",
-    "message",
-    "summary",
-    "headline",
-    "url",
-    "downtime",
-    "downtime_seconds",
-    "expires_in_days",
-    "occurred_at",
-];
+/// What a placeholder stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    SubjectName,
+    SubjectId,
+    SubjectType,
+    Target,
+    Status,
+    Event,
+    Message,
+    Summary,
+    Headline,
+    Url,
+    Duration,
+    DurationSeconds,
+    ExpiresInDays,
+    OccurredAt,
+}
+
+impl Slot {
+    const ALL: [Slot; 14] = [
+        Slot::SubjectName,
+        Slot::SubjectId,
+        Slot::SubjectType,
+        Slot::Target,
+        Slot::Status,
+        Slot::Event,
+        Slot::Message,
+        Slot::Summary,
+        Slot::Headline,
+        Slot::Url,
+        Slot::Duration,
+        Slot::DurationSeconds,
+        Slot::ExpiresInDays,
+        Slot::OccurredAt,
+    ];
+
+    /// The placeholder's name in the product's words.
+    fn name(self, w: Wording) -> Cow<'static, str> {
+        match self {
+            Slot::SubjectName => format!("{}_name", w.subject).into(),
+            Slot::SubjectId => format!("{}_id", w.subject).into(),
+            Slot::SubjectType => format!("{}_type", w.subject).into(),
+            Slot::Target => "target".into(),
+            Slot::Status => "status".into(),
+            Slot::Event => "event".into(),
+            Slot::Message => "message".into(),
+            Slot::Summary => "summary".into(),
+            Slot::Headline => "headline".into(),
+            Slot::Url => "url".into(),
+            Slot::Duration => w.duration.into(),
+            Slot::DurationSeconds => format!("{}_seconds", w.duration).into(),
+            Slot::ExpiresInDays => "expires_in_days".into(),
+            Slot::OccurredAt => "occurred_at".into(),
+        }
+    }
+
+    fn named(name: &str) -> Option<Slot> {
+        let w = wording();
+        Slot::ALL.into_iter().find(|slot| slot.name(w) == name)
+    }
+
+    /// Numbers are rendered as `null` in JSON when absent.
+    fn numeric(self) -> bool {
+        matches!(
+            self,
+            Slot::SubjectId | Slot::DurationSeconds | Slot::ExpiresInDays
+        )
+    }
+}
+
+/// The placeholders a body template may use, in the product's words.
+pub fn placeholders() -> Vec<String> {
+    let w = wording();
+    Slot::ALL
+        .iter()
+        .map(|slot| slot.name(w).into_owned())
+        .collect()
+}
 
 static PLACEHOLDER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{\{\s*([a-z_]+)\s*\}\}").expect("constant pattern is valid"));
-
-/// Placeholders that are numbers (rendered as `null` in JSON when absent).
-const NUMERIC: &[&str] = &["monitor_id", "downtime_seconds", "expires_in_days"];
 
 fn check(config: &Value) -> Vec<FieldError> {
     let mut errors = Vec::new();
@@ -74,7 +185,7 @@ fn check(config: &Value) -> Vec<FieldError> {
         if let Some(unknown) = PLACEHOLDER_RE
             .captures_iter(tpl)
             .filter_map(|c| c.get(1))
-            .find(|m| !PLACEHOLDERS.contains(&m.as_str()))
+            .find(|m| Slot::named(m.as_str()).is_none())
         {
             errors.push(field_error(
                 "body_template",
@@ -124,23 +235,30 @@ fn sample_event() -> Alert {
     }
 }
 
-/// The standard body. `monitor` / `status` / `message` are the original
-/// (pre-0002) fields; the rest were added alongside them.
+/// The standard body: the subject's name under `"<subject>"`, `status` and
+/// `message` (the original fields), then the rest.
 pub fn default_body(event: &Alert) -> Value {
-    json!({
-        "monitor": event.subject,
-        "status": event.status.as_str(),
-        "message": event.message,
-        "event": event.event.as_str(),
-        "summary": summary(event),
-        "monitor_id": event.subject_id,
-        "monitor_type": event.subject_type,
-        "target": event.target,
-        "url": event.url,
-        "downtime_seconds": event.duration.map(|d| d.as_secs()),
-        "expires_in_days": event.expires_in_days,
-        "occurred_at": event.occurred_at.format(&Rfc3339).ok(),
-    })
+    let w = wording();
+    let mut body = Map::new();
+    body.insert(w.subject.into(), json!(event.subject));
+    body.insert("status".into(), json!(event.status.as_str()));
+    body.insert("message".into(), json!(event.message));
+    body.insert("event".into(), json!(event.event.as_str()));
+    body.insert("summary".into(), json!(summary(event)));
+    body.insert(format!("{}_id", w.subject), json!(event.subject_id));
+    body.insert(format!("{}_type", w.subject), json!(event.subject_type));
+    body.insert("target".into(), json!(event.target));
+    body.insert("url".into(), json!(event.url));
+    body.insert(
+        format!("{}_seconds", w.duration),
+        json!(event.duration.map(|d| d.as_secs())),
+    );
+    body.insert("expires_in_days".into(), json!(event.expires_in_days));
+    body.insert(
+        "occurred_at".into(),
+        json!(event.occurred_at.format(&Rfc3339).ok()),
+    );
+    Value::Object(body)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,40 +271,39 @@ pub enum Escape {
     None,
 }
 
-fn placeholder_value(name: &str, event: &Alert) -> Option<String> {
+fn placeholder_value(slot: Slot, event: &Alert) -> String {
     let opt_num = |n: Option<i64>| n.map(|v| v.to_string()).unwrap_or_default();
-    Some(match name {
-        "monitor_name" => event.subject.clone(),
-        "monitor_id" => opt_num(event.subject_id),
-        "monitor_type" => event.subject_type.clone(),
-        "target" => event.target.clone(),
-        "status" => event.status.as_str().to_string(),
-        "event" => event.event.as_str().to_string(),
-        "message" => event.message.clone().unwrap_or_default(),
-        "summary" => summary(event),
-        "headline" => headline(event),
-        "url" => event.url.clone().unwrap_or_default(),
-        "downtime" => event.duration.map(format_duration).unwrap_or_default(),
-        "downtime_seconds" => event
+    match slot {
+        Slot::SubjectName => event.subject.clone(),
+        Slot::SubjectId => opt_num(event.subject_id),
+        Slot::SubjectType => event.subject_type.clone(),
+        Slot::Target => event.target.clone(),
+        Slot::Status => event.status.as_str().to_string(),
+        Slot::Event => event.event.as_str().to_string(),
+        Slot::Message => event.message.clone().unwrap_or_default(),
+        Slot::Summary => summary(event),
+        Slot::Headline => headline(event),
+        Slot::Url => event.url.clone().unwrap_or_default(),
+        Slot::Duration => event.duration.map(format_duration).unwrap_or_default(),
+        Slot::DurationSeconds => event
             .duration
             .map(|d| d.as_secs().to_string())
             .unwrap_or_default(),
-        "expires_in_days" => opt_num(event.expires_in_days),
-        "occurred_at" => event.occurred_at.format(&Rfc3339).unwrap_or_default(),
-        _ => return None,
-    })
+        Slot::ExpiresInDays => opt_num(event.expires_in_days),
+        Slot::OccurredAt => event.occurred_at.format(&Rfc3339).unwrap_or_default(),
+    }
 }
 
 /// Substitutes `{{name}}` placeholders; unknown ones are left as written.
 pub fn render(template: &str, event: &Alert, escape: Escape) -> String {
     PLACEHOLDER_RE
         .replace_all(template, |caps: &regex::Captures| {
-            let name = caps.get(1).map_or("", |m| m.as_str());
-            match placeholder_value(name, event) {
-                Some(v) if v.is_empty() && escape == Escape::Json && NUMERIC.contains(&name) => {
+            let slot = Slot::named(caps.get(1).map_or("", |m| m.as_str()));
+            match slot.map(|slot| (slot, placeholder_value(slot, event))) {
+                Some((slot, v)) if v.is_empty() && escape == Escape::Json && slot.numeric() => {
                     "null".to_string()
                 }
-                Some(v) => match escape {
+                Some((_, v)) => match escape {
                     Escape::Json => {
                         let quoted = Value::String(v).to_string();
                         quoted[1..quoted.len() - 1].to_string()

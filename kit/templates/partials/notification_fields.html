@@ -1,5 +1,5 @@
-{#- Provider fields rendered generically from the schema. Needs: form.fields (Vec<FieldView>). -#}
-{%- import "kit/macros.html" as m -%}
+{#- A provider's fields, rendered from its schema. Needs: form.fields (Vec<vole_kit::notify::form::FieldView>). -#}
+{%- import "../macros.html" as m -%}
 {%- for f in form.fields %}
 {%- if f.input == "bool" %}
 <div{% if !f.show_when.is_empty() %} data-show-when="{{ f.show_when }}"{% endif %}>

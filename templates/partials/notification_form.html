@@ -15,8 +15,8 @@
         <span class="list-main"><span class="list-title">{{ form.label }}</span><span class="list-sub">{{ form.description }}</span></span>
       </li>
     </ul>
-    {% include "partials/notification_name.html" %}
-    {% include "partials/notification_fields.html" %}
+    {% include "kit/partials/notification_name.html" %}
+    {% include "kit/partials/notification_fields.html" %}
     <div class="stack-sm">
       {{ m::switch("is_default", tr("notif.add_new"), form.is_default, tr("notif.add_new_help")) }}
       {{ m::switch("apply_existing", tr("notif.add_existing"), form.apply_existing, tr("notif.add_existing_help_new")) }}

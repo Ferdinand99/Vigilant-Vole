@@ -350,6 +350,18 @@ pub trait Tr {
     fn dur(&self, secs: impl Count) -> String {
         fmt_duration(secs.as_count())
     }
+    /// "42%" / "42 %" (whole numbers, see [`fmt_pct0`]); `None` → em dash.
+    fn pct0(&self, value: impl OptNum) -> String {
+        value.as_opt_f64().map_or_else(|| "—".to_string(), fmt_pct0)
+    }
+    /// "840 KB" / "1.6 MB" ([`fmt_bytes`]); negative counts as 0.
+    fn filesize(&self, bytes: impl Count) -> String {
+        fmt_bytes(u64::try_from(bytes.as_count()).unwrap_or(0))
+    }
+    /// "Last 7 days" in the language's plural form ([`fmt_last_days`]).
+    fn last_days(&self, n: impl Count) -> String {
+        fmt_last_days(n.as_count())
+    }
 }
 
 impl<T: ?Sized> Tr for T {}

@@ -111,6 +111,81 @@ pub fn fmt_pct2(p: f64) -> String {
     fmt_pct2_in(current(), p)
 }
 
+/// A whole-number percentage: "42%" / "42 %" / "٪۴۲". Rounds to the
+/// nearest whole number, except that it never shows a misleading 0 or 100:
+/// anything above 0 shows at least 1, anything below 100 at most 99.
+/// Not a number → "—".
+pub fn fmt_pct0_in(lang: Lang, p: f64) -> String {
+    if !p.is_finite() {
+        return "—".into();
+    }
+    let rounded = if p <= 0.0 {
+        p.round()
+    } else if p >= 100.0 {
+        p.round().max(100.0)
+    } else {
+        p.round().clamp(1.0, 99.0)
+    };
+    #[allow(clippy::cast_possible_truncation)]
+    let number = fmt_int_in(lang, rounded as i64);
+    let nf = lang.info().numbers;
+    let sign = nf.percent_sign;
+    let space = nf.percent_space.map(String::from).unwrap_or_default();
+    if nf.percent_before {
+        format!("{sign}{space}{number}")
+    } else {
+        format!("{number}{space}{sign}")
+    }
+}
+
+pub fn fmt_pct0(p: f64) -> String {
+    fmt_pct0_in(current(), p)
+}
+
+/// A size in bytes, in steps of 1024: "512 B", "840 KB", "1.6 MB",
+/// "12.3 GB" (the units are the language's `fmt.bytes` … `fmt.terabytes`).
+/// Bytes and kilobytes are whole numbers; bigger units have one decimal.
+pub fn fmt_bytes_in(lang: Lang, bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["bytes", "kilobytes", "megabytes", "gigabytes", "terabytes"];
+    if bytes < 1024 {
+        let n = i64::try_from(bytes).unwrap_or(i64::MAX);
+        return pattern(lang, UNITS[0], &[("n", &fmt_int_in(lang, n))]);
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let mut value = bytes as f64 / 1024.0;
+    let mut unit = 1;
+    loop {
+        let decimals = usize::from(unit >= 2);
+        let factor = if decimals == 0 { 1.0 } else { 10.0 };
+        // The value as it will be shown: 1023.96 KB shows as 1,024 KB, so
+        // it moves on to MB.
+        let shown = (value * factor).round() / factor;
+        if shown < 1024.0 || unit == UNITS.len() - 1 {
+            return pattern(
+                lang,
+                UNITS[unit],
+                &[("n", &fmt_dec_in(lang, shown, decimals))],
+            );
+        }
+        value /= 1024.0;
+        unit += 1;
+    }
+}
+
+pub fn fmt_bytes(bytes: u64) -> String {
+    fmt_bytes_in(current(), bytes)
+}
+
+/// "Last 7 days" in the language's plural form for `n` (`count.last_days`):
+/// "Last 1 day", "Последние 22 дня", "Posledních 5 dní".
+pub fn fmt_last_days_in(lang: Lang, n: i64) -> String {
+    super::tn_in(lang, "count.last_days", n)
+}
+
+pub fn fmt_last_days(n: i64) -> String {
+    fmt_last_days_in(current(), n)
+}
+
 /// "120 ms" ("1 234 ms" where the language groups with a space).
 pub fn fmt_ms(ms: i64) -> String {
     format!("{} ms", fmt_int(ms))
@@ -327,5 +402,158 @@ fn round_span(secs: i64) -> i64 {
         s if s < 3_600 => (s + 30) / 60 * 60,
         s if s < 86_400 => (s + 1_800) / 3_600 * 3_600,
         s => (s + 43_200) / 86_400 * 86_400,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lang(code: &str) -> Lang {
+        Lang::from_code(code).unwrap()
+    }
+
+    const NBSP: char = '\u{a0}';
+    const NNBSP: char = '\u{202f}';
+
+    #[test]
+    fn bytes_step_by_1024() {
+        let en = Lang::EN;
+        for (bytes, want) in [
+            (0, "0 B"),
+            (512, "512 B"),
+            (1023, "1,023 B"),
+            (1024, "1 KB"),
+            (840 * 1024, "840 KB"),
+            (1_677_722, "1.6 MB"),
+            (1024 * 1024 - 20, "1.0 MB"),
+            (12_884_901_888, "12.0 GB"),
+            (5 * (1u64 << 40), "5.0 TB"),
+            (u64::MAX, "16,777,216.0 TB"),
+        ] {
+            assert_eq!(fmt_bytes_in(en, bytes), want, "{bytes}");
+        }
+    }
+
+    #[test]
+    fn bytes_in_every_language() {
+        for l in Lang::all() {
+            for bytes in [0, 999, 1536, 1_677_722, 1u64 << 33, 1u64 << 45] {
+                let text = fmt_bytes_in(l, bytes);
+                assert!(
+                    !text.is_empty() && !text.contains('{'),
+                    "{}: {text}",
+                    l.code()
+                );
+            }
+            // The number, then the unit (or the other way round), never the key.
+            assert!(!fmt_bytes_in(l, 1536).contains("kilobytes"), "{}", l.code());
+        }
+        assert_eq!(fmt_bytes_in(lang("nb"), 1_677_722), "1,6 MB");
+        assert_eq!(fmt_bytes_in(lang("de"), 2_000_000), "1,9 MB");
+        assert_eq!(fmt_bytes_in(lang("fr"), 840 * 1024), format!("840{NBSP}Ko"));
+        assert_eq!(fmt_bytes_in(lang("fr"), 1_677_722), format!("1,6{NBSP}Mo"));
+        assert_eq!(fmt_bytes_in(lang("ru"), 1_677_722), "1,6 МБ");
+        assert_eq!(fmt_bytes_in(lang("uk"), 512), "512 Б");
+        assert_eq!(fmt_bytes_in(lang("ar"), 1_677_722), "1.6 م.بايت");
+        assert_eq!(fmt_bytes_in(lang("fa"), 1_677_722), "۱٫۶ م.بایت");
+        assert_eq!(fmt_bytes_in(lang("ja"), 2048), "2 KB");
+        assert_eq!(fmt_bytes_in(lang("nb"), 12_345), "12 KB");
+        assert_eq!(fmt_bytes_in(lang("nb"), 12_345 * 1024), "12,1 MB");
+    }
+
+    #[test]
+    fn whole_percentages_never_mislead() {
+        let en = Lang::EN;
+        for (p, want) in [
+            (42.0, "42%"),
+            (42.5, "43%"),
+            (0.0, "0%"),
+            (0.2, "1%"),
+            (99.6, "99%"),
+            (100.0, "100%"),
+            (250.0, "250%"),
+            (-3.0, "-3%"),
+        ] {
+            assert_eq!(fmt_pct0_in(en, p), want, "{p}");
+        }
+        assert_eq!(fmt_pct0_in(en, f64::NAN), "—");
+        assert_eq!(fmt_pct0_in(lang("nb"), 42.0), format!("42{NBSP}%"));
+        assert_eq!(fmt_pct0_in(lang("fr"), 42.0), format!("42{NNBSP}%"));
+        assert_eq!(fmt_pct0_in(lang("tr"), 42.0), "%42");
+        assert_eq!(fmt_pct0_in(lang("fa"), 42.0), "۴۲٪");
+        assert_eq!(fmt_pct0_in(lang("de"), 1234.0), format!("1.234{NBSP}%"));
+        for l in Lang::all() {
+            let text = fmt_pct0_in(l, 37.0);
+            assert!(
+                text.contains(&fmt_int_in(l, 37)) && text.contains(l.info().numbers.percent_sign),
+                "{}: {text}",
+                l.code()
+            );
+        }
+    }
+
+    #[test]
+    fn last_days_take_the_plural_form_of_every_language() {
+        for (code, n, want) in [
+            ("en", 1, "Last 1 day"),
+            ("en", 7, "Last 7 days"),
+            ("nb", 30, "Siste 30 dager"),
+            ("de", 1, "Letzter 1 Tag"),
+            ("fr", 1, "1 dernier jour"),
+            ("fr", 7, "7 derniers jours"),
+            ("ru", 1, "Последний 1 день"),
+            ("ru", 2, "Последние 2 дня"),
+            ("ru", 5, "Последние 5 дней"),
+            ("ru", 11, "Последние 11 дней"),
+            ("ru", 21, "Последний 21 день"),
+            ("ru", 22, "Последние 22 дня"),
+            ("uk", 1, "Останній 1 день"),
+            ("uk", 3, "Останні 3 дні"),
+            ("uk", 7, "Останні 7 днів"),
+            ("uk", 31, "Останній 31 день"),
+            ("cs", 1, "Poslední 1 den"),
+            ("cs", 3, "Poslední 3 dny"),
+            ("cs", 7, "Posledních 7 dní"),
+            ("cs", 90, "Posledních 90 dní"),
+            ("pl", 1, "Ostatni 1 dzień"),
+            ("pl", 2, "Ostatnie 2 dni"),
+            ("pl", 5, "Ostatnie 5 dni"),
+            ("pl", 22, "Ostatnie 22 dni"),
+            ("ro", 1, "Ultima 1 zi"),
+            ("ro", 7, "Ultimele 7 zile"),
+            ("ro", 30, "Ultimele 30 de zile"),
+            ("ro", 101, "Ultimele 101 zile"),
+            ("ar", 2, "آخر 2 يومين"),
+            ("ar", 7, "آخر 7 أيام"),
+            ("ar", 30, "آخر 30 يومًا"),
+            ("ar", 100, "آخر 100 يوم"),
+            ("he", 1, "1 יום אחרון"),
+            ("he", 30, "30 הימים האחרונים"),
+            ("fa", 30, "۳۰ روز گذشته"),
+            ("ja", 7, "過去7日間"),
+            ("zh-CN", 90, "过去 90 天"),
+        ] {
+            assert_eq!(fmt_last_days_in(lang(code), n), want, "{code} {n}");
+        }
+        // Every language has a form for every number, with the number in it.
+        for l in Lang::all() {
+            for n in [
+                0, 1, 2, 3, 4, 5, 7, 11, 12, 14, 21, 22, 25, 30, 90, 100, 101, 365, 1_000_000,
+            ] {
+                let text = fmt_last_days_in(l, n);
+                assert!(
+                    text.contains(&fmt_int_in(l, n)) && !text.contains('{'),
+                    "{} {n}: {text}",
+                    l.code()
+                );
+                let form = format!("count.last_days.{}", l.plural_category(n).as_str());
+                assert!(
+                    crate::i18n::catalog::get(l, &form).is_some(),
+                    "{}: {form}",
+                    l.code()
+                );
+            }
+        }
     }
 }

@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod auth;
+pub mod components;
 pub mod config;
 pub mod db;
 pub mod docs;

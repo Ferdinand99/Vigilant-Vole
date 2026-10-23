@@ -41,6 +41,8 @@ pub struct KitConfig {
     pub env_prefix: &'static str,
     /// Paths (prefixes) whose requests authenticate with tokens, not
     /// cookies, and so need no CSRF proof.
+    /// They match whole segments, and a `*` segment stands for any one
+    /// segment (`/api/*/envelope`); see [`crate::auth::csrf::prefix_matches`].
     pub csrf_exempt_prefixes: &'static [&'static str],
     /// Further exempt paths that a prefix can't describe.
     pub csrf_exempt_path: fn(&str) -> bool,
@@ -72,6 +74,10 @@ pub struct KitConfig {
     /// point there ("Settings → General"). `None` if the product has no such
     /// place; the messages then say "the instance's public URL".
     pub public_url_setting: Option<&'static str>,
+    /// How the webhook provider names what alerts are about: the default
+    /// body's fields, the body template's placeholders, the URL example
+    /// (`Wording::NEUTRAL` for `subject` and `duration`).
+    pub webhook: super::notify::webhook::Wording,
     /// Permissions the product adds to API tokens besides "read only" and
     /// "read and write" (see [`ExtraScope`]); `&[]` for none. A product with
     /// any runs the core migration
@@ -132,9 +138,11 @@ static CONFIG: OnceLock<&'static KitConfig> = OnceLock::new();
 /// installing a different one panics, because the kit would otherwise behave
 /// as two products at once.
 ///
-/// The first installation also checks the translations: every catalog
-/// parses and no key is defined by both the kit and the product. A failure
-/// panics, so a broken build doesn't start.
+/// The first installation also checks the translations (every catalog
+/// parses and no key is defined by both the kit and the product) and, with
+/// [`DocsSpec::strict_access`](crate::docs::DocsSpec::strict_access), that
+/// every documented route names a known access. A failure panics, so a
+/// broken build doesn't start.
 pub fn install(config: &'static KitConfig) {
     let mut first = false;
     let current = *CONFIG.get_or_init(|| {
@@ -145,10 +153,22 @@ pub fn install(config: &'static KitConfig) {
         std::ptr::eq(current, config),
         "a different KitConfig is already installed"
     );
-    if first && let Err(e) = crate::i18n::catalog::validate() {
+    if !first {
+        return;
+    }
+    if let Err(e) = crate::i18n::catalog::validate() {
         panic!("invalid translations: {e}");
     }
-    if first && let Err(e) = check(config) {
+    if config.docs.strict_access {
+        let undeclared = crate::docs::undeclared_access(config.docs);
+        assert!(
+            undeclared.is_empty(),
+            "API reference: these routes name an access that is neither a role, `public`, \
+             `metrics token` nor one of DocsSpec::credentials: {}",
+            undeclared.join(", ")
+        );
+    }
+    if let Err(e) = check(config) {
         panic!("invalid KitConfig: {e}");
     }
 }

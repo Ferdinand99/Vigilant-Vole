@@ -1,7 +1,10 @@
 //! Kit Demo driven in-process: setup, sign-in with two factors, the kit's
 //! pages and API reference under the demo's name and in its words, the
 //! demo's token scopes, the General page, the sign-in throttle per
-//! instance, static files, versions, the schema and the translations.
+//! instance, static files, versions, the schema and the translations;
+//! and the building blocks a second product needs (a second database,
+//! CSRF patterns, token buckets, header policies, live updates, provider
+//! forms and test messages, the design system's data components).
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -39,6 +42,7 @@ impl Res {
 
 struct App {
     core: Core,
+    demo: kit_demo::Demo,
     router: Router,
     cookies: BTreeMap<String, String>,
     dir: PathBuf,
@@ -60,10 +64,11 @@ impl App {
             N.fetch_add(1, Ordering::SeqCst)
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        let core = kit_demo::start(&dir).await.unwrap();
+        let demo = kit_demo::start(&dir).await.unwrap();
         App {
-            router: kit_demo::router(core.clone()),
-            core,
+            router: kit_demo::router(&demo),
+            core: demo.core.clone(),
+            demo,
             cookies: BTreeMap::new(),
             dir,
         }
@@ -360,7 +365,8 @@ async fn the_kits_pages_carry_the_demos_name() {
     assert!(docs.contains(r#"download="kit-demo-openapi.json""#));
     assert!(docs.contains("Bearer kd_…"));
     assert!(docs.contains("/api/v1/notes"));
-    // Only the kit's generic error codes: the demo adds none.
+    // The kit's generic error codes on the page; the demo's only addition,
+    // `rate_limited`, is in the full reference.
     assert!(docs.contains("<code>conflict</code> 409, <code>validation_failed</code> 422."));
     assert!(!docs.contains("delivery_failed"));
     let tokens = app.get("/settings/tokens").await.body;
@@ -428,7 +434,7 @@ async fn the_api_reference_is_the_demos_own() {
         .unwrap()
         .keys()
         .collect();
-    assert_eq!(schemes, ["bearerAuth", "sessionCookie"]);
+    assert_eq!(schemes, ["bearerAuth", "ingestKey", "sessionCookie"]);
 
     // Without a Host header or a public URL: the demo's own address.
     assert_eq!(
@@ -619,6 +625,368 @@ fn notification_forms_name_the_demo() {
     assert!(shown.contains(&"slack.username".to_string()), "{shown:?}");
     assert!(shown.contains(&"zulip.topic".to_string()), "{shown:?}");
     assert!(shown.contains(&"clicksend.from".to_string()), "{shown:?}");
+}
+
+// ---------------------------------------------------------------------------
+// The building blocks a second product needs
+// ---------------------------------------------------------------------------
+
+impl App {
+    /// A request as a program sends it: no cookie, no `Origin`.
+    async fn machine_post(&mut self, path: &str, headers: &[(&str, &str)], body: &str) -> Res {
+        let mut req = Request::post(path);
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let saved = std::mem::take(&mut self.cookies);
+        let res = self
+            .send(req.body(Body::from(body.to_string())).unwrap())
+            .await;
+        self.cookies = saved;
+        res
+    }
+
+    async fn envelope(&mut self, project: &str) -> Res {
+        self.machine_post(
+            &format!("/api/{project}/envelope/"),
+            &[("x-demo-key", kit_demo::INGEST_KEY)],
+            "{\"event\": \"signup\"}\n",
+        )
+        .await
+    }
+
+    /// An htmx request from the demo's own pages.
+    async fn hx_get(&mut self, path: &str) -> Res {
+        let req = Request::get(path)
+            .header("hx-request", "true")
+            .body(Body::empty())
+            .unwrap();
+        self.send(req).await
+    }
+}
+
+/// The next event of a server-sent event stream (up to its blank line).
+async fn next_event(body: &mut axum::body::BodyDataStream) -> String {
+    use futures_util::StreamExt as _;
+    let mut text = String::new();
+    while !text.contains("\n\n") {
+        let chunk = tokio::time::timeout(std::time::Duration::from_secs(5), body.next())
+            .await
+            .expect("an event within 5 s")
+            .expect("the stream is open")
+            .unwrap();
+        text.push_str(&String::from_utf8_lossy(&chunk));
+    }
+    text
+}
+
+#[tokio::test]
+async fn the_store_is_a_second_database_with_its_own_migrations() {
+    let app = App::fresh().await;
+    let (tables, applied, vacuum) = vole_kit::db::interact(&app.demo.store, |c| {
+        let tables: Vec<String> = c
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table'
+                 AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            )?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        let applied: Vec<String> = c
+            .prepare("SELECT name FROM schema_migrations ORDER BY rowid")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        let vacuum: i64 = c.query_row("PRAGMA auto_vacuum", [], |r| r.get(0))?;
+        Ok((tables, applied, vacuum))
+    })
+    .await
+    .unwrap();
+    assert_eq!(tables, ["envelopes", "schema_migrations"], "no core tables");
+    assert_eq!(applied, ["0001_envelopes.sql"]);
+    assert_eq!(vacuum, 2, "incremental auto-vacuum from the first table on");
+
+    // Opening it again applies nothing and never takes a copy.
+    let report = vole_kit::db::migrate_with(
+        &app.demo.store,
+        &kit_demo::STORE_MIGRATIONS,
+        vole_kit::db::MigrateOptions::default(),
+    )
+    .await
+    .unwrap();
+    assert!(report.applied.is_empty() && report.backup.is_none());
+
+    // A store from a newer release is refused without pointing at backups.
+    vole_kit::db::interact(&app.demo.store, |c| {
+        c.execute(
+            "INSERT INTO schema_migrations (name) VALUES ('0002_future.sql')",
+            [],
+        )
+    })
+    .await
+    .unwrap();
+    let err = kit_demo::open_store(&app.dir)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("newer Kit Demo (schema 0002_future)"), "{err}");
+    assert!(!err.contains("backup"), "{err}");
+    assert!(!app.dir.join("backups").exists());
+}
+
+#[tokio::test]
+async fn ingest_is_csrf_exempt_rate_limited_and_answered_as_a_machine() {
+    let mut app = App::set_up().await;
+    // No cookie, no Origin: exempt by the `/api/*/envelope` pattern.
+    let res = app.envelope("notes").await;
+    assert_eq!(res.status, StatusCode::ACCEPTED, "{}", res.body);
+    assert_eq!(
+        res.headers[header::CONTENT_SECURITY_POLICY],
+        vole_kit::http::headers::MACHINE_CSP
+    );
+    assert!(res.headers.get(header::X_FRAME_OPTIONS).is_none());
+    assert_eq!(res.headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+
+    // The pattern is one segment wide: other paths still need the proof.
+    let other = app.machine_post("/api/notes/envelopes/", &[], "{}").await;
+    assert_eq!(other.status, StatusCode::FORBIDDEN, "{}", other.body);
+
+    // The key is the endpoint's own credential.
+    let keyless = app.machine_post("/api/notes/envelope/", &[], "{}").await;
+    assert_eq!(keyless.status, StatusCode::UNAUTHORIZED);
+
+    // Five a minute per address; the sixth waits.
+    for _ in 1..kit_demo::INGEST_RATE.burst {
+        assert_eq!(app.envelope("notes").await.status, StatusCode::ACCEPTED);
+    }
+    let limited = app.envelope("notes").await;
+    assert_eq!(limited.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(limited.headers[header::RETRY_AFTER], "12");
+    let body: Value = serde_json::from_str(&limited.body).unwrap();
+    assert_eq!(body["error"]["code"], "rate_limited");
+
+    // The snippet other sites load: no CSP or framing rules, CORP open.
+    let js = app.get("/js/d.js").await;
+    assert_eq!(js.status, StatusCode::OK);
+    assert!(js.headers.get(header::CONTENT_SECURITY_POLICY).is_none());
+    assert!(js.headers.get(header::X_FRAME_OPTIONS).is_none());
+    assert_eq!(js.headers["cross-origin-resource-policy"], "cross-origin");
+    // The demo's pages keep the app's headers.
+    let home = app.get("/").await;
+    assert_eq!(
+        home.headers[header::CONTENT_SECURITY_POLICY],
+        vole_kit::http::headers::APP_CSP
+    );
+    assert_eq!(home.headers[header::X_FRAME_OPTIONS], "DENY");
+}
+
+#[tokio::test]
+async fn the_live_view_merges_a_burst_into_one_update() {
+    let mut app = App::set_up().await;
+    let cookie = app
+        .cookies
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let mut req = Request::get("/projects/notes/live")
+        .header(header::HOST, "demo.test")
+        .header(header::COOKIE, cookie)
+        .body(Body::empty())
+        .unwrap();
+    req.extensions_mut().insert(ConnectInfo(
+        "127.0.0.1:40000".parse::<SocketAddr>().unwrap(),
+    ));
+    let res = app.router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "text/event-stream");
+    let mut body = res.into_body().into_data_stream();
+
+    // Another project's envelope doesn't wake it; three of its own do, in
+    // as few updates as quiet periods separate them.
+    assert_eq!(app.envelope("other").await.status, StatusCode::ACCEPTED);
+    for _ in 0..3 {
+        assert_eq!(app.envelope("notes").await.status, StatusCode::ACCEPTED);
+    }
+    let mut events = Vec::new();
+    loop {
+        let event = next_event(&mut body).await;
+        let done = event.contains("3 envelopes");
+        events.push(event);
+        if done {
+            break;
+        }
+        assert!(events.len() < 3, "{events:?}");
+    }
+    let last = events.last().unwrap();
+    assert!(last.starts_with("event: envelopes-updated\n"), "{last}");
+    assert!(
+        last.contains("<p id=\"envelopes\">3 envelopes</p>"),
+        "{last}"
+    );
+}
+
+/// A server that answers one request and returns its body.
+async fn capture_one() -> (u16, tokio::task::JoinHandle<String>) {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = socket.read(&mut buf).await.unwrap();
+            raw.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&raw).into_owned();
+            if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                let length = head
+                    .lines()
+                    .find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                if body.len() >= length {
+                    socket
+                        .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+                        .await
+                        .unwrap();
+                    return body.to_string();
+                }
+            }
+            assert!(n > 0, "the client hung up: {text}");
+        }
+    });
+    (port, server)
+}
+
+#[tokio::test]
+async fn provider_forms_and_test_messages_are_the_kits_in_the_demos_words() {
+    let mut app = App::set_up().await;
+    let picker = app.hx_get("/settings/notifications/providers").await;
+    assert_eq!(picker.status, StatusCode::OK, "{}", picker.body);
+    assert!(picker.body.contains("id=\"provider-grid\""));
+    assert!(picker.body.contains("id=\"cat-chat\""));
+    let grid = app
+        .hx_get("/settings/notifications/providers?grid=true&q=disc")
+        .await;
+    assert!(grid.body.contains("value=\"discord\""));
+    assert!(!grid.body.contains("value=\"slack\""));
+
+    let form = app
+        .hx_get("/settings/notifications/form?kind=webhook")
+        .await;
+    assert_eq!(form.status, StatusCode::OK, "{}", form.body);
+    assert!(
+        form.body.contains("placeholder=\"Webhook alerts…\""),
+        "the kit's name field"
+    );
+    assert!(
+        form.body
+            .contains("placeholder=\"https://example.com/hooks/notes…\"")
+    );
+    assert!(
+        form.body
+            .contains("{{note_name}}, {{note_id}}, {{note_type}}")
+    );
+    assert!(form.body.contains("{{duration}}, {{duration_seconds}}"));
+    assert!(form.body.contains("class=\"kv-editor\""));
+    assert_no_foreign_words("/settings/notifications/form", &form.body);
+
+    // "Send test" to a webhook, in the language the form asks for.
+    let (port, server) = capture_one().await;
+    let url = format!("http://127.0.0.1:{port}/hook");
+    let req = Request::post("/settings/notifications/test")
+        .header("hx-request", "true")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(
+            url::form_urlencoded::Serializer::new(String::new())
+                .extend_pairs([
+                    ("kind", "webhook"),
+                    ("c_url", url.as_str()),
+                    ("language", "nb"),
+                ])
+                .finish(),
+        ))
+        .unwrap();
+    let res = app.send(req).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    let toast = res.headers["hx-trigger"].to_str().unwrap();
+    assert!(toast.contains("\"success\""), "{toast}");
+    let sent: Value = serde_json::from_str(&server.await.unwrap()).unwrap();
+    assert_eq!(sent["note"], "Testmelding fra Kit Demo");
+    assert_eq!(sent["message"], "Kan du lese dette, virker kanalen.");
+    assert_eq!(sent["status"], "test");
+    assert!(sent.get("note_id").is_some() && sent.get("duration_seconds").is_some());
+    assert!(sent.get("monitor").is_none());
+}
+
+#[tokio::test]
+async fn the_api_reference_types_parameters_bodies_and_header_keys() {
+    let mut app = App::set_up().await;
+    assert!(vole_kit::docs::undeclared_access(kit_demo::KIT.docs).is_empty());
+    let token = app.token().await;
+    let res = app
+        .bearer("GET", "/api/v1/openapi.json", &token, None)
+        .await;
+    let doc: Value = serde_json::from_str(&res.body).unwrap();
+    let op = &doc["paths"]["/api/{project}/envelope/"]["post"];
+    assert_eq!(op["parameters"][0]["name"], "project");
+    assert_eq!(op["parameters"][0]["schema"]["type"], "string");
+    assert_eq!(
+        op["requestBody"]["content"]["application/x-ndjson"]["example"],
+        "{\"event\": \"signup\"}\n{\"event\": \"login\"}"
+    );
+    assert_eq!(op["security"], json!([{"ingestKey": []}]));
+    assert_eq!(
+        doc["components"]["securitySchemes"]["ingestKey"],
+        json!({"type": "apiKey", "in": "header", "name": "X-Demo-Key", "description": "Ingest key"})
+    );
+
+    let md = app.get("/api-docs.md").await.body;
+    assert!(md.contains("- Access: the ingest key in `X-Demo-Key` (no API token)"));
+    assert!(md.contains("- Path parameters: `project` (string)"));
+    assert!(md.contains("- Body: `application/x-ndjson` (see the example)"));
+    let curl = concat!(
+        "curl -X POST -H \"X-Demo-Key: $KD_INGEST_KEY\" ",
+        "-H \"Content-Type: application/x-ndjson\" \"$KD_URL/api/{project}/envelope/\" ",
+        "--data-binary '{\"event\": \"signup\"}\n{\"event\": \"login\"}'"
+    );
+    assert!(md.contains(curl), "{md}");
+    assert!(md.contains("| `rate_limited` | 429 |"));
+    assert!(md.contains(
+        "### GET /js/d.js\n\nThe script a page embeds; any site may load it.\n\n- Access: public (no token)"
+    ));
+}
+
+#[tokio::test]
+async fn the_home_page_draws_bars_lines_and_code_from_the_design_system() {
+    let mut app = App::set_up().await;
+    for project in ["notes", "notes", "shop"] {
+        assert_eq!(app.envelope(project).await.status, StatusCode::ACCEPTED);
+    }
+    let home = app.get("/").await;
+    assert_eq!(home.status, StatusCode::OK, "{}", home.body);
+    assert_demo_branded("/", &home.body);
+    let html = &home.body;
+    // The bar list: the busiest project first, as wide as its share.
+    assert!(html.contains("<ul class=\"bars\" role=\"list\" aria-label=\"Projects\">"));
+    let notes = html.find("href=\"/projects/notes\">notes</a>").unwrap();
+    let shop = html.find("href=\"/projects/shop\">shop</a>").unwrap();
+    assert!(notes < shop);
+    assert!(html.contains("style=\"--share: 66.67%\""), "{html}");
+    assert!(html.contains("<span class=\"bar-num\">67%</span>"));
+    // Two lines on one scale, the first with its area.
+    assert!(html.contains("class=\"chart-area series-1\""));
+    assert!(html.contains("class=\"chart-line series-2\""));
+    assert!(html.contains("<span class=\"legend-swatch series-2\"></span><span>Envelopes</span>"));
+    assert!(html.contains("aria-label=\"Last 7 days\""));
+    // Code with the second line highlighted.
+    assert!(html.contains(
+        "<span class=\"code-line is-current\" aria-current=\"true\"><span class=\"code-no\" aria-hidden=\"true\">2</span>"
+    ));
+    // Sizes and shares in the reader's words.
+    assert!(html.contains(" KB; "), "{html}");
 }
 
 /// The demo's scopes on the kit's Tokens page: offered with their texts,

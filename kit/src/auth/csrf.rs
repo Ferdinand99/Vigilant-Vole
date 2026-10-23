@@ -17,10 +17,48 @@ use url::Url;
 /// them in its [`KitConfig`](crate::config::KitConfig).
 pub fn is_exempt_path(path: &str) -> bool {
     let cfg = crate::config::get();
-    cfg.csrf_exempt_prefixes.iter().any(|prefix| {
-        path.strip_prefix(prefix)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-    }) || (cfg.csrf_exempt_path)(path)
+    cfg.csrf_exempt_prefixes
+        .iter()
+        .any(|prefix| prefix_matches(prefix, path))
+        || (cfg.csrf_exempt_path)(path)
+}
+
+/// Does `path` start with `prefix` in whole segments? `/api/v1` matches
+/// `/api/v1` and `/api/v1/…`, never `/api/v10`. A `*` segment in the prefix
+/// stands for exactly one non-empty segment: `/api/*/envelope` matches
+/// `/api/7/envelope`, `/api/7/envelope/` and `/api/7/envelope/x`, not
+/// `/api//envelope` or `/api/7/8/envelope`. A prefix ending in `/` needs
+/// that slash.
+pub fn prefix_matches(prefix: &str, path: &str) -> bool {
+    if !prefix.split('/').any(|seg| seg == "*") {
+        return path
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'));
+    }
+    let mut rest = path;
+    let mut segments = prefix.split('/').peekable();
+    while let Some(seg) = segments.next() {
+        if seg == "*" {
+            let end = rest.find('/').unwrap_or(rest.len());
+            if end == 0 {
+                return false;
+            }
+            rest = &rest[end..];
+        } else {
+            let Some(after) = rest.strip_prefix(seg) else {
+                return false;
+            };
+            rest = after;
+        }
+        if segments.peek().is_none() {
+            return seg.is_empty() || rest.is_empty() || rest.starts_with('/');
+        }
+        let Some(after) = rest.strip_prefix('/') else {
+            return false;
+        };
+        rest = after;
+    }
+    true
 }
 
 fn is_safe_method(method: &Method) -> bool {
@@ -325,5 +363,43 @@ mod tests {
         assert!(!is_exempt_path("/api/v10/x"));
         assert!(!is_exempt_path("/metricsx"));
         assert!(!is_exempt_path("/api/pushy"));
+    }
+
+    #[test]
+    fn plain_prefixes_match_as_before() {
+        for (prefix, path, want) in [
+            ("/api/v1", "/api/v1", true),
+            ("/api/v1", "/api/v1/", true),
+            ("/api/v1", "/api/v1/monitors", true),
+            ("/api/v1", "/api/v10", false),
+            ("/api/v1", "/api", false),
+            ("/metrics", "/metrics", true),
+            ("/metrics", "/metricsx", false),
+        ] {
+            assert_eq!(prefix_matches(prefix, path), want, "{prefix} {path}");
+        }
+    }
+
+    #[test]
+    fn a_star_segment_matches_one_segment() {
+        for (prefix, path, want) in [
+            ("/api/*/envelope", "/api/7/envelope", true),
+            ("/api/*/envelope", "/api/7/envelope/", true),
+            ("/api/*/envelope", "/api/abc/envelope/x", true),
+            ("/api/*/envelope", "/api//envelope", false),
+            ("/api/*/envelope", "/api/7/8/envelope", false),
+            ("/api/*/envelope", "/api/7/envelopes", false),
+            ("/api/*/envelope", "/api/7", false),
+            ("/api/*/envelope", "/apix/7/envelope", false),
+            ("/api/*/envelope/", "/api/7/envelope/", true),
+            ("/api/*/envelope/", "/api/7/envelope", false),
+            ("/hooks/*", "/hooks/a", true),
+            ("/hooks/*", "/hooks/a/b", true),
+            ("/hooks/*", "/hooks/", false),
+            ("/hooks/*", "/hooks", false),
+            ("/*/x", "/a/x", true),
+        ] {
+            assert_eq!(prefix_matches(prefix, path), want, "{prefix} {path}");
+        }
     }
 }

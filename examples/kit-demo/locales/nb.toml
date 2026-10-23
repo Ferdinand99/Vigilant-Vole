@@ -3,6 +3,15 @@
 [demo]
 welcome = "Velkommen til Kit Demo. Du har {n} notater."
 notes = "Notater"
+envelopes = "Konvolutter"
+projects = "Prosjekter"
+share = "Andel"
+store_size = "Lageret bruker {size}; {pct} av det du tar vare på, er notater."
+ingest = "Send en konvolutt"
+test_title = "Testmelding fra {product}"
+test_body = "Kan du lese dette, virker kanalen."
+test_event = "Test"
+view_notes = "Se notatene"
 scope_add = "Lese og legge til notater"
 scope_add_help = "Leser alt og legger til notater, men endrer ikke noe annet"
 scope_inbox = "Bare innboks"
@@ -14,6 +23,10 @@ notes_unit = "notater"
 err_per_page = "Skriv inn et tall mellom 5 og 100."
 public = "Offentlige notater"
 public_help = "Alle med lenken til et notat kan lese det."
+
+[count]
+envelopes.one = "{n} konvolutt"
+envelopes.other = "{n} konvolutter"
 
 # Tekster kitets felles sider henter fra produktet
 # (vole_kit::i18n::catalog::PRODUCT_KEYS).

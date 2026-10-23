@@ -415,6 +415,37 @@ Macro: `{% call m::card_head(title, subtitle="") %}actions{% endcall %}`.
 ```
 Strokes use `vector-effect: non-scaling-stroke`, so stretching the viewBox is fine. Inline sparkline: `<svg class="sparkline" …><polyline class="chart-line" …/></svg>`. Legend: `.legend > .legend-item > .legend-swatch.status-*`. The line is brand purple by design; downtime and maintenance are shown with `.chart-band`, not by recolouring the line.
 
+**Several lines on one scale** (visitors and pageviews, versions over time): `.series-1` … `.series-6` colour a line, its area and its legend swatch (brand, teal, orange, pink, green, gray). The first series is drawn last, so it sits on top, and is the only one with an area.
+```html
+<div class="legend" aria-hidden="true">
+  <span class="legend-item"><span class="legend-swatch series-1"></span><span>Visitors</span> <strong class="num">1,204</strong></span>
+  <span class="legend-item"><span class="legend-swatch series-2"></span><span>Pageviews</span> <strong class="num">3,980</strong></span>
+</div>
+<div class="chart">
+  <svg viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label="Visitors and pageviews, last 7 days">
+    <line class="chart-grid" x1="0" x2="600" y1="60" y2="60"></line>
+    <polygon class="chart-area series-1" points="…visitors… 600,120 0,120"></polygon>
+    <polyline class="chart-line series-2" points="…pageviews…"></polyline>
+    <polyline class="chart-line series-1" points="…visitors…"></polyline>
+  </svg>
+  <div class="chart-scale" aria-hidden="true"><span><bdi>4,000</bdi></span><span><bdi>0</bdi></span></div>
+</div>
+<div class="chart-axis" aria-hidden="true"><span>Last 7 days</span><span>Today</span></div>
+```
+`{{ m::line_chart(chart) }}` draws all of it from a `vole_kit::components::LineChart` (`LineChart::new(label, vec![(name, values, shown_value), …], area).scale(max, min).axis(start, end)`; `chart_points` lays values out on the 600 × 120 box). More than six lines repeat the colours: keep to fewer.
+
+### Bar list
+Ranked rows (top pages, sources, versions) with a bar behind each row as wide as its share. Three columns (name, value, a second value such as the share) or two with `.bar-row-2` on the head and every row.
+```html
+<div class="bars-head" aria-hidden="true"><span>Page</span><span>Visitors</span><span>Share</span></div>
+<ul class="bars" role="list" aria-label="Page">
+  <li class="bar-row" style="--share: 42%">
+    <a class="bar-label" href="…">/pricing</a><span class="bar-num">1,204</span><span class="bar-num">42%</span>
+  </li>
+</ul>
+```
+`--share` is the only inline style (a percentage, 0–100%). The label truncates with an ellipsis; numbers are tabular and end-aligned, the second muted. `{{ m::bar_list(rows, tr("web.page"), tr("web.visitors"), tr("web.share")) }}` draws it from `Vec<vole_kit::components::BarRow>` (`BarRow::new(label, value, share).href(url).detail(text)`; `components::share(part, whole)`); leave the last argument out for two columns. Put it in a `.card`.
+
 ### Tables
 `.table-wrap > table.table` (+ `.table-hover`). Number cells `.num` (right-aligned, tabular), primary cell `.td-primary`, action cell `.td-actions`. Add `.table-stack` and `data-label="Column"` on each `td` so it becomes stacked cards under 640px; give sentence-length cells `.td-block` so the text sits under its label, left-aligned. Wrap in `.card.card-flush`.
 
@@ -487,6 +518,7 @@ Page-level (state in the URL — preferred): `<nav class="tabs"><a class="tab" h
 ### Misc
 - Copy field (shown-once tokens): `{{ m::copy_field("new-token", &token) }}`; any button: `data-copy="#element-id"` (copies its value/text) or `data-copy-text="literal"`; label flips to "Copied" (override with `data-copied-label`). Large documents: `data-copy-url="/api-docs.md"` fetches the URL and copies the response (success/error toast; when the clipboard is unavailable or denied it downloads the file as `data-download-name` instead) — the API reference's **Copy for AI** button (`.card.ai-strip`).
 - Code: inline `<code>`, block `<pre class="code"><code>…</code></pre>`. Keys: `<kbd>`.
+- Code with line numbers and a highlighted line (a stack frame's source, the line a config error is on): `<pre class="code code-lines"><code>` with one `<span class="code-line">` per line (no newlines between them), `<span class="code-no" aria-hidden="true">41</span>` before the text, and `is-current` plus `aria-current="true"` on the highlighted one (brand tint, brand edge). Lines run the full width of the block and stay left-to-right in every language. `{{ m::code_lines(lines, label) }}` draws it from `Vec<vole_kit::components::CodeLine>` (`CodeLine::numbered(code, first_number, Some(current))`).
 - Avatar: `{{ m::avatar(&u.initials, "sm"|"lg") }}` → `.avatar`.
 - Relative time: `{{ m::time_ago(&row.checked_at) }}` → `<time datetime="2026-10-19 14:03:00" data-relative>` ("3 minutes ago", refreshed every 30s; DB UTC format, zone assumed UTC; future times read "in 3 days").
 - Tooltip: `data-tip="Text"` on any element (hover, focus, or tap on touch).
@@ -577,6 +609,9 @@ Events to send from the server via `HX-Trigger`: `vv:toast` (`{message, kind}`),
 | live | `()` |
 | stat | `(label, value, status="", meta="")` |
 | skeleton_rows | `(count=3)` |
+| bar_list | `(bar_rows, name_head, value_head, detail_head="")` — `Vec<BarRow>`; no `detail_head` → two columns |
+| line_chart | `(chart_data)` — `LineChart` |
+| code_lines | `(code_rows, code_label="")` — `Vec<CodeLine>` |
 
 Askama 0.16 notes (these bite):
 1. Macros without a body are expressions: `{{ m::icon("gear") }}`. Macros with a body (`page_header`, `section_head`, `card_head`) must be called as `{% call m::page_header("Title") %}…{% endcall %}` — even when the body is empty.
@@ -616,7 +651,7 @@ The kitchen-sink preview used while building this lives outside the repo; every 
 
 - Languages are a registry (`kit/src/i18n/lang.rs`, `LANGS`): English (the source), Norwegian bokmål, German, French, Spanish, Italian, Dutch, Brazilian Portuguese, Polish, Swedish and Danish. Each has one entry (BCP 47 code, English and own name, direction, CLDR plural rule, number conventions, `beta`) and one `locales/<code>.toml` plus one `kit/locales/<code>.toml` (the kit's core strings). How to translate, edit or add a language: [translating.md](translating.md).
 - Strings live in `locales/<code>.toml` and, for the shared kit, `kit/locales/<code>.toml`. `cargo test --lib` fails on a missing/extra key, an empty value, mismatched `{placeholders}`, plural forms that don't match the language's CLDR categories, malformed `[fmt]` lists, a shipped language below 100 % coverage, or an unknown key used in a template or `crate::i18n::t("…")`. A key missing from a language falls back to English per key.
-- Templates: `{{ tr("nav.dashboard") }}`, `{{ tr1("detail.delete_q", "name", monitor.name) }}`, `{{ tr2(…) }}`, plurals `{{ trn("count.monitors", rows.len()) }}` (`key.one` / `key.other`, plus `key.few` / `key.many` … where the language's rule needs them). Pass translations to macros as arguments: `m::page_header(tr("nav.users"), tr("users.sub"))`. Status words: `{{ status_text(s) }}`. Numbers: `{{ pct(opt_f64) }}`, `{{ millis(opt_i64) }}`, `{{ num(n) }}`, `{{ dur(secs) }}`. Every module with a template struct needs `use crate::i18n::Tr as _;`. Don't name a template variable `tr`. `<html lang>` and `<html dir>` come from `{{ lang_code() }}` / `{{ lang_dir() }}` (`ctx.lang` / `ctx.dir` in the app layout).
+- Templates: `{{ tr("nav.dashboard") }}`, `{{ tr1("detail.delete_q", "name", monitor.name) }}`, `{{ tr2(…) }}`, plurals `{{ trn("count.monitors", rows.len()) }}` (`key.one` / `key.other`, plus `key.few` / `key.many` … where the language's rule needs them). Pass translations to macros as arguments: `m::page_header(tr("nav.users"), tr("users.sub"))`. Status words: `{{ status_text(s) }}`. Numbers: `{{ pct(opt_f64) }}`, `{{ pct0(opt_f64) }}` (whole percent), `{{ millis(opt_i64) }}`, `{{ num(n) }}`, `{{ dur(secs) }}`, `{{ filesize(bytes) }}` ("840 KB"), `{{ last_days(n) }}` ("Last 7 days" in the language's plural form). Every module with a template struct needs `use crate::i18n::Tr as _;`. Don't name a template variable `tr`. `<html lang>` and `<html dir>` come from `{{ lang_code() }}` / `{{ lang_dir() }}` (`ctx.lang` / `ctx.dir` in the app layout).
 - Rust: `crate::i18n::t("key")`, `tf("key", &[("name", &value)])`, `tn("key", n)`; dates/numbers/durations via `crate::i18n::fmt_*` (nb: `19. okt. 2026, 14:05`, `99,95 %`, `12 345`; de: `19. Okt. 2026, 14:05`, `12.345`). Number separators and `%` spacing come from the registry; month and weekday names, date patterns, duration units and relative-time phrases from the locale file's `[fmt]` section. Flash and toast text must go through these.
 - The request language is a task-local: site default (Settings → General) → user override (Settings → Security); public status pages use the visitor's `Accept-Language` (regions and reserves resolve: `pt` → `pt-BR`, `de-AT` → `de`, `nn`/`no` → `nb`). `/api/*`, badges and `/metrics` stay English. Code that renders outside the request future (SSE streams, spawned tasks) must capture `i18n::current()` and re-enter with `i18n::scope` / `sync_scope`; `AppState::with_conn` already carries it into DB closures.
 - JavaScript: layouts embed `<script type="application/json" id="vv-i18n">` with the `js.*` keys; app.js reads them with `VV.t(key, englishFallback)` and formats relative times with `Intl.RelativeTimeFormat(document.documentElement.lang)`.

@@ -1,8 +1,11 @@
-//! HTTP building blocks: errors, security headers, templates, static files.
+//! HTTP building blocks: errors, security headers, templates, static files,
+//! request budgets ([`ratelimit`]) and live updates ([`live`]).
 
 pub mod assets;
 pub mod error;
 pub mod headers;
+pub mod live;
+pub mod ratelimit;
 pub mod rest;
 mod rest_error;
 
