@@ -448,7 +448,7 @@ Example response:
 
 ### GET /api/v1/monitors/{id}/heartbeats
 
-Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance before 0.9.0.
+Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance by older versions.
 
 - Access: viewer (any API token, read scope is enough)
 - Success: `200 OK`

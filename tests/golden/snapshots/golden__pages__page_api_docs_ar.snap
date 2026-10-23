@@ -504,7 +504,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="get--api-v1-monitors-id-heartbeats">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors/{id}/heartbeats</code></span>
-          <span class="list-sub">Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance before 0.9.0.</span>
+          <span class="list-sub">Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance by older versions.</span>
         </span>
         <span class="list-trail"><span class="badge status-up">viewer</span></span>
         <div class="list-full">
