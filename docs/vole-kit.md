@@ -149,7 +149,8 @@ No test can forget it.
 | `short_name` | `{short_name}` in provider forms (SMS sender names) | `Vole` |
 | `session_cookie`, `pending_2fa_cookie`, `flash_cookie` | cookie names | `vv_session`, `vv_2fa`, `vv_flash` |
 | `token_prefix`, `other_token_prefixes` | API token format, MCP messages, docs checks, `curl` examples | `vv_`, `["vva_"]` |
-| `version` | `info.version` in the OpenAPI document, MCP `serverInfo.version` | `CARGO_PKG_VERSION` of vigilant-vole |
+| `version` | `info.version` in the OpenAPI document, MCP `serverInfo.version`, the signed-in pages' footer | `CARGO_PKG_VERSION` of vigilant-vole |
+| `releases_url` | where the footer's version links: the release notes, with `{version}` filled in; `None` shows the version as plain text | `Some("https://github.com/Ferdinand99/Vigilant-Vole/releases/tag/v{version}")` |
 | `user_agent` | outbound `User-Agent` (the product's clients) | `VigilantVole/<version>` |
 | `backup_prefix` | name of the copy taken before a migration | `vigilant-vole-before-` |
 | `env_prefix` | `<PREFIX>_TRUST_PROXY`, `<PREFIX>_SETUP_TOKEN`, `$<PREFIX>_URL` in examples, id prefixes sent to providers (`vv-monitor-7`) | `VV` |
@@ -297,6 +298,14 @@ name: both resolve next to the file, in the kit and in a product's
 
 Vigilant Vole keeps its monitoring macros (status pill and dot, heartbeat
 bar, incident timeline) in `templates/status_macros.html`, imported as `st`.
+
+`layout.html` ends signed-in pages with a quiet footer: the product's name
+and version ("Vigilant Vole 0.10.0"), the version linking to
+`KitConfig::release_notes_url()` when the product sets `releases_url`. It
+has no words to translate. It is left out when the page has no user, and
+`auth_layout.html` (sign-in, setup) and `public_layout.html` (status pages)
+have none: the version is for signed-in users only, since it tells an
+attacker what to aim at.
 
 The layouts get the product's name, logo, icons, navigation and settings tabs
 from `KitConfig` (`product_name()` and `kit_ui()`, helpers on `Tr` that every
@@ -1166,6 +1175,21 @@ removes a workaround:
     (`fmt.bytes` … `fmt.terabytes`, `count.last_days.*`, `form.value`,
     `form.header_name`, `form.header_value`, `form.remove_header`,
     `form.add_header`); `install` refuses a key in both catalogs.
+
+### Upgrading from 0.2 to 0.3
+
+0.3 adds the version footer on signed-in pages. One change:
+
+1. **`KitConfig` has a new field, `releases_url`.** `None` shows the
+   version as plain text; `Some("…/releases/tag/v{version}")` links it to
+   the release notes (the product decides the tag pattern; `{version}` is
+   `KitConfig::version`). Keen Kestrel:
+   `Some("https://github.com/Ferdinand99/Keen-Kestrel/releases/tag/v{version}")`;
+   Wise Wren:
+   `Some("https://github.com/Ferdinand99/Wise-Wren/releases/tag/v{version}")`.
+
+Nothing else: no new strings, and the footer's style is in the kit's
+`style.css`. Snapshot tests of signed-in pages gain the footer's lines.
 
 ## Not done (proposals)
 

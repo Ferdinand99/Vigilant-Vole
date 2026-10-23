@@ -29,6 +29,12 @@ pub struct KitConfig {
     /// server (the kit's own `CARGO_PKG_VERSION` is the kit's, not the
     /// product's).
     pub version: &'static str,
+    /// Where the release notes of a version are, with `{version}` standing
+    /// for [`Self::version`]
+    /// (`"https://github.com/Ferdinand99/Vigilant-Vole/releases/tag/v{version}"`):
+    /// the version in the signed-in pages' footer links there. `None` shows
+    /// the version as plain text.
+    pub releases_url: Option<&'static str>,
     /// `User-Agent` of outgoing requests.
     pub user_agent: &'static str,
     /// Prefix of the database copy taken before a migration
@@ -128,6 +134,13 @@ impl KitConfig {
     /// The declared token scope called `name`.
     pub fn token_scope(&self, name: &str) -> Option<&'static ExtraScope> {
         self.token_scopes.iter().find(|s| s.name == name)
+    }
+
+    /// The release notes of the running version ([`Self::releases_url`]
+    /// with `{version}` filled in).
+    pub fn release_notes_url(&self) -> Option<String> {
+        self.releases_url
+            .map(|url| url.replace("{version}", self.version))
     }
 }
 
@@ -265,5 +278,23 @@ mod tests {
         install(&crate::testing::CONFIG);
         assert!(std::panic::catch_unwind(|| install(&OTHER)).is_err());
         assert_eq!(get().product, crate::testing::CONFIG.product);
+    }
+
+    #[test]
+    fn release_notes_url_fills_in_the_version() {
+        static TAGGED: KitConfig = KitConfig {
+            version: "1.2.3",
+            releases_url: Some("https://example.com/releases/tag/v{version}"),
+            ..crate::testing::CONFIG
+        };
+        static NONE: KitConfig = KitConfig {
+            releases_url: None,
+            ..crate::testing::CONFIG
+        };
+        assert_eq!(
+            TAGGED.release_notes_url().as_deref(),
+            Some("https://example.com/releases/tag/v1.2.3")
+        );
+        assert_eq!(NONE.release_notes_url(), None);
     }
 }

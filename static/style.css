@@ -689,6 +689,21 @@ h4,
 .main:focus {
   outline: none;
 }
+/* Signed-in footer: product name and version, quiet, under the content.
+   It takes over the bottom spacing from .main (and clears the phone tab
+   bar, see the 720px breakpoint). */
+.main:has(+ .app-foot) {
+  padding-bottom: var(--sp-10);
+}
+.app-foot {
+  padding-bottom: calc(var(--safe-bottom) + var(--sp-8));
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+.app-foot a {
+  color: inherit;
+}
 
 /* Page header */
 .page-head {
@@ -4373,6 +4388,12 @@ html.is-sorting * {
     gap: var(--sp-6);
     padding-top: var(--sp-5);
     padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-10));
+  }
+  .main:has(+ .app-foot) {
+    padding-bottom: var(--sp-8);
+  }
+  .app-foot {
+    padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-6));
   }
   h1,
   .t-large-title {
