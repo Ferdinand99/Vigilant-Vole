@@ -3,4 +3,23 @@
 
 {% block content %}
 {% call m::page_header(ctx.title, tr1("demo.welcome", "n", notes)) %}{% endcall %}
+
+<section class="section">
+  <div class="card stack">
+    <p class="muted">{{ tr2("demo.store_size", "size", filesize(store_bytes), "pct", pct0(share)) }}</p>
+    {{ m::line_chart(chart) }}
+  </div>
+</section>
+
+<section class="section" aria-labelledby="projects-title">
+  {% call m::section_head(tr("demo.projects"), "", "projects-title") %}{% endcall %}
+  <div class="card">
+    {{ m::bar_list(projects, tr("demo.projects"), tr("demo.envelopes"), tr("demo.share")) }}
+  </div>
+</section>
+
+<section class="section" aria-labelledby="ingest-title">
+  {% call m::section_head(tr("demo.ingest"), "", "ingest-title") %}{% endcall %}
+  {{ m::code_lines(code, tr("demo.ingest")) }}
+</section>
 {% endblock %}

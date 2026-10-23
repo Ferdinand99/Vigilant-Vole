@@ -1,10 +1,10 @@
-{#- Step 1 of "Add channel": choose a service. Swapped into #channel-sheet-body; the footer swaps out-of-band. Needs: query, groups. -#}
-{%- import "kit/macros.html" as m -%}
+{#- Step 1 of "Add channel": choose a service. Swapped into #channel-sheet-body; the footer swaps out-of-band. Needs: query, groups (Vec<vole_kit::notify::form::ProviderGroup>). -#}
+{%- import "../macros.html" as m -%}
 <div class="sheet-body" id="channel-sheet-body">
   <label class="search">{{ m::icon("search") }}<input type="search" name="q" value="{{ query }}" placeholder="{{ tr("notif.search_placeholder") }}" aria-label="{{ tr("notif.search_aria") }}"
     autocomplete="off" hx-get="/settings/notifications/providers?grid=true" hx-trigger="input changed delay:150ms, search"
     hx-target="#provider-grid" hx-swap="outerHTML" data-no-progress></label>
-  {% include "partials/notification_provider_grid.html" %}
+  {% include "notification_provider_grid.html" %}
 </div>
 <footer class="sheet-foot" id="channel-sheet-foot" hx-swap-oob="true">
   <button type="button" class="btn btn-secondary" data-sheet-close commandfor="add-channel" command="close">{{ tr("common.cancel") }}</button>

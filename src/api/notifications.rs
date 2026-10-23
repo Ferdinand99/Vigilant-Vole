@@ -5,6 +5,11 @@
 //! Secrets never leave the server: forms render saved secrets as empty
 //! inputs with a "••••••" placeholder, and an empty secret on save keeps the
 //! stored value. Viewers may see the channel list but no config at all.
+//!
+//! The provider picker and a provider's fields are vole-kit's (the
+//! view-model in `kit::notify::form`, the `kit/partials/notification_*`
+//! templates); the channel list, the toggles about monitors and the routes
+//! are Vigilant Vole's.
 
 use crate::i18n::Tr as _;
 use askama::Template;
@@ -22,8 +27,9 @@ use super::{ApiError, ApiResult, AppState, HtmlTemplate, PageCtx, flash};
 use crate::auth::{CurrentUser, Role};
 use crate::db::models::NotificationChannel;
 use crate::db::notifications as db_notifications;
-use crate::notification::schema::{self, FieldError, FieldKind, ProviderSchema, SECRET_MASK};
-use crate::notification::{self, Category, PROVIDERS};
+use crate::kit::notify::form::{FieldView, ProviderGroup, field_views, provider_groups};
+use crate::notification;
+use crate::notification::schema::{self, FieldError, ProviderSchema};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -79,63 +85,6 @@ fn monitors_label(n: i64) -> String {
     }
 }
 
-pub struct ProviderCard {
-    pub kind: &'static str,
-    pub label: &'static str,
-    pub icon: &'static str,
-    pub description: &'static str,
-}
-
-pub struct ProviderGroup {
-    pub label: &'static str,
-    pub id: String,
-    pub providers: Vec<ProviderCard>,
-}
-
-pub struct OptionView {
-    pub value: &'static str,
-    pub label: &'static str,
-    pub selected: bool,
-}
-
-pub struct FieldView {
-    pub name: String,
-    pub clear_name: String,
-    pub label: &'static str,
-    /// "text" | "url" | "password" | "number" | "select" | "bool" | "textarea" | "kv"
-    pub input: &'static str,
-    pub required: bool,
-    /// A secret is stored and the input is empty: leaving it empty keeps it.
-    pub saved: bool,
-    pub placeholder: String,
-    pub help: &'static str,
-    pub value: String,
-    pub checked: bool,
-    pub options: Vec<OptionView>,
-    pub rows: Vec<(String, String)>,
-    pub error: String,
-    pub show_when: String,
-    pub autocomplete: &'static str,
-}
-
-impl FieldView {
-    pub fn has_help(&self) -> bool {
-        !self.help.is_empty() || self.saved
-    }
-
-    /// Ids for `aria-describedby` (help, error), space separated.
-    pub fn describedby(&self) -> String {
-        let mut ids = Vec::new();
-        if self.has_help() {
-            ids.push(format!("f-{}-help", self.name));
-        }
-        if !self.error.is_empty() {
-            ids.push(format!("f-{}-error", self.name));
-        }
-        ids.join(" ")
-    }
-}
-
 /// Everything the add/edit form needs.
 pub struct ChannelForm {
     pub id: i64,
@@ -173,14 +122,14 @@ struct ListPartial {
 }
 
 #[derive(Template)]
-#[template(path = "partials/notification_picker.html")]
+#[template(path = "kit/partials/notification_picker.html")]
 struct PickerPartial {
     query: String,
     groups: Vec<ProviderGroup>,
 }
 
 #[derive(Template)]
-#[template(path = "partials/notification_provider_grid.html")]
+#[template(path = "kit/partials/notification_provider_grid.html")]
 struct GridPartial {
     query: String,
     groups: Vec<ProviderGroup>,
@@ -251,172 +200,6 @@ fn pair_flag(pairs: &[(String, String)], key: &str) -> bool {
 fn schema_for(kind: &str) -> ApiResult<&'static ProviderSchema> {
     notification::provider(kind)
         .ok_or_else(|| ApiError::bad_request(crate::i18n::t("notif.err_service")))
-}
-
-fn matches_query(p: &ProviderSchema, q: &str) -> bool {
-    let q = q.trim().to_lowercase();
-    q.is_empty()
-        || p.label.to_lowercase().contains(&q)
-        || p.kind.contains(&q)
-        || p.description.to_lowercase().contains(&q)
-        || p.tr_description().to_lowercase().contains(&q)
-        || p.category.label().to_lowercase().contains(&q)
-}
-
-fn provider_groups(query: &str) -> Vec<ProviderGroup> {
-    Category::ALL
-        .iter()
-        .filter_map(|cat| {
-            let providers: Vec<ProviderCard> = PROVIDERS
-                .iter()
-                .filter(|p| p.category == *cat && matches_query(p, query))
-                .map(|p| ProviderCard {
-                    kind: p.kind,
-                    label: p.tr_label(),
-                    icon: p.icon,
-                    description: p.tr_description(),
-                })
-                .collect();
-            (!providers.is_empty()).then(|| ProviderGroup {
-                label: cat.label(),
-                id: format!("cat-{cat:?}").to_lowercase(),
-                providers,
-            })
-        })
-        .collect()
-}
-
-fn input_type(kind: FieldKind) -> &'static str {
-    match kind {
-        FieldKind::Text => "text",
-        FieldKind::Url => "url",
-        FieldKind::Secret => "password",
-        FieldKind::Number => "number",
-        FieldKind::Select(_) => "select",
-        FieldKind::Bool => "bool",
-        FieldKind::Textarea => "textarea",
-        FieldKind::KeyValue => "kv",
-    }
-}
-
-fn display_value(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Null => String::new(),
-        other => other.to_string(),
-    }
-}
-
-fn blank(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => true,
-        Some(Value::String(s)) => s.is_empty(),
-        Some(Value::Object(o)) => o.is_empty(),
-        _ => false,
-    }
-}
-
-/// Builds the generic field list.
-/// - `values`: what to show (defaults when `fresh`, else the submitted or
-///   redacted stored config — never raw stored secrets).
-/// - `stored`: the saved config (edit) or `Null` (new), used only to know
-///   whether a secret is saved.
-fn field_views(
-    schema: &ProviderSchema,
-    values: &Value,
-    stored: &Value,
-    errors: &[FieldError],
-    fresh: bool,
-) -> Vec<FieldView> {
-    schema
-        .fields
-        .iter()
-        .map(|f| {
-            let raw = values.get(f.key);
-            let saved = f.secret && f.kind != FieldKind::KeyValue && !blank(stored.get(f.key));
-            let default = f.default_value();
-            let mut value = if fresh {
-                default.to_string()
-            } else {
-                raw.map(display_value).unwrap_or_default()
-            };
-            if f.secret && value == SECRET_MASK {
-                value.clear();
-            }
-            let options = match f.kind {
-                FieldKind::Select(opts) => {
-                    let chosen = if value.is_empty() {
-                        default.as_ref()
-                    } else {
-                        value.as_str()
-                    };
-                    let chosen = if opts.iter().any(|(v, _)| *v == chosen) {
-                        chosen
-                    } else {
-                        opts.first().map_or("", |o| o.0)
-                    };
-                    opts.iter()
-                        .map(|(v, l)| OptionView {
-                            value: v,
-                            label: f.tr_option(schema.kind, v, l),
-                            selected: *v == chosen,
-                        })
-                        .collect()
-                }
-                _ => Vec::new(),
-            };
-            let checked = if fresh {
-                default == "true"
-            } else {
-                raw.is_some_and(|v| v.as_bool() == Some(true))
-            };
-            let mut rows: Vec<(String, String)> = match raw {
-                Some(Value::Object(map)) if !fresh => map
-                    .iter()
-                    .map(|(k, v)| (k.clone(), display_value(v)))
-                    .collect(),
-                _ => Vec::new(),
-            };
-            if f.kind == FieldKind::KeyValue && rows.is_empty() {
-                rows.push((String::new(), String::new()));
-            }
-            let show_when = if f.show_when.is_empty() {
-                String::new()
-            } else {
-                format!("{}{}", schema::FIELD_PREFIX, f.show_when)
-            };
-            let placeholder = if saved {
-                SECRET_MASK.to_string()
-            } else {
-                f.tr_placeholder(schema.kind).to_string()
-            };
-            FieldView {
-                name: f.form_name(),
-                clear_name: format!("{}__clear", f.form_name()),
-                label: f.tr_label(schema.kind),
-                input: input_type(f.kind),
-                required: f.required,
-                saved,
-                placeholder,
-                help: f.tr_help(schema.kind),
-                value,
-                checked,
-                options,
-                rows,
-                error: errors
-                    .iter()
-                    .find(|(k, _)| k == f.key)
-                    .map(|(_, m)| m.clone())
-                    .unwrap_or_default(),
-                show_when,
-                autocomplete: if f.kind == FieldKind::Secret {
-                    "new-password"
-                } else {
-                    "off"
-                },
-            }
-        })
-        .collect()
 }
 
 fn blank_form(schema: &'static ProviderSchema) -> ChannelForm {
@@ -901,7 +684,8 @@ async fn test_saved(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notification::{discord, telegram, webhook};
+    use crate::notification::schema::SECRET_MASK;
+    use crate::notification::{PROVIDERS, discord, telegram, webhook};
 
     #[test]
     fn ascii_json_escapes_non_ascii_for_headers() {

@@ -3,6 +3,19 @@
 [demo]
 welcome = "Welcome to Kit Demo. You have {n} notes."
 notes = "Notes"
+envelopes = "Envelopes"
+projects = "Projects"
+share = "Share"
+store_size = "The store takes {size}; {pct} of what you keep is notes."
+ingest = "Send an envelope"
+test_title = "Test message from {product}"
+test_body = "If you can read this, the channel works."
+test_event = "Test"
+view_notes = "View notes"
+
+[count]
+envelopes.one = "{n} envelope"
+envelopes.other = "{n} envelopes"
 
 # Texts the kit's shared pages take from the product
 # (vole_kit::i18n::catalog::PRODUCT_KEYS).

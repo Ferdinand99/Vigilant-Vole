@@ -11,9 +11,7 @@ use std::fmt::Write as _;
 use axum::http::StatusCode;
 use serde_json::Value;
 
-use super::{
-    RouteDoc, credential, error_codes, groups, path_param_type, path_params, routes, spec,
-};
+use super::{RouteDoc, credential, error_codes, groups, path_params, routes, spec};
 
 /// The whole reference for the instance at `base_url`.
 pub fn document(base_url: &str) -> String {
@@ -69,7 +67,7 @@ fn endpoint(out: &mut String, r: &RouteDoc) {
     if !params.is_empty() {
         let list: Vec<String> = params
             .iter()
-            .map(|p| format!("`{p}` ({})", path_param_type(p)))
+            .map(|p| format!("`{p}` ({})", r.param_type(p)))
             .collect();
         let _ = writeln!(out, "- Path parameters: {}", list.join(", "));
     }
@@ -119,6 +117,9 @@ fn body_fields(r: &RouteDoc) -> Option<String> {
     {
         return Some(doc.body.into());
     }
+    if !r.is_json_body() {
+        return Some(format!("`{}` (see the example)", r.body_type));
+    }
     match serde_json::from_str::<Value>(r.request) {
         Ok(Value::Object(map)) => {
             let fields: Vec<String> = map
@@ -165,15 +166,19 @@ pub fn curl(r: &RouteDoc) -> String {
         "viewer" | "editor" | "admin" | "metrics token" => {
             let _ = write!(cmd, " -H \"Authorization: Bearer ${p}_TOKEN\"");
         }
-        other => {
-            if let Some(scheme) = credential(other).and_then(|c| c.bearer) {
+        other => match credential(other).map(|c| (c.bearer, c.header)) {
+            Some((Some(scheme), _)) => {
                 let _ = write!(
                     cmd,
                     " -H \"Authorization: Bearer ${p}_{}\"",
                     scheme.variable
                 );
             }
-        }
+            Some((None, Some(scheme))) => {
+                let _ = write!(cmd, " -H \"{}: {}\"", scheme.header, scheme.example);
+            }
+            _ => {}
+        },
     }
     if r.is_yaml() && r.method == "POST" {
         url.push_str("?dry_run=1");
@@ -185,6 +190,13 @@ pub fn curl(r: &RouteDoc) -> String {
         let _ = write!(cmd, " \"{url}\" -o {file}");
     } else if r.request.is_empty() {
         let _ = write!(cmd, " \"{url}\"");
+    } else if !r.is_json_body() {
+        let _ = write!(
+            cmd,
+            " -H \"Content-Type: {}\" \"{url}\" --data-binary '{}'",
+            r.body_type,
+            shell_quote(r.request)
+        );
     } else {
         let _ = write!(
             cmd,

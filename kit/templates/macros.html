@@ -243,3 +243,52 @@
   {%- endfor %}
 </div>
 {%- endmacro %}
+
+{#- Bar list: ranked rows with a bar as wide as each row's share.
+    bar_rows: Vec<vole_kit::components::BarRow>. Column heads: name_head,
+    value_head and, for a third column (BarRow::detail), detail_head. -#}
+{% macro bar_list(bar_rows, name_head, value_head, detail_head = "") -%}
+<div class="bars-head{% if detail_head.is_empty() %} bar-row-2{% endif %}" aria-hidden="true"><span>{{ name_head }}</span><span>{{ value_head }}</span>{% if !detail_head.is_empty() %}<span>{{ detail_head }}</span>{% endif %}</div>
+<ul class="bars" role="list" aria-label="{{ name_head }}">
+  {%- for r in bar_rows %}
+  <li class="bar-row{% if detail_head.is_empty() %} bar-row-2{% endif %}" style="--share: {{ r.share_css() }}">
+    {%- if r.href.is_empty() %}<span class="bar-label">{{ r.label }}</span>{% else %}<a class="bar-label" href="{{ r.href }}">{{ r.label }}</a>{% endif -%}
+    <span class="bar-num">{{ r.value }}</span>
+    {%- if !detail_head.is_empty() %}<span class="bar-num">{{ r.detail }}</span>{% endif %}
+  </li>
+  {%- endfor %}
+</ul>
+{%- endmacro %}
+
+{#- Lines on one scale with a legend, the first on top (and with its area).
+    chart_data: vole_kit::components::LineChart. -#}
+{% macro line_chart(chart_data) -%}
+<div class="legend" aria-hidden="true">
+  {%- for l in chart_data.lines %}
+  <span class="legend-item"><span class="legend-swatch series-{{ l.series }}"></span><span>{{ l.label }}</span>{% if !l.value.is_empty() %} <strong class="num">{{ l.value }}</strong>{% endif %}</span>
+  {%- endfor %}
+</div>
+<div class="chart">
+  <svg viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label="{{ chart_data.label }}">
+    <line class="chart-grid" x1="0" x2="600" y1="60" y2="60"></line>
+    {%- if !chart_data.area.is_empty() %}
+    <polygon class="chart-area series-1" points="{{ chart_data.area }}"></polygon>
+    {%- endif %}
+    {%- for l in chart_data.lines.iter().rev() %}
+    <polyline class="chart-line series-{{ l.series }}" points="{{ l.points }}"></polyline>
+    {%- endfor %}
+  </svg>
+  <div class="chart-scale" aria-hidden="true"><span><bdi>{{ chart_data.max_label }}</bdi></span><span><bdi>{{ chart_data.min_label }}</bdi></span></div>
+</div>
+<div class="chart-axis" aria-hidden="true"><span>{{ chart_data.start_label }}</span><span>{{ chart_data.end_label }}</span></div>
+{%- endmacro %}
+
+{#- Code with line numbers and highlighted lines.
+    code_rows: Vec<vole_kit::components::CodeLine>; code_label names the block. -#}
+{% macro code_lines(code_rows, code_label = "") -%}
+<pre class="code code-lines"{% if !code_label.is_empty() %} aria-label="{{ code_label }}"{% endif %}><code>
+{%- for l in code_rows -%}
+<span class="code-line{% if l.current %} is-current{% endif %}"{% if l.current %} aria-current="true"{% endif %}>{% if !l.no.is_empty() %}<span class="code-no" aria-hidden="true">{{ l.no }}</span>{% endif %}{{ l.text }}</span>
+{%- endfor -%}
+</code></pre>
+{%- endmacro %}

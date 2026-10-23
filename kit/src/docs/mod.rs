@@ -54,6 +54,19 @@ pub struct DocsSpec {
     /// header and no public URL is configured ("localhost:3001"); `None`
     /// says `localhost`.
     pub fallback_host: Option<&'static str>,
+    /// JSON Schema types of path parameters by name, for the ones that
+    /// aren't integers (`("event_id", "string")`). `kind`, `token` and
+    /// `slug` are strings anyway; a route can still declare its own
+    /// ([`RouteDoc::params`]). `&[]` for none.
+    pub param_types: &'static [(&'static str, &'static str)],
+    /// Every route's [`RouteDoc::access`] must be a role (`viewer`,
+    /// `editor`, `admin`), `public`, `metrics token` or one of
+    /// [`Self::credentials`]: [`install`](crate::config::install) refuses to
+    /// start otherwise ([`undeclared_access`]). `false` keeps the old
+    /// fallback, which documents any other word as "public (no token)";
+    /// only a product whose published reference depends on it should keep
+    /// it.
+    pub strict_access: bool,
 }
 
 /// A machine credential some of the product's routes take instead of an API
@@ -66,9 +79,38 @@ pub struct Credential {
     /// ("remote agent token (`Authorization: Bearer vva_…`)").
     pub words: &'static str,
     /// How it is sent as a bearer token, or `None` when it travels in the
-    /// URL (its routes then declare no security scheme).
+    /// URL or in a header of its own (its routes then declare no bearer
+    /// scheme).
     pub bearer: Option<BearerScheme>,
+    /// How it is sent in a header of its own (`X-Sentry-Auth: Sentry
+    /// sentry_key=…`), for a credential without [`Self::bearer`].
+    pub header: Option<HeaderScheme>,
 }
+
+/// A credential sent in a header of its own: an `apiKey` scheme in the
+/// OpenAPI document, and the header in the `curl` examples.
+#[derive(Debug, Clone, Copy)]
+pub struct HeaderScheme {
+    /// Name in `components.securitySchemes` ("sentryAuth").
+    pub name: &'static str,
+    /// The header ("X-Sentry-Auth").
+    pub header: &'static str,
+    /// The scheme's description.
+    pub description: &'static str,
+    /// The value `curl` examples send, with a `$<PREFIX>_…` variable for the
+    /// secret ("Sentry sentry_key=$KK_DSN_KEY, sentry_version=7").
+    pub example: &'static str,
+}
+
+/// The `rate_limited` row of the error code table, for a product whose REST
+/// API answers [`crate::http::ratelimit::too_many_requests`]. Add it to
+/// [`DocsSpec::error_codes`].
+pub const RATE_LIMITED: ErrorCode = ErrorCode {
+    code: "rate_limited",
+    status: 429,
+    when: "too many requests; wait as many seconds as `Retry-After` says",
+    on_page: false,
+};
 
 /// A bearer token scheme of its own in the OpenAPI document.
 #[derive(Debug, Clone, Copy)]
@@ -220,6 +262,12 @@ pub struct RouteDoc {
     pub query: &'static [&'static str],
     pub request: &'static str,
     pub response: &'static str,
+    /// Types of this route's path parameters by name, before
+    /// [`DocsSpec::param_types`] and the defaults ([`Self::param_type`]).
+    pub params: &'static [(&'static str, &'static str)],
+    /// Media type of the request body when it isn't JSON
+    /// ("application/x-sentry-envelope", "text/plain"); empty for JSON.
+    pub body_type: &'static str,
 }
 
 pub const fn r(
@@ -238,6 +286,8 @@ pub const fn r(
         query: &[],
         request: "",
         response: "",
+        params: &[],
+        body_type: "",
     }
 }
 
@@ -253,6 +303,34 @@ impl RouteDoc {
     pub const fn res(mut self, response: &'static str) -> Self {
         self.response = response;
         self
+    }
+    /// Declares the types of path parameters (`&[("version", "string")]`).
+    pub const fn params(mut self, params: &'static [(&'static str, &'static str)]) -> Self {
+        self.params = params;
+        self
+    }
+    /// A request body that isn't JSON: its media type. The example
+    /// ([`Self::req`]) is sent as it is (`curl --data-binary`), newlines
+    /// included.
+    pub const fn body_type(mut self, media_type: &'static str) -> Self {
+        self.body_type = media_type;
+        self
+    }
+
+    /// JSON Schema type of the path parameter `name`: the route's own
+    /// declaration, else the product's ([`DocsSpec::param_types`]), else
+    /// [`path_param_type`].
+    pub fn param_type(&self, name: &str) -> &'static str {
+        self.params
+            .iter()
+            .chain(spec().param_types)
+            .find(|(n, _)| *n == name)
+            .map_or_else(|| path_param_type(name), |(_, t)| *t)
+    }
+
+    /// The request body is JSON (no [`Self::body_type`], or a JSON one).
+    pub fn is_json_body(&self) -> bool {
+        self.body_type.is_empty() || self.body_type == "application/json"
     }
 
     /// Lowercase method, for CSS-free badges and OpenAPI keys.
@@ -336,6 +414,26 @@ pub fn instance_url(base_url: Option<String>, headers: &HeaderMap) -> String {
     })
 }
 
+/// The access words every product may use: the roles, `public` and
+/// `metrics token`.
+pub const BUILTIN_ACCESS: &[&str] = &["viewer", "editor", "admin", "public", "metrics token"];
+
+/// Routes whose [`RouteDoc::access`] is neither built in
+/// ([`BUILTIN_ACCESS`]) nor one of the product's
+/// [`credentials`](DocsSpec::credentials), as `"METHOD /path (word)"`.
+/// With [`DocsSpec::strict_access`], [`install`](crate::config::install)
+/// refuses to start unless this is empty.
+pub fn undeclared_access(spec: &DocsSpec) -> Vec<String> {
+    spec.routes
+        .iter()
+        .filter(|r| {
+            !BUILTIN_ACCESS.contains(&r.access)
+                && !spec.credentials.iter().any(|c| c.access == r.access)
+        })
+        .map(|r| format!("{} {} ({})", r.method, r.path, r.access))
+        .collect()
+}
+
 /// `{id}` style path parameters.
 pub fn path_params(path: &str) -> Vec<&str> {
     path.split('/')
@@ -343,7 +441,9 @@ pub fn path_params(path: &str) -> Vec<&str> {
         .collect()
 }
 
-/// JSON Schema type of a path parameter.
+/// JSON Schema type of a path parameter by the kit's defaults: `kind`,
+/// `token` and `slug` are strings, anything else an integer. Routes say
+/// otherwise with [`RouteDoc::param_type`].
 pub fn path_param_type(name: &str) -> &'static str {
     if matches!(name, "kind" | "token" | "slug") {
         "string"
@@ -366,7 +466,7 @@ pub fn openapi_document(server_url: &str) -> Value {
         op.insert("operationId".into(), json!(r.anchor()));
         let mut params: Vec<Value> = path_params(r.path)
             .into_iter()
-            .map(|p| json!({"name": p, "in": "path", "required": true, "schema": {"type": path_param_type(p)}}))
+            .map(|p| json!({"name": p, "in": "path", "required": true, "schema": {"type": r.param_type(p)}}))
             .collect();
         for q in r.query {
             let (name, desc) = q.split_once(':').unwrap_or((q, ""));
@@ -381,6 +481,8 @@ pub fn openapi_document(server_url: &str) -> Value {
                     "application/yaml": {"schema": {"type": "string"}, "example": r.request},
                     "application/json": {"schema": {"type": "object"}},
                 })
+            } else if !r.is_json_body() {
+                json!({ r.body_type: {"schema": {"type": "string"}, "example": r.request} })
             } else {
                 json!({"application/json": {"schema": {}, "example": example(r.request)}})
             };
@@ -426,9 +528,10 @@ pub fn openapi_document(server_url: &str) -> Value {
         op.insert("responses".into(), Value::Object(responses));
         let security = match (r.access, credential(r.access)) {
             ("public", _) => json!([]),
-            (_, Some(c)) => match c.bearer {
-                Some(scheme) => json!([{ scheme.name: [] }]),
-                None => json!([]),
+            (_, Some(c)) => match (c.bearer, c.header) {
+                (Some(scheme), _) => json!([{ scheme.name: [] }]),
+                (None, Some(scheme)) => json!([{ scheme.name: [] }]),
+                (None, None) => json!([]),
             },
             _ => json!([{"bearerAuth": []}, {"sessionCookie": []}]),
         };
@@ -448,6 +551,17 @@ pub fn openapi_document(server_url: &str) -> Value {
         schemes.insert(
             scheme.name.into(),
             json!({"type": "http", "scheme": "bearer", "description": scheme.description}),
+        );
+    }
+    for scheme in spec()
+        .credentials
+        .iter()
+        .filter(|c| c.bearer.is_none())
+        .filter_map(|c| c.header)
+    {
+        schemes.insert(
+            scheme.name.into(),
+            json!({"type": "apiKey", "in": "header", "name": scheme.header, "description": scheme.description}),
         );
     }
     schemes.insert(
@@ -487,6 +601,81 @@ mod tests {
             when,
             on_page: false,
         }
+    }
+
+    #[test]
+    fn routes_declare_their_parameter_and_body_types() {
+        let route = r(
+            "PUT",
+            "/api/0/{org}/releases/{version}/{id}",
+            "admin",
+            "R",
+            "x",
+        )
+        .params(&[("version", "string"), ("org", "string")]);
+        assert_eq!(route.param_type("version"), "string");
+        assert_eq!(route.param_type("org"), "string");
+        assert_eq!(route.param_type("id"), "integer", "the default");
+        assert_eq!(route.param_type("slug"), "string", "the default");
+        assert!(route.is_json_body());
+        let envelope = r("POST", "/api/{id}/envelope/", "public", "I", "x").body_type("text/plain");
+        assert!(!envelope.is_json_body());
+        assert!(
+            r("POST", "/x", "public", "I", "x")
+                .body_type("application/json")
+                .is_json_body()
+        );
+    }
+
+    fn no_param(_: &RouteDoc, _: &str) -> Option<String> {
+        None
+    }
+
+    fn no_markdown(_: &mut String) {}
+
+    fn no_intro(_: &mut String, _: &str) {}
+
+    #[test]
+    fn undeclared_access_words_are_found() {
+        static SPEC: DocsSpec = DocsSpec {
+            routes: &[
+                r("GET", "/a", "viewer", "G", "x"),
+                r("GET", "/b", "public", "G", "x"),
+                r("GET", "/c", "metrics token", "G", "x"),
+                r("POST", "/d", "dsn key", "G", "x"),
+                r("POST", "/e", "api token", "G", "x"),
+            ],
+            openapi_title: "",
+            openapi_description: "",
+            bearer_description: "",
+            credentials: &[Credential {
+                access: "dsn key",
+                words: "a DSN key",
+                bearer: None,
+                header: Some(HeaderScheme {
+                    name: "dsnKey",
+                    header: "X-Key",
+                    description: "DSN key",
+                    example: "$KD_KEY",
+                }),
+            }],
+            error_example: "{}",
+            error_codes: &[RATE_LIMITED],
+            config_document: None,
+            curl_path_param: no_param,
+            markdown_intro: no_intro,
+            markdown_middle: no_markdown,
+            markdown_outro: no_markdown,
+            page_subtitle: "",
+            openapi_path: "/openapi.json",
+            api_base: "/api",
+            example_path: "/a",
+            metrics_path: None,
+            fallback_host: None,
+            param_types: &[],
+            strict_access: true,
+        };
+        assert_eq!(undeclared_access(&SPEC), ["POST /e (api token)"]);
     }
 
     #[test]

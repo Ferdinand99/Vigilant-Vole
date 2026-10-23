@@ -1,5 +1,5 @@
-{#- Provider choices grouped by category. Choosing one loads its form. Needs: query, groups. -#}
-{%- import "kit/macros.html" as m -%}
+{#- Provider choices grouped by category. Choosing one loads its form. Needs: query, groups (Vec<vole_kit::notify::form::ProviderGroup>). -#}
+{%- import "../macros.html" as m -%}
 <div class="stack" id="provider-grid">
   {%- if groups.is_empty() %}
   <div class="empty">

@@ -13,7 +13,7 @@
   <section class="form-section" aria-labelledby="sec-channel">
     <h2 class="form-section-title" id="sec-channel">{{ tr("notif.channel") }}</h2>
     <div class="card">
-      {% include "partials/notification_name.html" %}
+      {% include "kit/partials/notification_name.html" %}
       {{ m::switch("active", tr("notif.send_alerts"), form.active, tr("notif.send_alerts_help")) }}
     </div>
   </section>
@@ -26,7 +26,7 @@
     <p class="form-section-sub">{{ form.description }}</p>
     {%- endif %}
     <div class="card">
-      {% include "partials/notification_fields.html" %}
+      {% include "kit/partials/notification_fields.html" %}
     </div>
   </section>
 

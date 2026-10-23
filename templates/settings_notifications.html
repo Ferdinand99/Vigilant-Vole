@@ -18,7 +18,7 @@
     <h2 class="sheet-title" id="add-channel-title">{{ tr("notif.add_channel") }}</h2>
     <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="add-channel" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
   </header>
-  {% include "partials/notification_picker.html" %}
+  {% include "kit/partials/notification_picker.html" %}
 </dialog>
 {%- endif %}
 {% endblock %}

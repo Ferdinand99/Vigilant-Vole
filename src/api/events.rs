@@ -9,30 +9,29 @@
 //! Streams showing the same view share one render ([`shared_render`]): every
 //! open dashboard wakes on the same signal, so without sharing, N dashboards
 //! cost N identical renders per update.
+//!
+//! The coalescing, the shared renders, the stream cap and the SSE response
+//! are vole-kit's (`kit::http::live`).
 
 use crate::i18n::Tr as _;
-use std::collections::HashMap;
-use std::convert::Infallible;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use askama::Template;
 use axum::Router;
 use axum::extract::{RawQuery, State};
-use axum::http::{StatusCode, header};
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::Event;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
-use tokio::sync::broadcast::{self, error::RecvError};
 use tokio::time::Instant;
 
 use super::dashboard::{DashQuery, DashboardData, load_dashboard_data};
 use super::{ApiError, AppState};
 use crate::auth::CurrentUser;
 use crate::db::users as db_users;
+use crate::kit::http::live::{self, Changes, SharedRenders, StreamLimit, StreamSlot};
 
 /// Quiet period that merges bursts of updates into one render.
 const COALESCE: Duration = Duration::from_millis(500);
@@ -58,26 +57,6 @@ pub struct MonitorListTemplate {
     pub data: DashboardData,
 }
 
-/// Waits for the next update signal, then drains whatever else arrives
-/// within the coalescing window. Returns when the first signal arrived (a
-/// render started after that shows the change), or `None` once the channel
-/// is closed.
-async fn next_update(rx: &mut broadcast::Receiver<()>, quiet: Duration) -> Option<Instant> {
-    match rx.recv().await {
-        Ok(()) | Err(RecvError::Lagged(_)) => {}
-        Err(RecvError::Closed) => return None,
-    }
-    let signalled = Instant::now();
-    tokio::time::sleep(quiet).await;
-    loop {
-        match rx.try_recv() {
-            Ok(()) | Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
-            Err(broadcast::error::TryRecvError::Empty) => return Some(signalled),
-            Err(broadcast::error::TryRecvError::Closed) => return None,
-        }
-    }
-}
-
 /// Renders the list's HTML.
 async fn render_html(
     state: &AppState,
@@ -92,23 +71,15 @@ async fn render_html(
         .map_err(|e| e.to_string())
 }
 
-/// The latest render of one view: when it started (it shows every change
-/// signalled before that) and its HTML.
-struct SharedRender {
-    started: Instant,
-    html: Arc<str>,
-}
-
 /// (data dir, raw query, can edit, language): what a render depends on. The
 /// data dir keeps app instances apart (tests run several at once).
 type RenderKey = (PathBuf, String, bool, crate::i18n::Lang);
-type RenderSlot = Arc<tokio::sync::Mutex<Option<SharedRender>>>;
 
 /// More distinct views than this and slots no stream is using are dropped.
 const RENDER_SLOTS_MAX: usize = 64;
 
-static RENDERS: LazyLock<Mutex<HashMap<RenderKey, RenderSlot>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static RENDERS: LazyLock<SharedRenders<RenderKey>> =
+    LazyLock::new(|| SharedRenders::new(RENDER_SLOTS_MAX));
 
 /// The list's HTML for this view, rendered after `since`. Streams that wake
 /// for the same update wait for one render and reuse it (single flight per
@@ -126,26 +97,9 @@ async fn shared_render(
         can_edit,
         crate::i18n::current(),
     );
-    let slot = {
-        let mut slots = RENDERS.lock().unwrap_or_else(PoisonError::into_inner);
-        if slots.len() >= RENDER_SLOTS_MAX && !slots.contains_key(&key) {
-            slots.retain(|_, slot| Arc::strong_count(slot) > 1);
-        }
-        slots.entry(key).or_default().clone()
-    };
-    let mut latest = slot.lock().await;
-    if let Some(shared) = latest.as_ref()
-        && shared.started >= since
-    {
-        return Ok(shared.html.clone());
-    }
-    let started = Instant::now();
-    let html: Arc<str> = render_html(state, query, can_edit).await?.into();
-    *latest = Some(SharedRender {
-        started,
-        html: html.clone(),
-    });
-    Ok(html)
+    RENDERS
+        .get(key, since, || render_html(state, query, can_edit))
+        .await
 }
 
 /// Renders the list as an SSE event; also returns its size in bytes.
@@ -157,10 +111,7 @@ async fn render(
     since: Instant,
 ) -> (Event, usize) {
     match shared_render(state, query, raw_query, can_edit, since).await {
-        Ok(html) => (
-            Event::default().event("monitors-updated").data(&*html),
-            html.len(),
-        ),
+        Ok(html) => (live::html_event("monitors-updated", &html), html.len()),
         Err(err) => {
             tracing::warn!(%err, "failed to render monitor list for SSE update");
             (Event::default().comment("render-error"), 0)
@@ -174,27 +125,7 @@ const MAX_STREAMS: usize = 256;
 /// which re-runs authentication.
 const MAX_STREAM_LIFETIME: Duration = Duration::from_secs(60 * 60);
 
-static OPEN_STREAMS: AtomicUsize = AtomicUsize::new(0);
-
-/// One slot of [`MAX_STREAMS`]; released when the stream is dropped.
-struct StreamSlot;
-
-impl StreamSlot {
-    fn acquire() -> Option<Self> {
-        OPEN_STREAMS
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
-                (n < MAX_STREAMS).then_some(n + 1)
-            })
-            .ok()
-            .map(|_| StreamSlot)
-    }
-}
-
-impl Drop for StreamSlot {
-    fn drop(&mut self) {
-        OPEN_STREAMS.fetch_sub(1, Ordering::AcqRel);
-    }
-}
+static STREAMS: StreamLimit = StreamLimit::new(MAX_STREAMS);
 
 /// Who the stream was opened for: re-checked before every render so a
 /// logout elsewhere, a disabled account or a role change takes effect.
@@ -221,14 +152,12 @@ async fn revalidate(state: &AppState, viewer: Viewer) -> Option<bool> {
 }
 
 struct StreamState {
-    rx: broadcast::Receiver<()>,
+    changes: Changes<()>,
     state: AppState,
     query: DashQuery,
     /// The query string as sent: streams with the same one share renders.
     raw_query: String,
-    quiet: Duration,
     viewer: Viewer,
-    deadline: tokio::time::Instant,
     _slot: StreamSlot,
 }
 
@@ -237,16 +166,12 @@ async fn stream_handler(
     user: CurrentUser,
     RawQuery(raw): RawQuery,
 ) -> Response {
-    let Some(slot) = StreamSlot::acquire() else {
+    let Some(slot) = STREAMS.acquire() else {
         tracing::warn!(
             max = MAX_STREAMS,
             "too many live-update streams; refusing a new one"
         );
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            [(header::RETRY_AFTER, "30")],
-        )
-            .into_response();
+        return live::busy();
     };
     let id = user.id;
     let session_version = match state.with_conn(move |c| db_users::get_user(c, id)).await {
@@ -262,33 +187,27 @@ async fn stream_handler(
     // language scope, so carry the language along.
     let lang = crate::i18n::current();
     let init = StreamState {
-        rx: state.update_tx.subscribe(),
+        changes: Changes::all(state.update_tx.subscribe())
+            .quiet(COALESCE)
+            .lifetime(MAX_STREAM_LIFETIME),
         state,
         query,
         raw_query,
-        quiet: COALESCE,
         viewer: Viewer {
             user_id: user.id,
             session_version,
         },
-        deadline: tokio::time::Instant::now() + MAX_STREAM_LIFETIME,
         _slot: slot,
     };
     let events = stream::unfold(init, move |mut st| async move {
-        let since =
-            match tokio::time::timeout_at(st.deadline, next_update(&mut st.rx, st.quiet)).await {
-                Ok(Some(since)) => since,
-                Ok(None) | Err(_) => return None,
-            };
+        let since = st.changes.next().await?;
         let can_edit = revalidate(&st.state, st.viewer).await?;
         let render = render(&st.state, &st.query, &st.raw_query, can_edit, since);
         let (event, bytes) = crate::i18n::scope(lang, render).await;
-        st.quiet = quiet_period(bytes);
-        Some((Ok::<_, Infallible>(event), st))
+        st.changes.set_quiet(quiet_period(bytes));
+        Some((event, st))
     });
-    Sse::new(events)
-        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
-        .into_response()
+    live::sse(events)
 }
 
 #[cfg(test)]
@@ -297,18 +216,15 @@ mod tests {
 
     #[tokio::test]
     async fn bursts_coalesce_into_one_update() {
-        let (tx, mut rx) = broadcast::channel(4);
+        let (tx, rx) = tokio::sync::broadcast::channel(4);
+        let mut changes = Changes::all(rx).quiet(COALESCE);
         for _ in 0..10 {
             let _ = tx.send(());
         }
-        assert!(next_update(&mut rx, COALESCE).await.is_some());
-        // Everything from the burst (including lagged messages) was drained.
-        assert!(matches!(
-            rx.try_recv(),
-            Err(broadcast::error::TryRecvError::Empty)
-        ));
+        assert!(changes.next().await.is_some());
         drop(tx);
-        assert!(next_update(&mut rx, COALESCE).await.is_none());
+        // Everything from the burst (including lagged messages) was drained.
+        assert!(changes.next().await.is_none());
     }
 
     #[tokio::test]
@@ -346,13 +262,13 @@ mod tests {
     fn stream_slots_are_capped_and_released() {
         // Other tests may hold slots; only count the ones taken here.
         let mut held = Vec::new();
-        while let Some(slot) = StreamSlot::acquire() {
+        while let Some(slot) = STREAMS.acquire() {
             held.push(slot);
             assert!(held.len() <= MAX_STREAMS);
         }
-        assert!(StreamSlot::acquire().is_none());
+        assert!(STREAMS.acquire().is_none());
         held.pop();
-        assert!(StreamSlot::acquire().is_some());
+        assert!(STREAMS.acquire().is_some());
     }
 
     #[tokio::test]

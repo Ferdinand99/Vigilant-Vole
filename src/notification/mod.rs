@@ -102,16 +102,13 @@ pub async fn send_config(
     // jobs, the site default (Settings → General → Language). The alert's
     // texts are written in that language, so it is chosen first.
     let lang = crate::i18n::current_or_site();
-    crate::i18n::scope(lang, async {
-        // Monitor targets can carry credentials (`https://user:pass@…`,
-        // `?token=`); they never leave in a notification, not even as a fact.
-        let event = NotificationEvent {
-            target: message::public_target(&event.target),
-            ..event.clone()
-        };
-        kit::send_config(http, kind, config, &message::alert(&event)).await
-    })
-    .await
+    // Monitor targets can carry credentials (`https://user:pass@…`,
+    // `?token=`); they never leave in a notification, not even as a fact.
+    let event = NotificationEvent {
+        target: message::public_target(&event.target),
+        ..event.clone()
+    };
+    kit::send_in(http, kind, config, lang, || message::alert(&event)).await
 }
 
 /// Deliver one event to every channel concurrently; failures are logged.

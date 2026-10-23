@@ -1,4 +1,4 @@
-{#- Channel name field. Needs: form (ChannelForm). -#}
+{#- The channel's name field. Needs: form.name, form.name_error, form.label. -#}
 <div class="field{% if !form.name_error.is_empty() %} is-invalid{% endif %}">
   <label class="label" for="f-name">{{ tr("common.name") }}</label>
   <input id="f-name" name="name" type="text" value="{{ form.name }}" placeholder="{{ tr1("notif.name_placeholder", "service", form.label) }}" required maxlength="100" autocomplete="off"

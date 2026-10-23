@@ -21,6 +21,7 @@ pub mod dingtalk;
 pub mod discord;
 pub mod email;
 pub mod feishu;
+pub mod form;
 pub mod googlechat;
 pub mod gotify;
 pub mod homeassistant;
@@ -141,7 +142,8 @@ pub async fn send(
 }
 
 /// Deliver one event using a kind + config that may not be saved yet
-/// ("Send test" from the add form).
+/// ("Send test" from the add form), in the request's language or, from
+/// background jobs, the site's ([`send_config_in`] for another).
 pub async fn send_config(
     http: &reqwest::Client,
     kind: &str,
@@ -150,8 +152,50 @@ pub async fn send_config(
 ) -> Result<(), String> {
     // Messages use the request's language ("Send test") or, from background
     // jobs, the site default (Settings → General → Language).
-    let lang = crate::i18n::current_or_site();
+    send_config_in(http, kind, config, event, crate::i18n::current_or_site()).await
+}
+
+/// [`send_config`] in `lang`: the language of the provider's own words
+/// (the email's footer, field labels), for a channel with a language of
+/// its own. The alert's texts are already written; build them in `lang`
+/// too (or use [`send_in`]).
+pub async fn send_config_in(
+    http: &reqwest::Client,
+    kind: &str,
+    config: &Value,
+    event: &Alert,
+    lang: crate::i18n::Lang,
+) -> Result<(), String> {
     crate::i18n::scope(lang, send_config_in_scope(http, kind, config, event)).await
+}
+
+/// Builds the alert with `alert` in `lang` and sends it to `kind` with
+/// `config` (which may not be saved yet): the alert's texts and the
+/// provider's own words are then in the same language, the channel's. The
+/// error is safe to show (no URL, no secret).
+///
+/// "Send test" with the kit's test message ([`Alert::test`]):
+///
+/// ```ignore
+/// let lang = channel_language.unwrap_or_else(i18n::site_default);
+/// notify::send_in(&core.http, kind, &config, lang, || {
+///     // The product's own texts, looked up in `lang`.
+///     Alert::test(title(), body(), event_label(), link_label(), url)
+/// })
+/// .await
+/// ```
+pub async fn send_in(
+    http: &reqwest::Client,
+    kind: &str,
+    config: &Value,
+    lang: crate::i18n::Lang,
+    alert: impl FnOnce() -> Alert,
+) -> Result<(), String> {
+    crate::i18n::scope(lang, async {
+        let alert = alert();
+        send_config_in_scope(http, kind, config, &alert).await
+    })
+    .await
 }
 
 async fn send_config_in_scope(

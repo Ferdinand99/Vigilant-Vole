@@ -260,6 +260,7 @@ const CREDENTIALS: &[Credential] = &[
         access: "push token",
         words: "the push monitor's token in the URL (no API token)",
         bearer: None,
+        header: None,
     },
     Credential {
         access: "agent token",
@@ -269,6 +270,7 @@ const CREDENTIALS: &[Credential] = &[
             description: "Remote agent token (vva_…)",
             variable: "AGENT_TOKEN",
         }),
+        header: None,
     },
 ];
 
@@ -324,4 +326,8 @@ pub static DOCS: DocsSpec = DocsSpec {
     example_path: "/api/v1/monitors",
     metrics_path: Some("/metrics"),
     fallback_host: Some("localhost:3001"),
+    param_types: &[],
+    // `POST /mcp` says "api token", which the published reference shows as
+    // "public (no token)"; strict checking would refuse it.
+    strict_access: false,
 };

@@ -1,0 +1,8 @@
+{#- A provider's form, made of the kit's partials. Needs: form (ChannelForm). -#}
+{%- import "kit/macros.html" as m -%}
+<form id="channel-form" class="form" hx-post="/settings/notifications/test" hx-swap="none">
+  <input type="hidden" name="kind" value="{{ form.kind }}">
+  {% include "kit/partials/notification_name.html" %}
+  {% include "kit/partials/notification_fields.html" %}
+  <button type="submit" class="btn btn-secondary">{{ m::icon("send") }}<span>{{ tr("notif.send_test") }}</span></button>
+</form>

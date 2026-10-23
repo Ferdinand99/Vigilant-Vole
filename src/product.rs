@@ -2,6 +2,7 @@
 //! (`crate::kit`) is concerned.
 
 use crate::kit::config::KitConfig;
+use crate::kit::notify::webhook::Wording;
 use crate::kit::page::{NavItem, SettingsTab, TabAccess, Ui};
 
 /// The product's name.
@@ -172,6 +173,11 @@ pub static KIT: KitConfig = KitConfig {
         home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
     },
     public_url_setting: Some("Settings → General"),
+    webhook: Wording {
+        subject: "monitor",
+        duration: "downtime",
+        url_example: "https://example.com/hooks/vigilant…",
+    },
 };
 
 /// Installs [`KIT`] as the kit's configuration. Runs at start-up (`main`,

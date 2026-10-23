@@ -10,10 +10,10 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(3101);
-    let core = kit_demo::start(std::path::Path::new(&dir))
+    let demo = kit_demo::start(std::path::Path::new(&dir))
         .await
         .unwrap_or_else(|e| panic!("{e}"));
-    let app = kit_demo::router(core);
+    let app = kit_demo::router(&demo);
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))
         .await
         .expect("bind");

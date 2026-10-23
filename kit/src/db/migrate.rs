@@ -80,7 +80,8 @@ pub enum MigrationError {
     /// damage data, so startup stops instead.
     #[error(
         "the database was created by a newer {product} (schema {schema}); this version only knows schemas up to {known}. \
-         Upgrade {product} again, or restore the backup made before that upgrade from {backups}"
+         Upgrade {product} again{}",
+        restore_hint(.backups)
     )]
     NewerSchema {
         /// The product's name.
@@ -89,9 +90,17 @@ pub enum MigrationError {
         schema: String,
         /// The newest migration this build has, without `.sql`.
         known: String,
-        /// Where pre-migration backups are kept.
-        backups: String,
+        /// Where pre-migration backups are kept; `None` for a database
+        /// migrated without them ([`MigrateOptions::backup`]).
+        backups: Option<String>,
     },
+}
+
+fn restore_hint(backups: &Option<String>) -> String {
+    match backups {
+        Some(dir) => format!(", or restore the backup made before that upgrade from {dir}"),
+        None => String::new(),
+    }
 }
 
 /// A failed startup migration, with where the database was left and where
@@ -159,8 +168,54 @@ pub async fn run_migrations(pool: &Pool, backup_dir: &Path) {
 /// migration commits on its own, so a failure leaves the database at the last
 /// migration that succeeded (never half-way through one). A database from a
 /// newer release is refused before anything is written.
+///
+/// This is [`migrate_with`] for the installed product's set
+/// ([`KitConfig::migrations`](crate::config::KitConfig::migrations)) with a
+/// copy in `backup_dir`.
 pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, UpgradeError> {
-    let backup_dir = backup_dir.to_path_buf();
+    migrate_with(
+        pool,
+        set(),
+        MigrateOptions {
+            backup: Some(backup_dir),
+            ..MigrateOptions::default()
+        },
+    )
+    .await
+}
+
+/// How [`migrate_with`] treats a database.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MigrateOptions<'a> {
+    /// Where the copy taken before migrating an existing database goes.
+    /// `None` takes no copy, for a database whose loss costs nothing that
+    /// matters (a cache, a store of raw payloads); a newer-schema refusal
+    /// then doesn't point at a backup folder either.
+    pub backup: Option<&'a Path>,
+    /// Start of the copy's file name; `None` is the product's
+    /// [`KitConfig::backup_prefix`](crate::config::KitConfig::backup_prefix).
+    /// Give a second database its own ("kestrel-store-before-"), so its
+    /// copies can't be mistaken for the main database's.
+    pub backup_prefix: Option<&'a str>,
+}
+
+/// [`migrate`] for any database: `set` is its migration set (the product's
+/// own, or a second database's with `core: &[]` when the kit's core tables
+/// don't belong in it), and `options` say whether to take a copy first.
+///
+/// Settings that must be in place before the first table exists
+/// (`auto_vacuum`, `page_size`) belong to the pool:
+/// [`PoolOptions::new_database_pragmas`](super::PoolOptions::new_database_pragmas).
+pub async fn migrate_with(
+    pool: &Pool,
+    set: &'static MigrationSet,
+    options: MigrateOptions<'_>,
+) -> Result<MigrationReport, UpgradeError> {
+    let backup_dir = options.backup.map(Path::to_path_buf);
+    let prefix = options
+        .backup_prefix
+        .unwrap_or(crate::config::get().backup_prefix)
+        .to_string();
     let unavailable = |e: String| UpgradeError::new(MigrationError::Unavailable(e), None, None);
     let conn = pool.get().await.map_err(|e| unavailable(e.to_string()))?;
     conn.interact(move |conn| {
@@ -168,23 +223,26 @@ pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, 
         let started = (|| -> Result<(), MigrationError> {
             // WAL is persistent per database file; set it once here rather than per connection.
             conn.pragma_update(None, "journal_mode", "WAL")?;
-            let set = set();
             let existing = prepare_tracking_in(conn, set)?;
-            refuse_newer_schema(conn, set, &backup_dir.display().to_string())?;
+            let backups = backup_dir.as_ref().map(|dir| dir.display().to_string());
+            refuse_newer_schema(conn, set, backups.as_deref())?;
             let pending = pending_migrations(conn, set)?;
-            if existing && !pending.is_empty() {
+            if let Some(dir) = &backup_dir
+                && existing
+                && !pending.is_empty()
+            {
                 let first = pending
                     .first()
                     .map(|(name, _)| name.trim_end_matches(".sql"))
                     .unwrap_or("");
-                report.backup = Some(backup_before_migration(conn, &backup_dir, first)?);
+                report.backup = Some(backup_with_prefix(conn, dir, &prefix, first)?);
             }
             Ok(())
         })();
         if let Err(error) = started {
             return Err(UpgradeError::new(error, None, report.backup));
         }
-        match apply_migrations(conn) {
+        match apply_migrations_with(conn, set) {
             Ok(applied) => {
                 report.applied = applied;
                 Ok(report)
@@ -213,14 +271,14 @@ fn latest_applied(conn: &Connection) -> rusqlite::Result<Option<String>> {
 
 /// Refuses databases that record migrations this build doesn't embed (a
 /// newer release has opened them). `backups` names the backup folder in the
-/// message.
+/// message, if the database has one.
 ///
 /// Unknown names are what counts, not how names sort: the core set's
 /// `kit/…` names sort after every product migration and are known.
 fn refuse_newer_schema(
     conn: &Connection,
     set: &MigrationSet,
-    backups: &str,
+    backups: Option<&str>,
 ) -> Result<(), MigrationError> {
     let product = (set.migrations)();
     let known: Vec<String> = core_of(set)
@@ -245,20 +303,31 @@ fn refuse_newer_schema(
             .or(known.last().map(String::as_str))
             .map(|n| n.trim_end_matches(".sql").to_string())
             .unwrap_or_default(),
-        backups: backups.to_string(),
+        backups: backups.map(str::to_string),
     })
 }
 
+/// Writes a consistent copy of the database to `dir`, named after the
+/// product's [`backup_prefix`](crate::config::KitConfig::backup_prefix), the
+/// first pending migration (`label`) and the time.
 pub fn backup_before_migration(
     conn: &Connection,
     dir: &Path,
+    label: &str,
+) -> Result<PathBuf, MigrationError> {
+    backup_with_prefix(conn, dir, crate::config::get().backup_prefix, label)
+}
+
+fn backup_with_prefix(
+    conn: &Connection,
+    dir: &Path,
+    prefix: &str,
     label: &str,
 ) -> Result<PathBuf, MigrationError> {
     std::fs::create_dir_all(dir).map_err(|e| MigrationError::Backup(e.to_string()))?;
     let stamp = time::OffsetDateTime::now_utc().unix_timestamp();
     // A start that fails and is retried within the same second (a restart
     // loop) must not trip over the previous attempt's copy.
-    let prefix = crate::config::get().backup_prefix;
     // Core names (`kit/0001_core`) must not become directories.
     let label = label.replace(['/', '\\'], "-");
     let mut path = dir.join(format!("{prefix}{label}-{stamp}.db"));
@@ -320,7 +389,7 @@ pub fn apply_migrations_with(
     set: &MigrationSet,
 ) -> Result<Vec<String>, MigrationError> {
     prepare_tracking_in(conn, set)?;
-    refuse_newer_schema(conn, set, "DATA_DIR/backups")?;
+    refuse_newer_schema(conn, set, Some("DATA_DIR/backups"))?;
     let mut applied = Vec::new();
     for (name, sql) in pending_migrations(conn, set)? {
         // An adoption migration records core migrations as applied.
@@ -638,7 +707,7 @@ mod tests {
     }
 
     fn newer(conn: &Connection, set: &MigrationSet) -> Option<(String, String)> {
-        match refuse_newer_schema(conn, set, "backups") {
+        match refuse_newer_schema(conn, set, Some("backups")) {
             Ok(()) => None,
             Err(MigrationError::NewerSchema { schema, known, .. }) => Some((schema, known)),
             Err(e) => panic!("{e}"),

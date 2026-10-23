@@ -1,7 +1,8 @@
 //! Provider form schemas: what each channel kind needs, how its form is parsed
 //! into the stored JSON config, and how that config is validated, redacted and
-//! merged on edit. Rendering is generic (see `api::notifications`), so adding a
-//! provider never needs a new template.
+//! merged on edit. Rendering is generic (the view-model in [`super::form`]
+//! and the kit's `partials/notification_*.html`), so adding a provider never
+//! needs a new template.
 
 use std::borrow::Cow;
 
@@ -118,15 +119,19 @@ pub enum FieldKind {
 pub const PRODUCT: &str = "{product}";
 /// The same for the product's short name (an SMS sender, "Vole").
 pub const SHORT_NAME: &str = "{short_name}";
+/// The same for the webhook URL's example
+/// ([`Wording::url_example`](super::webhook::Wording::url_example)).
+pub const WEBHOOK_URL: &str = "{webhook_url}";
 
 fn with_product(text: &'static str) -> Cow<'static, str> {
-    if !text.contains(PRODUCT) && !text.contains(SHORT_NAME) {
+    if !text.contains(PRODUCT) && !text.contains(SHORT_NAME) && !text.contains(WEBHOOK_URL) {
         return Cow::Borrowed(text);
     }
     let cfg = crate::config::get();
     Cow::Owned(
         text.replace(PRODUCT, cfg.product)
-            .replace(SHORT_NAME, cfg.short_name),
+            .replace(SHORT_NAME, cfg.short_name)
+            .replace(WEBHOOK_URL, cfg.webhook.url_example),
     )
 }
 
@@ -241,12 +246,17 @@ impl Field {
         crate::i18n::t_or(&format!("notif.{kind}.{}.label", self.key), self.label)
     }
 
-    /// Help text in the current language (`notif.<kind>.<key>.help`).
-    pub fn tr_help(&self, kind: &str) -> &'static str {
+    /// Help text in the current language (`notif.<kind>.<key>.help`), with
+    /// the webhook's placeholders in the product's words
+    /// ([`super::webhook::Wording`]).
+    pub fn tr_help(&self, kind: &str) -> Cow<'static, str> {
         if self.help.is_empty() {
-            return "";
+            return Cow::Borrowed("");
         }
-        crate::i18n::t_or(&format!("notif.{kind}.{}.help", self.key), self.help)
+        super::webhook::with_wording(crate::i18n::t_or(
+            &format!("notif.{kind}.{}.help", self.key),
+            self.help,
+        ))
     }
 
     /// "Enter the SMTP server" (`notif.<kind>.<key>.required`); falls back
