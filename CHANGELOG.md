@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.10.0...v0.11.0) (2026-10-23)
+
+
+### Features
+
+* **kit:** sign in with passkeys (WebAuthn) ([#41](https://github.com/Ferdinand99/Vigilant-Vole/issues/41)) ([a553098](https://github.com/Ferdinand99/Vigilant-Vole/commit/a553098874a25fc232a0f4141f8c74b3fe2d9f60))
+
 ## [0.10.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.9.0...v0.10.0) (2026-10-23)
 
 
