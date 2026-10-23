@@ -612,11 +612,17 @@ fn a_fresh_database_adopts_the_core_set_after_our_migrations() {
     conn.execute_batch(CONNECTION_PRAGMAS).unwrap();
     let ran = apply_migrations(&mut conn).unwrap();
     assert!(ran.contains(&"0104_adopt_kit_core.sql".to_string()));
+    // The adoption records kit/0001 only; the passkeys' core migration
+    // (vole-kit 0.4) runs after it.
     assert_eq!(
-        ran.last().map(String::as_str),
-        Some("0105_heartbeat_raw_status.sql")
+        ran.iter()
+            .rev()
+            .take(2)
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["kit/0003_passkeys.sql", "0105_heartbeat_raw_status.sql"]
     );
-    assert!(!ran.iter().any(|n| n.starts_with("kit/")), "{ran:?}");
+    assert!(!ran.contains(&"kit/0001_core.sql".to_string()), "{ran:?}");
     assert!(applied(&conn).contains(&"kit/0001_core.sql".to_string()));
 }
 
@@ -650,12 +656,15 @@ fn an_older_release_refuses_a_database_with_the_adopted_core_set() {
 }
 
 /// The newer-schema guard counts unknown names, not how they sort:
-/// `kit/0001_core.sql` sorts after every one of ours.
+/// the `kit/…` rows sort after every one of ours.
 #[test]
 fn the_core_row_does_not_hide_a_newer_migration() {
     let mut conn = test_conn();
     let names = applied(&conn);
-    assert_eq!(names.last().map(String::as_str), Some("kit/0001_core.sql"));
+    assert_eq!(
+        names.last().map(String::as_str),
+        Some("kit/0003_passkeys.sql")
+    );
     assert!(apply_migrations(&mut conn).unwrap().is_empty());
     conn.execute(
         "INSERT INTO schema_migrations (name) VALUES ('0110_from_the_future.sql')",

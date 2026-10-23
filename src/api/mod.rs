@@ -180,6 +180,7 @@ pub fn build_router(state: AppState) -> Router {
 #[exclude = "icons.svg"]
 #[exclude = "htmx.min.js"]
 #[exclude = "sse.js"]
+#[exclude = "passkeys.js"]
 #[exclude = "fonts/*"]
 struct StaticAssets;
 

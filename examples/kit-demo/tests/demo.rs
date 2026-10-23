@@ -578,6 +578,8 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
             "api_token_scopes",
             "api_tokens",
             "notes",
+            "passkey_challenges",
+            "passkeys",
             "schema_migrations",
             "settings",
             "users"
@@ -588,6 +590,7 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
         [
             "kit/0001_core.sql",
             "kit/0002_token_scopes.sql",
+            "kit/0003_passkeys.sql",
             "0001_notes.sql"
         ]
     );
@@ -1329,4 +1332,297 @@ async fn sign_in_throttling_is_per_instance() {
         .post("/login", &[("username", ADMIN), ("password", PASSWORD)])
         .await;
     assert_eq!((res.status, res.location()), (StatusCode::SEE_OTHER, "/"));
+}
+
+impl App {
+    async fn post_json(&mut self, path: &str, body: &Value) -> Res {
+        let req = Request::post(path)
+            .header(header::ORIGIN, "http://demo.test")
+            .header(header::ACCEPT, "application/json")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        self.send(req).await
+    }
+
+    /// `publicKey` of an options endpoint and its challenge.
+    async fn passkey_options(&mut self, path: &str, form: &[(&str, &str)]) -> (Value, Vec<u8>) {
+        let res = self.post(path, form).await;
+        assert_eq!(res.status, StatusCode::OK, "{path}: {}", res.body);
+        let options: Value = serde_json::from_str(&res.body).unwrap();
+        let options = options["publicKey"].clone();
+        let challenge =
+            vole_kit::auth::webauthn::unb64(options["challenge"].as_str().unwrap(), "c").unwrap();
+        assert_eq!(challenge.len(), 32);
+        (options, challenge)
+    }
+}
+
+/// A sign-in request body: the software authenticator's assertion for
+/// `challenge` as the browser at `origin` would send it.
+fn passkey_sign_in(
+    auth: &mut vole_kit::auth::webauthn::soft::SoftAuthenticator,
+    challenge: &[u8],
+    origin: &str,
+) -> Value {
+    use vole_kit::auth::webauthn::b64;
+    let (client, data, sig) = auth.assert("demo.test", origin, challenge);
+    json!({
+        "next": "/settings/tokens",
+        "credential": {
+            "id": b64(&auth.credential_id), "rawId": b64(&auth.credential_id), "type": "public-key",
+            "response": {
+                "clientDataJSON": b64(&client),
+                "authenticatorData": b64(&data),
+                "signature": b64(&sig),
+                "userHandle": b64(&auth.user_handle),
+            },
+        },
+    })
+}
+
+/// A passkey made with the software authenticator: registered under
+/// Security after the password, then signing in on its own (no password,
+/// no TOTP step, though the account has two-factor on). Challenges are
+/// single use and bound to the public URL's origin.
+#[tokio::test]
+async fn passkeys_register_and_sign_in_without_password_or_code() {
+    use vole_kit::auth::webauthn::{b64, soft::SoftAuthenticator, unb64};
+    let mut app = App::set_up().await;
+    app.core
+        .with_conn(|c| {
+            db::users::set_pending_totp_secret(c, 1, SECRET)?;
+            db::users::enable_totp(c, 1, 0, &[])
+        })
+        .await
+        .unwrap();
+
+    // Without a public URL there are no passkeys to add, only the note.
+    let page = app.get("/settings/security").await;
+    assert!(
+        page.body
+            .contains("Passkeys need this site’s public URL over HTTPS.")
+    );
+    assert!(!page.body.contains("data-passkey-add"));
+    let res = app
+        .post(
+            "/settings/security/passkeys/options",
+            &[("password", PASSWORD)],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::NOT_FOUND);
+
+    app.core
+        .with_conn(|c| db::settings::set(c, "base_url", "https://demo.test"))
+        .await
+        .unwrap();
+    let page = app.get("/settings/security").await;
+    assert_demo_branded("/settings/security", &page.body);
+    assert!(page.body.contains("data-passkey-add"));
+    assert!(
+        page.body
+            .contains("Passkeys work at https://demo.test over HTTPS.")
+    );
+    assert!(
+        page.body
+            .contains(r#"<script src="/static/passkeys.js" defer></script>"#)
+    );
+    assert!(page.body.contains("No passkeys yet"));
+
+    // Adding one needs the password.
+    let res = app
+        .post(
+            "/settings/security/passkeys/options",
+            &[("password", "wrong")],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN);
+    let (options, challenge) = app
+        .passkey_options(
+            "/settings/security/passkeys/options",
+            &[("password", PASSWORD)],
+        )
+        .await;
+    assert_eq!(options["rp"]["id"], "demo.test");
+    assert_eq!(options["rp"]["name"], "Kit Demo");
+    assert_eq!(options["user"]["name"], ADMIN);
+    assert_eq!(options["attestation"], "none");
+    assert_eq!(options["authenticatorSelection"]["residentKey"], "required");
+    assert_eq!(
+        options["authenticatorSelection"]["userVerification"],
+        "required"
+    );
+    assert_eq!(options["excludeCredentials"], json!([]));
+    let handle = unb64(options["user"]["id"].as_str().unwrap(), "h").unwrap();
+
+    let mut auth = SoftAuthenticator::es256();
+    let (client, att) = auth.register("demo.test", "https://demo.test", &challenge, &handle);
+    let id = b64(&auth.credential_id);
+    let body = json!({
+        "name": "",
+        "credential": {
+            "id": id, "rawId": id, "type": "public-key",
+            "response": {
+                "clientDataJSON": b64(&client),
+                "attestationObject": b64(&att),
+                "transports": ["internal", "hybrid", "carrier-pigeon"],
+            },
+        },
+    });
+    let res = app.post_json("/settings/security/passkeys", &body).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    assert_eq!(res.body, r##"{"redirect":"/settings/security#passkeys"}"##);
+    // The same response again: its challenge is used up.
+    let res = app.post_json("/settings/security/passkeys", &body).await;
+    assert_eq!(res.status, StatusCode::BAD_REQUEST);
+    assert!(res.body.contains("The passkey couldn’t be saved."));
+
+    let page = app.get("/settings/security").await;
+    assert!(page.body.contains("Passkey added"));
+    assert!(
+        page.body
+            .contains(r#"<span class="list-title">Passkey 1</span>"#)
+    );
+    assert!(page.body.contains("Never used"));
+    let stored = app
+        .core
+        .with_conn(|c| db::passkeys::list_for_user(c, 1))
+        .await
+        .unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].transports, "hybrid,internal");
+    assert_eq!(stored[0].user_handle, handle);
+    // A second one is offered the first to exclude, and the same handle.
+    let (options, _) = app
+        .passkey_options(
+            "/settings/security/passkeys/options",
+            &[("password", PASSWORD)],
+        )
+        .await;
+    assert_eq!(options["excludeCredentials"][0]["id"], id.as_str());
+    assert_eq!(options["user"]["id"], b64(&handle).as_str());
+
+    // Signed out, the login page offers passkeys (autofill too).
+    app.post("/logout", &[]).await;
+    let login = app.get("/login").await;
+    assert!(login.body.contains(r#"autocomplete="username webauthn""#));
+    assert!(
+        login
+            .body
+            .contains(r#"data-passkey-signin data-origin="https://demo.test""#)
+    );
+
+    // Another origin is refused, and so is the challenge it used.
+    let (options, challenge) = app.passkey_options("/login/passkey/options", &[]).await;
+    assert_eq!(options["rpId"], "demo.test");
+    assert_eq!(options["userVerification"], "required");
+    assert_eq!(options["allowCredentials"], json!([]));
+    let wrong = passkey_sign_in(&mut auth, &challenge, "https://evil.test");
+    let res = app.post_json("/login/passkey", &wrong).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert!(res.body.contains("That passkey didn’t work."));
+    let right = passkey_sign_in(&mut auth, &challenge, "https://demo.test");
+    let res = app.post_json("/login/passkey", &right).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert!(!app.cookies.contains_key("kd_session"));
+
+    // The real thing: no password, no code.
+    let (_, challenge) = app.passkey_options("/login/passkey/options", &[]).await;
+    let body = passkey_sign_in(&mut auth, &challenge, "https://demo.test");
+    let res = app.post_json("/login/passkey", &body).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    assert_eq!(res.body, r#"{"redirect":"/settings/tokens"}"#);
+    assert!(app.cookies.contains_key("kd_session"));
+    assert!(!app.cookies.contains_key("kd_2fa"));
+    assert_eq!(app.get("/settings/tokens").await.status, StatusCode::OK);
+    // Replayed: the challenge is gone.
+    app.post("/logout", &[]).await;
+    let res = app.post_json("/login/passkey", &body).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert!(!app.cookies.contains_key("kd_session"));
+
+    // Signed in again: it shows when it was used; rename, delete.
+    let (_, challenge) = app.passkey_options("/login/passkey/options", &[]).await;
+    let body = passkey_sign_in(&mut auth, &challenge, "https://demo.test");
+    let res = app.post_json("/login/passkey", &body).await;
+    assert_eq!(res.status, StatusCode::OK);
+    let page = app.get("/settings/security").await;
+    assert!(page.body.contains("Last used"));
+    let pk = stored[0].id;
+    let res = app
+        .post(
+            &format!("/settings/security/passkeys/{pk}/rename"),
+            &[("name", "Laptop")],
+        )
+        .await;
+    assert_eq!(res.location(), "/settings/security#passkeys");
+    assert!(app.get("/settings/security").await.body.contains("Laptop"));
+    let res = app
+        .post(&format!("/settings/security/passkeys/{pk}/delete"), &[])
+        .await;
+    assert_eq!(res.location(), "/settings/security#passkeys");
+    assert!(
+        app.get("/settings/security")
+            .await
+            .body
+            .contains("No passkeys yet")
+    );
+    // A deleted passkey signs nobody in.
+    app.post("/logout", &[]).await;
+    let (_, challenge) = app.passkey_options("/login/passkey/options", &[]).await;
+    let body = passkey_sign_in(&mut auth, &challenge, "https://demo.test");
+    let res = app.post_json("/login/passkey", &body).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+}
+
+/// Admins remove all of a user's passkeys from the Users page; the user is
+/// signed out, and the passkeys sign nobody in any more.
+#[tokio::test]
+async fn admins_remove_a_users_passkeys() {
+    let mut app = App::set_up().await;
+    let bob = app.user("bob", Role::Editor).await;
+    app.core
+        .with_conn(move |c| {
+            db::passkeys::insert(
+                c,
+                &db::passkeys::NewPasskey {
+                    user_id: bob,
+                    credential_id: b"bob-key",
+                    public_key: b"cose",
+                    alg: -7,
+                    user_handle: b"bob",
+                    name: "Phone",
+                    sign_count: 0,
+                    transports: "",
+                    backup_eligible: true,
+                    backed_up: true,
+                },
+            )
+        })
+        .await
+        .unwrap();
+    let users = app.get("/settings/users").await;
+    let reset = format!("/settings/users/{bob}/passkeys/reset");
+    assert!(users.body.contains(&reset));
+    assert_eq!(users.body.matches("/passkeys/reset").count(), 1);
+    let res = app.post(&reset, &[]).await;
+    assert_eq!(res.location(), "/settings/users");
+    assert!(
+        app.get("/settings/users")
+            .await
+            .body
+            .contains("Passkeys removed for bob.")
+    );
+    let left = app
+        .core
+        .with_conn(move |c| db::passkeys::list_for_user(c, bob))
+        .await
+        .unwrap();
+    assert!(left.is_empty());
+    let version: i64 = app
+        .core
+        .with_conn(move |c| Ok(db::users::get_user(c, bob)?.unwrap().session_version))
+        .await
+        .unwrap();
+    assert_eq!(version, 2);
 }

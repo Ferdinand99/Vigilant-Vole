@@ -32,7 +32,7 @@ pub(super) async fn site_name(core: &Core) -> String {
         .unwrap_or_else(|| core.cfg.product.to_string())
 }
 
-fn wait_message(wait: std::time::Duration) -> String {
+pub(super) fn wait_message(wait: std::time::Duration) -> String {
     let secs = wait.as_secs().max(1);
     if secs < 90 {
         crate::i18n::tf("sec.too_many_secs", &[("n", &secs.to_string())])
@@ -241,6 +241,10 @@ struct LoginTemplate {
     notice: Option<String>,
     username: String,
     next: String,
+    /// The public URL's origin, when passkeys can work there: the page
+    /// offers them (`static/passkeys.js` shows the button only on that
+    /// origin).
+    passkey_origin: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -263,6 +267,7 @@ fn login_page(
     error: Option<String>,
     username: String,
     next: String,
+    passkey_origin: Option<String>,
 ) -> Response {
     let page = LoginTemplate {
         title: crate::i18n::t("login.title").into(),
@@ -270,6 +275,7 @@ fn login_page(
         notice: None,
         username,
         next,
+        passkey_origin,
     };
     (status, HtmlTemplate(page)).into_response()
 }
@@ -299,6 +305,9 @@ pub(super) async fn login_form(
         notice,
         username: String::new(),
         next,
+        passkey_origin: super::passkeys::relying_party(&core)
+            .await
+            .map(|rp| rp.origin),
     };
     Ok((jar, HtmlTemplate(page)).into_response())
 }
@@ -329,6 +338,9 @@ pub(super) async fn login_submit(
             _ => None,
         },
     };
+    let passkey_origin = super::passkeys::relying_party(&core)
+        .await
+        .map(|rp| rp.origin);
     if let Some(wait) = blocked {
         tracing::warn!(user = %username, ip = ?ip_key, "login throttled");
         return Ok(login_page(
@@ -336,6 +348,7 @@ pub(super) async fn login_submit(
             Some(wait_message(wait)),
             username,
             next,
+            passkey_origin,
         ));
     }
 
@@ -361,6 +374,7 @@ pub(super) async fn login_submit(
             Some(crate::i18n::t("auth.login_failed").into()),
             username,
             next,
+            passkey_origin,
         ));
     };
 
@@ -679,6 +693,7 @@ mod tests {
             notice: None,
             username: String::new(),
             next: "/".into(),
+            passkey_origin: None,
         }
         .render()
         .unwrap();

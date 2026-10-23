@@ -44,6 +44,9 @@ CREATE UNIQUE INDEX idx_monitors_external ON monitors (source, external_id) WHER
 -- index idx_monitors_parent (on monitors)
 CREATE INDEX idx_monitors_parent ON monitors (parent_id);
 
+-- index idx_passkeys_user (on passkeys)
+CREATE INDEX idx_passkeys_user ON passkeys (user_id);
+
 -- index idx_status_page_monitors_monitor (on status_page_monitors)
 CREATE INDEX idx_status_page_monitors_monitor ON status_page_monitors (monitor_id);
 
@@ -289,6 +292,32 @@ CREATE TABLE "notification_channels" (
     active INTEGER NOT NULL DEFAULT 1,
     is_default INTEGER NOT NULL DEFAULT 0,      -- auto-attach to new monitors
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- table passkey_challenges (on passkey_challenges)
+CREATE TABLE passkey_challenges (
+    challenge TEXT PRIMARY KEY,                -- base64url
+    purpose TEXT NOT NULL CHECK (purpose IN ('register', 'sign_in')),
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    user_handle BLOB,                          -- registration: the handle offered
+    expires_at INTEGER NOT NULL                -- unix seconds
+) WITHOUT ROWID;
+
+-- table passkeys (on passkeys)
+CREATE TABLE passkeys (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    credential_id BLOB NOT NULL UNIQUE,        -- as the authenticator chose it
+    public_key BLOB NOT NULL,                  -- COSE_Key, as the authenticator sent it
+    alg INTEGER NOT NULL,                      -- COSE algorithm: -7 ES256, -8 EdDSA, -257 RS256
+    user_handle BLOB NOT NULL,                 -- random, the same for all of a user's passkeys
+    name TEXT NOT NULL,
+    sign_count INTEGER NOT NULL DEFAULT 0,
+    transports TEXT NOT NULL DEFAULT '',       -- comma-separated hints from the browser
+    backup_eligible INTEGER NOT NULL DEFAULT 0,
+    backed_up INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT
 );
 
 -- table remote_browsers (on remote_browsers)
@@ -617,6 +646,29 @@ notification_channels
   4 active INTEGER 1 1 0
   5 is_default INTEGER 1 0 0
   6 created_at TEXT 1 datetime('now') 0
+passkey_challenges
+  0 challenge TEXT 1 - 1
+  1 purpose TEXT 1 - 0
+  2 user_id INTEGER 0 - 0
+  3 user_handle BLOB 0 - 0
+  4 expires_at INTEGER 1 - 0
+  index sqlite_autoindex_passkey_challenges_1 unique=1 origin=pk partial=0
+passkeys
+  0 id INTEGER 0 - 1
+  1 user_id INTEGER 1 - 0
+  2 credential_id BLOB 1 - 0
+  3 public_key BLOB 1 - 0
+  4 alg INTEGER 1 - 0
+  5 user_handle BLOB 1 - 0
+  6 name TEXT 1 - 0
+  7 sign_count INTEGER 1 0 0
+  8 transports TEXT 1 '' 0
+  9 backup_eligible INTEGER 1 0 0
+  10 backed_up INTEGER 1 0 0
+  11 created_at TEXT 1 datetime('now') 0
+  12 last_used_at TEXT 0 - 0
+  index idx_passkeys_user unique=0 origin=c partial=0
+  index sqlite_autoindex_passkeys_1 unique=1 origin=u partial=0
 remote_browsers
   0 id INTEGER 0 - 1
   1 name TEXT 1 - 0

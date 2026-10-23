@@ -2,6 +2,7 @@
 //! - `GET  /settings/security`
 //! - `POST /settings/security/profile` · `/password` · `/sessions`
 //! - `POST /settings/security/2fa/setup` · `/2fa/cancel` · `/2fa/enable` · `/2fa/disable` · `/2fa/recovery`
+//! - passkeys: see [`super::passkeys`]
 
 use std::time::Instant;
 
@@ -15,11 +16,20 @@ use serde::Deserialize;
 
 use crate::auth::guard::{login_jar, secure_cookies};
 use crate::auth::{self, CurrentUser, totp};
+use crate::db::passkeys as db_passkeys;
 use crate::db::users as db_users;
 use crate::http::{ApiError, ApiResult, HtmlTemplate};
 use crate::i18n::Tr as _;
 use crate::page::{PageCtx, flash};
 use crate::state::Core;
+
+/// One of the user's passkeys.
+struct PasskeyRow {
+    id: i64,
+    name: String,
+    created_at: String,
+    last_used_at: Option<String>,
+}
 
 /// 2FA enrolment in progress: what the user scans / types.
 struct Enrolment {
@@ -45,6 +55,9 @@ struct SecurityTemplate {
     languages: Vec<(&'static str, String)>,
     /// Native name of the site default language.
     site_language_name: &'static str,
+    passkeys: Vec<PasskeyRow>,
+    /// The public URL's origin, when passkeys can work there.
+    passkey_origin: Option<String>,
 }
 
 async fn security_template(
@@ -54,8 +67,14 @@ async fn security_template(
     new_codes: Vec<String>,
 ) -> ApiResult<SecurityTemplate> {
     let id = user.id;
-    let (record, tf) = core
-        .with_conn(move |c| Ok((db_users::get_user(c, id)?, db_users::get_totp(c, id)?)))
+    let (record, tf, passkeys) = core
+        .with_conn(move |c| {
+            Ok((
+                db_users::get_user(c, id)?,
+                db_users::get_totp(c, id)?,
+                db_passkeys::list_for_user(c, id)?,
+            ))
+        })
         .await?;
     let record = record.ok_or(ApiError::Unauthorized)?;
     let tf = tf.unwrap_or_default();
@@ -86,6 +105,18 @@ async fn security_template(
             .await
             .unwrap_or_default()
             .native_name(),
+        passkeys: passkeys
+            .into_iter()
+            .map(|p| PasskeyRow {
+                id: p.id,
+                name: p.name,
+                created_at: p.created_at,
+                last_used_at: p.last_used_at,
+            })
+            .collect(),
+        passkey_origin: super::passkeys::relying_party(core)
+            .await
+            .map(|rp| rp.origin),
     })
 }
 
@@ -126,7 +157,7 @@ fn back_to_security(jar: SignedCookieJar, kind: &str, message: &str) -> Response
 
 /// Re-authentication for sensitive changes, throttled per user so a hijacked
 /// session can't be used to brute-force the password.
-async fn confirm_password(
+pub(super) async fn confirm_password(
     core: &Core,
     user: &CurrentUser,
     password: String,

@@ -28,6 +28,7 @@ pub const KIT_FILES: &[&str] = &[
     "icons.svg",
     "htmx.min.js",
     "sse.js",
+    "passkeys.js",
     "fonts/*",
 ];
 
@@ -39,6 +40,7 @@ pub const KIT_FILES: &[&str] = &[
 #[include = "icons.svg"]
 #[include = "htmx.min.js"]
 #[include = "sse.js"]
+#[include = "passkeys.js"]
 #[include = "fonts/*"]
 struct KitAssets;
 

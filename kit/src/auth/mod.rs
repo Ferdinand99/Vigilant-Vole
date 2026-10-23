@@ -5,6 +5,7 @@
 //! - [`csrf`]: the same-origin check behind `api::auth::csrf_guard`
 //! - [`rate_limit`]: in-memory login throttling with exponential backoff
 //! - [`totp`]: TOTP 2FA (enrolment, verification with replay protection, recovery codes)
+//! - [`webauthn`]: passkeys, the WebAuthn registration and sign-in ceremonies
 //! - [`tokens`]: API tokens (generation, hashing, header parsing)
 //! - [`guard`]: the middleware and helpers that need the database
 //!   (`require_auth`, `csrf_guard`, `session_user`, `authenticate_token`)
@@ -26,6 +27,7 @@ pub mod rate_limit;
 pub mod session;
 pub mod tokens;
 pub mod totp;
+pub mod webauthn;
 
 pub use crate::config::ExtraScope;
 pub use crate::db::api_tokens::TokenScope;

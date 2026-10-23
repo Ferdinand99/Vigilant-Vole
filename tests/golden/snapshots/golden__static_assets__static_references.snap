@@ -7,6 +7,7 @@ expression: out
 /static/theme.js -> 200 text/javascript; charset=utf-8
 /static/htmx.min.js -> 200 text/javascript; charset=utf-8
 /static/sse.js -> 200 text/javascript; charset=utf-8
+/static/passkeys.js -> 200 text/javascript; charset=utf-8
 /static/icons.svg -> 200 image/svg+xml
 /static/favicon.svg -> 200 image/svg+xml
 /static/apple-touch-icon.png -> 200 image/png

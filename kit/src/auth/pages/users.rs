@@ -3,6 +3,7 @@
 //! - `POST /settings/users/{id}` (display name + role)
 //! - `POST /settings/users/{id}/password` (set a temporary password)
 //! - `POST /settings/users/{id}/2fa/reset`
+//! - `POST /settings/users/{id}/passkeys/reset`
 //! - `POST /settings/users/{id}/enable` · `/disable` · `/delete`
 //!
 //! The "last active admin" rule is enforced in `db::users`; admins also can't
@@ -16,6 +17,7 @@ use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
 use crate::auth::{self, CurrentUser, Role};
+use crate::db::passkeys as db_passkeys;
 use crate::db::users::{self as db_users, User, UserChangeError};
 use crate::http::{ApiResult, HtmlTemplate};
 use crate::i18n::Tr as _;
@@ -31,14 +33,20 @@ struct UserRow {
     initials: String,
     role: Role,
     totp_enabled: bool,
+    /// How many passkeys the user has.
+    passkeys: i64,
     active: bool,
     last_login_at: Option<String>,
     is_self: bool,
 }
 
 impl UserRow {
-    fn from_user(u: User, current: i64) -> Self {
+    fn from_user(u: User, current: i64, passkeys: &[(i64, i64)]) -> Self {
         Self {
+            passkeys: passkeys
+                .iter()
+                .find(|(id, _)| *id == u.id)
+                .map_or(0, |(_, n)| *n),
             id: u.id,
             name: u.name().to_string(),
             initials: initials(u.name()),
@@ -71,10 +79,12 @@ pub(super) async fn list(
     jar: SignedCookieJar,
 ) -> ApiResult<Response> {
     user.require_admin()?;
-    let users = core.with_conn(|c| db_users::list_users(c)).await?;
+    let (users, passkeys) = core
+        .with_conn(|c| Ok((db_users::list_users(c)?, db_passkeys::counts_by_user(c)?)))
+        .await?;
     let rows = users
         .into_iter()
-        .map(|u| UserRow::from_user(u, user.id))
+        .map(|u| UserRow::from_user(u, user.id, &passkeys))
         .collect();
     let (ctx, jar) = PageCtx::build(
         &core,
@@ -283,6 +293,41 @@ pub(super) async fn reset_two_factor(
         jar,
         "success",
         crate::i18n::tf("users.tfa_reset", &[("name", &target.username)]),
+    ))
+}
+
+/// Removes all of a user's passkeys (they lost a device, or it was
+/// stolen) and signs them out everywhere, like the two-factor reset.
+pub(super) async fn reset_passkeys(
+    State(core): State<Core>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
+    user.require_admin()?;
+    let Some(target) = core.with_conn(move |c| db_users::get_user(c, id)).await? else {
+        return Ok(back(
+            jar,
+            "error",
+            change_message(UserChangeError::NotFound),
+        ));
+    };
+    let removed = core
+        .with_conn(move |c| {
+            let removed = db_passkeys::delete_all_for_user(c, id)?;
+            db_users::bump_session_version(c, id)?;
+            Ok(removed)
+        })
+        .await?;
+    tracing::info!(admin = %user.username, user = %target.username, removed, "passkeys removed by admin");
+    if id == user.id {
+        // Our own session version moved on; log in again.
+        return Ok(Redirect::to("/login").into_response());
+    }
+    Ok(back(
+        jar,
+        "success",
+        crate::i18n::tf("users.pk_reset", &[("name", &target.username)]),
     ))
 }
 

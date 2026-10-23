@@ -181,7 +181,7 @@ content-type: text/html; charset=utf-8
             aria-describedby="f-retention-help">
           <span class="input-addon" aria-hidden="true">days</span>
         </div>
-        <p class="help" id="f-retention-help">Individual checks older than this are deleted every hour. Daily uptime summaries are kept, so long-range uptime and status-page bars stay accurate. The database is <span class="num">283 KB</span> and holds <span class="num">0</span> checks.</p>
+        <p class="help" id="f-retention-help">Individual checks older than this are deleted every hour. Daily uptime summaries are kept, so long-range uptime and status-page bars stay accurate. The database is <span class="num">287 KB</span> and holds <span class="num">0</span> checks.</p>
       </div>
       <label class="switch-row" for="f-badges_public">
   <span class="switch-row-text">

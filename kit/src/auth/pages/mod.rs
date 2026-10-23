@@ -11,6 +11,7 @@
 //! [`KitConfig`](crate::config::KitConfig).
 
 mod general;
+mod passkeys;
 mod security;
 mod sign_in;
 mod tokens;
@@ -21,6 +22,7 @@ use axum::extract::FromRef;
 use axum::routing::{delete, get, post};
 use axum_extra::extract::cookie::Key;
 
+pub use passkeys::relying_party;
 pub use sign_in::verify_second_factor;
 
 use crate::docs::page as docs;
@@ -46,6 +48,8 @@ where
             "/login/2fa",
             get(sign_in::two_factor_form).post(sign_in::two_factor_submit),
         )
+        .route("/login/passkey/options", post(passkeys::sign_in_options))
+        .route("/login/passkey", post(passkeys::sign_in))
         .route("/logout", post(sign_in::logout))
 }
 
@@ -74,6 +78,10 @@ where
             "/settings/users/{id}/2fa/reset",
             post(users::reset_two_factor),
         )
+        .route(
+            "/settings/users/{id}/passkeys/reset",
+            post(users::reset_passkeys),
+        )
         .route("/settings/users/{id}/enable", post(users::enable))
         .route("/settings/users/{id}/disable", post(users::disable))
         .route("/settings/users/{id}/delete", post(users::delete))
@@ -99,6 +107,19 @@ where
         .route(
             "/settings/security/2fa/recovery",
             post(security::totp_new_recovery_codes),
+        )
+        .route(
+            "/settings/security/passkeys/options",
+            post(passkeys::register_options),
+        )
+        .route("/settings/security/passkeys", post(passkeys::register))
+        .route(
+            "/settings/security/passkeys/{id}/rename",
+            post(passkeys::rename),
+        )
+        .route(
+            "/settings/security/passkeys/{id}/delete",
+            post(passkeys::delete),
         )
         .route("/api-docs", get(docs::page))
         .route("/api-docs.md", get(docs::markdown_doc))
