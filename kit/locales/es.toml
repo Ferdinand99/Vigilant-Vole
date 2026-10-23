@@ -895,6 +895,20 @@ edit_heading = "Editar {name}"
 [general]
 language = "Idioma"
 err_site_name = "Usa 80 caracteres como máximo."
+site = "Sitio"
+site_name_help = "Se muestra en la barra superior, en los títulos de página y en las notificaciones."
+base_url = "URL pública"
+region = "Región"
+language_help = "El valor predeterminado para todos. Cada persona puede elegir el suyo en Seguridad."
+save = "Guardar ajustes"
+saved = "Ajustes guardados"
+err_timezone = "Elige una zona horaria de la lista."
+err_url = "Introduce una URL completa, como https://status.example.com"
+err_url_credentials = "Omite el nombre de usuario y la contraseña."
+err_url_query = "Omite las partes con ? y #."
+
+[mw]
+timezone = "Zona horaria"
 
 [docs]
 title = "Referencia de la API"

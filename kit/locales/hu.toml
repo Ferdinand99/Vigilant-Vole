@@ -888,6 +888,20 @@ edit_heading = "{name} szerkesztése"
 [general]
 language = "Nyelv"
 err_site_name = "Legfeljebb 80 karakter lehet."
+site = "Webhely"
+site_name_help = "Megjelenik a felső sávban, az oldalcímekben és az értesítésekben."
+base_url = "Nyilvános URL"
+region = "Régió"
+language_help = "Mindenki alapértelmezése. Mindenki választhat sajátot a Biztonság alatt."
+save = "Beállítások mentése"
+saved = "Beállítások mentve"
+err_timezone = "Válasszon időzónát a listából."
+err_url = "Adjon meg teljes URL-t, például https://status.example.com"
+err_url_credentials = "Hagyja ki a felhasználónevet és a jelszót."
+err_url_query = "Hagyja ki a ? és # részeket."
+
+[mw]
+timezone = "Időzóna"
 
 [docs]
 title = "API-referencia"

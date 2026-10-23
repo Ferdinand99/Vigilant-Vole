@@ -3,6 +3,17 @@
 [demo]
 welcome = "Velkommen til Kit Demo. Du har {n} notater."
 notes = "Notater"
+scope_add = "Lese og legge til notater"
+scope_add_help = "Leser alt og legger til notater, men endrer ikke noe annet"
+scope_inbox = "Bare innboks"
+scope_inbox_help = "Legger notater i innboksen og kan ikke lese noe"
+section_notes = "Notater"
+per_page = "Notater per side"
+per_page_help = "Hvor mange notater en side viser."
+notes_unit = "notater"
+err_per_page = "Skriv inn et tall mellom 5 og 100."
+public = "Offentlige notater"
+public_help = "Alle med lenken til et notat kan lese det."
 
 # Tekster kitets felles sider henter fra produktet
 # (vole_kit::i18n::catalog::PRODUCT_KEYS).
@@ -27,3 +38,7 @@ setup_token_required = "Denne instansen krever en oppsettsnøkkel. Åpne /setup?
 
 [error]
 back = "Tilbake til notatene"
+
+[general]
+sub = "Hva installasjonen heter, hvilken tidssone den bruker og hvordan den viser notater."
+base_url_help = "Adressen folk bruker for å nå installasjonen. Brukes i lenker til notater."

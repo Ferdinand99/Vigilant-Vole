@@ -111,6 +111,15 @@ impl SettingsTab {
         icon: "shield",
         access: TabAccess::Everyone,
     };
+    /// The kit's General page (`/settings/general`, admins), for a product
+    /// that turns it on ([`KitConfig::general`](crate::config::KitConfig::general)).
+    pub const GENERAL: SettingsTab = SettingsTab {
+        id: "general",
+        href: "/settings/general",
+        label: "nav.general",
+        icon: "sliders",
+        access: TabAccess::Admins,
+    };
     /// API tokens (`/settings/tokens`).
     pub const TOKENS: SettingsTab = SettingsTab {
         id: "tokens",

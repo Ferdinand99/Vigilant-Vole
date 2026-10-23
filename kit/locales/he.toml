@@ -897,6 +897,20 @@ edit_heading = "עריכת {name}"
 [general]
 language = "שפה"
 err_site_name = "עד 80 תווים."
+site = "אתר"
+site_name_help = "מוצג בסרגל העליון, בכותרות הדפים ובהתראות."
+base_url = "כתובת ציבורית"
+region = "אזור"
+language_help = "ברירת המחדל לכולם. כל אחד יכול לבחור שפה משלו תחת אבטחה."
+save = "שמירת הגדרות"
+saved = "ההגדרות נשמרו"
+err_timezone = "יש לבחור אזור זמן מהרשימה."
+err_url = "יש להזין URL מלא, כמו https://status.example.com"
+err_url_credentials = "יש להשמיט שם משתמש וסיסמה."
+err_url_query = "יש להשמיט את החלקים של ? ו-#."
+
+[mw]
+timezone = "אזור זמן"
 
 [docs]
 title = "מדריך API"

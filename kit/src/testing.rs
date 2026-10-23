@@ -211,4 +211,6 @@ pub static CONFIG: KitConfig = KitConfig {
         home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
     },
     public_url_setting: Some("Settings → General"),
+    token_scopes: &[],
+    general: None,
 };

@@ -904,6 +904,20 @@ edit_heading = "Úprava: {name}"
 [general]
 language = "Jazyk"
 err_site_name = "Použijte nejvýše 80 znaků."
+site = "Web"
+site_name_help = "Zobrazuje se v horní liště, v nadpisech stránek a v oznámeních."
+base_url = "Veřejná URL"
+region = "Oblast"
+language_help = "Výchozí pro všechny. Každý si může zvolit vlastní v části Zabezpečení."
+save = "Uložit nastavení"
+saved = "Nastavení je uloženo"
+err_timezone = "Vyberte časové pásmo ze seznamu."
+err_url = "Zadejte celou URL, například https://status.example.com"
+err_url_credentials = "Vynechte uživatelské jméno a heslo."
+err_url_query = "Vynechte části za ? a #."
+
+[mw]
+timezone = "Časové pásmo"
 
 [docs]
 title = "Reference API"

@@ -14,7 +14,7 @@ use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
 use crate::auth::guard::{login_jar, secure_cookies};
-use crate::auth::{self, CurrentUser, rate_limit, totp};
+use crate::auth::{self, CurrentUser, totp};
 use crate::db::users as db_users;
 use crate::http::{ApiError, ApiResult, HtmlTemplate};
 use crate::i18n::Tr as _;
@@ -133,7 +133,7 @@ async fn confirm_password(
 ) -> ApiResult<Result<(), String>> {
     let key = format!("reauth:{}", user.id);
     let now = Instant::now();
-    if let Some(wait) = rate_limit::ACCOUNT.retry_after(&key, now) {
+    if let Some(wait) = core.limits.account.retry_after(&key, now) {
         let secs = wait.as_secs().max(1).to_string();
         return Ok(Err(crate::i18n::tf("sec.too_many_secs", &[("n", &secs)])));
     }
@@ -145,10 +145,10 @@ async fn confirm_password(
     if password.len() <= auth::MAX_PASSWORD_LEN
         && auth::verify_password_async(record.password_hash, password).await?
     {
-        rate_limit::ACCOUNT.clear(&key);
+        core.limits.account.clear(&key);
         Ok(Ok(()))
     } else {
-        rate_limit::ACCOUNT.record_failure(&key, now);
+        core.limits.account.record_failure(&key, now);
         Ok(Err(crate::i18n::t("sec.wrong_password").into()))
     }
 }
@@ -335,7 +335,7 @@ pub(super) async fn totp_enable(
     };
     let key = format!("2fa-setup:{id}");
     let now = Instant::now();
-    if rate_limit::ACCOUNT.retry_after(&key, now).is_some() {
+    if core.limits.account.retry_after(&key, now).is_some() {
         return Ok(back_to_security(
             jar,
             "error",
@@ -346,14 +346,14 @@ pub(super) async fn totp_enable(
     let t = totp::build(&secret, &user.username, &issuer)?;
     let now_unix = u64::try_from(crate::auth::session::now_unix()).unwrap_or(0);
     let Some(step) = totp::match_step(&t, &form.code, now_unix, None) else {
-        rate_limit::ACCOUNT.record_failure(&key, now);
+        core.limits.account.record_failure(&key, now);
         return Ok(back_to_security(
             jar,
             "error",
             crate::i18n::t("sec.code_mismatch"),
         ));
     };
-    rate_limit::ACCOUNT.clear(&key);
+    core.limits.account.clear(&key);
     let step = i64::try_from(step).map_err(ApiError::internal)?;
 
     let codes = totp::generate_recovery_codes();
@@ -395,7 +395,7 @@ pub(super) async fn totp_disable(
     }
     let key = format!("2fa:{}", user.id);
     let now = Instant::now();
-    if rate_limit::ACCOUNT.retry_after(&key, now).is_some() {
+    if core.limits.account.retry_after(&key, now).is_some() {
         return Ok(back_to_security(
             jar,
             "error",
@@ -405,14 +405,14 @@ pub(super) async fn totp_disable(
     if !super::sign_in::verify_second_factor(&core, user.id, &user.username, form.code.trim())
         .await?
     {
-        rate_limit::ACCOUNT.record_failure(&key, now);
+        core.limits.account.record_failure(&key, now);
         return Ok(back_to_security(
             jar,
             "error",
             crate::i18n::t("sec.code_invalid"),
         ));
     }
-    rate_limit::ACCOUNT.clear(&key);
+    core.limits.account.clear(&key);
     let id = user.id;
     core.with_conn(move |c| db_users::disable_totp(c, id))
         .await?;

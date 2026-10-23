@@ -4,7 +4,8 @@
 products (first of them Keen Kestrel). It holds:
 
 * authentication, with the pages every product needs: setup, sign-in with two
-  factors, users, API tokens, Security and the API reference;
+  factors, users, API tokens (with the product's own token scopes), Security,
+  the API reference and, for products that want it, General settings;
 * the i18n engine and the core translations;
 * the database plumbing, the migration runner and the core tables;
 * HTTP conventions, the API reference generator and the MCP protocol layer;
@@ -31,7 +32,8 @@ kit/
 ├── CHANGELOG.md        # vole-kit's own (release-please)
 ├── kit-build/          # package vole-kit-build: the build-script helper
 ├── locales/            # the kit's strings, one file per language
-├── migrations/         # the core set: 0001_core.sql (users, api_tokens, settings)
+├── migrations/         # the core set: 0001_core.sql (users, api_tokens, settings),
+│                       #   0002_token_scopes.sql (api_token_scopes)
 ├── templates/          # layouts, macros, the shared pages
 └── src/
 examples/kit-demo/      # a second product on the kit (tests only, not released)
@@ -89,10 +91,11 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | Module | What it is |
 | --- | --- |
 | `config` | `KitConfig`, `install`, `get` |
-| `state` | `Core` (pool, session key, HTTP client, config) and `with_conn` |
+| `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pool, `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens`, `migrate` (runner, `MigrationSet`, `CORE`) |
-| `auth` | sessions, CSRF policy, rate limiting, TOTP, API tokens, password rules, `CurrentUser`; `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
+| `db` | pool, `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`) |
+| `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
+| `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard) |
 | `page` | `PageCtx`, `UserView`, flash messages, `Ui` (`NavItem`, `SettingsTab`, `TabAccess`) |
 | `docs` | `RouteDoc`, `DocsSpec`, the OpenAPI 3.1 document, the Markdown reference; `page`: `/api-docs` and friends |
@@ -159,6 +162,8 @@ No test can forget it.
 | `locales` | `(code, text)` of the product's own strings per language, including the texts the kit's pages take from it (see "Translations") | `locales/*.toml` |
 | `ui` | `Ui` (below) | `src/product.rs` |
 | `public_url_setting` | where an admin sets the public URL, named by the MCP endpoint's refusal of a foreign browser origin; `None` says "the instance's public URL" | `Some("Settings → General")` |
+| `token_scopes` | the product's own API token scopes (see "API token scopes") | `&[]` |
+| `general` | the kit's General page with the product's fields (see "General settings"); `None` for none or the product's own | `None` (its own page) |
 
 `DocsSpec` holds the routes, the OpenAPI texts, the error example and the
 `curl` placeholders. It also holds the product's Markdown sections and, for
@@ -204,9 +209,9 @@ The parts only some products have are optional:
 * `logo`, `favicon`, `apple_touch_icon` and `manifest` (empty for none);
 * `nav`, the main navigation (top bar and phone tab bar: id, link, label and
   short label keys, icon);
-* `settings_tabs`, in order. The kit's own tabs are `SettingsTab::USERS`,
-  `SECURITY` and `TOKENS`. Each tab has an access level (`Everyone`,
-  `Editors`, `Admins`);
+* `settings_tabs`, in order. The kit's own tabs are `SettingsTab::GENERAL`
+  (with `KitConfig::general`), `USERS`, `SECURITY` and `TOKENS`. Each tab has
+  an access level (`Everyone`, `Editors`, `Admins`);
 * `home_url`, the link in the public pages' "Powered by" footer.
 
 `Core` is the kit's view of the product's state. A product implements
@@ -214,6 +219,14 @@ The parts only some products have are optional:
 middleware take `State<Core>`, and the product's routers stay
 `Router<AppState>`. A product can also use `Core` itself as its state, as
 kit-demo does.
+
+Build a `Core` with `Core::new(db, session_key, http, cfg)` once per running
+instance and clone it. It holds the instance's sign-in throttles
+(`limits: SignInLimits`, see "Sign-in throttling"), which clones share. A
+product that builds a `Core` on demand from its own state (Vigilant Vole's
+`FromRef<AppState>`) keeps one `SignInLimits` in that state
+(`AppState::sign_in_limits`) and clones it in; a fresh one per request would
+throttle nothing.
 
 ## Templates
 
@@ -250,8 +263,8 @@ What the kit shares:
   heads, cards, fields, buttons, callouts, copy field, tag, stat, skeletons,
   time, uptime, ms, live indicator);
 * the pages: `setup.html`, `login.html`, `login_2fa.html`,
-  `settings_users.html`, `settings_tokens.html`, `settings_security.html`,
-  `api_docs.html` and their partials.
+  `settings_general.html`, `settings_users.html`, `settings_tokens.html`,
+  `settings_security.html`, `api_docs.html` and their partials.
 
 Vigilant Vole keeps its monitoring macros (status pill and dot, heartbeat
 bar, incident timeline) in `templates/status_macros.html`, imported as `st`.
@@ -275,9 +288,10 @@ the product's state (anything `Core` and `Key` can be taken from):
 
 * `public_router()`: `/setup`, `/login`, `/login/2fa`, `/logout`.
 * `router()` must sit behind `require_auth`. It serves:
+  * `/settings/general` (admins), only with `KitConfig::general`;
   * `/settings/users` (create, edit, password, 2FA reset, enable, disable,
     delete);
-  * `/settings/tokens` (list, create, revoke);
+  * `/settings/tokens` (list, create with the product's scopes, revoke);
   * `/settings/security` (profile and language, password, other sessions,
     2FA set-up/cancel/enable/disable/recovery codes);
   * `/api-docs`, `/api-docs.md`, `/llms.txt` and `DocsSpec::openapi_path`.
@@ -295,6 +309,162 @@ to be Vigilant Vole's: the API reference texts, `detail.expires`,
 `general.language` and `general.err_site_name`. They moved unchanged, in all
 26 languages, keeping their names, so the joined catalogs (and the i18n
 snapshots) didn't change.
+
+## API token scopes
+
+An API token is "read only" or "read and write" (`api_tokens.scope`,
+`TokenScope`). A product can add its own permissions, such as Keen Kestrel's
+`difs:write` (upload debug files):
+
+```rust
+static KIT: KitConfig = KitConfig {
+    // …
+    token_scopes: &[ExtraScope {
+        name: "difs:write",              // stored and checked
+        label: "difs.scope",             // product catalog: the choice's title and the Access badge
+        help: "difs.scope_help",         // product catalog: what such a token may do
+        implies_read: true,              // it also reads, like a read-only token
+        paths: &[],                      // only for scopes that don't imply read
+    }],
+    // …
+};
+```
+
+* **Tokens page.** Each scope is one more choice after "Read only" and "Read
+  and write" in the new token sheet (radio `scope=<name>`). Such a token is
+  stored as a read-only token plus a row in `api_token_scopes`; its Access
+  badge shows the scope's label. Without declared scopes the page is
+  byte-identical to 0.1's.
+* **Checking.** `CurrentUser::has_scope(name)` is true for a session and a
+  read-and-write token (they have every scope; the role still applies) and
+  for a read-only token that was given the scope. It is false for a name the
+  product doesn't declare (debug builds panic, to catch typos).
+  `CurrentUser::scopes` is `Scopes::All` or `Scopes::Only(names)`.
+* **The owner's real role.** `CurrentUser::role` is still capped by the
+  token's access (read → viewer). `CurrentUser::account_role` is the owner's
+  own role, and `may_act_as(role)` compares it. Together:
+  `user.has_scope("difs:write") && user.may_act_as(Role::Editor)` lets a
+  build machine's token upload when its owner may edit, while it reads
+  everything else as a viewer and changes nothing. Products no longer need to
+  read the user again.
+* **Scopes that don't imply read** (`implies_read: false`): the token can only
+  do that one thing. `require_auth` answers 403 for such a token except under
+  the scope's `paths`; `authenticate_token`/`authenticate_headers` return
+  `None` for it, and MCP refuses it. `CurrentUser::can_read()` says whether a
+  request may read.
+* **Existing tokens keep working exactly as before**: the core migration
+  `kit/0002_token_scopes.sql` only adds `api_token_scopes`
+  `(token_id, scope)`, `ON DELETE CASCADE`, and a token without rows is what
+  it was. A token whose stored scopes the product no longer declares (all of
+  them) stops working instead of turning into a read-only token; scopes it
+  still declares count.
+* **Data access**: `db::api_tokens::{add_scope, scopes_of, fill_scopes,
+  with_scope}`; `ApiToken::scopes` (filled by `fill_scopes`).
+* `install` refuses invalid names (1–40 of `a-z 0-9 : . _ -`, not `read` or
+  `write`), duplicates, labels or help texts without English text, and
+  declared scopes without `TOKEN_SCOPES` in `MigrationSet::core`.
+
+Vigilant Vole declares no scopes and leaves `TOKEN_SCOPES` out of its core
+set (`core: &[CORE_TABLES]`), so its schema, migration list and pages are
+unchanged; the kit doesn't touch `api_token_scopes` when no scopes are
+declared.
+
+## Sign-in throttling
+
+The sign-in throttles (per account and per client IP, see
+`auth::rate_limit::{ACCOUNT_POLICY, IP_POLICY}`) are `Core::limits`, a
+`SignInLimits` per running instance, instead of process-wide statics. The
+policies and keys are the same as before, so a production server (one
+instance per process) behaves exactly as it did. Two test servers in one
+process no longer share counters, so tests that sign in in parallel don't
+get each other's 429s. `SignInLimits::with_policies` builds throttles with
+other policies (tests of the throttling itself).
+
+## General settings
+
+### The page
+
+A product turns on the kit's General page (`/settings/general`, admins
+only) with `KitConfig::general` and adds `SettingsTab::GENERAL` to its tabs:
+
+```rust
+static GENERAL: GeneralSettings = GeneralSettings {
+    sections: &[SettingsSection {
+        title: "retention.title",                 // product catalog
+        fields: &[SettingField {
+            key: "event_retention_days",          // settings key and form name
+            label: "retention.days",
+            help: "retention.days_help",          // "" for none
+            kind: FieldKind::Number { min: 1, max: 3650, unit: "retention.unit" },
+            default: "90",
+            error: "retention.err_days",          // shown for a refused value
+        }],
+    }],
+    after_save: forget_cached_settings,           // fn(&Core), runs after saving
+};
+```
+
+It shows the core settings in two sections, "Site" (site name, public URL)
+and "Region" (time zone, language), then the product's sections. Field kinds
+are `Text { max_chars, placeholder }`, `Number { min, max, unit }`, `Switch`
+(stored `1`/`0`) and `Select { options }`. Values live in `settings` under
+the field's key (`SettingField::load`/`store`); a refused value re-renders
+the page with 422 and the field's `error` text. Saving stores the site name
+(empty: back to the product's name), the public URL (normalised by
+`settings::normalize_base_url`), the time zone and the site language, then
+the product's fields, all in one transaction, refreshes the cached site
+language, runs `after_save` and confirms in the language the next page uses.
+
+The product's English catalog defines `general.sub` (the subtitle) and
+`general.base_url_help` (what the public URL is used for)
+(`i18n::catalog::GENERAL_PRODUCT_KEYS`); `install` checks them, the field
+texts, keys (`a-z 0-9 _`, unique, none of `site_name`, `base_url`,
+`timezone`, `language`) and defaults.
+
+### Without the page
+
+`vole_kit::settings::SiteSettings::load(conn)` reads the four core settings
+(`site_name`, `base_url`, `timezone`, `language`; each `None` until set).
+`vole_kit::settings::set_site_language(core, Some(lang))` sets the site
+language (and the cached default) for a product that sets it from its own
+configuration; `vole_kit::i18n::site_language(core)` reads it. Messages sent
+outside a request (notifications) use it.
+
+### Vigilant Vole keeps its own page
+
+Vigilant Vole's General page has fields the kit's doesn't (retention with the
+database size, public badges, agent confirmation), its own placeholders and a
+cache to drop. It keeps its page and sets `general: None`, so its HTML and
+behaviour are byte-identical (the golden `page_settings_general_*`
+snapshots). It takes what the two share from the kit: the tab
+(`SettingsTab::GENERAL`, identical values), `normalize_base_url` (moved
+unchanged) and the strings both pages use. Those moved to the kit's catalog
+unchanged, in all 26 languages, keeping their names: `general.site`,
+`general.site_name_help`, `general.base_url`, `general.region`,
+`general.language_help`, `general.save`, `general.saved`,
+`general.err_timezone`, `general.err_url`, `general.err_url_credentials`,
+`general.err_url_query` and `mw.timezone`. The joined catalogs (and the i18n
+snapshots) are unchanged; the kit adds no new strings.
+
+## Password rules
+
+The same rules apply wherever a password is chosen (setup, a new user, an
+admin's reset, the Security page), in `auth::password_problem`:
+
+* at least 10 characters (`MIN_PASSWORD_LEN`, counted as characters, not
+  bytes) and at most 1024 bytes (`MAX_PASSWORD_LEN`);
+* it can't contain the username (any case);
+* it needs at least 4 different characters, and it can't be one of the
+  kit's common passwords or the product's `extra_common_passwords` (any
+  case).
+
+The setup page states the first two under the password field
+(`setup.password_help`: "At least 10 characters, and it can’t contain your
+username. A few unrelated words work well."); the strength meter
+(`static/app.js`, advisory only) replaces that line while you type, and a
+refused password names the rule it broke (`users.err_password_short`,
+`err_password_long`, `err_password_username`, `err_password_weak`). Usernames
+are 1–64 characters of letters, digits, `.`, `_`, `-` and `@`.
 
 ## Alerts
 
@@ -419,12 +589,19 @@ checks that every file in `static/` belongs to exactly one of the two.
 
 ## Migrations
 
-The kit has its own migration set, `vole_kit::db::migrate::CORE`. Today that
-is `kit/migrations/0001_core.sql`, which creates `users`, `api_tokens` (with
-its index) and `settings`. The statements are copied exactly as they stand in
-Vigilant Vole's `sqlite_master`. A Vigilant Vole test checks that the core
-set builds the same objects, columns and foreign keys as Vigilant Vole's
-migrations.
+The kit has its own migration set, `vole_kit::db::migrate::CORE`:
+
+* `CORE_TABLES`, `kit/migrations/0001_core.sql`, creates `users`,
+  `api_tokens` (with its index) and `settings`. The statements are copied
+  exactly as they stand in Vigilant Vole's `sqlite_master`. A Vigilant Vole
+  test checks that its core set builds the same objects, columns and foreign
+  keys as Vigilant Vole's migrations.
+* `TOKEN_SCOPES`, `kit/migrations/0002_token_scopes.sql` (0.2), creates
+  `api_token_scopes` (see "API token scopes"). A product that declares no
+  token scopes may leave it out; Vigilant Vole does
+  (`core: &[CORE_TABLES]`), so its schema and migration list are unchanged.
+  Adding it later just runs it; leaving it out after it ran makes the
+  database look newer (refused), as for any migration.
 
 Core migrations are recorded in `schema_migrations` under `kit/…` names, so
 they can't clash with a product's file names.
@@ -557,13 +734,16 @@ Then:
    * a `MigrationSet` with `core: migrate::CORE` and `adopt_core: None`;
    * a `DocsSpec` (with only the optional parts the product has), the
      product's locales and a `Ui`;
-   * `public_url_setting`, if the product has a place to set its public URL.
+   * `public_url_setting`, if the product has a place to set its public URL;
+   * `token_scopes` and `general`, if it has its own token scopes or wants
+     the kit's General page.
 
    The English locale file defines the texts in "Texts a product must
    supply". Call `vole_kit::config::install(&KIT)` first thing in `main` (and
    in test set-up), and call `vole_kit::i18n::catalog::assert_full_coverage()`
    from a test.
-2. Build `Core` (or implement `FromRef<AppState> for Core` and `Key`), run
+2. Build `Core` with `Core::new` (or implement `FromRef<AppState> for Core`
+   and `Key`, keeping one `SignInLimits` in the state), run
    `vole_kit::db::migrate`, and merge `auth::pages::public_router()` and,
    behind `guard::require_auth`, `auth::pages::router()`.
 3. Add `csrf_guard`, `i18n::layer`, `http::error::negotiate` and
@@ -588,13 +768,73 @@ proof:
   table has only the kit's generic codes, and its OpenAPI document declares
   no `agentToken`;
 * both of its languages are complete (`assert_full_coverage`);
+* its two token scopes: `notes:add` (implies read) is offered and shown on
+  the Tokens page, and `has_scope` plus `may_act_as(Role::Editor)` decide who
+  may add notes, for every kind of token; `inbox` (no read) works under
+  `/api/v1/inbox` and is refused everywhere else, MCP included; a token whose
+  scope the demo no longer declares stops working;
+* the kit's General page with the demo's section (a number and a switch):
+  shown, refused with 422 and the field errors, saved with the core settings,
+  the hook run, the next page in the new site language, admins only;
+  `set_site_language` without the page;
+* sign-in throttling is per instance: one test server throttling doesn't
+  hold up another;
 * `/static/style.css` is served;
 * the OpenAPI and MCP versions are the demo's (0.3.7);
-* a fresh database has the core tables plus `notes`, with
-  `kit/0001_core.sql` recorded first.
+* a fresh database has the core tables (with `api_token_scopes`) plus
+  `notes`, with `kit/0001_core.sql` and `kit/0002_token_scopes.sql`
+  recorded first.
 
 The demo depends on the kit by path; the template mechanism is the one a git
 dependency uses.
+
+### Upgrading from 0.1 to 0.2 (what Keen Kestrel changes)
+
+0.2 is a breaking release (pre-1.0 minor):
+
+1. **`KitConfig` has two new fields.** Add `token_scopes` and `general`
+   (`&[]` and `None` keep 0.1's behaviour).
+2. **`Core` has a new field, `limits`.** Build it with
+   `Core::new(pool, key, http, &KIT)` instead of a struct literal (Kestrel's
+   `start_with`).
+3. **`CurrentUser` has two new fields**, `account_role` and `scopes`. Code
+   that builds one by hand (tests) sets them (`account_role: role`,
+   `scopes: Scopes::All` for a session).
+4. **Token scopes** replace Kestrel's `token_grants`:
+   * declare `ExtraScope { name: "difs:write", label, help, implies_read:
+     true, paths: &[] }` (two new product strings in 26 languages);
+   * keep `core: migrate::CORE` (it now includes `kit/0002_token_scopes.sql`,
+     which runs before Kestrel's own pending migrations) and add a migration
+     that moves the grants and drops the table:
+     ```sql
+     INSERT OR IGNORE INTO api_token_scopes (token_id, scope)
+         SELECT token_id, scope FROM token_grants;
+     DROP TABLE token_grants;
+     ```
+   * `difs::upload::may_upload` becomes, for tokens,
+     `user.has_scope("difs:write") && user.may_act_as(Role::Editor)` (a
+     read-and-write token of an editor still passes: it has every scope). The
+     re-read of the owner (`users::get_user`) and `db::difs::{token_has,
+     grant}` go away; the Debug files page makes its tokens with
+     `api_tokens::insert` + `add_scope` and lists them with `with_scope`
+     (or `fill_scopes`). The kit's API tokens page shows them with the
+     scope's label instead of "Read only", and offers the scope too.
+5. **General page** (optional): set `general: Some(&GENERAL)` with Kestrel's
+   fields (or `&GeneralSettings::CORE_ONLY`), add `SettingsTab::GENERAL`,
+   define `general.sub` and `general.base_url_help` in 26 languages and set
+   `public_url_setting: Some("Settings → General")`. `setup.tz_after` can then
+   say ". You can change this in Settings." `KK_PUBLIC_URL` stops being
+   mirrored into `base_url` on every start (which also cleared it when
+   unset); if it stays, store it only when set, so the page's value isn't
+   wiped. Without the page, `settings::set_site_language` sets the language
+   notification channels use when theirs is "" (`i18n::site_language`).
+6. **Keys now in the kit's catalog** (see "General settings"): the product's
+   catalog must not define `general.site`, `general.site_name_help`,
+   `general.base_url`, `general.region`, `general.language_help`,
+   `general.save`, `general.saved`, `general.err_timezone`,
+   `general.err_url*` or `mw.timezone` (Kestrel defines none of them).
+7. **Tests**: the sign-in throttle is per `Core`, so separate test servers no
+   longer need to wait for each other.
 
 ## Not done (proposals)
 
@@ -620,8 +860,22 @@ dependency uses.
   `https://example.com/hooks/vigilant…` stay. They don't name the product.
 * **`src/mcp_bridge.rs`** (the stdio bridge) is generic and could join
   `vole_kit::mcp`.
-* **Product settings pages.** `/settings` (the redirect) and General stay
-  Vigilant Vole's; a product adds its own tabs to `Ui::settings_tabs`.
+* **Product settings pages.** `/settings` (the redirect) stays each
+  product's; a product adds its own tabs to `Ui::settings_tabs`. The kit's
+  General page has no free-form product markup (only the declared field
+  kinds), so Vigilant Vole keeps its own.
+* **A public URL set by the environment.** The General page always lets an
+  admin edit the public URL; a product that sets it from its environment
+  (Keen Kestrel's `KK_PUBLIC_URL`) can't show it as locked.
+* **Token scopes in the API reference.** The OpenAPI document and the
+  Markdown reference don't list the product's scopes; the route's `access`
+  text has to say which scope it needs.
+* **One product scope per token from the page.** The Tokens page offers each
+  scope as its own choice; a token with several scopes is possible
+  (`add_scope`), but only from the product's code.
+* **The password rule while typing.** The strength meter replaces the setup
+  page's rule line while a password is typed; changing that is a change to
+  `app.js` (a golden static asset).
 
 ## Status
 
@@ -630,6 +884,9 @@ release components, kit-demo, and product-neutral notification forms.
 vole-kit 0.1.0 is tagged. 0.1.1 makes the shared texts and the API reference
 product-neutral (the texts a product supplies, the optional `DocsSpec`
 parts, product error codes, the coverage helper), as Keen Kestrel needed.
+0.2 closes the gaps Keen Kestrel worked around: product token scopes, the
+owner's real role on token requests, sign-in throttling per instance, the
+General settings page and site settings for products without it.
 
 ## Risks where behaviour could differ without a test noticing
 
@@ -642,7 +899,11 @@ parts, product error codes, the coverage helper), as Keen Kestrel needed.
 * Release builds embed files at compile time; debug builds read them from
   disk. Both read `static/` through the kit's path `../static/`.
 * `install` validates the catalogs. A duplicate key stops the start, where
-  before a broken file only logged an error and fell back to English.
+  before a broken file only logged an error and fell back to English. It also
+  validates the token scopes and the General page's fields.
+* Vigilant Vole's core set leaves out `kit/0002_token_scopes.sql`. If it ever
+  declares a token scope, `install` refuses to start until the migration is
+  in its set, which changes its schema snapshots.
 * Test binaries install the configuration from a `ctor` constructor (life
   before `main`, test builds only).
 * Id prefixes sent to providers (`vv-monitor-7`, the Google Chat card id, the

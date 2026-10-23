@@ -13,7 +13,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::SignedCookieJar;
 
 use super::session::{self, SessionClaims};
-use super::{AuthMethod, CurrentUser, csrf, tokens};
+use super::{AuthMethod, CurrentUser, Scopes, csrf, tokens};
 use crate::db::api_tokens;
 use crate::db::users::{self, User};
 use crate::http::{ApiError, ApiResult};
@@ -54,6 +54,8 @@ pub fn current_user_from(user: &User) -> CurrentUser {
         username: user.username.clone(),
         display_name: user.name().to_string(),
         role: user.role,
+        account_role: user.role,
+        scopes: Scopes::All,
     }
 }
 
@@ -114,6 +116,11 @@ pub async fn session_user(core: &Core, jar: &SignedCookieJar) -> ApiResult<Optio
     Ok(resolve_session(core, jar).await?.map(|(user, _)| user))
 }
 
+/// Resolves an API token to the user it acts as and how (see
+/// [`authenticate_token`]). It also returns tokens that can't read (a
+/// product scope without
+/// [`implies_read`](crate::config::ExtraScope::implies_read)); callers that
+/// serve reads check [`CurrentUser::can_read`], as `require_auth` does.
 pub async fn authenticate_token_detailed(
     core: &Core,
     token: &str,
@@ -122,10 +129,25 @@ pub async fn authenticate_token_detailed(
         return Ok(None);
     }
     let token_hash = tokens::hash(token);
-    let Some(owner) = core
-        .with_conn(move |c| api_tokens::find_valid_by_hash(c, &token_hash))
+    let declared = core.cfg.token_scopes;
+    let Some((owner, stored)) = core
+        .with_conn(move |c| {
+            let Some(owner) = api_tokens::find_valid_by_hash(c, &token_hash)? else {
+                return Ok(None);
+            };
+            // Only products with scopes have the table.
+            let stored = if declared.is_empty() {
+                Vec::new()
+            } else {
+                api_tokens::scopes_of(c, owner.token_id)?
+            };
+            Ok(Some((owner, stored)))
+        })
         .await?
     else {
+        return Ok(None);
+    };
+    let Some(scopes) = super::token_scopes(owner.scope, &stored, declared) else {
         return Ok(None);
     };
     if owner.needs_touch {
@@ -144,6 +166,8 @@ pub async fn authenticate_token_detailed(
         username: owner.username,
         display_name,
         role: owner.scope.cap(owner.role),
+        account_role: owner.role,
+        scopes,
     };
     Ok(Some((
         user,
@@ -156,12 +180,14 @@ pub async fn authenticate_token_detailed(
 
 /// Resolves a `vv_…` API token to the user it acts as, with the role capped by
 /// the token's scope (read → viewer, write → the user's role). `None` for
-/// unknown, malformed, expired or revoked tokens and disabled users. Records
-/// `last_used_at` (at most once a minute).
+/// unknown, malformed, expired or revoked tokens, disabled users and tokens
+/// that can't read ([`CurrentUser::can_read`]). Records `last_used_at` (at
+/// most once a minute).
 pub async fn authenticate_token(core: &Core, token: &str) -> ApiResult<Option<CurrentUser>> {
     Ok(authenticate_token_detailed(core, token)
         .await?
-        .map(|(user, _)| user))
+        .map(|(user, _)| user)
+        .filter(CurrentUser::can_read))
 }
 
 /// [`authenticate_token`] for `Authorization: Bearer <token>` or
@@ -214,7 +240,9 @@ fn sets_session_cookie(response: &Response) -> bool {
 /// into the request extensions.
 ///
 /// - Under `/api/`, an `Authorization` header (Bearer or Basic) authenticates
-///   with an API token, and only with it (no fallback to the cookie).
+///   with an API token, and only with it (no fallback to the cookie). A
+///   token that can't read (its product scopes leave reading out) is
+///   refused with 403 outside its scopes' paths.
 /// - Otherwise the session cookie; its idle timer slides forward hourly.
 /// - A brand new install (no users) bootstraps to `/setup`.
 pub async fn require_auth(
@@ -232,6 +260,11 @@ pub async fn require_auth(
             None => Ok(None),
         };
         return match resolved {
+            Ok(Some((user, _)))
+                if !user.can_read() && !user.scope_allows_path(request.uri().path()) =>
+            {
+                ApiError::Forbidden.into_response()
+            }
             Ok(Some((user, method))) => {
                 request.extensions_mut().insert(user);
                 request.extensions_mut().insert(method);

@@ -888,6 +888,20 @@ edit_heading = "{name} bearbeiten"
 [general]
 language = "Sprache"
 err_site_name = "Verwende höchstens 80 Zeichen."
+site = "Seite"
+site_name_help = "Wird in der oberen Leiste, in Seitentiteln und in Benachrichtigungen angezeigt."
+base_url = "Öffentliche URL"
+region = "Region"
+language_help = "Der Standard für alle. Jeder kann unter Sicherheit eine eigene Sprache wählen."
+save = "Einstellungen speichern"
+saved = "Einstellungen gespeichert"
+err_timezone = "Wähle eine Zeitzone aus der Liste."
+err_url = "Gib eine vollständige URL ein, z. B. https://status.example.com"
+err_url_credentials = "Lass Benutzername und Passwort weg."
+err_url_query = "Lass die Teile mit ? und # weg."
+
+[mw]
+timezone = "Zeitzone"
 
 [docs]
 title = "API-Referenz"

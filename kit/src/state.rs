@@ -8,10 +8,16 @@ use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
 use deadpool_sqlite::Pool;
 
+use super::auth::rate_limit::SignInLimits;
 use super::config::KitConfig;
 use super::http::ApiError;
 
 /// The parts of the application state the kit needs.
+///
+/// Build it once per running instance ([`Core::new`]) and clone it: the
+/// clones share the pool and the sign-in throttles. A product whose own
+/// state builds a `Core` on demand (`FromRef`) keeps one [`SignInLimits`]
+/// in that state and clones it in.
 #[derive(Clone)]
 pub struct Core {
     pub db: Pool,
@@ -20,6 +26,9 @@ pub struct Core {
     /// Shared outbound HTTP client.
     pub http: reqwest::Client,
     pub cfg: &'static KitConfig,
+    /// This instance's sign-in throttles (per account and per IP). Separate
+    /// instances (test servers in one process) don't share them.
+    pub limits: SignInLimits,
 }
 
 impl FromRef<Core> for Key {
@@ -29,6 +38,17 @@ impl FromRef<Core> for Key {
 }
 
 impl Core {
+    /// A new instance's state, with fresh sign-in throttles.
+    pub fn new(db: Pool, session_key: Key, http: reqwest::Client, cfg: &'static KitConfig) -> Self {
+        Self {
+            db,
+            session_key,
+            http,
+            cfg,
+            limits: SignInLimits::new(),
+        }
+    }
+
     /// Runs a closure on a pooled connection, mapping every failure to
     /// [`ApiError`]. See [`with_conn`].
     pub async fn with_conn<T, F>(&self, f: F) -> Result<T, ApiError>

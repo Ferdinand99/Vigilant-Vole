@@ -1,6 +1,7 @@
 //! Kit Demo driven in-process: setup, sign-in with two factors, the kit's
-//! pages and API reference under the demo's name and in its words, static
-//! files, versions, the schema and the translations.
+//! pages and API reference under the demo's name and in its words, the
+//! demo's token scopes, the General page, the sign-in throttle per
+//! instance, static files, versions, the schema and the translations.
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -13,7 +14,7 @@ use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
-use vole_kit::auth::{TokenScope, tokens, totp};
+use vole_kit::auth::{Role, TokenScope, tokens, totp};
 use vole_kit::db;
 use vole_kit::state::Core;
 
@@ -155,16 +156,48 @@ impl App {
 
     /// A write token of the admin, made the way the Tokens page makes one.
     async fn token(&self) -> String {
+        self.token_of(1, TokenScope::Write, &[]).await
+    }
+
+    /// A token of user `user_id` with `access` and product `scopes`.
+    async fn token_of(&self, user_id: i64, access: TokenScope, scopes: &[&'static str]) -> String {
         let token = tokens::generate();
         let (hash, prefix) = (tokens::hash(&token), tokens::display_prefix(&token));
+        let scopes = scopes.to_vec();
         self.core
             .with_conn(move |c| {
-                db::api_tokens::insert(c, 1, "test", &prefix, &hash, TokenScope::Write, None)
+                let id = db::api_tokens::insert(c, user_id, "test", &prefix, &hash, access, None)?;
+                for scope in scopes {
+                    db::api_tokens::add_scope(c, id, scope)?;
+                }
+                Ok(())
             })
             .await
             .unwrap();
         token
     }
+
+    /// A user with `role` (no password anyone knows).
+    async fn user(&self, name: &'static str, role: Role) -> i64 {
+        self.core
+            .with_conn(move |c| db::users::insert_user(c, name, "x", role))
+            .await
+            .unwrap()
+    }
+}
+
+/// The token a page shows once.
+fn shown_token(html: &str) -> String {
+    html.match_indices("kd_")
+        .map(|(at, _)| {
+            html[at + 3..]
+                .chars()
+                .take_while(char::is_ascii_alphanumeric)
+                .collect::<String>()
+        })
+        .find(|body| body.len() == 43)
+        .map(|body| format!("kd_{body}"))
+        .expect("a token on the page")
 }
 
 /// Branding checks for every page a product gets from the kit.
@@ -313,6 +346,7 @@ async fn the_kits_pages_carry_the_demos_name() {
     let mut app = App::set_up().await;
     for path in [
         "/",
+        "/settings/general",
         "/settings/security",
         "/settings/users",
         "/settings/tokens",
@@ -333,10 +367,14 @@ async fn the_kits_pages_carry_the_demos_name() {
     assert!(tokens.contains("Let scripts read or change your notes."));
     let tabs = app.get("/settings/users").await.body;
     assert!(tabs.contains("Editors can also write and delete them."));
-    for tab in ["/settings/users", "/settings/security", "/settings/tokens"] {
+    for tab in [
+        "/settings/general",
+        "/settings/users",
+        "/settings/security",
+        "/settings/tokens",
+    ] {
         assert!(tabs.contains(&format!("href=\"{tab}\"")), "{tab}");
     }
-    assert!(!tabs.contains("/settings/general"));
 
     // A token is made with the demo's prefix and shown once.
     let res = app
@@ -531,6 +569,7 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
     assert_eq!(
         tables,
         [
+            "api_token_scopes",
             "api_tokens",
             "notes",
             "schema_migrations",
@@ -538,7 +577,14 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
             "users"
         ]
     );
-    assert_eq!(applied, ["kit/0001_core.sql", "0001_notes.sql"]);
+    assert_eq!(
+        applied,
+        [
+            "kit/0001_core.sql",
+            "kit/0002_token_scopes.sql",
+            "0001_notes.sql"
+        ]
+    );
 
     // Starting again changes nothing and takes no backup.
     let report = migrate_again(&app).await;
@@ -573,4 +619,346 @@ fn notification_forms_name_the_demo() {
     assert!(shown.contains(&"slack.username".to_string()), "{shown:?}");
     assert!(shown.contains(&"zulip.topic".to_string()), "{shown:?}");
     assert!(shown.contains(&"clicksend.from".to_string()), "{shown:?}");
+}
+
+/// The demo's scopes on the kit's Tokens page: offered with their texts,
+/// stored with the token and shown as its access.
+#[tokio::test]
+async fn product_scopes_are_offered_and_shown_on_the_tokens_page() {
+    let mut app = App::set_up().await;
+    let page = app.get("/settings/tokens").await.body;
+    for (value, label, help) in [
+        (
+            "notes:add",
+            "Read and add notes",
+            "Reads everything and adds notes",
+        ),
+        ("inbox", "Inbox only", "can’t read anything"),
+    ] {
+        assert!(
+            page.contains(&format!(
+                r#"<input type="radio" name="scope" value="{value}">"#
+            )),
+            "{value}"
+        );
+        assert!(page.contains(label) && page.contains(help), "{value}");
+    }
+    let res = app
+        .post(
+            "/settings/tokens",
+            &[
+                ("name", "Importer"),
+                ("scope", "notes:add"),
+                ("expires", "30"),
+            ],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    let token = shown_token(&res.body);
+    assert_eq!(token.len(), 3 + 43, "{token}");
+    let list = app.get("/settings/tokens").await.body;
+    assert!(
+        list.contains(r#"<span class="badge">Read and add notes</span>"#),
+        "{list}"
+    );
+    let (access, scopes) = app
+        .core
+        .with_conn(|c| {
+            let t = db::api_tokens::list_all(c)?.remove(0);
+            Ok((t.scope, db::api_tokens::scopes_of(c, t.id)?))
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        (access, scopes),
+        (TokenScope::Read, vec!["notes:add".into()])
+    );
+
+    // The token reads and adds notes, and changes nothing else.
+    let notes = app.bearer("GET", "/api/v1/notes", &token, None).await;
+    assert_eq!(notes.status, StatusCode::OK);
+    let add = app
+        .bearer(
+            "POST",
+            "/api/v1/notes",
+            &token,
+            Some(json!({"body": "Milk"})),
+        )
+        .await;
+    assert_eq!(add.status, StatusCode::CREATED, "{}", add.body);
+    let inbox = app
+        .bearer(
+            "POST",
+            "/api/v1/inbox",
+            &token,
+            Some(json!({"body": "Milk"})),
+        )
+        .await;
+    assert_eq!(inbox.status, StatusCode::FORBIDDEN);
+
+    // An unknown scope is refused.
+    let res = app
+        .post(
+            "/settings/tokens",
+            &[("name", "X"), ("scope", "notes:delete"), ("expires", "30")],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    let page = app.get("/settings/tokens").await.body;
+    assert_eq!(page.matches("<tr id=\"token-").count(), 1, "{page}");
+}
+
+/// What a request may do with each kind of token: `has_scope` and the
+/// owner's own role (`may_act_as`) decide, as in Keen Kestrel's upload
+/// check.
+#[tokio::test]
+async fn scopes_and_the_owners_role_decide_together() {
+    let mut app = App::set_up().await;
+    let editor = app.user("eve", Role::Editor).await;
+    let viewer = app.user("vic", Role::Viewer).await;
+    let add = || Some(json!({"body": "Milk"}));
+    let cases: [(i64, TokenScope, &[&'static str], StatusCode); 5] = [
+        // Read and write: every scope, the role decides.
+        (editor, TokenScope::Write, &[], StatusCode::CREATED),
+        (viewer, TokenScope::Write, &[], StatusCode::FORBIDDEN),
+        // Read only: exactly as before, no scope.
+        (editor, TokenScope::Read, &[], StatusCode::FORBIDDEN),
+        // Read only with the scope: the owner's role counts, not the cap.
+        (
+            editor,
+            TokenScope::Read,
+            &["notes:add"],
+            StatusCode::CREATED,
+        ),
+        (
+            viewer,
+            TokenScope::Read,
+            &["notes:add"],
+            StatusCode::FORBIDDEN,
+        ),
+    ];
+    for (who, access, scopes, expected) in cases {
+        let token = app.token_of(who, access, scopes).await;
+        let res = app.bearer("POST", "/api/v1/notes", &token, add()).await;
+        assert_eq!(res.status, expected, "{who} {access:?} {scopes:?}");
+        let read = app.bearer("GET", "/api/v1/notes", &token, None).await;
+        assert_eq!(read.status, StatusCode::OK, "{who} {access:?} {scopes:?}");
+    }
+}
+
+/// A scope that doesn't imply read: the token works under the scope's path
+/// and is refused everywhere else, MCP included.
+#[tokio::test]
+async fn a_scope_without_read_works_only_under_its_paths() {
+    let mut app = App::set_up().await;
+    let editor = app.user("eve", Role::Editor).await;
+    let token = app.token_of(editor, TokenScope::Read, &["inbox"]).await;
+    let res = app
+        .bearer(
+            "POST",
+            "/api/v1/inbox",
+            &token,
+            Some(json!({"body": "Milk"})),
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.body);
+    for (method, path) in [
+        ("GET", "/api/v1/notes"),
+        ("POST", "/api/v1/notes"),
+        ("GET", "/api/v1/openapi.json"),
+    ] {
+        let res = app
+            .bearer(method, path, &token, Some(json!({"body": "Milk"})))
+            .await;
+        assert_eq!(res.status, StatusCode::FORBIDDEN, "{method} {path}");
+    }
+    let mcp = app
+        .bearer(
+            "POST",
+            "/mcp",
+            &token,
+            Some(json!({"jsonrpc": "2.0", "id": 1, "method": "ping"})),
+        )
+        .await;
+    assert_eq!(mcp.status, StatusCode::FORBIDDEN, "{}", mcp.body);
+    assert!(mcp.body.contains("can't read"), "{}", mcp.body);
+    // Not for reading by token outside require_auth either.
+    assert!(
+        vole_kit::auth::authenticate_token(&app.core, &token)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // A token whose only scope the product no longer declares stops
+    // working instead of becoming a read-only token.
+    let gone = app
+        .token_of(editor, TokenScope::Read, &["gone:scope"])
+        .await;
+    let res = app.bearer("GET", "/api/v1/notes", &gone, None).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+}
+
+/// The kit's General page: the core settings and the demo's own section,
+/// validated, stored, and followed by the demo's hook.
+#[tokio::test]
+async fn the_general_page_saves_core_and_product_settings() {
+    let mut app = App::set_up().await;
+    let page = app.get("/settings/general").await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert_demo_branded("/settings/general", &page.body);
+    for text in [
+        "How this instance names itself and tells time, and how it lists notes.",
+        "Used for links to notes.",
+        r#"name="site_name""#,
+        r#"name="base_url""#,
+        r#"id="f-timezone" name="timezone""#,
+        r#"name="language""#,
+        "Notes per page",
+        r#"name="notes_per_page" type="number" inputmode="numeric" min="5" max="100" step="1" autocomplete="off" value="20""#,
+        r#"name="notes_public" value="true">"#,
+        "Team notes…",
+    ] {
+        assert!(page.body.contains(text), "{text}\n{}", page.body);
+    }
+
+    let bad = app
+        .post(
+            "/settings/general",
+            &[
+                ("site_name", "Ours"),
+                ("base_url", "notes.example.com"),
+                ("timezone", "Mars/Olympus"),
+                ("language", "nb"),
+                ("notes_per_page", "500"),
+            ],
+        )
+        .await;
+    assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY);
+    for text in [
+        "Enter a full URL",
+        "Choose a time zone from the list.",
+        "Enter a number between 5 and 100.",
+        r#"value="500""#,
+    ] {
+        assert!(bad.body.contains(text), "{text}");
+    }
+    let before = kit_demo::GENERAL_SAVES.load(Ordering::SeqCst);
+    let ok = app
+        .post(
+            "/settings/general",
+            &[
+                ("site_name", "Ours"),
+                ("base_url", "https://notes.example.com/"),
+                ("timezone", "Europe/Oslo"),
+                ("language", "nb"),
+                ("notes_per_page", "50"),
+                ("notes_public", "true"),
+            ],
+        )
+        .await;
+    assert_eq!(
+        (ok.status, ok.location()),
+        (StatusCode::SEE_OTHER, "/settings/general"),
+        "{}",
+        ok.body
+    );
+    assert!(kit_demo::GENERAL_SAVES.load(Ordering::SeqCst) > before);
+    let (site, per_page, public) = app
+        .core
+        .with_conn(|c| {
+            Ok((
+                vole_kit::settings::SiteSettings::load(c)?,
+                db::settings::get(c, "notes_per_page")?,
+                db::settings::get(c, "notes_public")?,
+            ))
+        })
+        .await
+        .unwrap();
+    assert_eq!(site.site_name.as_deref(), Some("Ours"));
+    assert_eq!(site.base_url.as_deref(), Some("https://notes.example.com"));
+    assert_eq!(site.timezone.as_deref(), Some("Europe/Oslo"));
+    assert_eq!(site.language.map(|l| l.code()), Some("nb"));
+    assert_eq!(
+        (per_page.as_deref(), public.as_deref()),
+        (Some("50"), Some("1"))
+    );
+    assert_eq!(
+        app.core.base_url().await.as_deref(),
+        Some("https://notes.example.com")
+    );
+
+    // The next page is in the new site language, with the saved values.
+    let page = app.get("/settings/general").await.body;
+    assert!(page.contains("Innstillingene er lagret"), "{page}");
+    assert!(page.contains(r#"lang="nb""#));
+    assert!(page.contains(r#"value="50""#), "{page}");
+    assert!(page.contains(r#"name="notes_public" value="true" checked>"#));
+
+    // Admins only.
+    let hash = vole_kit::auth::hash_password("Editor-Pass-2026!");
+    app.core
+        .with_conn(move |c| db::users::insert_user(c, "eve", &hash, Role::Editor))
+        .await
+        .unwrap();
+    app.post("/logout", &[]).await;
+    let res = app
+        .post(
+            "/login",
+            &[("username", "eve"), ("password", "Editor-Pass-2026!")],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        app.get("/settings/general").await.status,
+        StatusCode::FORBIDDEN
+    );
+    let res = app
+        .post("/settings/general", &[("site_name", "Theirs")])
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN);
+    vole_kit::settings::set_site_language(&app.core, None)
+        .await
+        .unwrap();
+}
+
+/// A product without the page sets the site language itself; the kit's
+/// pages and messages outside a request follow it.
+#[tokio::test]
+async fn the_site_language_can_be_set_without_the_page() {
+    let app = App::set_up().await;
+    let nb = vole_kit::i18n::Lang::from_code("nb").unwrap();
+    vole_kit::settings::set_site_language(&app.core, Some(nb))
+        .await
+        .unwrap();
+    assert_eq!(vole_kit::i18n::site_language(&app.core).await, Some(nb));
+    vole_kit::settings::set_site_language(&app.core, None)
+        .await
+        .unwrap();
+    assert_eq!(vole_kit::i18n::site_language(&app.core).await, None);
+}
+
+/// Each running instance throttles sign-ins on its own: a test server that
+/// is told to wait doesn't hold up another one in the same process.
+#[tokio::test]
+async fn sign_in_throttling_is_per_instance() {
+    let mut first = App::set_up().await;
+    let mut second = App::set_up().await;
+    first.cookies.clear();
+    second.cookies.clear();
+    let mut throttled = false;
+    for _ in 0..20 {
+        let res = first
+            .post("/login", &[("username", ADMIN), ("password", "wrong")])
+            .await;
+        if res.status == StatusCode::TOO_MANY_REQUESTS {
+            throttled = true;
+            break;
+        }
+    }
+    assert!(throttled, "the first instance never throttled");
+    let res = second
+        .post("/login", &[("username", ADMIN), ("password", PASSWORD)])
+        .await;
+    assert_eq!((res.status, res.location()), (StatusCode::SEE_OTHER, "/"));
 }

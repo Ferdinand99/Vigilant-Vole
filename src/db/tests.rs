@@ -598,7 +598,7 @@ fn core_objects(conn: &Connection) -> Vec<String> {
 fn the_core_set_builds_our_users_tokens_and_settings_tables() {
     let ours = test_conn();
     let core = Connection::open_in_memory().unwrap();
-    for (_, sql) in crate::kit::db::migrate::CORE {
+    for (_, sql) in super::MIGRATIONS.core {
         core.execute_batch(sql).unwrap();
     }
     let expected = core_objects(&ours);

@@ -49,6 +49,7 @@ pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
         session_key,
         update_tx,
         http,
+        sign_in_limits: Default::default(),
         config: Arc::new(config),
     })
 }

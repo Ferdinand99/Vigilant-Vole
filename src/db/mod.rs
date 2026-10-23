@@ -60,8 +60,11 @@ fn data_fixups(conn: &mut Connection) -> Result<(), MigrationError> {
 /// How the shared runner applies this product's migrations.
 pub static MIGRATIONS: MigrationSet = MigrationSet {
     // The kit's users, api_tokens and settings tables. Ours (0001–0090)
-    // created them first; 0104 hands them over to the core set.
-    core: crate::kit::db::migrate::CORE,
+    // created them first; 0104 hands them over to the core set. We declare
+    // no product token scopes, so the kit's token scope table
+    // (`migrate::TOKEN_SCOPES`) isn't part of our set and the schema stays
+    // as it was.
+    core: &[crate::kit::db::migrate::CORE_TABLES],
     adopt_core: Some("0104_adopt_kit_core.sql"),
     migrations: migration_files,
     // SQLite ignores `PRAGMA foreign_keys` inside a transaction, so a

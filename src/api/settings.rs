@@ -38,26 +38,8 @@ async fn settings_home(user: CurrentUser) -> Redirect {
 // Time zones (also used by the setup wizard) are the kit's.
 pub use crate::kit::tz::{timezones, valid_timezone};
 
-/// Validates and normalises a public base URL: `http(s)://host[:port][/path]`,
-/// no credentials, query or fragment; trailing slash removed. Empty → `None`.
-pub fn normalize_base_url(input: &str) -> Result<Option<String>, &'static str> {
-    let input = input.trim();
-    if input.is_empty() {
-        return Ok(None);
-    }
-    let hint = crate::i18n::t("general.err_url");
-    let url = url::Url::parse(input).map_err(|_| hint)?;
-    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none_or(str::is_empty) {
-        return Err(hint);
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(crate::i18n::t("general.err_url_credentials"));
-    }
-    if url.query().is_some() || url.fragment().is_some() {
-        return Err(crate::i18n::t("general.err_url_query"));
-    }
-    Ok(Some(url.as_str().trim_end_matches('/').to_string()))
-}
+/// Validates and normalises a public base URL (the kit's).
+pub use crate::kit::settings::normalize_base_url;
 
 // ---------------------------------------------------------------------------
 // General (admin)

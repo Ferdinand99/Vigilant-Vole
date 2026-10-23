@@ -7,7 +7,7 @@
 //! attacker lock a known account out for long.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy)]
@@ -156,24 +156,54 @@ impl Policy {
 
 /// Per account (username or user id for the 2FA step): 5 free failures,
 /// then 2 s, 4 s, 8 s … capped at 15 minutes.
-pub static ACCOUNT: LazyLock<RateLimiter> = LazyLock::new(|| {
-    RateLimiter::new(Policy {
-        free_failures: 5,
-        base_delay: Duration::from_secs(2),
-        max_delay: Duration::from_secs(15 * 60),
-        forget_after: Duration::from_secs(60 * 60),
-    })
-});
+pub const ACCOUNT_POLICY: Policy = Policy {
+    free_failures: 5,
+    base_delay: Duration::from_secs(2),
+    max_delay: Duration::from_secs(15 * 60),
+    forget_after: Duration::from_secs(60 * 60),
+};
 
 /// Per client IP: more generous (offices share an address), same cap.
-pub static IP: LazyLock<RateLimiter> = LazyLock::new(|| {
-    RateLimiter::new(Policy {
-        free_failures: 20,
-        base_delay: Duration::from_secs(1),
-        max_delay: Duration::from_secs(15 * 60),
-        forget_after: Duration::from_secs(60 * 60),
-    })
-});
+pub const IP_POLICY: Policy = Policy {
+    free_failures: 20,
+    base_delay: Duration::from_secs(1),
+    max_delay: Duration::from_secs(15 * 60),
+    forget_after: Duration::from_secs(60 * 60),
+};
+
+/// The sign-in throttles of one running instance: per account
+/// ([`ACCOUNT_POLICY`]) and per client IP ([`IP_POLICY`]). It lives in
+/// [`Core`](crate::state::Core), so two servers in one process (tests) keep
+/// separate counters; clones share them.
+#[derive(Debug, Clone)]
+pub struct SignInLimits {
+    /// Keys `user:<name>` (password step), `2fa:<id>` (second factor, also
+    /// on the Security page), `reauth:<id>` and `2fa-setup:<id>`.
+    pub account: Arc<RateLimiter>,
+    /// Keys `ip:<address>`.
+    pub ip: Arc<RateLimiter>,
+}
+
+impl SignInLimits {
+    /// Fresh counters with the production policies.
+    pub fn new() -> Self {
+        Self::with_policies(ACCOUNT_POLICY, IP_POLICY)
+    }
+
+    /// Fresh counters with other policies (tests of the throttling itself).
+    pub fn with_policies(account: Policy, ip: Policy) -> Self {
+        Self {
+            account: Arc::new(RateLimiter::new(account)),
+            ip: Arc::new(RateLimiter::new(ip)),
+        }
+    }
+}
+
+impl Default for SignInLimits {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -292,6 +322,21 @@ mod tests {
             "fully released keys are dropped"
         );
         l.release("missing");
+    }
+
+    #[test]
+    fn separate_instances_keep_separate_counters() {
+        let (a, b) = (SignInLimits::new(), SignInLimits::new());
+        let t = Instant::now();
+        for _ in 0..30 {
+            a.account.record_failure("user:ada", t);
+            a.ip.record_failure("ip:127.0.0.1", t);
+        }
+        assert!(a.account.retry_after("user:ada", t).is_some());
+        assert_eq!(b.account.retry_after("user:ada", t), None);
+        assert_eq!(b.ip.retry_after("ip:127.0.0.1", t), None);
+        // Clones share them.
+        assert!(a.clone().ip.retry_after("ip:127.0.0.1", t).is_some());
     }
 
     #[test]

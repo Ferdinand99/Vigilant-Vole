@@ -60,6 +60,7 @@ async fn test_state() -> (AppState, TestDir) {
         session_key: Key::generate(),
         update_tx,
         http,
+        sign_in_limits: Default::default(),
         config: Arc::new(Config {
             data_dir: dir.clone(),
             bind_addr: "127.0.0.1:0".into(),

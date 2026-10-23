@@ -123,13 +123,8 @@ pub static KIT: KitConfig = KitConfig {
             },
         ],
         settings_tabs: &[
-            SettingsTab {
-                id: "general",
-                href: "/settings/general",
-                label: "nav.general",
-                icon: "sliders",
-                access: TabAccess::Admins,
-            },
+            // Served by our own page, under the kit's tab.
+            SettingsTab::GENERAL,
             SettingsTab {
                 id: "notifications",
                 href: "/settings/notifications",
@@ -172,6 +167,11 @@ pub static KIT: KitConfig = KitConfig {
         home_url: "https://github.com/Ferdinand99/Vigilant-Vole",
     },
     public_url_setting: Some("Settings → General"),
+    // No product token scopes: tokens are read-only or read-and-write.
+    token_scopes: &[],
+    // Our General page is our own (`api::settings`): it has fields the
+    // kit's doesn't (retention, public badges, agent confirmation).
+    general: None,
 };
 
 /// Installs [`KIT`] as the kit's configuration. Runs at start-up (`main`,
