@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.2.0...vole-kit-v0.3.0) (2026-10-23)
+
+
+### Features
+
+* **kit:** show the product and version in a footer on signed-in pages ([#38](https://github.com/Ferdinand99/Vigilant-Vole/issues/38)) ([0fa12c8](https://github.com/Ferdinand99/Vigilant-Vole/commit/0fa12c866be2d57b4fe55e1066e42be1b72df0a3))
+
 ## [0.2.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.1.1...vole-kit-v0.2.0) (2026-10-23)
 
 
