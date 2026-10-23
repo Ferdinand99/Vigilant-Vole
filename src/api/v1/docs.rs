@@ -32,6 +32,10 @@ const MONITOR_EXAMPLE: &str = r#"{
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",
@@ -95,13 +99,13 @@ status_pages:
 /// Every documented endpoint, in display order.
 pub static ROUTES: &[RouteDoc] = &[
     // -- Monitors --
-    r("GET", "/api/v1/monitors", "viewer", "Monitors", "List monitors with their current status.")
+    r("GET", "/api/v1/monitors", "viewer", "Monitors", "List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.")
         .q(&["status: up | down | pending | maintenance | paused | unknown", "type: monitor type, e.g. http", "tag: tag name", "q: search name, target and description", LIMIT_Q, CURSOR_Q])
         .res(r#"{"data": [ …monitor… ], "next_cursor": "42"}"#),
     r("POST", "/api/v1/monitors", "editor", "Monitors", "Create a monitor. Same validation as the monitor form; unknown tag names are created.")
         .req(MONITOR_CREATE)
         .res(MONITOR_EXAMPLE),
-    r("GET", "/api/v1/monitors/{id}", "viewer", "Monitors", "Get one monitor. Passwords are masked; push tokens are shown to editors only.").res(MONITOR_EXAMPLE),
+    r("GET", "/api/v1/monitors/{id}", "viewer", "Monitors", "Get one monitor with status, maintenance and the real result (raw_status, raw_status_since, raw_message) as in the list. Passwords are masked; push tokens are shown to editors only.").res(MONITOR_EXAMPLE),
     r("PUT", "/api/v1/monitors/{id}", "editor", "Monitors", "Replace a monitor: fields you leave out go back to their defaults (tags and notifications are kept unless sent).")
         .req(MONITOR_CREATE)
         .res(MONITOR_EXAMPLE),
@@ -112,10 +116,10 @@ pub static ROUTES: &[RouteDoc] = &[
     r("POST", "/api/v1/monitors/{id}/pause", "editor", "Monitors", "Pause checks and alerts.").res(MONITOR_EXAMPLE),
     r("POST", "/api/v1/monitors/{id}/resume", "editor", "Monitors", "Resume a paused monitor.").res(MONITOR_EXAMPLE),
     r("POST", "/api/v1/monitors/{id}/check", "editor", "Monitors", "Run a check right now and return its result (409 for paused, push and group monitors).")
-        .res(r#"{"status": "up", "heartbeat": {"id": 991, "status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}}"#),
-    r("GET", "/api/v1/monitors/{id}/heartbeats", "viewer", "Monitors", "Check history, newest first (local checks only).")
+        .res(r#"{"status": "up", "heartbeat": {"id": 991, "status": "up", "raw_status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}}"#),
+    r("GET", "/api/v1/monitors/{id}/heartbeats", "viewer", "Monitors", "Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance before 0.9.0.")
         .q(&["since: UTC time, e.g. 2026-10-19 00:00:00", LIMIT_Q, CURSOR_Q])
-        .res(r#"{"data": [{"id": 991, "monitor_id": 7, "agent_id": null, "status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}], "next_cursor": "940"}"#),
+        .res(r#"{"data": [{"id": 991, "monitor_id": 7, "agent_id": null, "status": "maintenance", "raw_status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}], "next_cursor": "940"}"#),
     r("GET", "/api/v1/monitors/{id}/uptime", "viewer", "Monitors", "Uptime over a window plus one entry per day (survives heartbeat retention).")
         .q(&["days: 1–365 (default 30)"])
         .res(r#"{"monitor_id": 7, "days": 30, "uptime_pct": 99.98, "uptime_24h_pct": 100.0, "daily": [{"day": "2026-10-19", "up": 1440, "down": 0, "pending": 0, "maintenance": 0, "avg_ms": 82.4, "uptime_pct": 100.0}]}"#),

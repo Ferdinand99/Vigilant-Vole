@@ -317,7 +317,11 @@ Incidents are not part of the document (post them in the UI or with `POST /api/v
 | `monitors` | list | `[]` | Monitor keys. A group covers its children. |
 | `status_pages` | list | `[]` | Slugs of status pages that show the window. |
 
-During maintenance, monitors record *maintenance* instead of up/down and send no notifications.
+During maintenance, monitors keep checking but record *maintenance* instead of up/down, and send no notifications.
+Status pages, badges and uptime show maintenance; the real result is still available through the API
+(`raw_status`, see [api.md](api.md#status-during-maintenance)). A monitor that is still down when the window ends
+starts a fresh outage then: retries, the outage's start time and the Down notification count from the end of the
+window.
 
 ## A complete example
 

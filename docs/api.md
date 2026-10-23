@@ -33,7 +33,7 @@ API tokens only work under `/api/` and for `/metrics`; they can't open the web U
 
 ## Conventions
 
-- JSON in, JSON out. Times are UTC strings `YYYY-MM-DD HH:MM:SS`.
+- JSON in, JSON out. Times are UTC strings `YYYY-MM-DD HH:MM:SS` (except `raw_status_since`, which is RFC 3339).
 - Lists: `{"data": [...], "next_cursor": "42" | null}`; pass `?limit=` (1–500, default 50) and `?cursor=`.
 - `GET`s carry a weak `ETag` and honour `If-None-Match` (→ `304`).
 - Errors: `{"error": {"code": "validation_failed", "message": "...", "fields": {"target": "..."}}}`
@@ -55,6 +55,28 @@ API tokens only work under `/api/` and for `/metrics`; they can't open the web U
 | Configuration | `GET/POST /api/v1/config` — see [config-as-code](config-as-code.md) |
 
 AI assistants can use the same tokens against the MCP endpoint `POST /mcp`: see [mcp.md](mcp.md).
+
+### Status during maintenance
+
+Monitors keep checking during a maintenance window. What they *record* is `maintenance`, and that is what status
+pages, badges, uptime and alerting use; the real result is kept next to it for the API:
+
+- Monitors (`GET /api/v1/monitors`, `GET /api/v1/monitors/{id}`) carry `status` (the recorded status, `maintenance`
+  during a window), `maintenance` (`true` while a window covers the monitor), `raw_status` (`up`, `down`, `pending`
+  or `null`: the latest real result, also during a window), `raw_status_since` (RFC 3339, when that real status
+  began; looked up over the last 100 checks) and `raw_message`. The `raw_*` fields are `null` for paused monitors.
+- Heartbeats (`GET …/{id}/heartbeats`, `POST …/{id}/check`) carry `raw_status` next to `status`. Outside
+  maintenance they are equal; during maintenance `status` is `maintenance` and `raw_status` is the real result.
+  Heartbeats recorded during maintenance before 0.9.0 have `raw_status: null`.
+- `raw_status` applies upside-down mode and agent confirmation, but not retries: one failed check during a window
+  shows as `down`.
+- Group monitors aggregate their children's real results into their own `raw_status` while they are in
+  maintenance.
+
+```json
+{"id": 7, "name": "Website", "status": "maintenance", "maintenance": true,
+ "raw_status": "up", "raw_status_since": "2026-10-19T14:01:00Z", "raw_message": "200 OK", "…": "…"}
+```
 
 Public and machine endpoints (no API token):
 

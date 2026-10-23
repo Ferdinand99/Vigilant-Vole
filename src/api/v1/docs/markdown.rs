@@ -71,7 +71,11 @@ fn conventions(out: &mut String) {
          - Lists return `{\"data\": [...], \"next_cursor\": \"42\" | null}`. Pass `?limit=` (1–500, default 50) and \
          `?cursor=<next_cursor>` for the next page; stop when `next_cursor` is `null`.\n\
          - GETs send a weak `ETag` and answer `If-None-Match` with `304 Not Modified`.\n\
-         - Times are UTC strings `YYYY-MM-DD HH:MM:SS`.\n\
+         - Times are UTC strings `YYYY-MM-DD HH:MM:SS` (except `raw_status_since`, which is RFC 3339).\n\
+         - Monitors keep checking during maintenance. `status` is what they record and status pages show \
+         (`maintenance` during a window); `raw_status` on monitors and heartbeats is the real result (`up`, `down`, \
+         `pending` or `null`), equal to `status` outside maintenance. Monitors also carry `maintenance` (a window \
+         covers them now), `raw_status_since` and `raw_message`.\n\
          - Secrets (passwords, webhook URLs, keys) are returned masked as `\"••••••\"`. Send `\"••••••\"` back (or leave \
          the field out of a PATCH) to keep the stored value.\n\
          - `POST` that creates returns `201 Created` with a `Location` header; `DELETE` returns `204 No Content`.\n\

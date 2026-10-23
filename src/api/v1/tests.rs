@@ -2460,6 +2460,128 @@ async fn auth_method_none_switches_basic_auth_off() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
+async fn real_status_during_maintenance_stays_out_of_public_views() {
+    use crate::db::models::CheckOutcome;
+    let h = harness().await;
+    let (_, m) = h
+        .json(
+            Method::POST,
+            "/api/v1/monitors",
+            &h.editor,
+            Some(json!({"name": "Svc", "monitor_type": "push"})),
+        )
+        .await;
+    let mid = m["id"].as_i64().unwrap();
+    let (status, _) = h
+        .json(
+            Method::POST,
+            "/api/v1/status-pages",
+            &h.editor,
+            Some(
+                json!({"title": "Svc status", "sections": [{"name": "All", "monitor_ids": [mid]}]}),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    h.state
+        .scheduler
+        .ingest_external(mid, CheckOutcome::up(12), None)
+        .await;
+    let (_, m) = h
+        .json(
+            Method::GET,
+            &format!("/api/v1/monitors/{mid}"),
+            &h.viewer,
+            None,
+        )
+        .await;
+    assert_eq!(
+        (&m["status"], &m["maintenance"], &m["raw_status"]),
+        (&json!("up"), &json!(false), &json!("up")),
+        "{m}"
+    );
+
+    let window =
+        json!({"title": "Update", "strategy": "manual", "active": true, "monitor_ids": [mid]});
+    let (status, w) = h
+        .json(Method::POST, "/api/v1/maintenance", &h.editor, Some(window))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{w}");
+    h.state
+        .scheduler
+        .ingest_external(mid, CheckOutcome::down("connection refused"), None)
+        .await;
+
+    // The API shows the real result next to the recorded maintenance…
+    let (_, m) = h
+        .json(
+            Method::GET,
+            &format!("/api/v1/monitors/{mid}"),
+            &h.viewer,
+            None,
+        )
+        .await;
+    assert_eq!(
+        (
+            &m["status"],
+            &m["maintenance"],
+            &m["raw_status"],
+            &m["raw_message"]
+        ),
+        (
+            &json!("maintenance"),
+            &json!(true),
+            &json!("down"),
+            &json!("connection refused")
+        ),
+        "{m}"
+    );
+    let since = m["raw_status_since"].as_str().unwrap();
+    assert!(since.len() == 20 && since.ends_with('Z'), "{since}");
+    let (_, list) = h
+        .json(
+            Method::GET,
+            "/api/v1/monitors?status=maintenance",
+            &h.viewer,
+            None,
+        )
+        .await;
+    assert_eq!(list["data"][0]["raw_status"], "down", "{list}");
+    let (_, beats) = h
+        .json(
+            Method::GET,
+            &format!("/api/v1/monitors/{mid}/heartbeats"),
+            &h.viewer,
+            None,
+        )
+        .await;
+    let pairs: Vec<_> = beats["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| (b["status"].clone(), b["raw_status"].clone()))
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            (json!("maintenance"), json!("down")),
+            (json!("up"), json!("up"))
+        ]
+    );
+
+    // …while the public status API still shows maintenance.
+    let (status, public) = h
+        .json(Method::GET, "/api/status-page/svc-status", "", None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{public}");
+    assert_eq!(
+        public["sections"][0]["monitors"][0]["status"], "maintenance",
+        "{public}"
+    );
+    assert!(!public.to_string().contains("raw_status"));
+}
+
+#[tokio::test]
 async fn bulk_edit_by_ids_and_filter() {
     let h = harness().await;
     let mut ids = Vec::new();

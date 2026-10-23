@@ -339,14 +339,15 @@ pub fn list_recent_heartbeats(
     monitor_id: i64,
     limit: i64,
 ) -> rusqlite::Result<Vec<Heartbeat>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, monitor_id, agent_id, status, response_time_ms, message, checked_at FROM (
-             SELECT id, monitor_id, agent_id, status, response_time_ms, message, checked_at
+    let mut stmt = conn.prepare(&format!(
+        "SELECT * FROM (
+             SELECT {}
              FROM heartbeats WHERE monitor_id = ?1 AND agent_id IS NULL
              ORDER BY checked_at DESC, id DESC
              LIMIT ?2
          ) ORDER BY checked_at ASC, id ASC",
-    )?;
+        super::heartbeats::COLUMNS
+    ))?;
     let rows = stmt.query_map(
         params![monitor_id, limit],
         super::heartbeats::row_to_heartbeat,

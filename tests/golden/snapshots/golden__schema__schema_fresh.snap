@@ -106,7 +106,7 @@ CREATE TABLE "heartbeats" (
     response_time_ms INTEGER,
     message TEXT,
     checked_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+, raw_status TEXT CHECK (raw_status IN ('up', 'down', 'pending')));
 
 -- table incident_updates (on incident_updates)
 CREATE TABLE incident_updates (
@@ -457,6 +457,7 @@ heartbeats
   4 response_time_ms INTEGER 0 - 0
   5 message TEXT 0 - 0
   6 checked_at TEXT 1 datetime('now') 0
+  7 raw_status TEXT 0 - 0
   index idx_heartbeats_agent unique=0 origin=c partial=0
   index idx_heartbeats_checked_at unique=0 origin=c partial=0
   index idx_heartbeats_monitor_id unique=0 origin=c partial=0

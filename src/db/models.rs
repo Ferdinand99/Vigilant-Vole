@@ -254,6 +254,10 @@ pub struct Heartbeat {
     /// `None` = checked locally by this server; `Some` = reported by a remote agent.
     pub agent_id: Option<i64>,
     pub status: HeartbeatStatus,
+    /// What the check really found (up / down / pending): equal to `status`
+    /// except during maintenance, where `status` is `maintenance`. `None`
+    /// when unknown (recorded during maintenance before this was stored).
+    pub raw_status: Option<HeartbeatStatus>,
     pub response_time_ms: Option<i64>,
     pub message: Option<String>,
     /// UTC, `YYYY-MM-DD HH:MM:SS`.

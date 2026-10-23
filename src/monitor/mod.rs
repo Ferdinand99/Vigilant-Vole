@@ -563,7 +563,7 @@ impl Scheduler {
         outcome: CheckOutcome,
         source: Source,
     ) -> Option<HeartbeatStatus> {
-        let status = self.process(monitor, outcome, source).await;
+        let status = self.process(monitor, outcome, None, source).await;
         if status.is_some()
             && let Some(parent) = monitor.parent_id
         {
@@ -576,10 +576,12 @@ impl Scheduler {
     /// Runs one observation through the state machine, persists the heartbeat
     /// and events atomically, and dispatches notifications. Returns the
     /// recorded status, or `None` if the database couldn't be read/written.
+    /// `real`: groups only, see [`Observation::real`].
     async fn process(
         &self,
         monitor: &Monitor,
         outcome: CheckOutcome,
+        real: Option<HeartbeatStatus>,
         source: Source,
     ) -> Option<HeartbeatStatus> {
         let monitor_id = monitor.id;
@@ -632,12 +634,14 @@ impl Scheduler {
             message: outcome.message.clone(),
             maintenance: in_maintenance,
             agents: votes,
+            real,
         };
         let decision = alerting::evaluate(prev, &obs, &cfg, now);
 
         let write = Persist {
             monitor_id,
             status: decision.status,
+            raw_status: decision.raw_status,
             message: decision.message.clone(),
             response_time_ms: outcome.response_time_ms,
             actions: decision
@@ -754,7 +758,13 @@ impl Scheduler {
                 return None;
             }
         };
-        let (status, message) = alerting::aggregate_group(&children)?;
+        // What status pages show aggregates what the children recorded; the
+        // real status aggregates their real results, so neither leaks into
+        // the other.
+        let recorded: Vec<_> = children.iter().map(|(n, s, _)| (n.clone(), *s)).collect();
+        let real: Vec<_> = children.iter().map(|(n, _, r)| (n.clone(), *r)).collect();
+        let (status, message) = alerting::aggregate_group(&recorded)?;
+        let real = alerting::aggregate_group(&real).map(|(s, _)| s);
 
         let existing = lock(&self.inner.runtimes).get(&group_id).cloned();
         if let Some(runtime) = existing {
@@ -764,7 +774,10 @@ impl Scheduler {
                     alerting_elapsed(at, OffsetDateTime::now_utc())
                         < Duration::from_secs(group.interval_seconds.max(1).unsigned_abs())
                 });
-                let same = matches!(s.last_status, Some(last) if last == status || last == HeartbeatStatus::Maintenance);
+                let same = matches!(s.last_status, Some(last) if last == status || last == HeartbeatStatus::Maintenance)
+                    && (s.last_status != Some(HeartbeatStatus::Maintenance)
+                        || s.last_raw_status
+                            == real.filter(|r| *r != HeartbeatStatus::Maintenance));
                 if recent && same {
                     return None;
                 }
@@ -776,7 +789,7 @@ impl Scheduler {
             message: Some(message),
             expiry: None,
         };
-        self.process(&group, outcome, Source::Group)
+        self.process(&group, outcome, real, Source::Group)
             .await
             .and(group.parent_id)
     }
@@ -954,6 +967,7 @@ fn start_jitter(id: i64, interval_seconds: i64) -> Duration {
 struct Persist {
     monitor_id: i64,
     status: HeartbeatStatus,
+    raw_status: Option<HeartbeatStatus>,
     message: Option<String>,
     response_time_ms: Option<i64>,
     actions: Vec<Action>,
@@ -965,11 +979,11 @@ struct Persist {
 
 fn persist(conn: &mut Connection, p: &Persist) -> rusqlite::Result<Vec<Notice>> {
     let tx = conn.transaction()?;
-    db_heartbeats::insert(
+    db_heartbeats::insert_with_raw(
         &tx,
         p.monitor_id,
-        None,
         p.status,
+        p.raw_status,
         p.response_time_ms,
         p.message.as_deref(),
     )?;
