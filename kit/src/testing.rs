@@ -105,6 +105,7 @@ pub static CONFIG: KitConfig = KitConfig {
     token_prefix: "vv_",
     other_token_prefixes: &["vva_"],
     version: env!("CARGO_PKG_VERSION"),
+    releases_url: Some("https://github.com/Ferdinand99/Vigilant-Vole/releases/tag/v{version}"),
     user_agent: "VigilantVole/test",
     backup_prefix: "vigilant-vole-before-",
     flash_cookie: "vv_flash",

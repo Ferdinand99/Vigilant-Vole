@@ -81,6 +81,12 @@
   <main id="main" class="main container {% block main_class %}{% endblock %}" tabindex="-1">
     {% block content %}{% endblock %}
   </main>
+  {%- if ctx.user.is_some() %}
+
+  <footer class="app-foot container">
+    {{ product_name() }} {% if let Some(url) = release_notes_url() %}<a href="{{ url }}">{{ product_version() }}</a>{% else %}{{ product_version() }}{% endif %}
+  </footer>
+  {%- endif %}
 
   <nav class="tabbar" aria-label="{{ tr("nav.main") }}" hx-boost="true" hx-swap="innerHTML transition:true">
     {%- for item in kit_ui().nav %}

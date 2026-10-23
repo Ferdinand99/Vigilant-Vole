@@ -241,6 +241,7 @@ pub static KIT: KitConfig = KitConfig {
     token_prefix: "kd_",
     other_token_prefixes: &[],
     version: VERSION,
+    releases_url: None,
     user_agent: concat!("KitDemo/", env!("CARGO_PKG_VERSION")),
     backup_prefix: "kit-demo-before-",
     flash_cookie: "kd_flash",

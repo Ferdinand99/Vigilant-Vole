@@ -321,6 +321,15 @@ pub trait Tr {
     fn product_name(&self) -> &'static str {
         crate::config::get().product
     }
+    /// The product's version ("0.9.0"), for the signed-in footer.
+    fn product_version(&self) -> &'static str {
+        crate::config::get().version
+    }
+    /// The running version's release notes, if the product has them
+    /// ([`KitConfig::releases_url`](crate::config::KitConfig::releases_url)).
+    fn release_notes_url(&self) -> Option<String> {
+        crate::config::get().release_notes_url()
+    }
     /// `window.VV_I18N` payload (embed with `|safe`).
     fn i18n_js(&self) -> String {
         js_bundle(current())

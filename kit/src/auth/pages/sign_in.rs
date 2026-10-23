@@ -590,3 +590,108 @@ pub(super) async fn logout(jar: SignedCookieJar) -> impl IntoResponse {
         ));
     (jar, Redirect::to("/login"))
 }
+
+#[cfg(test)]
+mod tests {
+    use askama::Template;
+
+    use super::{LoginTemplate, SetupTemplate};
+    use crate::auth::Role;
+    use crate::i18n::Tr as _;
+    use crate::page::{PageCtx, UserView};
+
+    #[derive(Template)]
+    #[template(
+        source = "{% extends \"layout.html\" %}{% block content %}page{% endblock %}",
+        ext = "html"
+    )]
+    struct AppPage {
+        ctx: PageCtx,
+    }
+
+    #[derive(Template)]
+    #[template(
+        source = "{% extends \"public_layout.html\" %}{% block content %}status{% endblock %}",
+        ext = "html"
+    )]
+    struct PublicPage {
+        page_title: String,
+        theme: String,
+        custom_css: Option<String>,
+    }
+
+    fn ctx(user: Option<UserView>) -> PageCtx {
+        PageCtx {
+            title: "Dashboard".into(),
+            nav: "",
+            subnav: "",
+            user,
+            site_name: "Vigilant Vole".into(),
+            flash: None,
+            lang: "en".into(),
+            dir: "ltr",
+        }
+    }
+
+    /// The product and version show on signed-in pages only: they would
+    /// tell an attacker which version to aim at.
+    #[test]
+    fn the_version_footer_is_for_signed_in_pages_only() {
+        let cfg = crate::config::get();
+        let version = cfg.version;
+        let user = UserView {
+            id: 1,
+            username: "admin".into(),
+            display_name: "admin".into(),
+            role: Role::Admin,
+            initials: "A".into(),
+        };
+        let signed_in = AppPage {
+            ctx: ctx(Some(user)),
+        }
+        .render()
+        .unwrap();
+        let notes = cfg.release_notes_url().expect("test config has releases");
+        assert!(
+            notes.ends_with(&format!("/releases/tag/v{version}")),
+            "{notes}"
+        );
+        let footer = format!(
+            "<footer class=\"app-foot container\">\n    {} <a href=\"{notes}\">{version}</a>\n  </footer>",
+            cfg.product
+        );
+        assert!(
+            signed_in.replace("\r\n", "\n").contains(&footer),
+            "{signed_in}"
+        );
+
+        let anonymous = AppPage { ctx: ctx(None) }.render().unwrap();
+        let public = PublicPage {
+            page_title: "Status".into(),
+            theme: "auto".into(),
+            custom_css: None,
+        }
+        .render()
+        .unwrap();
+        let login = LoginTemplate {
+            title: "Log in".into(),
+            error: None,
+            notice: None,
+            username: String::new(),
+            next: "/".into(),
+        }
+        .render()
+        .unwrap();
+        let setup = SetupTemplate::blank().render().unwrap();
+        for (page, html) in [
+            ("layout without a user", anonymous),
+            ("public page", public),
+            ("sign-in", login),
+            ("setup", setup),
+        ] {
+            assert!(!html.contains("app-foot"), "{page}: {html}");
+            assert!(!html.contains(version), "{page} shows the version: {html}");
+            assert!(!html.contains("/releases/"), "{page}: {html}");
+        }
+    }
+}

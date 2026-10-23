@@ -1510,6 +1510,10 @@ status_pages:
 
   </main>
 
+  <footer class="app-foot container">
+    Vigilant Vole <a href="https://github.com/Ferdinand99/Vigilant-Vole/releases/tag/v<VERSION>"><VERSION></a>
+  </footer>
+
   <nav class="tabbar" aria-label="Main" hx-boost="true" hx-swap="innerHTML transition:true">
     <a class="tabbar-item" href="/"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#pulse"></use></svg><span>Dashboard</span></a>
     <a class="tabbar-item" href="/status-pages"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#globe"></use></svg><span>Status</span></a>

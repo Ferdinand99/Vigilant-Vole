@@ -87,6 +87,10 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
   Maintenance / Settings, account menu with Security, API tokens, API docs,
   Appearance Auto/Light/Dark, Log out), a bottom tab bar on phones, the toaster
   (renders `ctx.flash`), the request progress bar and a skip link.
+- Signed-in pages end with `.app-foot`, the product and version in small
+  muted text (the version links to its release notes when
+  `KitConfig::releases_url` is set). It takes over `.main`'s bottom spacing
+  and clears the phone tab bar. Never on public or sign-in pages.
 - `<main class="main container">` is a flex column with a 32px gap (24px on
   phones): just stack your top-level blocks inside `{% block content %}`; no wrapper needed.
 - The brand logo, icons, top bar / tab bar items and settings tabs come from
