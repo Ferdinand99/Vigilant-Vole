@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.1.1...vole-kit-v0.2.0) (2026-10-23)
+
+
+### Features
+
+* **kit:** building blocks for second products ([#33](https://github.com/Ferdinand99/Vigilant-Vole/issues/33)) ([9abe758](https://github.com/Ferdinand99/Vigilant-Vole/commit/9abe758779b295d312c7454c0e7d9ab4b27a1cd3))
+* **kit:** product token scopes, real token roles, per-instance sign-in limits and a General settings page ([#30](https://github.com/Ferdinand99/Vigilant-Vole/issues/30)) ([7688b59](https://github.com/Ferdinand99/Vigilant-Vole/commit/7688b597dee70460de023f11398afcc2254f2465))
+
 ## [0.1.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.1.0...vole-kit-v0.1.1) (2026-10-22)
 
 
