@@ -18,4 +18,5 @@ expression: "applied_migrations(&conn).join(\"\\n\")"
 0102_status_page_subscribers.sql
 0103_subscriber_tokens.sql
 0104_adopt_kit_core.sql
+0105_heartbeat_raw_status.sql
 kit/0001_core.sql

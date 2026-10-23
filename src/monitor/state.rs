@@ -23,6 +23,9 @@ pub struct MonitorState {
     pub last_status: Option<HeartbeatStatus>,
     /// When `last_status` started (first heartbeat of the current run of that status).
     pub status_since: Option<OffsetDateTime>,
+    /// Real result recorded with the most recent heartbeat (differs from
+    /// `last_status` only during maintenance; `None` = unknown).
+    pub last_raw_status: Option<HeartbeatStatus>,
     pub last_recorded_at: Option<OffsetDateTime>,
     /// Actual settled state: `Up`, `Down` (an outage event is open) or
     /// `Maintenance`. `None` = unknown. Drives `monitor_events`.
@@ -290,27 +293,29 @@ pub fn agent_votes(
     Ok(votes)
 }
 
-/// Active children of a group with their latest local status (`None` = no
-/// heartbeat yet), ordered by name.
-pub fn group_children(
-    conn: &Connection,
-    group_id: i64,
-) -> rusqlite::Result<Vec<(String, Option<HeartbeatStatus>)>> {
+/// A group child: name, latest recorded status, latest real status.
+pub type GroupChild = (String, Option<HeartbeatStatus>, Option<HeartbeatStatus>);
+
+/// Active children of a group with their latest local status and real
+/// status (`None` = no heartbeat yet / real result unknown), ordered by name.
+pub fn group_children(conn: &Connection, group_id: i64) -> rusqlite::Result<Vec<GroupChild>> {
     let mut stmt = conn.prepare(
-        "SELECT m.name,
-                (SELECT h.status FROM heartbeats h
-                 WHERE h.monitor_id = m.id AND h.agent_id IS NULL
-                 ORDER BY h.checked_at DESC, h.id DESC LIMIT 1)
+        "SELECT m.name, h.status, COALESCE(h.raw_status, NULLIF(h.status, 'maintenance'))
          FROM monitors m
+         LEFT JOIN heartbeats h ON h.id = (
+             SELECT id FROM heartbeats
+             WHERE monitor_id = m.id AND agent_id IS NULL
+             ORDER BY checked_at DESC, id DESC LIMIT 1
+         )
          WHERE m.parent_id = ?1 AND m.active = 1 AND m.id <> ?1
          ORDER BY m.sort_order, m.name",
     )?;
     let rows = stmt.query_map(params![group_id], |r| {
-        Ok((
-            r.get::<_, String>(0)?,
-            r.get::<_, Option<String>>(1)?
-                .and_then(|s| HeartbeatStatus::parse(&s)),
-        ))
+        let parse = |i: usize| -> rusqlite::Result<Option<HeartbeatStatus>> {
+            Ok(r.get::<_, Option<String>>(i)?
+                .and_then(|s| HeartbeatStatus::parse(&s)))
+        };
+        Ok((r.get::<_, String>(0)?, parse(1)?, parse(2)?))
     })?;
     rows.collect()
 }
@@ -539,12 +544,20 @@ mod tests {
         beat(&conn, a.id, "up", "2026-03-10 10:00:00");
         beat(&conn, a.id, "down", "2026-03-10 10:01:00");
         let children = group_children(&conn, g.id).unwrap();
+        use HeartbeatStatus::{Down, Maintenance};
         assert_eq!(
             children,
             vec![
-                ("a".to_string(), Some(HeartbeatStatus::Down)),
-                ("b".to_string(), None)
+                ("a".to_string(), Some(Down), Some(Down)),
+                ("b".to_string(), None, None)
             ]
+        );
+        // In maintenance: the recorded and the real status are both listed.
+        crate::db::heartbeats::insert_with_raw(&conn, a.id, Maintenance, Some(Down), None, None)
+            .unwrap();
+        assert_eq!(
+            group_children(&conn, g.id).unwrap()[0],
+            ("a".to_string(), Some(Maintenance), Some(Down))
         );
     }
 

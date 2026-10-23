@@ -169,7 +169,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="get--api-v1-monitors">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors</code></span>
-          <span class="list-sub">List monitors with their current status.</span>
+          <span class="list-sub">List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.</span>
         </span>
         <span class="list-trail"><span class="badge status-up">viewer</span></span>
         <div class="list-full">
@@ -232,6 +232,10 @@ content-type: text/html; charset=utf-8
   &#34;expiry_notify&#34;: true,
   &#34;expiry_days&#34;: 14,
   &#34;status&#34;: &#34;up&#34;,
+  &#34;maintenance&#34;: false,
+  &#34;raw_status&#34;: &#34;up&#34;,
+  &#34;raw_status_since&#34;: &#34;<DATETIME>&#34;,
+  &#34;raw_message&#34;: &#34;200 OK&#34;,
   &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
   &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
   &#34;created_at&#34;: &#34;<DATETIME>&#34;,
@@ -244,7 +248,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="get--api-v1-monitors-id">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors/{id}</code></span>
-          <span class="list-sub">Get one monitor. Passwords are masked; push tokens are shown to editors only.</span>
+          <span class="list-sub">Get one monitor with status, maintenance and the real result (raw_status, raw_status_since, raw_message) as in the list. Passwords are masked; push tokens are shown to editors only.</span>
         </span>
         <span class="list-trail"><span class="badge status-up">viewer</span></span>
         <div class="list-full">
@@ -272,6 +276,10 @@ content-type: text/html; charset=utf-8
   &#34;expiry_notify&#34;: true,
   &#34;expiry_days&#34;: 14,
   &#34;status&#34;: &#34;up&#34;,
+  &#34;maintenance&#34;: false,
+  &#34;raw_status&#34;: &#34;up&#34;,
+  &#34;raw_status_since&#34;: &#34;<DATETIME>&#34;,
+  &#34;raw_message&#34;: &#34;200 OK&#34;,
   &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
   &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
   &#34;created_at&#34;: &#34;<DATETIME>&#34;,
@@ -323,6 +331,10 @@ content-type: text/html; charset=utf-8
   &#34;expiry_notify&#34;: true,
   &#34;expiry_days&#34;: 14,
   &#34;status&#34;: &#34;up&#34;,
+  &#34;maintenance&#34;: false,
+  &#34;raw_status&#34;: &#34;up&#34;,
+  &#34;raw_status_since&#34;: &#34;<DATETIME>&#34;,
+  &#34;raw_message&#34;: &#34;200 OK&#34;,
   &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
   &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
   &#34;created_at&#34;: &#34;<DATETIME>&#34;,
@@ -365,6 +377,10 @@ content-type: text/html; charset=utf-8
   &#34;expiry_notify&#34;: true,
   &#34;expiry_days&#34;: 14,
   &#34;status&#34;: &#34;up&#34;,
+  &#34;maintenance&#34;: false,
+  &#34;raw_status&#34;: &#34;up&#34;,
+  &#34;raw_status_since&#34;: &#34;<DATETIME>&#34;,
+  &#34;raw_message&#34;: &#34;200 OK&#34;,
   &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
   &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
   &#34;created_at&#34;: &#34;<DATETIME>&#34;,
@@ -412,6 +428,10 @@ content-type: text/html; charset=utf-8
   &#34;expiry_notify&#34;: true,
   &#34;expiry_days&#34;: 14,
   &#34;status&#34;: &#34;up&#34;,
+  &#34;maintenance&#34;: false,
+  &#34;raw_status&#34;: &#34;up&#34;,
+  &#34;raw_status_since&#34;: &#34;<DATETIME>&#34;,
+  &#34;raw_message&#34;: &#34;200 OK&#34;,
   &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
   &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
   &#34;created_at&#34;: &#34;<DATETIME>&#34;,
@@ -452,6 +472,10 @@ content-type: text/html; charset=utf-8
   &#34;expiry_notify&#34;: true,
   &#34;expiry_days&#34;: 14,
   &#34;status&#34;: &#34;up&#34;,
+  &#34;maintenance&#34;: false,
+  &#34;raw_status&#34;: &#34;up&#34;,
+  &#34;raw_status_since&#34;: &#34;<DATETIME>&#34;,
+  &#34;raw_message&#34;: &#34;200 OK&#34;,
   &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
   &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
   &#34;created_at&#34;: &#34;<DATETIME>&#34;,
@@ -472,7 +496,7 @@ content-type: text/html; charset=utf-8
             <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
             <div class="disclosure-body stack-sm">
               <p class="t-footnote muted">الاستجابة</p>
-              <pre class="code"><code>{&#34;status&#34;: &#34;up&#34;, &#34;heartbeat&#34;: {&#34;id&#34;: 991, &#34;status&#34;: &#34;up&#34;, &#34;response_time_ms&#34;: 84, &#34;message&#34;: &#34;200 OK&#34;, &#34;checked_at&#34;: &#34;<DATETIME>&#34;}}</code></pre>
+              <pre class="code"><code>{&#34;status&#34;: &#34;up&#34;, &#34;heartbeat&#34;: {&#34;id&#34;: 991, &#34;status&#34;: &#34;up&#34;, &#34;raw_status&#34;: &#34;up&#34;, &#34;response_time_ms&#34;: 84, &#34;message&#34;: &#34;200 OK&#34;, &#34;checked_at&#34;: &#34;<DATETIME>&#34;}}</code></pre>
             </div>
           </details>
         </div>
@@ -480,7 +504,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="get--api-v1-monitors-id-heartbeats">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors/{id}/heartbeats</code></span>
-          <span class="list-sub">Check history, newest first (local checks only).</span>
+          <span class="list-sub">Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance before 0.9.0.</span>
         </span>
         <span class="list-trail"><span class="badge status-up">viewer</span></span>
         <div class="list-full">
@@ -493,7 +517,7 @@ content-type: text/html; charset=utf-8
                 <div class="dl-row"><dt><code>cursor</code></dt><dd>next_cursor from the previous page</dd></div>
               </dl>
               <p class="t-footnote muted">الاستجابة</p>
-              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 991, &#34;monitor_id&#34;: 7, &#34;agent_id&#34;: null, &#34;status&#34;: &#34;up&#34;, &#34;response_time_ms&#34;: 84, &#34;message&#34;: &#34;200 OK&#34;, &#34;checked_at&#34;: &#34;<DATETIME>&#34;}], &#34;next_cursor&#34;: &#34;940&#34;}</code></pre>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 991, &#34;monitor_id&#34;: 7, &#34;agent_id&#34;: null, &#34;status&#34;: &#34;maintenance&#34;, &#34;raw_status&#34;: &#34;up&#34;, &#34;response_time_ms&#34;: 84, &#34;message&#34;: &#34;200 OK&#34;, &#34;checked_at&#34;: &#34;<DATETIME>&#34;}], &#34;next_cursor&#34;: &#34;940&#34;}</code></pre>
             </div>
           </details>
         </div>
@@ -569,6 +593,10 @@ content-type: text/html; charset=utf-8
   &#34;expiry_notify&#34;: true,
   &#34;expiry_days&#34;: 14,
   &#34;status&#34;: &#34;up&#34;,
+  &#34;maintenance&#34;: false,
+  &#34;raw_status&#34;: &#34;up&#34;,
+  &#34;raw_status_since&#34;: &#34;<DATETIME>&#34;,
+  &#34;raw_message&#34;: &#34;200 OK&#34;,
   &#34;tags&#34;: [{&#34;id&#34;: 2, &#34;name&#34;: &#34;production&#34;, &#34;color&#34;: &#34;green&#34;, &#34;value&#34;: &#34;&#34;}],
   &#34;notifications&#34;: [{&#34;channel_id&#34;: 1, &#34;escalation&#34;: false}],
   &#34;created_at&#34;: &#34;<DATETIME>&#34;,

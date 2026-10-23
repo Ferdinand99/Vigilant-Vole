@@ -611,9 +611,10 @@ fn a_fresh_database_adopts_the_core_set_after_our_migrations() {
     let mut conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(CONNECTION_PRAGMAS).unwrap();
     let ran = apply_migrations(&mut conn).unwrap();
+    assert!(ran.contains(&"0104_adopt_kit_core.sql".to_string()));
     assert_eq!(
         ran.last().map(String::as_str),
-        Some("0104_adopt_kit_core.sql")
+        Some("0105_heartbeat_raw_status.sql")
     );
     assert!(!ran.iter().any(|n| n.starts_with("kit/")), "{ran:?}");
     assert!(applied(&conn).contains(&"kit/0001_core.sql".to_string()));
@@ -657,14 +658,14 @@ fn the_core_row_does_not_hide_a_newer_migration() {
     assert_eq!(names.last().map(String::as_str), Some("kit/0001_core.sql"));
     assert!(apply_migrations(&mut conn).unwrap().is_empty());
     conn.execute(
-        "INSERT INTO schema_migrations (name) VALUES ('0105_from_the_future.sql')",
+        "INSERT INTO schema_migrations (name) VALUES ('0110_from_the_future.sql')",
         [],
     )
     .unwrap();
     let err = apply_migrations(&mut conn).unwrap_err();
     assert!(
         matches!(&err, super::MigrationError::NewerSchema { schema, known, .. }
-            if schema == "0105_from_the_future" && known == "0104_adopt_kit_core"),
+            if schema == "0110_from_the_future" && known == "0105_heartbeat_raw_status"),
         "{err:?}"
     );
 }

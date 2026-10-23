@@ -37,7 +37,8 @@ curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/me"
 - JSON in and out; send bodies with `Content-Type: application/json`. `/api/v1/config` also speaks YAML.
 - Lists return `{"data": [...], "next_cursor": "42" | null}`. Pass `?limit=` (1–500, default 50) and `?cursor=<next_cursor>` for the next page; stop when `next_cursor` is `null`.
 - GETs send a weak `ETag` and answer `If-None-Match` with `304 Not Modified`.
-- Times are UTC strings `YYYY-MM-DD HH:MM:SS`.
+- Times are UTC strings `YYYY-MM-DD HH:MM:SS` (except `raw_status_since`, which is RFC 3339).
+- Monitors keep checking during maintenance. `status` is what they record and status pages show (`maintenance` during a window); `raw_status` on monitors and heartbeats is the real result (`up`, `down`, `pending` or `null`), equal to `status` outside maintenance. Monitors also carry `maintenance` (a window covers them now), `raw_status_since` and `raw_message`.
 - Secrets (passwords, webhook URLs, keys) are returned masked as `"••••••"`. Send `"••••••"` back (or leave the field out of a PATCH) to keep the stored value.
 - `POST` that creates returns `201 Created` with a `Location` header; `DELETE` returns `204 No Content`.
 - `PUT` replaces an object (fields left out go back to defaults); `PATCH` changes only the fields you send.
@@ -79,7 +80,7 @@ Every error uses one envelope (`fields` only on validation errors):
 
 ### GET /api/v1/monitors
 
-List monitors with their current status.
+List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.
 
 - Access: viewer (any API token, read scope is enough)
 - Success: `200 OK`
@@ -149,6 +150,10 @@ Example response:
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",
@@ -158,7 +163,7 @@ Example response:
 
 ### GET /api/v1/monitors/{id}
 
-Get one monitor. Passwords are masked; push tokens are shown to editors only.
+Get one monitor with status, maintenance and the real result (raw_status, raw_status_since, raw_message) as in the list. Passwords are masked; push tokens are shown to editors only.
 
 - Access: viewer (any API token, read scope is enough)
 - Success: `200 OK`
@@ -193,6 +198,10 @@ Example response:
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",
@@ -247,6 +256,10 @@ Example response:
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",
@@ -292,6 +305,10 @@ Example response:
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",
@@ -350,6 +367,10 @@ Example response:
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",
@@ -394,6 +415,10 @@ Example response:
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",
@@ -418,12 +443,12 @@ curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/che
 Example response:
 
 ```json
-{"status": "up", "heartbeat": {"id": 991, "status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}}
+{"status": "up", "heartbeat": {"id": 991, "status": "up", "raw_status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}}
 ```
 
 ### GET /api/v1/monitors/{id}/heartbeats
 
-Check history, newest first (local checks only).
+Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance before 0.9.0.
 
 - Access: viewer (any API token, read scope is enough)
 - Success: `200 OK`
@@ -442,7 +467,7 @@ curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/monitors/7/heartbeats"
 Example response:
 
 ```json
-{"data": [{"id": 991, "monitor_id": 7, "agent_id": null, "status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}], "next_cursor": "940"}
+{"data": [{"id": 991, "monitor_id": 7, "agent_id": null, "status": "maintenance", "raw_status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}], "next_cursor": "940"}
 ```
 
 ### GET /api/v1/monitors/{id}/uptime
@@ -527,6 +552,10 @@ Example response:
   "expiry_notify": true,
   "expiry_days": 14,
   "status": "up",
+  "maintenance": false,
+  "raw_status": "up",
+  "raw_status_since": "2026-10-19T14:01:00Z",
+  "raw_message": "200 OK",
   "tags": [{"id": 2, "name": "production", "color": "green", "value": ""}],
   "notifications": [{"channel_id": 1, "escalation": false}],
   "created_at": "2026-10-19 08:00:00",

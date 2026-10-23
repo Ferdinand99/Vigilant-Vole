@@ -2,7 +2,7 @@
 //! ([`crate::api::monitors::form::validate`]); this module only maps JSON in
 //! and out.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use axum::Router;
 use axum::http::HeaderMap;
@@ -62,14 +62,42 @@ fn status_label(m: &Monitor, status: Option<HeartbeatStatus>) -> &'static str {
 /// and protected like it when a request moves the monitor elsewhere.
 const AUTH_SECRETS: &[&str] = &["secret", "oauth_client_secret", "tls_client_key"];
 
+/// What a monitor shows besides its settings: the latest recorded status,
+/// whether a maintenance window covers it now, and its real result.
+pub struct Live {
+    pub status: Option<HeartbeatStatus>,
+    pub maintenance: bool,
+    pub raw: Option<db_heartbeats::RawRun>,
+}
+
+impl Live {
+    fn load(conn: &Connection, id: i64, covered: &HashSet<i64>) -> rusqlite::Result<Self> {
+        let raw = db_heartbeats::raw_run(conn, id)?;
+        Ok(Self {
+            status: db_heartbeats::latest_local(conn, id)?.map(|h| h.status),
+            maintenance: covered.contains(&id),
+            raw,
+        })
+    }
+}
+
+/// `2026-10-20 14:05:00` (UTC) → `2026-10-20T14:05:00Z`.
+fn rfc3339(db: &str) -> Option<String> {
+    crate::maintenance::parse_db_ts(db).map(|t| t.strftime("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
 /// A monitor as JSON. Secrets are masked; push tokens only for editors.
+/// `raw_status` / `raw_status_since` / `raw_message` are the real check
+/// result, which during maintenance differs from `status` (`maintenance`);
+/// `null` for paused monitors.
 pub fn monitor_json(
     m: &Monitor,
-    status: Option<HeartbeatStatus>,
+    live: &Live,
     tags: &[MonitorTag],
     links: &[(i64, bool)],
     can_edit: bool,
 ) -> Value {
+    let status = live.status;
     let mut v = serde_json::to_value(m).unwrap_or_else(|_| json!({}));
     if let Some(obj) = v.as_object_mut() {
         if m.basic_auth_pass.is_some() {
@@ -96,6 +124,20 @@ pub fn monitor_json(
             );
         }
         obj.insert("status".into(), json!(status_label(m, status)));
+        obj.insert("maintenance".into(), json!(live.maintenance));
+        let raw = live.raw.as_ref().filter(|_| m.active);
+        obj.insert(
+            "raw_status".into(),
+            json!(raw.and_then(|r| r.status).map(HeartbeatStatus::as_str)),
+        );
+        obj.insert(
+            "raw_status_since".into(),
+            json!(raw.and_then(|r| r.since.as_deref()).and_then(rfc3339)),
+        );
+        obj.insert(
+            "raw_message".into(),
+            json!(raw.and_then(|r| r.message.clone())),
+        );
         obj.insert(
             "tags".into(),
             json!(tags.iter().map(|t| json!({"id": t.tag_id, "name": t.name, "color": t.color, "value": t.value})).collect::<Vec<_>>()),
@@ -117,10 +159,10 @@ fn load_one(conn: &Connection, id: i64, can_edit: bool) -> rusqlite::Result<Opti
     let Some(m) = db_monitors::get_monitor(conn, id)? else {
         return Ok(None);
     };
-    let status = db_heartbeats::latest_local(conn, id)?.map(|h| h.status);
+    let live = Live::load(conn, id, &crate::maintenance::covered_monitors(conn)?)?;
     let tags = db_tags::tags_for_monitor(conn, id)?;
     let links = db_notifications::monitor_channel_links(conn, id)?;
-    Ok(Some(monitor_json(&m, status, &tags, &links, can_edit)))
+    Ok(Some(monitor_json(&m, &live, &tags, &links, can_edit)))
 }
 
 async fn fetch(state: &AppState, id: i64, can_edit: bool) -> V1Result<Value> {
@@ -231,10 +273,15 @@ async fn list(
                 let (m, ch, esc) = row?;
                 links.entry(m).or_default().push((ch, esc));
             }
-            Ok((monitors, tags, links))
+            let covered = crate::maintenance::covered_monitors(c)?;
+            let mut raw = HashMap::new();
+            for row in &monitors {
+                raw.insert(row.monitor.id, db_heartbeats::raw_run(c, row.monitor.id)?);
+            }
+            Ok((monitors, tags, links, covered, raw))
         })
         .await?;
-    let (monitors, tags, links) = rows;
+    let (monitors, tags, links, covered, mut raw) = rows;
     let mut items: Vec<(i64, Value)> = monitors
         .into_iter()
         .filter(|row| {
@@ -248,9 +295,14 @@ async fn list(
         })
         .map(|row| {
             let m = &row.monitor;
+            let live = Live {
+                status: row.status,
+                maintenance: covered.contains(&m.id),
+                raw: raw.remove(&m.id).flatten(),
+            };
             let v = monitor_json(
                 m,
-                row.status,
+                &live,
                 tags.get(&m.id).map(Vec::as_slice).unwrap_or_default(),
                 links.get(&m.id).map(Vec::as_slice).unwrap_or_default(),
                 can_edit,
@@ -285,6 +337,10 @@ async fn show(
 const READ_ONLY: &[&str] = &[
     "id",
     "status",
+    "maintenance",
+    "raw_status",
+    "raw_status_since",
+    "raw_message",
     "created_at",
     "updated_at",
     "source",
@@ -899,11 +955,11 @@ async fn heartbeats(
                 return Ok(None);
             }
             let mut stmt = c.prepare(
-                "SELECT id, monitor_id, agent_id, status, response_time_ms, message, checked_at FROM heartbeats
+                &format!("SELECT {} FROM heartbeats
                  WHERE monitor_id = ?1 AND agent_id IS NULL
                    AND (?2 IS NULL OR checked_at >= ?2)
                    AND (?3 IS NULL OR (checked_at, id) < (SELECT checked_at, id FROM heartbeats WHERE id = ?3))
-                 ORDER BY checked_at DESC, id DESC LIMIT ?4",
+                 ORDER BY checked_at DESC, id DESC LIMIT ?4", db_heartbeats::COLUMNS),
             )?;
             let rows = stmt.query_map(params![id, since, cursor, lim + 1], db_heartbeats::row_to_heartbeat)?;
             rows.collect::<rusqlite::Result<Vec<_>>>().map(Some)

@@ -7,21 +7,35 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::models::{Heartbeat, HeartbeatStatus};
 
-/// Maps `id, monitor_id, agent_id, status, response_time_ms, message, checked_at`.
+/// Maps [`COLUMNS`]. A row without `raw_status` (recorded before it existed)
+/// gets its `status`, unless that was `maintenance`: then the real result is
+/// unknown.
 pub fn row_to_heartbeat(row: &Row) -> rusqlite::Result<Heartbeat> {
     let status: String = row.get("status")?;
+    let status = HeartbeatStatus::parse(&status).unwrap_or(HeartbeatStatus::Pending);
+    let raw: Option<String> = row.get("raw_status")?;
     Ok(Heartbeat {
         id: row.get("id")?,
         monitor_id: row.get("monitor_id")?,
         agent_id: row.get("agent_id")?,
-        status: HeartbeatStatus::parse(&status).unwrap_or(HeartbeatStatus::Pending),
+        status,
+        raw_status: match raw {
+            Some(r) => HeartbeatStatus::parse(&r),
+            None => real(status),
+        },
         response_time_ms: row.get("response_time_ms")?,
         message: row.get("message")?,
         checked_at: row.get("checked_at")?,
     })
 }
 
-/// Records one heartbeat (`agent_id = None` for local checks). Returns its id.
+/// `status` as a real result: `None` for `maintenance`.
+fn real(status: HeartbeatStatus) -> Option<HeartbeatStatus> {
+    (status != HeartbeatStatus::Maintenance).then_some(status)
+}
+
+/// Records one heartbeat (`agent_id = None` for local checks) whose real
+/// result is its status. Returns its id.
 pub fn insert(
     conn: &Connection,
     monitor_id: i64,
@@ -31,12 +45,13 @@ pub fn insert(
     message: Option<&str>,
 ) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO heartbeats (monitor_id, agent_id, status, response_time_ms, message)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO heartbeats (monitor_id, agent_id, status, raw_status, response_time_ms, message)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             monitor_id,
             agent_id,
             status.as_str(),
+            real(status).map(HeartbeatStatus::as_str),
             response_time_ms,
             message
         ],
@@ -44,7 +59,75 @@ pub fn insert(
     Ok(conn.last_insert_rowid())
 }
 
-const COLUMNS: &str = "id, monitor_id, agent_id, status, response_time_ms, message, checked_at";
+/// Records one local heartbeat with its real result (`raw_status`), which
+/// differs from `status` during maintenance. Returns its id.
+pub fn insert_with_raw(
+    conn: &Connection,
+    monitor_id: i64,
+    status: HeartbeatStatus,
+    raw_status: Option<HeartbeatStatus>,
+    response_time_ms: Option<i64>,
+    message: Option<&str>,
+) -> rusqlite::Result<i64> {
+    conn.execute(
+        "INSERT INTO heartbeats (monitor_id, status, raw_status, response_time_ms, message)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            monitor_id,
+            status.as_str(),
+            raw_status.and_then(real).map(HeartbeatStatus::as_str),
+            response_time_ms,
+            message
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// The columns [`row_to_heartbeat`] reads.
+pub const COLUMNS: &str =
+    "id, monitor_id, agent_id, status, raw_status, response_time_ms, message, checked_at";
+
+/// Checks [`raw_run`] looks back over.
+const RAW_RUN_CHECKS: i64 = 100;
+
+/// A monitor's current real result: the newest local heartbeat's
+/// `raw_status` and `message`, and when that real status began.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawRun {
+    pub status: Option<HeartbeatStatus>,
+    /// First heartbeat of the current run of `status` within the last
+    /// [`RAW_RUN_CHECKS`] checks (UTC `YYYY-MM-DD HH:MM:SS`); `None` when
+    /// `status` is unknown.
+    pub since: Option<String>,
+    pub message: Option<String>,
+}
+
+/// The current real result of a monitor (see [`RawRun`]); `None` without
+/// local heartbeats.
+pub fn raw_run(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Option<RawRun>> {
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT {COLUMNS} FROM heartbeats WHERE monitor_id = ?1 AND agent_id IS NULL
+         ORDER BY checked_at DESC, id DESC LIMIT ?2"
+    ))?;
+    let beats = stmt
+        .query_map(params![monitor_id, RAW_RUN_CHECKS], row_to_heartbeat)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let Some(latest) = beats.first() else {
+        return Ok(None);
+    };
+    let since = latest.raw_status.and_then(|status| {
+        beats
+            .iter()
+            .take_while(|h| h.raw_status == Some(status))
+            .last()
+            .map(|h| h.checked_at.clone())
+    });
+    Ok(Some(RawRun {
+        status: latest.raw_status,
+        since,
+        message: latest.message.clone(),
+    }))
+}
 
 /// The newest local heartbeat of a monitor.
 pub fn latest_local(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Option<Heartbeat>> {
@@ -219,6 +302,48 @@ mod tests {
         assert_eq!(
             latest_local(&conn, id).unwrap().unwrap().response_time_ms,
             Some(24)
+        );
+    }
+
+    #[test]
+    fn raw_run_follows_the_real_result_through_maintenance() {
+        use HeartbeatStatus::{Down, Maintenance, Up};
+        let (conn, id) = setup();
+        assert_eq!(raw_run(&conn, id).unwrap(), None);
+        let at = |minute: i64, status: HeartbeatStatus, raw: Option<HeartbeatStatus>| {
+            let hb = insert_with_raw(&conn, id, status, raw, None, Some("m")).unwrap();
+            conn.execute(
+                "UPDATE heartbeats SET checked_at = ?2 WHERE id = ?1",
+                params![hb, format!("2026-01-01 00:{minute:02}:00")],
+            )
+            .unwrap();
+        };
+        at(0, Up, Some(Up));
+        at(1, Maintenance, Some(Down));
+        at(2, Maintenance, Some(Up));
+        at(3, Maintenance, Some(Up));
+        let run = raw_run(&conn, id).unwrap().unwrap();
+        assert_eq!(
+            (run.status, run.since.as_deref()),
+            (Some(Up), Some("2026-01-01 00:02:00"))
+        );
+        let page = list_page(&conn, id, None, 10).unwrap();
+        assert_eq!(
+            (page[0].status, page[0].raw_status),
+            (Maintenance, Some(Up))
+        );
+        assert_eq!(
+            (page[2].status, page[2].raw_status),
+            (Maintenance, Some(Down))
+        );
+        // Rows from before raw_status: equal to status, unknown in maintenance.
+        insert_at(&conn, id, None, "maintenance", None, "2026-01-01 00:04:00");
+        let run = raw_run(&conn, id).unwrap().unwrap();
+        assert_eq!((run.status, run.since), (None, None));
+        insert_at(&conn, id, None, "up", None, "2026-01-01 00:05:00");
+        assert_eq!(
+            latest_local(&conn, id).unwrap().unwrap().raw_status,
+            Some(Up)
         );
     }
 

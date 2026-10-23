@@ -857,7 +857,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "List monitors with their current status.",
+        "summary": "List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.",
         "tags": [
           "Monitors"
         ],
@@ -910,6 +910,7 @@ content-type: application/json
                   "id": 7,
                   "ignore_tls": false,
                   "interval_seconds": 60,
+                  "maintenance": false,
                   "max_redirects": 10,
                   "monitor_type": "http",
                   "name": "Website",
@@ -920,6 +921,9 @@ content-type: application/json
                     }
                   ],
                   "parent_id": null,
+                  "raw_message": "200 OK",
+                  "raw_status": "up",
+                  "raw_status_since": "2026-10-19T14:01:00Z",
                   "retries": 1,
                   "retry_interval_seconds": null,
                   "status": "up",
@@ -1120,6 +1124,7 @@ content-type: application/json
                   "id": 7,
                   "ignore_tls": false,
                   "interval_seconds": 60,
+                  "maintenance": false,
                   "max_redirects": 10,
                   "monitor_type": "http",
                   "name": "Website",
@@ -1130,6 +1135,9 @@ content-type: application/json
                     }
                   ],
                   "parent_id": null,
+                  "raw_message": "200 OK",
+                  "raw_status": "up",
+                  "raw_status_since": "2026-10-19T14:01:00Z",
                   "retries": 1,
                   "retry_interval_seconds": null,
                   "status": "up",
@@ -1168,7 +1176,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Get one monitor. Passwords are masked; push tokens are shown to editors only.",
+        "summary": "Get one monitor with status, maintenance and the real result (raw_status, raw_status_since, raw_message) as in the list. Passwords are masked; push tokens are shown to editors only.",
         "tags": [
           "Monitors"
         ],
@@ -1213,6 +1221,7 @@ content-type: application/json
                   "id": 7,
                   "ignore_tls": false,
                   "interval_seconds": 60,
+                  "maintenance": false,
                   "max_redirects": 10,
                   "monitor_type": "http",
                   "name": "Website",
@@ -1223,6 +1232,9 @@ content-type: application/json
                     }
                   ],
                   "parent_id": null,
+                  "raw_message": "200 OK",
+                  "raw_status": "up",
+                  "raw_status_since": "2026-10-19T14:01:00Z",
                   "retries": 1,
                   "retry_interval_seconds": null,
                   "status": "up",
@@ -1327,6 +1339,7 @@ content-type: application/json
                   "id": 7,
                   "ignore_tls": false,
                   "interval_seconds": 60,
+                  "maintenance": false,
                   "max_redirects": 10,
                   "monitor_type": "http",
                   "name": "Website",
@@ -1337,6 +1350,9 @@ content-type: application/json
                     }
                   ],
                   "parent_id": null,
+                  "raw_message": "200 OK",
+                  "raw_status": "up",
+                  "raw_status_since": "2026-10-19T14:01:00Z",
                   "retries": 1,
                   "retry_interval_seconds": null,
                   "status": "up",
@@ -1407,6 +1423,7 @@ content-type: application/json
                     "checked_at": "2026-10-19 14:03:00",
                     "id": 991,
                     "message": "200 OK",
+                    "raw_status": "up",
                     "response_time_ms": 84,
                     "status": "up"
                   },
@@ -1565,8 +1582,9 @@ content-type: application/json
                       "id": 991,
                       "message": "200 OK",
                       "monitor_id": 7,
+                      "raw_status": "up",
                       "response_time_ms": 84,
-                      "status": "up"
+                      "status": "maintenance"
                     }
                   ],
                   "next_cursor": "940"
@@ -1593,7 +1611,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Check history, newest first (local checks only).",
+        "summary": "Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance before 0.9.0.",
         "tags": [
           "Monitors"
         ],
@@ -1628,6 +1646,7 @@ content-type: application/json
                   "id": 7,
                   "ignore_tls": false,
                   "interval_seconds": 60,
+                  "maintenance": false,
                   "max_redirects": 10,
                   "monitor_type": "http",
                   "name": "Website",
@@ -1638,6 +1657,9 @@ content-type: application/json
                     }
                   ],
                   "parent_id": null,
+                  "raw_message": "200 OK",
+                  "raw_status": "up",
+                  "raw_status_since": "2026-10-19T14:01:00Z",
                   "retries": 1,
                   "retry_interval_seconds": null,
                   "status": "up",
@@ -1714,6 +1736,7 @@ content-type: application/json
                   "id": 7,
                   "ignore_tls": false,
                   "interval_seconds": 60,
+                  "maintenance": false,
                   "max_redirects": 10,
                   "monitor_type": "http",
                   "name": "Website",
@@ -1724,6 +1747,9 @@ content-type: application/json
                     }
                   ],
                   "parent_id": null,
+                  "raw_message": "200 OK",
+                  "raw_status": "up",
+                  "raw_status_since": "2026-10-19T14:01:00Z",
                   "retries": 1,
                   "retry_interval_seconds": null,
                   "status": "up",
@@ -1818,6 +1844,7 @@ content-type: application/json
                   "id": 7,
                   "ignore_tls": false,
                   "interval_seconds": 60,
+                  "maintenance": false,
                   "max_redirects": 10,
                   "monitor_type": "http",
                   "name": "Website",
@@ -1828,6 +1855,9 @@ content-type: application/json
                     }
                   ],
                   "parent_id": null,
+                  "raw_message": "200 OK",
+                  "raw_status": "up",
+                  "raw_status_since": "2026-10-19T14:01:00Z",
                   "retries": 1,
                   "retry_interval_seconds": null,
                   "status": "up",

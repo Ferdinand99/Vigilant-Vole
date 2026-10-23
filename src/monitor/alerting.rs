@@ -11,6 +11,13 @@
 //!    (closing an ongoing outage), never notify; failure counters reset. The
 //!    `notified` state is kept, so after maintenance an outage that users were
 //!    told about still gets its "Up", and a fresh failure gets a "Down".
+//!    The check's real result is still worked out and returned as
+//!    [`Decision::raw_status`] (upside-down and agent confirmation apply,
+//!    retries don't: alerting is paused, so there is nothing to retry for).
+//!    It never feeds the alerting state: when the window ends a monitor that
+//!    is still down starts a fresh failing streak, so retries, the outage
+//!    event and its start time count from the end of the window, exactly as
+//!    when the result during the window wasn't known.
 //! 2. **Upside-down** inverts raw up/down. A raw `pending` (e.g. Docker
 //!    health "starting") is never inverted: it records `pending`, doesn't
 //!    count toward retries, leaves the settled/notified state and flap
@@ -86,6 +93,10 @@ pub struct Observation {
     pub maintenance: bool,
     /// Fresh remote-agent results, when agent confirmation applies.
     pub agents: Option<AgentVotes>,
+    /// Groups only: the aggregate of the children's *real* statuses
+    /// (`status` aggregates what they recorded, maintenance included).
+    /// Used as the raw status while the group is in maintenance.
+    pub real: Option<HeartbeatStatus>,
 }
 
 impl Observation {
@@ -137,6 +148,10 @@ pub struct Decision {
     pub status: HeartbeatStatus,
     /// Message to record (may differ from the raw one, e.g. retry/agent notes).
     pub message: Option<String>,
+    /// The real result to record next to `status`: equal to it outside
+    /// maintenance; during maintenance what the check found (`None` when
+    /// unknown, e.g. a group whose children have no real result yet).
+    pub raw_status: Option<HeartbeatStatus>,
     pub state: MonitorState,
     pub actions: Vec<Action>,
 }
@@ -180,8 +195,30 @@ pub fn evaluate(
     let mut s = prev.clone();
     let mut actions = Vec::new();
 
+    // 2. Upside-down, worked out before rule 1 so maintenance can record the
+    // real result too.
+    let raw = invert(obs.raw(), cfg.upside_down);
+    let mut message = match (obs.raw(), cfg.upside_down, &obs.message) {
+        (HeartbeatStatus::Up, true, Some(m)) => {
+            Some(format!("Upside-down mode: check succeeded ({m})"))
+        }
+        (HeartbeatStatus::Up, true, None) => Some("Upside-down mode: check succeeded".into()),
+        (_, _, m) => m.clone(),
+    };
+
     // 1. Maintenance.
     if obs.maintenance || obs.raw() == HeartbeatStatus::Maintenance {
+        let real = match obs.real.map_or(raw, |r| invert(r, cfg.upside_down)) {
+            HeartbeatStatus::Maintenance => None,
+            HeartbeatStatus::Down => match unconfirmed_by_agents(cfg, obs.agents) {
+                Some(text) => {
+                    message = Some(text);
+                    Some(HeartbeatStatus::Pending)
+                }
+                None => Some(HeartbeatStatus::Down),
+            },
+            other => Some(other),
+        };
         if s.settled != Some(HeartbeatStatus::Maintenance) {
             if s.settled == Some(HeartbeatStatus::Down) {
                 actions.push(Action::CloseEvent {
@@ -210,11 +247,8 @@ pub fn evaluate(
         s.escalated = false;
         s.history.clear();
         s.stable_checks = 0;
-        let message = obs
-            .message
-            .clone()
-            .or_else(|| Some("Under maintenance".into()));
-        return finish(s, HeartbeatStatus::Maintenance, message, actions, now);
+        let message = message.or_else(|| Some("Under maintenance".into()));
+        return finish(s, HeartbeatStatus::Maintenance, real, message, actions, now);
     }
     if s.settled == Some(HeartbeatStatus::Maintenance) {
         actions.push(Action::CloseEvent {
@@ -223,20 +257,6 @@ pub fn evaluate(
         });
         s.settled = None;
     }
-
-    // 2. Upside-down.
-    let raw = match (obs.raw(), cfg.upside_down) {
-        (HeartbeatStatus::Up, true) => HeartbeatStatus::Down,
-        (HeartbeatStatus::Down, true) => HeartbeatStatus::Up,
-        (other, _) => other,
-    };
-    let mut message = match (obs.raw(), cfg.upside_down, &obs.message) {
-        (HeartbeatStatus::Up, true, Some(m)) => {
-            Some(format!("Upside-down mode: check succeeded ({m})"))
-        }
-        (HeartbeatStatus::Up, true, None) => Some("Upside-down mode: check succeeded".into()),
-        (_, _, m) => m.clone(),
-    };
 
     // 3./4. Retries and agent confirmation.
     let status = match raw {
@@ -408,12 +428,13 @@ pub fn evaluate(
         _ => {}
     }
 
-    finish(s, status, message, actions, now)
+    finish(s, status, Some(status), message, actions, now)
 }
 
 fn finish(
     mut s: MonitorState,
     status: HeartbeatStatus,
+    raw_status: Option<HeartbeatStatus>,
     message: Option<String>,
     actions: Vec<Action>,
     now: OffsetDateTime,
@@ -422,12 +443,23 @@ fn finish(
         s.status_since = Some(now);
     }
     s.last_status = Some(status);
+    s.last_raw_status = raw_status;
     s.last_recorded_at = Some(now);
     Decision {
         status,
         message,
+        raw_status,
         state: s,
         actions,
+    }
+}
+
+/// Upside-down mode swaps up and down; anything else stays.
+fn invert(status: HeartbeatStatus, upside_down: bool) -> HeartbeatStatus {
+    match (status, upside_down) {
+        (HeartbeatStatus::Up, true) => HeartbeatStatus::Down,
+        (HeartbeatStatus::Down, true) => HeartbeatStatus::Up,
+        (other, _) => other,
     }
 }
 
@@ -891,6 +923,142 @@ mod tests {
         assert_eq!(
             d2.notices().map(|n| n.kind).collect::<Vec<_>>(),
             [EventKind::Down]
+        );
+    }
+
+    fn in_maintenance(status: HeartbeatStatus) -> Observation {
+        Observation {
+            maintenance: true,
+            ..obs(status)
+        }
+    }
+
+    #[test]
+    fn maintenance_keeps_the_real_result_without_alerting() {
+        let c = AlertConfig {
+            resend_interval: 1,
+            escalation_minutes: 1,
+            ..cfg()
+        };
+        let mut state = up_state();
+        let mut decisions = Vec::new();
+        for (i, raw) in [Down, Down, Pending, Up, Down].into_iter().enumerate() {
+            let d = evaluate(&state, &in_maintenance(raw), &c, at(1 + i as i64));
+            state = d.state.clone();
+            decisions.push(d);
+        }
+        let recorded: Vec<_> = decisions.iter().map(|d| (d.status, d.raw_status)).collect();
+        assert_eq!(
+            recorded,
+            [
+                (Maintenance, Some(Down)),
+                (Maintenance, Some(Down)),
+                (Maintenance, Some(Pending)),
+                (Maintenance, Some(Up)),
+                (Maintenance, Some(Down))
+            ]
+        );
+        assert!(kinds(&decisions).is_empty());
+        // Only the maintenance event opens; nothing else happens during the window.
+        assert_eq!(
+            decisions[0].actions,
+            [Action::OpenEvent {
+                kind: MonitorEventKind::Maintenance,
+                message: None,
+                started_at: at(1),
+            }]
+        );
+        assert!(decisions[1..].iter().all(|d| d.actions.is_empty()));
+        assert_eq!(state.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn real_result_in_maintenance_applies_upside_down_and_agents() {
+        let c = AlertConfig {
+            upside_down: true,
+            confirm_with_agents: true,
+            ..cfg()
+        };
+        let d = evaluate(&up_state(), &in_maintenance(Down), &c, t0());
+        assert_eq!((d.status, d.raw_status), (Maintenance, Some(Up)));
+        let mut o = in_maintenance(Up);
+        o.agents = Some(AgentVotes { up: 2, down: 0 });
+        let d = evaluate(&up_state(), &o, &c, t0());
+        assert_eq!((d.status, d.raw_status), (Maintenance, Some(Pending)));
+        assert_eq!(
+            d.message.as_deref(),
+            Some("Local check failed; 2/2 remote agents report up")
+        );
+    }
+
+    #[test]
+    fn raw_status_equals_status_outside_maintenance() {
+        let c = AlertConfig {
+            retries: 1,
+            ..cfg()
+        };
+        let (_, ds) = run(up_state(), &c, &[Down, Down, Pending, Up]);
+        assert!(ds.iter().all(|d| d.raw_status == Some(d.status)));
+    }
+
+    #[test]
+    fn group_in_maintenance_reports_its_childrens_real_status() {
+        let o = Observation {
+            real: Some(Down),
+            ..obs(Maintenance)
+        };
+        let d = evaluate(&up_state(), &o, &AlertConfig::default(), t0());
+        assert_eq!((d.status, d.raw_status), (Maintenance, Some(Down)));
+        let o = Observation {
+            real: Some(Maintenance),
+            ..obs(Maintenance)
+        };
+        assert_eq!(evaluate(&up_state(), &o, &cfg(), t0()).raw_status, None);
+    }
+
+    /// An outage that began during maintenance and outlasts it: the window
+    /// excused the downtime, so after it the monitor starts a fresh failing
+    /// streak (as before raw results were kept). Retries count again, the
+    /// outage event starts at the first check after the window, and the
+    /// Down notification follows the retries.
+    #[test]
+    fn still_down_when_maintenance_ends_starts_a_fresh_outage() {
+        let c = AlertConfig {
+            retries: 1,
+            ..cfg()
+        };
+        let mut state = up_state();
+        for i in 0..3 {
+            state = evaluate(&state, &in_maintenance(Down), &c, at(i)).state;
+        }
+        let d1 = evaluate(&state, &obs(Down), &c, at(3));
+        assert_eq!((d1.status, d1.raw_status), (Pending, Some(Pending)));
+        assert_eq!(d1.message.as_deref(), Some("retry 1/1"));
+        assert_eq!(
+            d1.actions,
+            [Action::CloseEvent {
+                kind: MonitorEventKind::Maintenance,
+                ended_at: at(3),
+            }]
+        );
+        let d2 = evaluate(&d1.state, &obs(Down), &c, at(4));
+        assert_eq!(d2.status, Down);
+        assert_eq!(
+            d2.actions,
+            [
+                Action::OpenEvent {
+                    kind: MonitorEventKind::Down,
+                    message: None,
+                    started_at: at(3),
+                },
+                Action::Notify(Notice {
+                    kind: EventKind::Down,
+                    escalation: false,
+                    message: None,
+                    downtime: None,
+                    expires_in_days: None,
+                })
+            ]
         );
     }
 

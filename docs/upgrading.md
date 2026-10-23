@@ -146,6 +146,9 @@ Running an older version on a database a newer version has migrated is **not sup
   usual copy (`vigilant-vole-before-0104_adopt_kit_core-….db`). **0.6.x and earlier can't open a
   database migrated by it**: they don't know those two rows and refuse to start, as above (the message
   names `schema kit/0001_core`). That is expected. To go back to 0.6.x, restore that copy.
+- **0.9.0** adds `0105_heartbeat_raw_status.sql`: a nullable `raw_status` column on `heartbeats` (the
+  real check result during maintenance). Older rows keep `NULL`; nothing is rewritten. 0.8.x refuses a
+  database migrated by it, as above; restore the copy made before the upgrade to go back.
 - **0.5.0 and older** don't check. They start, and in a test of 0.4.0 on a 0.5.0 database the dashboard,
   status pages and API writes worked, but anything the newer version stores (incident updates,
   subscribers, new maintenance options) is ignored and can end up inconsistent. Don't rely on it:
