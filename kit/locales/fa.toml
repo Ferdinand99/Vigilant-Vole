@@ -896,6 +896,20 @@ edit_heading = "ویرایش {name}"
 [general]
 language = "زبان"
 err_site_name = "حداکثر ۸۰ نویسه."
+site = "سایت"
+site_name_help = "در نوار بالا، عنوان صفحه‌ها و اطلاع‌رسانی‌ها نمایش داده می‌شود."
+base_url = "URL عمومی"
+region = "منطقه"
+language_help = "پیش‌فرض برای همه. هر کس می‌تواند در بخش امنیت زبان خودش را انتخاب کند."
+save = "ذخیرهٔ تنظیمات"
+saved = "تنظیمات ذخیره شد"
+err_timezone = "یک منطقهٔ زمانی از فهرست انتخاب کنید."
+err_url = "URL کامل را وارد کنید، مثل https://status.example.com"
+err_url_credentials = "نام کاربری و گذرواژه را حذف کنید."
+err_url_query = "بخش‌های ? و # را حذف کنید."
+
+[mw]
+timezone = "منطقهٔ زمانی"
 
 [docs]
 title = "مرجع API"

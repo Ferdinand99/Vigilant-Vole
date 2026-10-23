@@ -886,6 +886,20 @@ edit_heading = "编辑{name}"
 [general]
 language = "语言"
 err_site_name = "最多使用 80 个字符。"
+site = "站点"
+site_name_help = "显示在顶栏、页面标题和通知中。"
+base_url = "公开 URL"
+region = "区域"
+language_help = "所有人的默认语言。每个人可在“安全”中自选。"
+save = "保存设置"
+saved = "设置已保存"
+err_timezone = "请从列表中选择时区。"
+err_url = "请输入完整 URL，例如 https://status.example.com"
+err_url_credentials = "请去掉用户名和密码。"
+err_url_query = "请去掉 ? 和 # 部分。"
+
+[mw]
+timezone = "时区"
 
 [docs]
 title = "API 参考"

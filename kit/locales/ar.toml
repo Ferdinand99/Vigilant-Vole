@@ -930,6 +930,20 @@ edit_heading = "تعديل {name}"
 [general]
 language = "اللغة"
 err_site_name = "استخدم 80 حرفًا على الأكثر."
+site = "الموقع"
+site_name_help = "يظهر في الشريط العلوي وعناوين الصفحات والإشعارات."
+base_url = "العنوان العام"
+region = "المنطقة"
+language_help = "الافتراضية للجميع. يمكن لكل شخص اختيار لغته من الأمان."
+save = "حفظ الإعدادات"
+saved = "تم حفظ الإعدادات"
+err_timezone = "اختر منطقة زمنية من القائمة."
+err_url = "أدخل عنوان URL كاملًا، مثل https://status.example.com"
+err_url_credentials = "احذف اسم المستخدم وكلمة المرور."
+err_url_query = "احذف الجزأين ? و#."
+
+[mw]
+timezone = "المنطقة الزمنية"
 
 [docs]
 title = "مرجع API"

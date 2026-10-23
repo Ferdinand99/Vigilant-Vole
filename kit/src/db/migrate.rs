@@ -17,12 +17,28 @@ use std::path::{Path, PathBuf};
 use deadpool_sqlite::Pool;
 use rusqlite::{Connection, OptionalExtension, params};
 
-/// The kit's core migrations, `(name, sql)` in order. The names start with
-/// `kit/` so they never collide with a product's file names.
-pub const CORE: &[(&str, &str)] = &[(
+/// The core tables: `users`, `api_tokens` and `settings`.
+pub const CORE_TABLES: (&str, &str) = (
     "kit/0001_core.sql",
     include_str!("../../migrations/0001_core.sql"),
-)];
+);
+
+/// `api_token_scopes`: the product scopes of API tokens
+/// ([`KitConfig::token_scopes`](crate::config::KitConfig::token_scopes)).
+/// Existing tokens get no rows and keep exactly the access they had. A
+/// product that declares no token scopes may leave it out of its
+/// [`MigrationSet::core`] (Vigilant Vole does, so its schema stays as it
+/// was); one that declares any must run it ([`crate::config::install`]
+/// checks).
+pub const TOKEN_SCOPES: (&str, &str) = (
+    "kit/0002_token_scopes.sql",
+    include_str!("../../migrations/0002_token_scopes.sql"),
+);
+
+/// The kit's core migrations, `(name, sql)` in order: every product's
+/// default for [`MigrationSet::core`]. The names start with `kit/` so they
+/// never collide with a product's file names.
+pub const CORE: &[(&str, &str)] = &[CORE_TABLES, TOKEN_SCOPES];
 
 /// What a product tells the runner about its migrations.
 pub struct MigrationSet {
@@ -621,9 +637,9 @@ mod tests {
     /// A product whose own first migration made the core tables, and which
     /// adopts the core set with its second.
     static OLD_PRODUCT: MigrationSet = MigrationSet {
-        core: CORE,
+        core: &[CORE_TABLES],
         adopt_core: Some("0002_adopt.sql"),
-        migrations: || owned(&[("0001_own.sql", CORE[0].1), ("0002_adopt.sql", ADOPT)]),
+        migrations: || owned(&[("0001_own.sql", CORE_TABLES.1), ("0002_adopt.sql", ADOPT)]),
         fk_off_marker: "-- fk=off",
         baseline: None,
         after: no_fixups,
@@ -633,14 +649,14 @@ mod tests {
     /// adoption doesn't record.
     static OLD_PRODUCT_LATER: MigrationSet = MigrationSet {
         core: &[
-            CORE[0],
+            CORE_TABLES,
             (
                 "kit/0002_more.sql",
                 "ALTER TABLE users ADD COLUMN extra TEXT;",
             ),
         ],
         adopt_core: Some("0002_adopt.sql"),
-        migrations: || owned(&[("0001_own.sql", CORE[0].1), ("0002_adopt.sql", ADOPT)]),
+        migrations: || owned(&[("0001_own.sql", CORE_TABLES.1), ("0002_adopt.sql", ADOPT)]),
         fk_off_marker: "-- fk=off",
         baseline: None,
         after: no_fixups,
@@ -650,8 +666,21 @@ mod tests {
     fn a_new_product_runs_the_core_set_first() {
         let mut conn = Connection::open_in_memory().unwrap();
         let applied = apply_migrations_with(&mut conn, &NEW_PRODUCT).unwrap();
-        assert_eq!(applied, ["kit/0001_core.sql", "0001_things.sql"]);
-        for table in ["users", "api_tokens", "settings", "things"] {
+        assert_eq!(
+            applied,
+            [
+                "kit/0001_core.sql",
+                "kit/0002_token_scopes.sql",
+                "0001_things.sql"
+            ]
+        );
+        for table in [
+            "users",
+            "api_tokens",
+            "api_token_scopes",
+            "settings",
+            "things",
+        ] {
             assert!(table_exists(&conn, table), "{table}");
         }
         assert!(
@@ -679,7 +708,7 @@ mod tests {
         // An existing database from before the adoption.
         let mut conn = Connection::open_in_memory().unwrap();
         prepare_tracking_in(&conn, &OLD_PRODUCT).unwrap();
-        apply_one_in(&mut conn, &OLD_PRODUCT, "0001_own.sql", CORE[0].1).unwrap();
+        apply_one_in(&mut conn, &OLD_PRODUCT, "0001_own.sql", CORE_TABLES.1).unwrap();
         let applied = apply_migrations_with(&mut conn, &OLD_PRODUCT).unwrap();
         assert_eq!(applied, ["0002_adopt.sql"]);
         assert!(
@@ -712,6 +741,29 @@ mod tests {
             Err(MigrationError::NewerSchema { schema, known, .. }) => Some((schema, known)),
             Err(e) => panic!("{e}"),
         }
+    }
+
+    /// A database a product without token scopes migrated (Vigilant Vole)
+    /// takes the token scope table when the product adds it to its set.
+    #[test]
+    fn the_token_scope_table_can_be_added_later() {
+        static WITHOUT: MigrationSet = MigrationSet {
+            core: &[CORE_TABLES],
+            adopt_core: None,
+            migrations: NEW_PRODUCT.migrations,
+            fk_off_marker: "-- fk=off",
+            baseline: None,
+            after: no_fixups,
+        };
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply_migrations_with(&mut conn, &WITHOUT).unwrap();
+        assert!(!table_exists(&conn, "api_token_scopes"));
+        assert_eq!(newer(&conn, &NEW_PRODUCT), None);
+        let applied = apply_migrations_with(&mut conn, &NEW_PRODUCT).unwrap();
+        assert_eq!(applied, ["kit/0002_token_scopes.sql"]);
+        assert!(table_exists(&conn, "api_token_scopes"));
+        // Going back: the set without it refuses the database.
+        assert!(newer(&conn, &WITHOUT).is_some());
     }
 
     #[test]

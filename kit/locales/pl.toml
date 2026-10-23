@@ -914,6 +914,20 @@ edit_heading = "Edycja: {name}"
 [general]
 language = "Język"
 err_site_name = "Użyj najwyżej 80 znaków."
+site = "Witryna"
+site_name_help = "Widoczna na górnym pasku, w tytułach stron i powiadomieniach."
+base_url = "Publiczny adres URL"
+region = "Region"
+language_help = "Domyślny dla wszystkich. Każdy może wybrać własny w sekcji Bezpieczeństwo."
+save = "Zapisz ustawienia"
+saved = "Zapisano ustawienia"
+err_timezone = "Wybierz strefę czasową z listy."
+err_url = "Wpisz pełny adres URL, np. https://status.example.com"
+err_url_credentials = "Pomiń nazwę użytkownika i hasło."
+err_url_query = "Pomiń części po ? i #."
+
+[mw]
+timezone = "Strefa czasowa"
 
 [docs]
 title = "Dokumentacja API"

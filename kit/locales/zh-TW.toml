@@ -886,6 +886,20 @@ edit_heading = "編輯 {name}"
 [general]
 language = "語言"
 err_site_name = "最多使用 80 個字元。"
+site = "站台"
+site_name_help = "顯示於頂端列、頁面標題與通知中。"
+base_url = "公開網址"
+region = "地區"
+language_help = "所有人的預設值。每個人可在「安全性」中自行選擇。"
+save = "儲存設定"
+saved = "已儲存設定"
+err_timezone = "請從清單中選擇時區。"
+err_url = "請輸入完整網址，例如 https://status.example.com"
+err_url_credentials = "請移除使用者名稱與密碼。"
+err_url_query = "請移除 ? 和 # 的部分。"
+
+[mw]
+timezone = "時區"
 
 [docs]
 title = "API 參考"

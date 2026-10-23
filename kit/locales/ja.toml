@@ -885,6 +885,20 @@ edit_heading = "{name}を編集"
 [general]
 language = "言語"
 err_site_name = "80文字以内にしてください。"
+site = "サイト"
+site_name_help = "トップバー、ページタイトル、通知に表示されます。"
+base_url = "公開URL"
+region = "地域"
+language_help = "全員のデフォルトです。各ユーザーはセキュリティで自分の言語を選べます。"
+save = "設定を保存"
+saved = "設定を保存しました"
+err_timezone = "一覧からタイムゾーンを選択してください。"
+err_url = "https://status.example.com のように、完全なURLを入力してください"
+err_url_credentials = "ユーザー名とパスワードは含めないでください。"
+err_url_query = "? と # 以降は含めないでください。"
+
+[mw]
+timezone = "タイムゾーン"
 
 [docs]
 title = "APIリファレンス"

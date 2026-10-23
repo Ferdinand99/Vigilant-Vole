@@ -20,6 +20,7 @@ pub mod i18n;
 pub mod mcp;
 pub mod notify;
 pub mod page;
+pub mod settings;
 pub mod state;
 pub mod tls_roots;
 pub mod tz;

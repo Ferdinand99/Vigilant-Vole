@@ -56,6 +56,9 @@ pub struct AppState {
     /// Shared outbound HTTP client (notifications, RDAP, etc.). Not for
     /// monitor checks, which need per-monitor TLS/redirect/proxy options.
     pub http: reqwest::Client,
+    /// The sign-in throttles of this instance (the kit's, shared by every
+    /// `Core` built from this state).
+    pub sign_in_limits: crate::kit::auth::rate_limit::SignInLimits,
     pub config: Arc<Config>,
 }
 
@@ -72,6 +75,7 @@ impl FromRef<AppState> for crate::kit::state::Core {
             session_key: state.session_key.clone(),
             http: state.http.clone(),
             cfg: &crate::product::KIT,
+            limits: state.sign_in_limits.clone(),
         }
     }
 }

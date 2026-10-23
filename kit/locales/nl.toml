@@ -895,6 +895,20 @@ edit_heading = "{name} bewerken"
 [general]
 language = "Taal"
 err_site_name = "Gebruik maximaal 80 tekens."
+site = "Site"
+site_name_help = "Wordt getoond in de bovenbalk, paginatitels en meldingen."
+base_url = "Openbare URL"
+region = "Regio"
+language_help = "De standaard voor iedereen. Gebruikers kunnen hun eigen taal kiezen onder Beveiliging."
+save = "Instellingen opslaan"
+saved = "Instellingen opgeslagen"
+err_timezone = "Kies een tijdzone uit de lijst."
+err_url = "Voer een volledige URL in, zoals https://status.example.com"
+err_url_credentials = "Laat de gebruikersnaam en het wachtwoord weg."
+err_url_query = "Laat de delen met ? en # weg."
+
+[mw]
+timezone = "Tijdzone"
 
 [docs]
 title = "API-referentie"

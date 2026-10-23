@@ -903,6 +903,20 @@ edit_heading = "Modifier {name}"
 [general]
 language = "Langue"
 err_site_name = "Utiliser 80 caractères au maximum."
+site = "Site"
+site_name_help = "Affiché dans la barre du haut, les titres de page et les notifications."
+base_url = "URL publique"
+region = "Région"
+language_help = "Valeur par défaut pour tous. Chacun peut choisir la sienne dans Sécurité."
+save = "Enregistrer"
+saved = "Réglages enregistrés"
+err_timezone = "Choisir un fuseau horaire dans la liste."
+err_url = "Saisir une URL complète, par exemple https://status.example.com"
+err_url_credentials = "Retirer le nom d’utilisateur et le mot de passe."
+err_url_query = "Retirer les parties après ? et #."
+
+[mw]
+timezone = "Fuseau horaire"
 
 [docs]
 title = "Référence de l’API"

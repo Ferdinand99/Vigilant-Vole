@@ -904,6 +904,20 @@ edit_heading = "Editar {name}"
 [general]
 language = "Idioma"
 err_site_name = "Use no máximo 80 caracteres."
+site = "Site"
+site_name_help = "Aparece na barra superior, nos títulos das páginas e nas notificações."
+base_url = "URL pública"
+region = "Região"
+language_help = "O padrão para todos. Cada pessoa pode escolher o seu em Segurança."
+save = "Salvar configurações"
+saved = "Configurações salvas"
+err_timezone = "Escolha um fuso horário da lista."
+err_url = "Digite uma URL completa, como https://status.example.com"
+err_url_credentials = "Omita o nome de usuário e a senha."
+err_url_query = "Omita as partes com ? e #."
+
+[mw]
+timezone = "Fuso horário"
 
 [docs]
 title = "Referência da API"

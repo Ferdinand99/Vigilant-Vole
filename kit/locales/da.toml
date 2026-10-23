@@ -896,6 +896,20 @@ edit_heading = "Rediger {name}"
 [general]
 language = "Sprog"
 err_site_name = "Brug højst 80 tegn."
+site = "Websted"
+site_name_help = "Vises i topbjælken, sidetitler og notifikationer."
+base_url = "Offentlig URL"
+region = "Område"
+language_help = "Standarden for alle. Man kan vælge sit eget under Sikkerhed."
+save = "Gem indstillinger"
+saved = "Indstillinger gemt"
+err_timezone = "Vælg en tidszone fra listen."
+err_url = "Angiv en komplet URL, f.eks. https://status.example.com"
+err_url_credentials = "Udelad brugernavn og adgangskode."
+err_url_query = "Udelad delene med ? og #."
+
+[mw]
+timezone = "Tidszone"
 
 [docs]
 title = "API-reference"

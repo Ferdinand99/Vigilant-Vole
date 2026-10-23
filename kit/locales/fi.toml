@@ -895,6 +895,20 @@ edit_heading = "Muokkaa: {name}"
 [general]
 language = "Kieli"
 err_site_name = "Käytä enintään 80 merkkiä."
+site = "Sivusto"
+site_name_help = "Näkyy yläpalkissa, sivujen otsikoissa ja ilmoituksissa."
+base_url = "Julkinen URL"
+region = "Alue"
+language_help = "Kaikkien oletus. Jokainen voi valita omansa Suojaus-sivulla."
+save = "Tallenna asetukset"
+saved = "Asetukset tallennettu"
+err_timezone = "Valitse aikavyöhyke luettelosta."
+err_url = "Anna koko URL, esimerkiksi https://status.example.com"
+err_url_credentials = "Jätä käyttäjätunnus ja salasana pois."
+err_url_query = "Jätä ?- ja #-osat pois."
+
+[mw]
+timezone = "Aikavyöhyke"
 
 [docs]
 title = "API-ohje"

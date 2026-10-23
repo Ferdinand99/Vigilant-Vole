@@ -895,6 +895,20 @@ edit_heading = "Düzenle: {name}"
 [general]
 language = "Dil"
 err_site_name = "En çok 80 karakter kullanın."
+site = "Site"
+site_name_help = "Üst çubukta, sayfa başlıklarında ve bildirimlerde gösterilir."
+base_url = "Herkese açık URL"
+region = "Bölge"
+language_help = "Herkes için varsayılandır. Herkes kendi dilini Güvenlik’ten seçebilir."
+save = "Ayarları kaydet"
+saved = "Ayarlar kaydedildi"
+err_timezone = "Listeden bir saat dilimi seçin."
+err_url = "Tam bir URL girin, örneğin https://status.example.com"
+err_url_credentials = "Kullanıcı adı ve parolayı çıkarın."
+err_url_query = "? ve # kısımlarını çıkarın."
+
+[mw]
+timezone = "Saat dilimi"
 
 [docs]
 title = "API başvurusu"

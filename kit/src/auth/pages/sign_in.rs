@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::auth::guard::{self, login_jar, secure_cookies};
 use crate::auth::session::{self, PendingLogin};
-use crate::auth::{self, rate_limit, totp};
+use crate::auth::{self, totp};
 use crate::db::settings as db_settings;
 use crate::db::users::{self as db_users, User};
 use crate::http::{ApiError, ApiResult, HtmlTemplate};
@@ -319,11 +319,11 @@ pub(super) async fn login_submit(
 
     // Count the attempt before the (slow) Argon2 check, so a parallel burst
     // can't get more guesses in than the budget allows. Success undoes it.
-    let blocked = match rate_limit::ACCOUNT.reserve(&user_key, now) {
+    let blocked = match core.limits.account.reserve(&user_key, now) {
         Err(wait) => Some(wait),
-        Ok(()) => match ip_key.as_deref().map(|k| rate_limit::IP.reserve(k, now)) {
+        Ok(()) => match ip_key.as_deref().map(|k| core.limits.ip.reserve(k, now)) {
             Some(Err(wait)) => {
-                rate_limit::ACCOUNT.release(&user_key);
+                core.limits.account.release(&user_key);
                 Some(wait)
             }
             _ => None,
@@ -364,9 +364,9 @@ pub(super) async fn login_submit(
         ));
     };
 
-    rate_limit::ACCOUNT.clear(&user_key);
+    core.limits.account.clear(&user_key);
     if let Some(k) = &ip_key {
-        rate_limit::IP.release(k);
+        core.limits.ip.release(k);
     }
     let secure = secure_cookies(&headers);
     if user.totp_enabled {
@@ -548,7 +548,7 @@ pub(super) async fn two_factor_submit(
     let key = format!("2fa:{}", user.id);
     let now = Instant::now();
     // Counted up front, like the password step.
-    if let Err(wait) = rate_limit::ACCOUNT.reserve(&key, now) {
+    if let Err(wait) = core.limits.account.reserve(&key, now) {
         return Ok(two_factor_page(
             StatusCode::TOO_MANY_REQUESTS,
             Some(wait_message(wait)),
@@ -564,7 +564,7 @@ pub(super) async fn two_factor_submit(
             ))
         }
         outcome => {
-            rate_limit::ACCOUNT.clear(&key);
+            core.limits.account.clear(&key);
             let jar = match outcome {
                 SecondFactor::Recovery { remaining } => flash(
                     jar,

@@ -205,6 +205,12 @@ pub async fn authenticate(
         AuthMethod::Token { token_id, scope } => (token_id, scope),
         AuthMethod::Session => return Err(unauthorized("Use an API token.")),
     };
+    if !user.can_read() {
+        return Err(http_error(
+            StatusCode::FORBIDDEN,
+            "This API token can't read, so it can't use MCP.",
+        ));
+    }
     if let Some(wait) = rate_limited(instance, token_id, Instant::now()) {
         let mut resp = http_error(
             StatusCode::TOO_MANY_REQUESTS,

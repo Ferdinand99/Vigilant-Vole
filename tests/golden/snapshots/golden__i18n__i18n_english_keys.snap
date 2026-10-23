@@ -294,6 +294,8 @@ count.days.one
 count.days.other
 count.incidents.one
 count.incidents.other
+count.last_days.one
+count.last_days.other
 count.monitors.one
 count.monitors.other
 count.outages.one
@@ -516,6 +518,7 @@ event_kind.resumed
 event_kind.test
 event_kind.up
 fmt.ago
+fmt.bytes
 fmt.compact_day
 fmt.compact_hour
 fmt.compact_min
@@ -529,10 +532,14 @@ fmt.dur_hour
 fmt.dur_min
 fmt.dur_sec
 fmt.future
+fmt.gigabytes
 fmt.just_now
+fmt.kilobytes
+fmt.megabytes
 fmt.months_long
 fmt.months_short
 fmt.short_datetime
+fmt.terabytes
 fmt.weekday_day_month
 fmt.weekdays_long
 fmt.weekdays_short

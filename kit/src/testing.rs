@@ -220,4 +220,6 @@ pub static CONFIG: KitConfig = KitConfig {
         duration: "downtime",
         url_example: "https://example.com/hooks/vigilant…",
     },
+    token_scopes: &[],
+    general: None,
 };

@@ -12,6 +12,19 @@ test_title = "Test message from {product}"
 test_body = "If you can read this, the channel works."
 test_event = "Test"
 view_notes = "View notes"
+# Token scopes (KitConfig::token_scopes).
+scope_add = "Read and add notes"
+scope_add_help = "Reads everything and adds notes, but changes nothing else"
+scope_inbox = "Inbox only"
+scope_inbox_help = "Drops notes in the inbox and can’t read anything"
+# The demo's section of the General page.
+section_notes = "Notes"
+per_page = "Notes per page"
+per_page_help = "How many notes a page lists."
+notes_unit = "notes"
+err_per_page = "Enter a number between 5 and 100."
+public = "Public notes"
+public_help = "Anyone with a note’s link can read it."
 
 [count]
 envelopes.one = "{n} envelope"
@@ -40,3 +53,10 @@ setup_token_required = "This instance needs a setup token. Open /setup?token=…
 
 [error]
 back = "Back to your notes"
+
+# Texts of the kit's General page
+# (vole_kit::i18n::catalog::GENERAL_PRODUCT_KEYS).
+
+[general]
+sub = "How this instance names itself and tells time, and how it lists notes."
+base_url_help = "Where people reach this instance. Used for links to notes."

@@ -98,6 +98,12 @@
             <input type="radio" name="scope" value="write">
             <span class="choice-body">{{ m::icon("pencil") }}<span class="choice-title">{{ tr("tokens.scope_write") }}</span><span class="choice-sub">{{ tr("tokens.scope_write_sub") }}</span></span>
           </label>
+          {%- for s in extra_scopes %}
+          <label class="choice">
+            <input type="radio" name="scope" value="{{ s.name }}">
+            <span class="choice-body">{{ m::icon("key") }}<span class="choice-title">{{ s.label }}</span><span class="choice-sub">{{ s.help }}</span></span>
+          </label>
+          {%- endfor %}
         </div>
       </div>
       <div class="field">

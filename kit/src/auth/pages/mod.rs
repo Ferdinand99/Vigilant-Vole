@@ -1,7 +1,8 @@
 //! The pages every product needs, with their handlers: the setup wizard,
 //! sign-in with two-factor authentication and sign-out
 //! ([`public_router`]), and user management, API tokens, the personal
-//! Security page and the API reference ([`router`], behind
+//! Security page, the API reference and, for a product that turns it on,
+//! the General settings page ([`router`], behind
 //! [`require_auth`](super::guard::require_auth)).
 //!
 //! The routers work with any product state `S` the kit's [`Core`] (and the
@@ -9,6 +10,7 @@
 //! product's parts (name, logo, navigation, settings tabs) come from its
 //! [`KitConfig`](crate::config::KitConfig).
 
+mod general;
 mod security;
 mod sign_in;
 mod tokens;
@@ -47,7 +49,9 @@ where
         .route("/logout", post(sign_in::logout))
 }
 
-/// Users, API tokens, Security and the API reference. Mount it behind
+/// Users, API tokens, Security, the API reference and, with
+/// [`KitConfig::general`](crate::config::KitConfig::general), General
+/// (`/settings/general`). Mount it behind
 /// [`require_auth`](super::guard::require_auth): the handlers take the
 /// signed-in [`CurrentUser`](super::CurrentUser).
 pub fn router<S>() -> Router<S>
@@ -57,7 +61,12 @@ where
     Key: FromRef<S>,
 {
     let spec = crate::docs::spec();
-    Router::new()
+    let router = if crate::config::get().general.is_some() {
+        Router::new().route("/settings/general", get(general::page).post(general::save))
+    } else {
+        Router::new()
+    };
+    router
         .route("/settings/users", get(users::list).post(users::create))
         .route("/settings/users/{id}", post(users::update))
         .route("/settings/users/{id}/password", post(users::reset_password))
