@@ -1895,6 +1895,7 @@ mod router_tests {
             session_key: Key::generate(),
             update_tx: tx,
             http: reqwest::Client::new(),
+            sign_in_limits: Default::default(),
             config: Arc::new(Config {
                 data_dir: dir.clone(),
                 bind_addr: "127.0.0.1:0".into(),

@@ -889,6 +889,20 @@ edit_heading = "Edit {name}"
 [general]
 language = "Language"
 err_site_name = "Use at most 80 characters."
+site = "Site"
+site_name_help = "Shown in the top bar, page titles and notifications."
+base_url = "Public URL"
+region = "Region"
+language_help = "The default for everyone. People can pick their own under Security."
+save = "Save settings"
+saved = "Settings saved"
+err_timezone = "Choose a time zone from the list."
+err_url = "Enter a full URL, like https://status.example.com"
+err_url_credentials = "Leave out the username and password."
+err_url_query = "Leave out the ? and # parts."
+
+[mw]
+timezone = "Time zone"
 
 [docs]
 title = "API reference"

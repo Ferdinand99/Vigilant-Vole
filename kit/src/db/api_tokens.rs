@@ -62,6 +62,9 @@ pub struct ApiToken {
     pub expires_at: Option<String>,
     /// `expires_at` is in the past.
     pub expired: bool,
+    /// The product scopes it was given (`api_token_scopes`), sorted. Empty
+    /// unless filled with [`fill_scopes`].
+    pub scopes: Vec<String>,
 }
 
 /// A token lookup hit: token + the owner's current state.
@@ -96,6 +99,7 @@ fn row_to_token(row: &Row) -> rusqlite::Result<ApiToken> {
         last_used_at: row.get("last_used_at")?,
         expires_at: row.get("expires_at")?,
         expired: row.get("expired")?,
+        scopes: Vec::new(),
     })
 }
 
@@ -184,6 +188,44 @@ pub fn find_valid_by_hash(
     .optional()
 }
 
+// The product scopes (`api_token_scopes`, core migration
+// `kit/0002_token_scopes.sql`). Only products that declare token scopes have
+// the table; callers check `KitConfig::token_scopes` before using these.
+
+/// The product scopes token `token_id` was given, sorted.
+pub fn scopes_of(conn: &Connection, token_id: i64) -> rusqlite::Result<Vec<String>> {
+    conn.prepare_cached("SELECT scope FROM api_token_scopes WHERE token_id = ?1 ORDER BY scope")?
+        .query_map(params![token_id], |r| r.get(0))?
+        .collect()
+}
+
+/// Gives token `token_id` the product scope `scope` (again is harmless).
+pub fn add_scope(conn: &Connection, token_id: i64, scope: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO api_token_scopes (token_id, scope) VALUES (?1, ?2)",
+        params![token_id, scope],
+    )?;
+    Ok(())
+}
+
+/// Fills [`ApiToken::scopes`] of every token in `tokens`.
+pub fn fill_scopes(conn: &Connection, tokens: &mut [ApiToken]) -> rusqlite::Result<()> {
+    for token in tokens {
+        token.scopes = scopes_of(conn, token.id)?;
+    }
+    Ok(())
+}
+
+/// The ids of the tokens that have product scope `scope`, newest first.
+pub fn with_scope(conn: &Connection, scope: &str) -> rusqlite::Result<Vec<i64>> {
+    conn.prepare(
+        "SELECT s.token_id FROM api_token_scopes s JOIN api_tokens t ON t.id = s.token_id
+         WHERE s.scope = ?1 ORDER BY t.created_at DESC, t.id DESC",
+    )?
+    .query_map(params![scope], |r| r.get(0))?
+    .collect()
+}
+
 pub fn touch(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     conn.execute(
         "UPDATE api_tokens SET last_used_at = datetime('now') WHERE id = ?1",
@@ -267,6 +309,25 @@ mod tests {
                 .unwrap()
                 .needs_touch
         );
+    }
+
+    #[test]
+    fn product_scopes_are_stored_per_token_and_go_with_it() {
+        let (conn, uid) = setup();
+        let id = insert(&conn, uid, "ci", "vv_abc", "hash1", TokenScope::Read, None).unwrap();
+        let other = insert(&conn, uid, "x", "vv_def", "hash2", TokenScope::Read, None).unwrap();
+        add_scope(&conn, id, "uploads:write").unwrap();
+        add_scope(&conn, id, "uploads:write").unwrap();
+        add_scope(&conn, id, "a:b").unwrap();
+        assert_eq!(scopes_of(&conn, id).unwrap(), ["a:b", "uploads:write"]);
+        assert!(scopes_of(&conn, other).unwrap().is_empty());
+        assert_eq!(with_scope(&conn, "uploads:write").unwrap(), [id]);
+        let mut all = list_for_user(&conn, uid).unwrap();
+        fill_scopes(&conn, &mut all).unwrap();
+        let mine = all.iter().find(|t| t.id == id).unwrap();
+        assert_eq!(mine.scopes, ["a:b", "uploads:write"]);
+        assert!(delete(&conn, id).unwrap());
+        assert!(scopes_of(&conn, id).unwrap().is_empty());
     }
 
     #[test]

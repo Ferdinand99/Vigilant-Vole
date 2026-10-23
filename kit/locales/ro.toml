@@ -896,6 +896,20 @@ edit_heading = "Editează {name}"
 [general]
 language = "Limbă"
 err_site_name = "Folosește cel mult 80 de caractere."
+site = "Site"
+site_name_help = "Apare în bara de sus, în titlurile paginilor și în notificări."
+base_url = "URL public"
+region = "Regiune"
+language_help = "Implicită pentru toți. Fiecare persoană își poate alege limba în Securitate."
+save = "Salvează setările"
+saved = "Setările au fost salvate"
+err_timezone = "Alege un fus orar din listă."
+err_url = "Introdu un URL complet, de exemplu https://status.example.com"
+err_url_credentials = "Omite numele de utilizator și parola."
+err_url_query = "Omite părțile cu ? și #."
+
+[mw]
+timezone = "Fus orar"
 
 [docs]
 title = "Referință API"

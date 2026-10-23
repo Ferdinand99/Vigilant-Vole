@@ -41,6 +41,18 @@ pub const PRODUCT_KEYS: &[&str] = &[
     "error.back",
 ];
 
+/// Texts of the kit's General settings page that depend on the product,
+/// required (like [`PRODUCT_KEYS`]) only from a product that turns the page
+/// on ([`KitConfig::general`](crate::config::KitConfig::general)).
+pub const GENERAL_PRODUCT_KEYS: &[&str] = &[
+    // The page's subtitle: what these settings cover ("How this instance
+    // names itself, tells time and keeps data.").
+    "general.sub",
+    // Under the public URL: what it is used for ("… Used for links in
+    // notifications and push URLs.").
+    "general.base_url_help",
+];
+
 pub type Catalog = HashMap<String, String>;
 
 static CATALOGS: OnceLock<Vec<Catalog>> = OnceLock::new();
@@ -467,7 +479,7 @@ mod split_tests {
     fn product_keys_are_the_products_alone() {
         for code in ["en", "nb", "ar", "ja", "zh-CN"] {
             let core = parse(core_text(code)).unwrap();
-            for key in PRODUCT_KEYS {
+            for key in PRODUCT_KEYS.iter().chain(GENERAL_PRODUCT_KEYS) {
                 assert!(!core.contains_key(*key), "{code}: the kit defines {key}");
             }
         }
@@ -545,7 +557,7 @@ mod split_tests {
     fn the_kit_uses_only_its_own_strings() {
         let core = parse(core_text("en")).unwrap();
         let has = |key: &str, plural: bool| {
-            if PRODUCT_KEYS.contains(&key) {
+            if PRODUCT_KEYS.contains(&key) || GENERAL_PRODUCT_KEYS.contains(&key) {
                 true
             } else if plural {
                 core.contains_key(&format!("{key}.one"))

@@ -57,6 +57,7 @@ async fn app() -> TestApp {
         session_key: Key::generate(),
         update_tx: tx,
         http,
+        sign_in_limits: Default::default(),
         config: Arc::new(Config {
             data_dir: std::env::temp_dir(),
             bind_addr: "127.0.0.1:0".into(),
@@ -71,6 +72,8 @@ fn router(state: &AppState, role: Role) -> Router {
         username: "ada".into(),
         display_name: "Ada".into(),
         role,
+        account_role: role,
+        scopes: Default::default(),
     };
     Router::new()
         .merge(super::router())

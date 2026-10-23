@@ -1,0 +1,91 @@
+{% extends "settings_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("nav.general"), tr("general.sub")) %}{% endcall %}
+
+<form class="form" method="post" action="/settings/general" data-warn-unsaved novalidate>
+  <section class="form-section" aria-labelledby="sec-site">
+    <h2 class="form-section-title" id="sec-site">{{ tr("general.site") }}</h2>
+    <div class="card">
+      {{ m::field_text("site_name", tr("setup.site_name"), value=&self.site_name, placeholder=tr("setup.site_name_placeholder"), help=tr("general.site_name_help"), error=&self.site_name_error) }}
+      {{ m::field_text("base_url", tr("general.base_url"), value=&self.base_url, kind="url", placeholder="https://example.com…", help=tr("general.base_url_help"), error=&self.base_url_error) }}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-region">
+    <h2 class="form-section-title" id="sec-region">{{ tr("general.region") }}</h2>
+    <div class="card">
+      <div class="field-row">
+        <div class="field{% if !timezone_error.is_empty() %} is-invalid{% endif %}">
+          <label class="label" for="f-timezone">{{ tr("mw.timezone") }}</label>
+          <select id="f-timezone" name="timezone"{% if !timezone_error.is_empty() %} aria-invalid="true" aria-describedby="f-timezone-error"{% endif %}>
+            {%- for tz in timezones %}
+            <option value="{{ tz }}"{% if tz.as_str() == timezone.as_str() %} selected{% endif %}>{{ tz }}</option>
+            {%- endfor %}
+          </select>
+          {%- if !timezone_error.is_empty() %}
+          <p class="field-error" id="f-timezone-error">{{ m::icon("alert-circle") }}{{ timezone_error }}</p>
+          {%- endif %}
+        </div>
+        <div class="field">
+          <label class="label" for="f-language">{{ tr("general.language") }}</label>
+          <select id="f-language" name="language">
+            {%- for (code, label) in languages %}
+            <option value="{{ code }}"{% if self.is_language(code) %} selected{% endif %}>{{ label }}</option>
+            {%- endfor %}
+          </select>
+          <p class="help">{{ tr("general.language_help") }}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  {%- for s in sections %}
+
+  <section class="form-section" aria-labelledby="sec-{{ s.id }}">
+    <h2 class="form-section-title" id="sec-{{ s.id }}">{{ s.title }}</h2>
+    <div class="card">
+      {%- for f in s.fields %}
+      {%- if f.kind == "switch" %}
+      {{ m::switch(f.key, f.label, f.checked(), f.help) }}
+      {%- else if f.kind == "text" %}
+      {{ m::field_text(f.key, f.label, value=&f.value, placeholder=f.placeholder, help=f.help, error=&f.error) }}
+      {%- else %}
+      <div class="field{% if !f.error.is_empty() %} is-invalid{% endif %}">
+        <label class="label" for="f-{{ f.key }}">{{ f.label }}</label>
+        {%- if f.kind == "number" %}
+        <div class="input-group">
+          <input id="f-{{ f.key }}" name="{{ f.key }}" type="number" inputmode="numeric" min="{{ f.min }}" max="{{ f.max }}" step="1" autocomplete="off" value="{{ f.value }}"
+            {%- if !f.described_by().is_empty() %} aria-describedby="{{ f.described_by() }}"{% endif %}
+            {%- if !f.error.is_empty() %} aria-invalid="true"{% endif %}>
+          {%- if !f.unit.is_empty() %}
+          <span class="input-addon" aria-hidden="true">{{ f.unit }}</span>
+          {%- endif %}
+        </div>
+        {%- else %}
+        <select id="f-{{ f.key }}" name="{{ f.key }}"
+          {%- if !f.described_by().is_empty() %} aria-describedby="{{ f.described_by() }}"{% endif %}
+          {%- if !f.error.is_empty() %} aria-invalid="true"{% endif %}>
+          {%- for (value, label) in f.options %}
+          <option value="{{ value }}"{% if f.selected(value) %} selected{% endif %}>{{ label }}</option>
+          {%- endfor %}
+        </select>
+        {%- endif %}
+        {%- if !f.help.is_empty() %}
+        <p class="help" id="f-{{ f.key }}-help">{{ f.help }}</p>
+        {%- endif %}
+        {%- if !f.error.is_empty() %}
+        <p class="field-error" id="f-{{ f.key }}-error">{{ m::icon("alert-circle") }}{{ f.error }}</p>
+        {%- endif %}
+      </div>
+      {%- endif %}
+      {%- endfor %}
+    </div>
+  </section>
+  {%- endfor %}
+
+  <div class="form-actions">
+    {{ m::button(tr("general.save")) }}
+  </div>
+</form>
+{% endblock %}

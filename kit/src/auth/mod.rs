@@ -27,6 +27,7 @@ pub mod session;
 pub mod tokens;
 pub mod totp;
 
+pub use crate::config::ExtraScope;
 pub use crate::db::api_tokens::TokenScope;
 pub use crate::db::role::Role;
 use crate::http::{ApiError, ApiResult};
@@ -48,15 +49,37 @@ pub use guard::{authenticate_headers, authenticate_token};
 /// Extracting `CurrentUser` on a route without the middleware yields
 /// `ApiError::Unauthorized`; `Option<CurrentUser>` yields `None` instead.
 ///
-/// For API-token requests `role` is already capped by the token's scope
-/// (read → viewer). How the request authenticated is in [`AuthMethod`].
+/// For API-token requests `role` is already capped by the token's access
+/// (read → viewer); `account_role` is the owner's own role, and `scopes` the
+/// product scopes the token carries. How the request authenticated is in
+/// [`AuthMethod`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurrentUser {
     pub id: i64,
     pub username: String,
     /// Falls back to `username` when the user has no display name.
     pub display_name: String,
+    /// What this request may do: the account's role, capped for an API
+    /// token by its access (a read-only token acts as a viewer).
     pub role: Role,
+    /// The account's own role, whatever a token caps. The same as `role`
+    /// for sessions. See [`Self::may_act_as`].
+    pub account_role: Role,
+    /// The product scopes ([`KitConfig::token_scopes`](crate::config::KitConfig::token_scopes))
+    /// this request carries. See [`Self::has_scope`].
+    pub scopes: Scopes,
+}
+
+/// The product scopes a request carries.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Scopes {
+    /// A session or a read-and-write token: every declared scope (the
+    /// role still applies).
+    #[default]
+    All,
+    /// A read-only API token: the scopes it was given that the product
+    /// still declares (none for a plain read-only token).
+    Only(Vec<&'static str>),
 }
 
 impl CurrentUser {
@@ -86,6 +109,85 @@ impl CurrentUser {
     pub fn is_admin(&self) -> bool {
         self.role.is_admin()
     }
+
+    /// Whether the account behind the request has at least `role`, however
+    /// a token caps [`Self::role`]. Combine it with [`Self::has_scope`]: a
+    /// read-only token with an upload scope may upload when its owner may
+    /// edit (`user.has_scope("difs:write") && user.may_act_as(Role::Editor)`).
+    pub fn may_act_as(&self, role: Role) -> bool {
+        self.account_role >= role
+    }
+
+    /// Whether the request carries the product scope `scope`: a session or
+    /// a read-and-write token carries every declared scope, a read-only
+    /// token the ones it was given. Always false for a name the product
+    /// doesn't declare (debug builds panic, to catch typos). The role is
+    /// checked separately ([`Self::may_act_as`], [`Self::require`]).
+    pub fn has_scope(&self, scope: &str) -> bool {
+        let declared = crate::config::get().token_scope(scope).is_some();
+        debug_assert!(
+            declared,
+            "token scope {scope:?} is not in KitConfig::token_scopes"
+        );
+        declared
+            && match &self.scopes {
+                Scopes::All => true,
+                Scopes::Only(given) => given.contains(&scope),
+            }
+    }
+
+    /// Whether the request may read, as every session and API token may,
+    /// except a token whose scopes all leave reading out
+    /// ([`ExtraScope::implies_read`](crate::config::ExtraScope::implies_read)).
+    /// `require_auth` refuses those outside their scopes' paths.
+    pub fn can_read(&self) -> bool {
+        match &self.scopes {
+            Scopes::All => true,
+            Scopes::Only(given) => {
+                given.is_empty()
+                    || given.iter().any(|name| {
+                        crate::config::get()
+                            .token_scope(name)
+                            .is_some_and(|s| s.implies_read)
+                    })
+            }
+        }
+    }
+
+    /// Whether `path` is under one of the [`paths`](crate::config::ExtraScope::paths)
+    /// of the token's scopes (false for sessions and tokens without scopes).
+    pub fn scope_allows_path(&self, path: &str) -> bool {
+        let Scopes::Only(given) = &self.scopes else {
+            return false;
+        };
+        given.iter().any(|name| {
+            crate::config::get()
+                .token_scope(name)
+                .is_some_and(|s| s.paths.iter().any(|p| path.starts_with(p)))
+        })
+    }
+}
+
+/// The scopes of a token with `access` that was given `stored` (its rows in
+/// `api_token_scopes`), against the scopes the product declares. `None`
+/// when it was given scopes of which the product declares none any more:
+/// such a token stops working rather than turning into a read-only one.
+pub fn token_scopes(
+    access: TokenScope,
+    stored: &[String],
+    declared: &'static [crate::config::ExtraScope],
+) -> Option<Scopes> {
+    if access == TokenScope::Write {
+        return Some(Scopes::All);
+    }
+    let known: Vec<&'static str> = stored
+        .iter()
+        .filter_map(|s| declared.iter().find(|d| d.name == s).map(|d| d.name))
+        .collect();
+    if known.is_empty() && !stored.is_empty() {
+        return None;
+    }
+    Some(Scopes::Only(known))
 }
 
 /// How the current request authenticated. Inserted next to [`CurrentUser`]
@@ -277,7 +379,82 @@ mod tests {
             username: "u".into(),
             display_name: "u".into(),
             role,
+            account_role: role,
+            scopes: Scopes::All,
         }
+    }
+
+    static DECLARED: &[crate::config::ExtraScope] = &[
+        crate::config::ExtraScope {
+            name: "uploads:write",
+            label: "x",
+            help: "x",
+            implies_read: true,
+            paths: &[],
+        },
+        crate::config::ExtraScope {
+            name: "push",
+            label: "x",
+            help: "x",
+            implies_read: false,
+            paths: &["/api/push/"],
+        },
+    ];
+
+    #[test]
+    fn existing_tokens_keep_their_access() {
+        assert_eq!(
+            token_scopes(TokenScope::Write, &[], DECLARED),
+            Some(Scopes::All)
+        );
+        assert_eq!(
+            token_scopes(TokenScope::Read, &[], DECLARED),
+            Some(Scopes::Only(vec![]))
+        );
+        assert_eq!(
+            token_scopes(TokenScope::Read, &[], &[]),
+            Some(Scopes::Only(vec![]))
+        );
+    }
+
+    #[test]
+    fn stored_scopes_count_while_the_product_declares_them() {
+        let stored = ["gone".to_string(), "uploads:write".to_string()];
+        assert_eq!(
+            token_scopes(TokenScope::Read, &stored, DECLARED),
+            Some(Scopes::Only(vec!["uploads:write"]))
+        );
+        // Only scopes the product dropped: the token stops working.
+        let gone = ["gone".to_string()];
+        assert_eq!(token_scopes(TokenScope::Read, &gone, DECLARED), None);
+        assert_eq!(
+            token_scopes(TokenScope::Write, &gone, DECLARED),
+            Some(Scopes::All)
+        );
+    }
+
+    #[test]
+    fn may_act_as_looks_past_the_tokens_cap() {
+        let u = CurrentUser {
+            account_role: Role::Editor,
+            scopes: Scopes::Only(vec![]),
+            ..user(Role::Viewer)
+        };
+        assert!(u.require_editor().is_err());
+        assert!(u.may_act_as(Role::Editor) && !u.may_act_as(Role::Admin));
+    }
+
+    /// The test configuration declares no scopes, so no request has one.
+    #[test]
+    fn sessions_and_plain_tokens_read_and_carry_no_undeclared_scope() {
+        assert!(user(Role::Admin).can_read());
+        assert!(!user(Role::Admin).scope_allows_path("/api/push/x"));
+        let read_only = CurrentUser {
+            scopes: Scopes::Only(vec![]),
+            ..user(Role::Viewer)
+        };
+        assert!(read_only.can_read());
+        assert!(!read_only.scope_allows_path("/api/push/x"));
     }
 
     #[test]

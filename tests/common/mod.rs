@@ -104,17 +104,16 @@ pub fn embedded_migrations() -> Vec<String> {
 }
 
 /// What `schema_migrations` holds once every migration has run: ours plus
-/// the kit's core set (`kit/…`, recorded by 0104 or run), sorted by name.
+/// the kit's core migrations we take (`kit/…`, recorded by 0104 or run),
+/// sorted by name.
 pub fn recorded_migrations() -> Vec<String> {
-    let kit = Path::new(env!("CARGO_MANIFEST_DIR")).join("kit/migrations");
     let mut names: Vec<String> = embedded_migrations()
         .into_iter()
         .chain(
-            std::fs::read_dir(kit)
-                .unwrap()
-                .filter_map(Result::ok)
-                .map(|e| format!("kit/{}", e.file_name().to_string_lossy()))
-                .filter(|n| n.ends_with(".sql")),
+            vigilant_vole::db::MIGRATIONS
+                .core
+                .iter()
+                .map(|(name, _)| name.to_string()),
         )
         .collect();
     names.sort();
@@ -520,8 +519,9 @@ impl Client {
         let mut res = self
             .post_form("/login", &[("username", username), ("password", password)])
             .await;
-        // The login rate limiter is per process and counts attempts up front,
-        // so tests signing in as the same user in parallel can be told to wait.
+        // The login rate limiter (one per test server) counts attempts up
+        // front, so a test signing in as one user several times at once can
+        // be told to wait.
         for _ in 0..20 {
             if res.status == 303 || !res.text().contains("Too many attempts") {
                 break;

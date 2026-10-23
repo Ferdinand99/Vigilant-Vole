@@ -34,22 +34,38 @@ struct TokenRow {
     prefix: String,
     username: String,
     scope: &'static str,
-    scope_label: &'static str,
+    scope_label: String,
     created_at: String,
     last_used_at: Option<String>,
     expires_at: Option<String>,
     expired: bool,
 }
 
+/// The Access badge: the product scopes' labels when the token has any,
+/// else "Read only" or "Read and write".
+fn access_label(t: &ApiToken) -> String {
+    if t.scopes.is_empty() {
+        return t.scope.label().to_string();
+    }
+    t.scopes
+        .iter()
+        .map(|name| match crate::config::get().token_scope(name) {
+            Some(scope) => crate::i18n::t(scope.label),
+            None => name.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 impl From<ApiToken> for TokenRow {
     fn from(t: ApiToken) -> Self {
         Self {
+            scope_label: access_label(&t),
             id: t.id,
             name: t.name,
             prefix: t.prefix,
             username: t.username,
             scope: t.scope.as_str(),
-            scope_label: t.scope.label(),
             created_at: t.created_at,
             last_used_at: t.last_used_at,
             expires_at: t.expires_at,
@@ -72,6 +88,27 @@ struct TokensTemplate {
     /// What the `curl` example calls, and where Prometheus scrapes (if anywhere).
     example_path: &'static str,
     metrics_path: Option<&'static str>,
+    /// The product's token scopes, offered after "Read and write".
+    extra_scopes: Vec<ScopeChoice>,
+}
+
+/// One product scope in the new token sheet.
+struct ScopeChoice {
+    name: &'static str,
+    label: &'static str,
+    help: &'static str,
+}
+
+fn scope_choices() -> Vec<ScopeChoice> {
+    crate::config::get()
+        .token_scopes
+        .iter()
+        .map(|s| ScopeChoice {
+            name: s.name,
+            label: crate::i18n::t(s.label),
+            help: crate::i18n::t(s.help),
+        })
+        .collect()
 }
 
 async fn render(
@@ -82,14 +119,19 @@ async fn render(
 ) -> ApiResult<Response> {
     let uid = user.id;
     let is_admin = user.is_admin();
+    let scoped = !core.cfg.token_scopes.is_empty();
     let (mine, all) = core
         .with_conn(move |c| {
-            let mine = db_tokens::list_for_user(c, uid)?;
-            let all = if is_admin {
+            let mut mine = db_tokens::list_for_user(c, uid)?;
+            let mut all = if is_admin {
                 db_tokens::list_all(c)?
             } else {
                 Vec::new()
             };
+            if scoped {
+                db_tokens::fill_scopes(c, &mut mine)?;
+                db_tokens::fill_scopes(c, &mut all)?;
+            }
             Ok((mine, all))
         })
         .await?;
@@ -121,6 +163,7 @@ async fn render(
         base_url,
         example_path: crate::docs::spec().example_path,
         metrics_path: crate::docs::spec().metrics_path,
+        extra_scopes: scope_choices(),
     };
     // The page may contain a secret: keep it out of caches and history snapshots.
     let mut response = (jar, HtmlTemplate(page)).into_response();
@@ -165,8 +208,15 @@ pub(super) async fn create(
     if name.is_empty() || name.chars().count() > 80 {
         return Ok(back(jar, "error", crate::i18n::t("tokens.err_name")));
     }
-    let Some(scope) = TokenScope::parse(form.scope.trim()) else {
-        return Ok(back(jar, "error", crate::i18n::t("tokens.err_scope")));
+    // "read", "write" or one of the product's scopes (a read-only token
+    // that also carries it).
+    let chosen = form.scope.trim();
+    let (scope, extra) = match TokenScope::parse(chosen) {
+        Some(scope) => (scope, None),
+        None => match core.cfg.token_scope(chosen) {
+            Some(extra) => (TokenScope::Read, Some(extra.name)),
+            None => return Ok(back(jar, "error", crate::i18n::t("tokens.err_scope"))),
+        },
     };
     let Some(expires_in) = EXPIRY_CHOICES
         .iter()
@@ -191,10 +241,16 @@ pub(super) async fn create(
         name.clone(),
     );
     core.with_conn(move |c| {
-        db_tokens::insert(c, uid, &stored_name, &prefix, &hash, scope, expires_in)
+        let tx = c.transaction()?;
+        let id = db_tokens::insert(&tx, uid, &stored_name, &prefix, &hash, scope, expires_in)?;
+        if let Some(extra) = extra {
+            db_tokens::add_scope(&tx, id, extra)?;
+        }
+        tx.commit()
     })
     .await?;
-    tracing::info!(user = %user.username, token = %name, scope = scope.as_str(), "API token created");
+    let scope_name = extra.unwrap_or(scope.as_str());
+    tracing::info!(user = %user.username, token = %name, scope = scope_name, "API token created");
     let jar = flash(jar, "success", crate::i18n::t("tokens.created"));
     render(&core, &user, jar, Some((token, name))).await
 }
@@ -262,6 +318,7 @@ mod tests {
             base_url: String::new(),
             example_path: "/api/v1/monitors",
             metrics_path: Some("/metrics"),
+            extra_scopes: Vec::new(),
         };
         let html = page.render().expect("template renders");
         assert_eq!(

@@ -888,6 +888,20 @@ edit_heading = "Redigera {name}"
 [general]
 language = "Språk"
 err_site_name = "Använd högst 80 tecken."
+site = "Webbplats"
+site_name_help = "Visas i översta fältet, sidtitlar och aviseringar."
+base_url = "Offentlig URL"
+region = "Region"
+language_help = "Standard för alla. Var och en kan välja sitt eget under Säkerhet."
+save = "Spara inställningar"
+saved = "Inställningar sparade"
+err_timezone = "Välj en tidszon i listan."
+err_url = "Ange en fullständig URL, till exempel https://status.example.com"
+err_url_credentials = "Utelämna användarnamn och lösenord."
+err_url_query = "Utelämna delarna med ? och #."
+
+[mw]
+timezone = "Tidszon"
 
 [docs]
 title = "API-referens"

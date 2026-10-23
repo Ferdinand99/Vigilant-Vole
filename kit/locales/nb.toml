@@ -889,6 +889,20 @@ edit_heading = "Rediger {name}"
 [general]
 language = "Språk"
 err_site_name = "Bruk høyst 80 tegn."
+site = "Nettsted"
+site_name_help = "Vises øverst på siden, i sidetitler og i varsler."
+base_url = "Offentlig URL"
+region = "Region"
+language_help = "Standard for alle. Hver bruker kan velge sitt eget språk under Sikkerhet."
+save = "Lagre innstillingene"
+saved = "Innstillingene er lagret"
+err_timezone = "Velg en tidssone fra listen."
+err_url = "Skriv inn en fullstendig URL, for eksempel https://status.example.com"
+err_url_credentials = "Ta bort brukernavnet og passordet."
+err_url_query = "Ta bort delene med ? og #."
+
+[mw]
+timezone = "Tidssone"
 
 [docs]
 title = "API-referanse"
