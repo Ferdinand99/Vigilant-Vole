@@ -1,0 +1,10 @@
+# cargo-deny configuration, used by the Audit workflow (advisories only).
+[advisories]
+ignore = [
+    # basic-toml is unmaintained. askama's derive macro uses it at build time to
+    # read askama.toml; it never sees untrusted input. Drop when askama moves off it.
+    { id = "RUSTSEC-2026-0374", reason = "build-time only, via askama_derive; no untrusted input" },
+    # unsafe-libyaml (via serde_yaml_ng) is unmaintained. It parses the admin's own
+    # config-as-code YAML. Move to a maintained YAML parser when one fits.
+    { id = "RUSTSEC-2024-0449", reason = "parses admin-supplied config only, via serde_yaml_ng; replacement planned" },
+]
