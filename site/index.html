@@ -530,8 +530,8 @@
             </li>
             <li class="card feature reveal" style="--i: 1">
               <span class="list-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg></span>
-              <h3>Roles, 2FA and API tokens</h3>
-              <p>Admin, editor and viewer roles, TOTP with recovery codes, and expiring read or write tokens. Argon2 passwords and a strict Content-Security-Policy.</p>
+              <h3>Roles, 2FA, passkeys and API tokens</h3>
+              <p>Admin, editor and viewer roles, TOTP with recovery codes, passkeys, and expiring read or write tokens. Argon2 passwords and a strict Content-Security-Policy.</p>
               <a class="link-arrow" href="https://github.com/Ferdinand99/Vigilant-Vole#-security">Security notes <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#chevron-right"></use></svg></a>
             </li>
             <li class="card feature reveal" style="--i: 2">
@@ -711,7 +711,7 @@
               <tbody>
                 <tr class="group"><th colspan="3" scope="rowgroup">Running it</th></tr>
                 <tr><th scope="row">Multiple users with roles</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Admin, editor, viewer</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>Single user</span></td></tr>
-                <tr><th scope="row">2FA (TOTP)</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, with recovery codes</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
+                <tr><th scope="row">2FA (TOTP)</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes, with recovery codes, plus passkeys</span></td><td data-label="Uptime Kuma"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Yes</span></td></tr>
                 <tr><th scope="row">REST API</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Full CRUD + OpenAPI</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No (socket.io; API keys for metrics only)</span></td></tr>
                 <tr><th scope="row">Config as code, GitOps</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>YAML/JSON, dry-run, merge or replace</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No</span></td></tr>
                 <tr><th scope="row">Docker label auto-discovery</th><td data-label="Vigilant Vole"><span class="mark mark-yes"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>Built in</span></td><td data-label="Uptime Kuma"><span class="mark mark-no"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg>No (third-party AutoKuma)</span></td></tr>
