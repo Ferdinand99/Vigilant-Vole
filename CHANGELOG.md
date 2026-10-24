@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.12.0...v0.12.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** RustSec fixes (rustls-webpki, webpki-root-certs, tokio, ctutils), Dependabot and a weekly audit ([5a13860](https://github.com/Ferdinand99/Vigilant-Vole/commit/5a13860bc1669339907aa7f3ad5c66ac308365c7))
+
 ## [0.12.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.11.1...v0.12.0) (2026-10-24)
 
 
