@@ -39,7 +39,7 @@ jobs:
       kit_tag_name: ${{ steps.release.outputs['kit--tag_name'] }}
       kit_release_id: ${{ steps.release.outputs['kit--id'] }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: release-please-config.json
