@@ -124,7 +124,7 @@ async fn set_password(t: &TestApp, pid: i64, password: Option<&str>) {
         .with_conn(move |c| extras::set_password_hash(c, pid, hash.as_deref()))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
 }
 
 async fn browse(
@@ -310,7 +310,7 @@ async fn custom_domains_serve_logo_and_favicon() {
         })
         .await
         .unwrap();
-    invalidate_domains();
+    invalidate_domains(&t.state);
     let (status, headers, _) = get(&t, "/status/acme/logo", Some("status.acme.test"), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers.get("content-type"), Some("image/png"));
@@ -560,7 +560,7 @@ async fn custom_domain_unlock_cookie_covers_the_root() {
     let t = app().await;
     let (pid, _) = seed(&t, true, Some("status.acme.test")).await;
     set_password(&t, pid, Some("correct horse")).await;
-    invalidate_domains();
+    invalidate_domains(&t.state);
     let (status, _, body) = get(&t, "/", Some("status.acme.test"), None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(body.contains("action=\"/status/acme/unlock\""));
@@ -752,7 +752,7 @@ async fn views_are_counted_without_storing_ips_and_skip_bots_and_editors() {
         })
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     browse(&t, "/status/acme", FIREFOX, "203.0.113.99", None, None).await;
     assert_eq!(counters(&t, pid).await, (4, 2));
     t.state
@@ -768,7 +768,7 @@ async fn views_are_counted_without_storing_ips_and_skip_bots_and_editors() {
         })
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     browse(&t, "/status/acme", FIREFOX, "203.0.113.100", None, None).await;
     assert_eq!(counters(&t, pid).await, (4, 2));
 
@@ -802,7 +802,7 @@ async fn third_party_analytics_only_widens_csp_for_its_page() {
         .with_conn(move |c| extras::set_analytics(c, pid, &plausible))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (_, headers, body) = get(&t, "/status/acme", None, None).await;
     let csp = headers.get("content-security-policy").unwrap();
     assert!(
@@ -846,7 +846,7 @@ async fn third_party_analytics_only_widens_csp_for_its_page() {
         .with_conn(move |c| extras::set_analytics(c, pid, &ga))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (_, headers, body) = get(&t, "/status/acme", None, None).await;
     let csp = headers.get("content-security-policy").unwrap();
     assert!(
@@ -880,7 +880,7 @@ async fn third_party_analytics_only_widens_csp_for_its_page() {
         .with_conn(move |c| status_pages::update(c, pid, &p))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let ed = login(&t, "ed", Role::Editor).await;
     let (status, headers, body) = get(&t, "/status/acme", None, Some(&ed)).await;
     assert_eq!(status, StatusCode::OK);

@@ -410,6 +410,7 @@ err_url = "https://example.com のように、完全なURLを入力してくだ�
 err_number = "整数を入力してください"
 err_option = "一覧から選択してください"
 err_reenter_secret = "もう一度入力してください。送信先が変わったため、保存済みの値は再利用されません"
+err_secret_unreadable = "このチャンネルのシークレットを読み取れません（インスタンスの鍵が変わりました）。もう一度入力してください"
 err_apprise = "設定キーまたはAppriseのURLを1つ以上入力してください"
 err_discord = "DiscordのWebhook URLを使ってください（例：https://discord.com/api/webhooks/…）"
 err_email_from = "alerts@example.com または Name <alerts@example.com> の形式で入力してください"

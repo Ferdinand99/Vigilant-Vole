@@ -217,7 +217,13 @@ monitors:
 
     fn applied(conn: &mut Connection, text: &str, mode: Mode) -> Applied {
         let doc = parse_document(text).unwrap();
-        let out = apply(conn, &doc, mode).unwrap();
+        let out = apply(
+            conn,
+            &crate::notification::tests_support::test_key(),
+            &doc,
+            mode,
+        )
+        .unwrap();
         out.unwrap_or_else(|p| panic!("{:?}", p.errors))
     }
 
@@ -261,7 +267,12 @@ monitors:
     fn exports_mask_tokens_round_trip_and_reapply_as_no_ops() {
         let mut conn = test_conn();
         applied(&mut conn, DOC, Mode::Merge);
-        let masked = export(&conn, false).unwrap();
+        let masked = export(
+            &conn,
+            &crate::notification::tests_support::test_key(),
+            false,
+        )
+        .unwrap();
         let text = render(&masked, Format::Yaml).unwrap();
         assert!(
             !text.contains("s3cret") && text.contains("token=••••••"),
@@ -270,7 +281,13 @@ monitors:
         assert!(text.contains("remote_browser: Browserless"), "{text}");
         assert!(!text.contains("remote_browser_id"), "{text}");
         // The masked export applies to the same database without changes.
-        let p = plan(&conn, &masked, Mode::Merge).unwrap();
+        let p = plan(
+            &conn,
+            &crate::notification::tests_support::test_key(),
+            &masked,
+            Mode::Merge,
+        )
+        .unwrap();
         assert!(
             p.errors.is_empty() && !p.has_changes(),
             "{:?} {:?}",
@@ -278,7 +295,7 @@ monitors:
             p.items
         );
         // With secrets, onto a fresh instance, everything comes back.
-        let full = export(&conn, true).unwrap();
+        let full = export(&conn, &crate::notification::tests_support::test_key(), true).unwrap();
         let mut fresh = test_conn();
         applied(
             &mut fresh,
@@ -301,7 +318,13 @@ monitors:
         );
         // The masked one can't create the browser elsewhere.
         let mut other = test_conn();
-        let p = plan(&other, &masked, Mode::Merge).unwrap();
+        let p = plan(
+            &other,
+            &crate::notification::tests_support::test_key(),
+            &masked,
+            Mode::Merge,
+        )
+        .unwrap();
         assert!(
             p.errors
                 .iter()
@@ -309,7 +332,16 @@ monitors:
             "{:?}",
             p.errors
         );
-        assert!(apply(&mut other, &masked, Mode::Merge).unwrap().is_err());
+        assert!(
+            apply(
+                &mut other,
+                &crate::notification::tests_support::test_key(),
+                &masked,
+                Mode::Merge
+            )
+            .unwrap()
+            .is_err()
+        );
     }
 
     #[test]
@@ -325,7 +357,13 @@ monitors:
     target: https://shop.example.com/
     remote_browser: Nowhere
 "#;
-        let p = plan(&conn, &parse_document(bad).unwrap(), Mode::Merge).unwrap();
+        let p = plan(
+            &conn,
+            &crate::notification::tests_support::test_key(),
+            &parse_document(bad).unwrap(),
+            Mode::Merge,
+        )
+        .unwrap();
         assert!(
             p.errors
                 .iter()
@@ -359,7 +397,13 @@ monitors:
     }
 
     fn plan_of(conn: &Connection, text: &str) -> Plan {
-        plan(conn, &parse_document(text).unwrap(), Mode::Merge).unwrap()
+        plan(
+            conn,
+            &crate::notification::tests_support::test_key(),
+            &parse_document(text).unwrap(),
+            Mode::Merge,
+        )
+        .unwrap()
     }
 
     #[test]

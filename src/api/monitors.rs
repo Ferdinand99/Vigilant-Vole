@@ -1036,7 +1036,7 @@ async fn create(
     }
     let name = valid.monitor.name.clone();
     let id = state.with_conn(move |c| persist(c, None, &valid)).await?;
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(&state);
     state.scheduler.reload(id).await;
     state.notify_update();
     let jar = flash(
@@ -1084,7 +1084,7 @@ async fn update(
     state
         .with_conn(move |c| persist(c, Some(id), &valid))
         .await?;
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(&state);
     state.scheduler.reload(id).await;
     state.notify_update();
     let jar = flash(
@@ -1117,7 +1117,7 @@ async fn delete(
         })
         .await?
         .ok_or(ApiError::NotFound)?;
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(&state);
     state.scheduler.reload(id).await;
     state.notify_update();
     let jar = flash(
@@ -1366,7 +1366,7 @@ async fn bulk(
             Ok(changed)
         })
         .await?;
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(&state);
     for id in &changed {
         state.scheduler.reload(*id).await;
     }
@@ -1581,7 +1581,7 @@ async fn bulk_edit(
     let outcome = state
         .with_conn(move |c| bulk_edit::apply(c, &ids, &edit))
         .await?;
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(&state);
     for id in &outcome.updated {
         state.scheduler.reload(*id).await;
     }

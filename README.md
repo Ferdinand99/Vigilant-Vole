@@ -456,7 +456,7 @@ You get `vigilant_*` metrics (status, response time, 24h/30d uptime ratio, certi
 
 ## 💾 Backup and restore
 
-- **Settings → Backup → Database backup** downloads a consistent SQLite snapshot (`VACUUM INTO`) while monitoring keeps running. It contains everything — history, users, tokens and secrets — so store it like a password.
+- **Settings → Backup → Database backup** downloads a consistent SQLite snapshot (`VACUUM INTO`) while monitoring keeps running. It contains everything — history, users, tokens and secrets — so store it like a password. Notification channel secrets are sealed with the instance key in the live database; the snapshot holds them opened, so it restores on any instance (the restore seals them again with that instance's key).
 - **Restore on next start**: upload a backup; it's validated now and swapped in at the next restart. The current database is moved to `data/backups/`.
 - **Config export/import** (above) for the readable, history-free version.
 - Before applying database migrations on upgrade, a snapshot is written to `data/backups/` automatically.
@@ -477,6 +477,7 @@ Upgrading (Docker, Linux installer, Proxmox, Unraid), where the automatic backup
 - A strict Content-Security-Policy (`script-src 'self'`, no inline scripts or `eval`) applies to every page; public status pages differ only in allowing embedding (plus, on a page with third-party analytics, exactly that provider's origin).
 - Live dashboard streams re-check the account before every update and end after an hour, so signing out everywhere, disabling a user or changing their role takes effect on open tabs too.
 - Saved monitor passwords (HTTP basic auth) are never sent back to the browser; they're kept on save only while the target host and proxy stay the same.
+- **Notification channel secrets** (tokens, passwords, webhook URLs with a key in them) are sealed in the database with AES-256-GCM, under a key derived from the instance's `session.key` (in the data directory); the rest of a channel's settings stays readable. A copy of `vigilant-vole.db` alone doesn't give them away, but `vigilant-vole.db` together with `session.key` does: keep the data directory private. If `session.key` is lost or replaced, those secrets can't be read any more: the channel's edit page asks for them again and its alerts fail (logged) until you do. The database backup download holds them opened (see Backup and restore), as do config exports with secrets.
 - **Complete the setup wizard right after first start** — until the first admin exists, anyone who can reach the page can create it. Set `VV_SETUP_TOKEN` to require a secret in the setup URL (`/setup?token=…`) when the instance is reachable by others before you get to it.
 - Mounting `docker.sock` gives the container control over Docker; prefer a read-only socket proxy ([docs](docs/docker-discovery.md#permissions)).
 - A mounted `tailscaled.sock` (Tailscale ping monitors) gives the unprivileged app read access to the tailnet's status; running the container as root, or as Tailscale's operator, would give it control of Tailscale ([docs](docs/tailscale-ping.md#security)).

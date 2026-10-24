@@ -211,11 +211,22 @@ async fn download_database(
     state
         .with_conn(move |c| c.execute("VACUUM INTO ?1", [&target]).map(|_| ()))
         .await?;
+    let guard = TempFile(path.clone());
+    // The copy holds the channel secrets opened, so it restores on any
+    // instance (another `session.key`); the restore seals them again.
+    let key = state.session_key.clone();
+    let snapshot = path.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = rusqlite::Connection::open(&snapshot)?;
+        crate::notification::sealed::open_stored(&conn, &key)
+    })
+    .await
+    .map_err(ApiError::internal)?
+    .map_err(ApiError::internal)?;
     let file = tokio::fs::File::open(&path)
         .await
         .map_err(ApiError::internal)?;
     let len = file.metadata().await.map(|m| m.len()).ok();
-    let guard = TempFile(path);
     let stream =
         futures_util::stream::unfold((file, Some(guard)), |(mut file, guard)| async move {
             use tokio::io::AsyncReadExt;
@@ -531,8 +542,9 @@ async fn import_preview(
         Err(msg) => return Ok(partial(PlanPartial::problem(msg))),
     };
     let planned = doc.clone();
+    let key = state.session_key.clone();
     let plan = state
-        .with_conn(move |c| config_io::plan(c, &planned, mode))
+        .with_conn(move |c| config_io::plan(c, &key, &planned, mode))
         .await?;
     let token = stash(user.id, doc, mode, label.clone());
     Ok(partial(PlanPartial::from_plan(
@@ -624,9 +636,10 @@ async fn kuma_preview(
         Ok(i) => i,
         Err(msg) => return Ok(partial(PlanPartial::problem(msg))),
     };
+    let key = state.session_key.clone();
     let (plan, import) = state
         .with_conn(move |c| {
-            let plan = kuma_import::plan(c, &mut import)?;
+            let plan = kuma_import::plan(c, &key, &mut import)?;
             Ok((plan, import))
         })
         .await?;

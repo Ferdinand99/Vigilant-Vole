@@ -65,7 +65,10 @@ version, set the repository to `ghcr.io/ferdinand99/vigilant-vole:<version>` in 
 3. Each pending migration runs in its own transaction and is recorded in the `schema_migrations` table.
    Besides Vigilant Vole's own migrations (`0001_init.sql` …) the table holds the shared kit's
    (`kit/0001_core.sql` …); see [vole-kit.md](vole-kit.md#migrations).
-4. The server starts.
+4. Notification channel secrets still stored in plaintext (saved by 0.11.x or earlier, or restored
+   from a backup) are sealed with the instance key, `session.key` in the data directory. The log says
+   how many channels were sealed. A later start finds nothing left to seal.
+5. The server starts.
 
 If a migration fails, its transaction is rolled back: nothing of that migration is kept, the ones
 before it stay applied, and the server **does not start**. The log says which migration failed, which
@@ -149,6 +152,11 @@ Running an older version on a database a newer version has migrated is **not sup
 - **0.9.0** adds `0105_heartbeat_raw_status.sql`: a nullable `raw_status` column on `heartbeats` (the
   real check result during maintenance). Older rows keep `NULL`; nothing is rewritten. 0.8.x refuses a
   database migrated by it, as above; restore the copy made before the upgrade to go back.
+- **0.12.0** records `kit/0004_sealed_secrets.sql` (no table changes) and then seals the notification
+  channel secrets. The upgrade from 0.11.x takes the usual copy first
+  (`vigilant-vole-before-kit-0004_sealed_secrets-….db`), with the secrets still in plaintext. 0.11.x
+  refuses a database 0.12.0 has started on. It couldn't read the sealed secrets and would send them to
+  the providers as they are. To go back, restore that copy.
 - **0.5.0 and older** don't check. They start, and in a test of 0.4.0 on a 0.5.0 database the dashboard,
   status pages and API writes worked, but anything the newer version stores (incident updates,
   subscribers, new maintenance options) is ignored and can end up inconsistent. Don't rely on it:
@@ -160,7 +168,9 @@ Do this once on a new install, and after major upgrades. It takes five minutes a
 `tests/backup_restore.rs`, but nothing replaces having done it on your own instance.
 
 1. **Settings → Backup → Database backup**: download the snapshot. It holds everything, users, tokens
-   and secrets included: store it like a password.
+   and secrets included: store it like a password. Notification channel secrets, sealed with the
+   instance key (`session.key`) in the live database, are opened in the snapshot, so it restores on
+   any instance; the restore seals them again.
 2. Note a few things to check later: the number of monitors (shown on the Backup page), a status page,
    an API token you use.
 3. **Restore on next start**: upload the file you just downloaded. The page confirms how many monitors
@@ -175,7 +185,10 @@ Do this once on a new install, and after major upgrades. It takes five minutes a
    *unchanged*.
 
 Keep backups somewhere else than the machine that runs Vigilant Vole. A copy of the data directory taken
-while the app is **stopped** is a valid backup too.
+while the app is **stopped** is a valid backup too. Copy it whole: `vigilant-vole.db` without its
+`session.key` restores, but the notification channels' secrets are then unreadable (each channel's edit
+page asks for them again, and its alerts fail until they're entered). The pre-migration copies in
+`backups/` need the same `session.key`.
 
 ## How upgrades are tested
 

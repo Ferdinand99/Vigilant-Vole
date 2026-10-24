@@ -1014,14 +1014,27 @@ fn fresh_view(key: &ViewKey) -> Option<PublicView> {
     (at.elapsed() < VIEW_TTL).then(|| view.clone())
 }
 
-/// Forget cached public views (after a page, incident or maintenance change),
-/// and rendered badges, whose visibility depends on the pages.
-pub fn invalidate_views() {
+/// Forget the instance's cached public views (after a page, incident or
+/// maintenance change), and rendered badges, whose visibility depends on the
+/// pages.
+pub fn invalidate_views(state: &AppState) {
+    invalidate_views_of(&state.config.data_dir);
+}
+
+/// [`invalidate_views`] for the instance with this data dir. Only its views
+/// go: another instance in the same process (tests run many) keeps its own,
+/// as the cache key keeps them apart.
+fn invalidate_views_of(data_dir: &std::path::Path) {
     if let Ok(mut m) = VIEWS.lock() {
-        m.clear();
+        m.retain(|key, _| key.0 != data_dir);
     }
     super::badges::invalidate_cache();
 }
+
+/// Names the instance (its data dir) to [`invalidate_after_writes`], which
+/// runs without the state. `build_router` adds it to every request.
+#[derive(Clone)]
+pub struct ViewScope(pub std::path::PathBuf);
 
 /// The page's view (published or not — callers decide who may see it),
 /// from the cache when fresh. Markdown renders outside the connection.
@@ -1072,15 +1085,27 @@ async fn cached_view(state: &AppState, slug: String) -> ApiResult<Option<PublicV
 }
 
 /// Middleware for routers that edit what public pages show (pages,
-/// incidents, maintenance): any successful write drops the cached views.
+/// incidents, maintenance): any successful write drops the instance's
+/// cached views.
 pub async fn invalidate_after_writes(request: Request, next: Next) -> Response {
     let write = !matches!(
         *request.method(),
         Method::GET | Method::HEAD | Method::OPTIONS
     );
+    let scope = request.extensions().get::<ViewScope>().cloned();
     let response = next.run(request).await;
     if write && !response.status().is_client_error() && !response.status().is_server_error() {
-        invalidate_views();
+        match scope {
+            Some(ViewScope(dir)) => invalidate_views_of(&dir),
+            // Not behind `build_router`: forget every view rather than serve
+            // a stale one.
+            None => {
+                if let Ok(mut m) = VIEWS.lock() {
+                    m.clear();
+                }
+                super::badges::invalidate_cache();
+            }
+        }
     }
     response
 }
@@ -1275,12 +1300,13 @@ struct DomainCache {
 static DOMAINS: LazyLock<Mutex<HashMap<usize, DomainCache>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Forget cached custom domains (call after a status page is saved or deleted).
-pub fn invalidate_domains() {
+/// Forget the instance's cached custom domains and views (call after a
+/// status page is saved or deleted).
+pub fn invalidate_domains(state: &AppState) {
     if let Ok(mut m) = DOMAINS.lock() {
-        m.clear();
+        m.remove(&instance_key(state));
     }
-    invalidate_views();
+    invalidate_views(state);
 }
 
 fn instance_key(state: &AppState) -> usize {
@@ -1889,10 +1915,16 @@ mod router_tests {
         let pool = db::build_pool(&dir.join("t.db"));
         db::run_migrations(&pool, &dir).await;
         let (tx, _) = tokio::sync::broadcast::channel(16);
+        let key = Key::generate();
         let state = AppState {
-            scheduler: Scheduler::new(pool.clone(), tx.clone(), reqwest::Client::new()),
+            scheduler: Scheduler::new(
+                pool.clone(),
+                tx.clone(),
+                reqwest::Client::new(),
+                key.clone(),
+            ),
             db: pool,
-            session_key: Key::generate(),
+            session_key: key,
             update_tx: tx,
             http: reqwest::Client::new(),
             sign_in_limits: Default::default(),
@@ -2127,7 +2159,7 @@ mod router_tests {
     async fn custom_domain_serves_the_page_at_root() {
         let t = app().await;
         seed(&t, true, Some("status.acme.test")).await;
-        invalidate_domains();
+        invalidate_domains(&t.state);
         let (status, headers, body) = get(&t, "/", Some("Status.Acme.Test:8443"), None).await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("Acme status"));

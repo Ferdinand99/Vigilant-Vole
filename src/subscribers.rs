@@ -248,7 +248,9 @@ struct Plan {
     page: StatusPage,
     /// Confirmed subscribers with their link tokens.
     subscribers: Vec<(Subscriber, String)>,
-    mail: Option<Value>,
+    /// The page's email channel's SMTP settings (secrets opened), or why
+    /// there are none.
+    mail: Result<Value, String>,
     webhooks: bool,
     base: String,
 }
@@ -278,24 +280,31 @@ fn plan(conn: &rusqlite::Connection, key: &Key, page_id: i64) -> rusqlite::Resul
     }
     Ok(Some(Plan {
         subscribers,
-        mail: mail_config(conn, settings.channel_id)?,
+        mail: mail_config(conn, key, settings.channel_id)?,
         webhooks: settings.webhooks,
         base,
         page,
     }))
 }
 
-/// The SMTP settings of the page's channel, if it is a working email channel.
+/// The SMTP settings of the page's channel, with its password opened, if it
+/// is a working email channel.
 fn mail_config(
     conn: &rusqlite::Connection,
+    key: &Key,
     channel_id: Option<i64>,
-) -> rusqlite::Result<Option<Value>> {
+) -> rusqlite::Result<Result<Value, String>> {
+    let none = || Err("no email channel".to_string());
     let Some(id) = channel_id else {
-        return Ok(None);
+        return Ok(none());
     };
-    Ok(crate::db::notifications::get_channel(conn, id)?
-        .filter(|c| c.active && c.kind == "email")
-        .and_then(|c| serde_json::from_str(&c.config).ok()))
+    let Some(channel) =
+        crate::db::notifications::get_channel(conn, id)?.filter(|c| c.active && c.kind == "email")
+    else {
+        return Ok(none());
+    };
+    Ok(crate::notification::sealed::open_channel(key, &channel)
+        .and_then(|c| serde_json::from_str(&c.config).map_err(|e| e.to_string())))
 }
 
 /// Runs `send` for every item, at most [`SEND_CONCURRENCY`] at a time, so
@@ -347,7 +356,7 @@ async fn deliver(
     let links = Links::new(&plan.base, &plan.page, token);
     match sub.kind.as_str() {
         "email" => {
-            let config = plan.mail.as_ref().ok_or("no email channel")?;
+            let config = plan.mail.as_ref().map_err(String::clone)?;
             let message = announcement_mail(config, &plan.page, &sub.target, &links, a)?;
             crate::notification::email::deliver(config, message).await
         }
@@ -393,7 +402,7 @@ pub async fn send_confirmation(state: &AppState, page_id: i64, id: i64) -> Resul
     let links = Links::new(&plan.base, &plan.page, &token);
     let lang = Lang::from_code(&sub.lang).unwrap_or_else(crate::i18n::site_default);
     crate::i18n::scope(lang, async {
-        let config = plan.mail.as_ref().ok_or("no email channel")?;
+        let config = plan.mail.as_ref().map_err(String::clone)?;
         let message = confirmation_mail(config, &plan.page, &sub.target, &links)?;
         crate::notification::email::deliver(config, message).await
     })

@@ -49,8 +49,9 @@ pub async fn export_response(
         user.require(Role::Admin)
             .map_err(|_| V1Error::forbidden_msg("Only admins can export secrets."))?;
     }
+    let key = state.session_key.clone();
     let doc = state
-        .with_conn(move |c| config_io::export(c, secrets))
+        .with_conn(move |c| config_io::export(c, &key, secrets))
         .await?;
     let text = config_io::render(&doc, format).map_err(V1Error::internal)?;
     tracing::info!(user = %user.username, secrets, "configuration exported");

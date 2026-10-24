@@ -438,6 +438,7 @@ err_url = "Введіть повний URL, наприклад https://example.c
 err_number = "Введіть ціле число"
 err_option = "Виберіть один із варіантів у списку"
 err_reenter_secret = "Введіть це ще раз: призначення змінилося, тож збережене значення не використовується"
+err_secret_unreadable = "Секрет цього каналу неможливо прочитати (ключ екземпляра змінився); введіть його ще раз"
 err_apprise = "Введіть ключ конфігурації або хоча б один URL Apprise"
 err_discord = "Використайте URL вебхука Discord, наприклад https://discord.com/api/webhooks/…"
 err_email_from = "Введіть адресу на кшталт alerts@example.com або Name <alerts@example.com>"

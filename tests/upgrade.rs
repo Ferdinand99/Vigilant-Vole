@@ -597,6 +597,64 @@ async fn server_runs_on_every_upgraded_database() {
         let health = c.get("/healthz").await;
         assert_eq!((health.status, health.text().as_str()), (200, "ok"), "{v}");
 
+        // The release stored channel secrets in plaintext; the first start
+        // sealed them in place, and they open with the instance key.
+        let channel_secret = f.manifest["values"]["channel_secret"].as_str().unwrap();
+        let webhook = f.manifest["ids"]["webhook"].as_i64().unwrap();
+        let sealed_configs = || {
+            let conn = open_ro(&dir.db());
+            vigilant_vole::db::notifications::list_channels(&conn).unwrap()
+        };
+        let channels = sealed_configs();
+        assert_eq!(
+            channels.len() as i64,
+            f.count("notification_channels"),
+            "{v}"
+        );
+        for ch in &channels {
+            // Every non-empty secret value is sealed; every other one isn't.
+            let schema = vigilant_vole::notification::provider(&ch.kind).unwrap();
+            let config: serde_json::Value = serde_json::from_str(&ch.config).unwrap();
+            for (key, value) in config.as_object().unwrap() {
+                let secret = schema.field(key).is_some_and(|f| f.secret);
+                let values: Vec<&str> = match value {
+                    serde_json::Value::Object(map) => {
+                        map.values().filter_map(|v| v.as_str()).collect()
+                    }
+                    other => other.as_str().into_iter().collect(),
+                };
+                for text in values.into_iter().filter(|t| !t.is_empty()) {
+                    assert_eq!(
+                        vigilant_vole::kit::crypto::is_sealed(text),
+                        secret,
+                        "{v}: {} ({}) field {key}: {text}",
+                        ch.name,
+                        ch.kind
+                    );
+                }
+            }
+        }
+        let opened = |kind: &str, id: Option<i64>| {
+            let ch = channels
+                .iter()
+                .find(|c| c.kind == kind && id.is_none_or(|id| c.id == id))
+                .unwrap();
+            let opened = vigilant_vole::notification::open_config(&server.state.session_key, ch);
+            assert!(opened.is_readable(), "{v}: {}", ch.name);
+            opened.config
+        };
+        assert_eq!(
+            opened("webhook", Some(webhook))["url"],
+            channel_secret,
+            "{v}"
+        );
+        let telegram = opened("telegram", None);
+        assert_eq!(telegram["bot_token"], "123456:ABC-fixture-secret", "{v}");
+        assert!(
+            telegram["chat_id"].is_string(),
+            "{v}: non-secret fields stay readable"
+        );
+
         // The admin signs in and sees the dashboard and a monitor.
         let res = c
             .login("admin", &f.credential("/admin/password"), None)
@@ -765,6 +823,39 @@ async fn server_runs_on_every_upgraded_database() {
             .await;
         assert_ne!(res.status, 303, "{v}: a disabled user signed in");
 
+        // The edit page and the API show the sealed secrets masked.
+        let edit = c
+            .get(&format!("/settings/notifications/{webhook}/edit"))
+            .await;
+        assert_eq!(edit.status, 200, "{v}: channel edit page");
+        assert!(!edit.text().contains(channel_secret), "{v}");
+        let api = c
+            .send(
+                c.request(
+                    reqwest::Method::GET,
+                    &format!("/api/v1/notification-channels/{webhook}"),
+                )
+                .bearer_auth(&admin_token),
+            )
+            .await;
+        assert_eq!(api.status, 200, "{v}");
+        assert_eq!(
+            api.json()["config"]["url"],
+            vigilant_vole::notification::SECRET_MASK,
+            "{v}"
+        );
+
+        // A restart seals nothing more: sealing is done once.
+        server.stop_and_release().await;
+        let before: Vec<String> = channels.iter().map(|c| c.config.clone()).collect();
+        let server = Server::start(&dir)
+            .await
+            .unwrap_or_else(|e| panic!("{v}: {e}"));
+        let after: Vec<String> = sealed_configs().into_iter().map(|c| c.config).collect();
+        assert_eq!(
+            after, before,
+            "{v}: the second start changed sealed secrets"
+        );
         server.stop().await;
     }
 }

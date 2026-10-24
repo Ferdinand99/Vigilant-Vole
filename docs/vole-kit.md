@@ -34,7 +34,8 @@ kit/
 ├── locales/            # the kit's strings, one file per language
 ├── migrations/         # the core set: 0001_core.sql (users, api_tokens, settings),
 │                       #   0002_token_scopes.sql (api_token_scopes),
-│                       #   0003_passkeys.sql (passkeys, passkey_challenges)
+│                       #   0003_passkeys.sql (passkeys, passkey_challenges),
+│                       #   0004_sealed_secrets.sql (a record only, no table)
 ├── templates/          # layouts, macros, the shared pages
 └── src/
 examples/kit-demo/      # a second product on the kit (tests only, not released)
@@ -93,16 +94,17 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | Module | What it is |
 | --- | --- |
 | `config` | `KitConfig`, `install`, `get` |
+| `crypto` | sealing small secrets at rest under the instance key: `seal`, `open`, `is_sealed`, `Sealer`, `OpenError`, `PREFIX` (see "Sealed secrets") |
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `migrate_with` + `MigrateOptions`) |
+| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `migrate_with` + `MigrateOptions`) |
 | `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
 | `page` | `PageCtx`, `UserView`, flash messages, `Ui` (`NavItem`, `SettingsTab`, `TabAccess`) |
 | `docs` | `RouteDoc`, `DocsSpec`, the OpenAPI 3.1 document, the Markdown reference; `page`: `/api-docs` and friends |
 | `mcp` | MCP protocol: origin check, Bearer auth, rate limit, JSON-RPC, the `Handler` trait |
-| `notify` | `Alert` (with `Alert::test`), `AlertKind`, `Level`, the 40 providers, schemas, HTTP/SMTP transports, the message layout, `send_in`/`send_config_in` (a channel's language); `form`: the provider form's view-model; `webhook::Wording` |
+| `notify` | `Alert` (with `Alert::test`), `AlertKind`, `Level`, the 40 providers, schemas, HTTP/SMTP transports, the message layout, `send_in`/`send_config_in` (a channel's language); `form`: the provider form's view-model; `sealed`: channel secrets sealed at rest; `webhook::Wording` |
 | `components` | view-models of the design system's data components: `BarRow`, `LineChart`, `CodeLine` |
 | `tls_roots` | system CA store with the bundled fallback |
 | `tz` | time zones for pickers and validation |
@@ -582,6 +584,73 @@ name, sign count, transports, backup flags, created and last used) and
 `passkey_challenges`, both `ON DELETE CASCADE` with their user. `install`
 refuses a configuration whose `MigrationSet::core` lacks it.
 
+## Sealed secrets
+
+Notification channels keep their provider settings as JSON in the
+product's `notification_channels` table (`id`, `kind`, `config`). Since
+0.5 the secret fields in it are sealed. These are the fields the schema
+marks `secret`, the same ones `schema::redact` masks: tokens, passwords,
+webhook URLs with a key in them, header maps. Every other field stays
+readable JSON.
+
+* **`crypto`**: AES-256-GCM (aws-lc-rs) with a fresh random 96-bit nonce
+  per value. The key comes from HKDF-SHA256 over the instance key
+  (`session.key`, the 64 bytes `auth::load_or_create_key` loads), with the
+  kit's salt and a *purpose* string as info. Each purpose has its own key,
+  and none of them is the cookie key (neither half of the master key). The
+  purpose is also the AEAD's associated data. A sealed value is
+  `sealed:v1:` + unpadded URL-safe base64 of `nonce ‖ ciphertext ‖ tag`.
+  The prefix carries the version and tells sealed values from plaintext
+  (`is_sealed` also checks the body decodes and is long enough).
+  `open` fails with `OpenError::Unreadable` for another key, another
+  purpose or a changed byte.
+* **`notify::sealed`** (purpose `vole-kit/notification-channels`):
+  * `seal_config(key, kind, &config)` seals the secret values before a
+    write. Values that are sealed already stay as they are, and key–value
+    secrets are sealed value by value.
+  * `open_config(key, kind, &config) -> Opened` opens them for sending,
+    testing and editing. A secret that doesn't open is left out of
+    `Opened::config` and named in `Opened::unreadable`. `Opened::errors()`
+    gives "enter it again" field errors for the edit form, and
+    `Opened::reentry_errors(&submitted, &clear)` gives errors for a save
+    that doesn't replace such a secret.
+  * `open_channel(key, &channel)` opens a stored channel before
+    `notify::send`. It fails with `notif.err_secret_unreadable` ("This
+    channel's secret can't be read (the instance key changed); enter it
+    again") if a secret doesn't open.
+  * `seal_stored(conn, key)` seals what an older version stored in
+    plaintext, in place and in one transaction, and logs how many channels
+    it sealed. Run it at startup after the migrations. A second run changes
+    nothing (sealed values are recognised by the prefix). It skips unknown
+    kinds, configs that aren't JSON and databases without the table.
+  * `open_stored(conn, key)` does the opposite, for a **copy** that has to
+    work without this key (a backup download). Secrets that don't open
+    stay sealed.
+* **Sending refuses sealed text.** `send`, `send_config`, `send_in` and
+  `send_config_in` return the same "enter it again" error, and send
+  nothing, when a secret value is still sealed. A product that forgets to
+  open a channel, or can't, never sends ciphertext to a provider.
+* **Masking is unchanged.** `redact` and `redacted_config` mask sealed
+  values like plaintext ones, so API, UI and MCP output are the same as
+  before.
+
+**Key loss.** A sealed secret only opens with the instance key that sealed
+it. If `session.key` is lost or replaced (a new data directory, a
+database restored without its key), the channel's edit form shows the
+field as not saved, with "enter it again". A save that leaves it out is
+refused, and sending fails with that message, logged by the product.
+Nothing crashes. The other fields and the other channels keep working.
+
+**Security note.** Sealing protects the secrets in a copy of the database
+on its own: a leaked file, a database-only backup, a support upload, or
+SQL-level read access. It does not protect against someone who has both
+the database and `session.key`, or who controls the running process. That
+key also signs and encrypts the session cookies, so it was already the
+data directory's most sensitive file. Keep the data directory private
+(the kit writes `session.key` with mode 0600). Config exports with secrets
+and Vigilant Vole's database backup download hold the secrets opened, so
+they need the same care as before.
+
 ## Alerts
 
 Every provider builds from a `vole_kit::notify::alert::Alert`:
@@ -725,6 +794,12 @@ The kit has its own migration set, `vole_kit::db::migrate::CORE`:
   Vigilant Vole's set is `&[CORE_TABLES, PASSKEYS]`, and since its adoption
   migration (0104) records only `kit/0001_core.sql`, this one runs after it
   on databases that are still adopting and first on the others.
+* `SEALED_SECRETS`, `kit/migrations/0004_sealed_secrets.sql` (0.5), changes
+  no table. It records that notification channel secrets are sealed (see
+  "Sealed secrets"): an upgrade takes its pre-migration copy (secrets still
+  in plaintext) before the product seals them, and older versions, which
+  would send the sealed text to the provider, refuse the database. Vigilant
+  Vole's set is `&[CORE_TABLES, PASSKEYS, SEALED_SECRETS]`.
 
 Core migrations are recorded in `schema_migrations` under `kit/…` names, so
 they can't clash with a product's file names.
@@ -1146,8 +1221,8 @@ proof:
 * the OpenAPI and MCP versions are the demo's (0.3.7);
 * a fresh database has the core tables (with `api_token_scopes`,
   `passkeys` and `passkey_challenges`) plus `notes`, with
-  `kit/0001_core.sql`, `kit/0002_token_scopes.sql` and
-  `kit/0003_passkeys.sql` recorded first;
+  `kit/0001_core.sql`, `kit/0002_token_scopes.sql`,
+  `kit/0003_passkeys.sql` and `kit/0004_sealed_secrets.sql` recorded first;
 * passkeys: without a public URL only the note; with one, adding a passkey
   needs the password, the software authenticator's credential is stored
   (transports filtered, the user handle kept for the next one), a replayed
@@ -1307,6 +1382,59 @@ What else a product may notice:
   environment (`KK_PUBLIC_URL`) should make sure it is the URL people
   really open, since the RP ID and origin come from it.
 
+### Upgrading from 0.4 to 0.5
+
+0.5 seals notification channel secrets at rest (see "Sealed secrets").
+
+A product that does nothing still builds and works: its channels stay in
+plaintext, and nothing it stores looks sealed. A product whose
+`MigrationSet::core` is `migrate::CORE` records `kit/0004_sealed_secrets.sql`
+at the next start (no table changes). To get the sealing, a product with
+channels changes four things:
+
+1. **Startup**, after the migrations:
+   `db::interact(&pool, move |c| notify::sealed::seal_stored(c, &key))`
+   (with the key from `auth::load_or_create_key`). A product that lists its
+   core set by hand adds `migrate::SEALED_SECRETS`, so older versions
+   refuse the sealed database and an upgrade takes its plaintext copy
+   first.
+2. **Writes**: store `sealed::seal_config(&core.session_key, kind, &config)`
+   instead of `config`.
+3. **Reads to use**:
+   * before `notify::send`, `sealed::open_channel(&key, &channel)?`;
+   * before `send_in`/`send_config` with a stored config,
+     `sealed::open_config(..).config`;
+   * if `!opened.is_readable()`, report `sealed::unreadable_message()`
+     and don't send.
+4. **The edit form**:
+   * open the stored config first, and pass `opened.config` as `stored` to
+     `merge_secrets_checked` and `field_views`;
+   * pass `opened.errors()` as the field errors of the edit page;
+   * add `opened.reentry_errors(&parsed.config, &parsed.clear)` to the
+     errors of a save or a test.
+
+What else a product may notice:
+
+* Snapshot tests that dump `notification_channels.config` see
+  `sealed:v1:…` values that differ on every run (random nonces). Compare
+  opened configs instead.
+* Migration lists gain `kit/0004_sealed_secrets.sql`. Schemas don't change.
+* The catalog gains `notif.err_secret_unreadable` (26 languages). The
+  product's catalog must not define it.
+* A database copied without its `session.key` loses the channel secrets.
+  A backup a product writes should hold `session.key` too, or the secrets
+  opened (`open_stored` on the copy), and say so.
+
+Keen Kestrel and Wise Wren: both keep channels in `notification_channels`
+and send through `notify::send`/`send_in`, so the steps above are all.
+Wise Wren seals its own registry passwords and its Vigilant Vole token
+(`registries::seal_for`/`open_for`: AES-256-GCM, key SHA-256 of a product
+label and the master key, raw `nonce ‖ ciphertext ‖ tag` bytes). It can
+move to `crypto::seal`/`open` later, with its own purpose strings. Because
+the key derivation and the format differ, that move has to open each
+value with the old code and seal it again (a one-time startup step like
+`seal_stored`). The old values can't simply be read with the new code.
+
 ## Not done (proposals)
 
 * **The design system's DOM names.** `vv-i18n`, `vv-progress`, `vv-theme`
@@ -1375,6 +1503,14 @@ It also adds the building blocks Keen Kestrel built itself (see
 * Passkeys are bound to the public URL's host (the RP ID). Changing it, or
   the public URL being wrong, leaves them useless until users add new ones;
   the password keeps working.
+* Channel secrets are sealed under `session.key`. Replacing that file (or
+  restoring a database without it) makes every sealed secret unreadable.
+  The channels then ask for them again and their alerts fail, logged. A
+  plaintext secret that looks exactly like `sealed:v1:<base64 of 28+
+  bytes>` would be taken for a sealed one and never sealed.
+* `seal_stored` runs at startup, not as a migration. A copy of the
+  database taken between the migrations and that step still holds
+  plaintext. The pre-migration copy does on purpose, for a rollback.
 * Vigilant Vole's core set leaves out `kit/0002_token_scopes.sql`. If it ever
   declares a token scope, `install` refuses to start until the migration is
   in its set, which changes its schema snapshots.

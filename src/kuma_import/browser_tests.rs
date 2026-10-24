@@ -100,15 +100,25 @@ fn real_browser_monitors_and_remote_browsers_map_to_ours() {
 fn the_import_plan_creates_browsers_and_links_monitors() {
     let mut import = kuma("plan");
     let mut conn = test_conn();
-    let plan = plan(&conn, &mut import).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &mut import,
+    )
+    .unwrap();
     assert!(plan.errors.is_empty(), "{:?}", plan.errors);
     assert_eq!(
         plan.action_for(config_io::KIND_BROWSER, "Browserless"),
         Some(config_io::Action::Create)
     );
-    config_io::apply(&mut conn, &import.doc, config_io::Mode::Merge)
-        .unwrap()
-        .unwrap();
+    config_io::apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &import.doc,
+        config_io::Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     let chrome = db_rb::get_by_name(&conn, "Chrome").unwrap().unwrap();
     let browserless = db_rb::get_by_name(&conn, "Browserless").unwrap().unwrap();
     let monitors = crate::db::monitors::list_monitors(&conn).unwrap();
@@ -124,7 +134,12 @@ fn a_bad_remote_browser_is_skipped_and_its_monitors_kept() {
     let mut import = kuma("skip");
     import.doc.remote_browsers.as_mut().unwrap()[0].url = "ftp://nope".into();
     let conn = test_conn();
-    let plan = plan(&conn, &mut import).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &mut import,
+    )
+    .unwrap();
     assert!(plan.errors.is_empty(), "{:?}", plan.errors);
     assert!(
         import

@@ -1,0 +1,8 @@
+-- vole-kit: notification channel secrets are sealed at rest (0.5).
+--
+-- Changes no table. After the migrations, at startup, the product seals the
+-- plaintext secrets of `notification_channels` in place
+-- (`notify::sealed::seal_stored`), which SQL can't do. This record makes
+-- that a schema change: the runner takes its pre-migration copy first (the
+-- secrets still in plaintext, for a rollback), and an older version, which
+-- would send the sealed text as a token, refuses the database instead.

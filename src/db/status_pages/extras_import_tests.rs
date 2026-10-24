@@ -32,9 +32,14 @@ fn config_sets_password_analytics_and_images_idempotently() {
         "status_pages:\n  - slug: acme\n    title: Acme\n    password: correct horse\n    analytics:\n      provider: plausible\n      site_id: status.acme.test\n      script_url: https://plausible.io/js/script.js\n    logo: \"{}\"\n",
         png_data_url()
     );
-    let applied = config_io::apply(&mut conn, &doc(&yaml), Mode::Merge)
-        .unwrap()
-        .unwrap();
+    let applied = config_io::apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &doc(&yaml),
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert!(applied.pages_changed);
     let p = pages::get_by_slug(&conn, "acme").unwrap().unwrap();
     assert!(
@@ -46,12 +51,24 @@ fn config_sets_password_analytics_and_images_idempotently() {
     assert!(p.logo_sha.is_some() && p.favicon_sha.is_none());
 
     // Same document again: nothing to do (the password verifies, so it isn't re-hashed).
-    let plan = config_io::plan(&conn, &doc(&yaml), Mode::Merge).unwrap();
+    let plan = config_io::plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc(&yaml),
+        Mode::Merge,
+    )
+    .unwrap();
     assert!(!plan.has_changes(), "{plan:?}");
 
     // Removing via "", and a changed password, show up in the plan.
     let yaml2 = "status_pages:\n  - slug: acme\n    title: Acme\n    password: battery staple\n    logo: \"\"\n";
-    let plan = config_io::plan(&conn, &doc(yaml2), Mode::Merge).unwrap();
+    let plan = config_io::plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc(yaml2),
+        Mode::Merge,
+    )
+    .unwrap();
     let item = plan.items.iter().find(|i| i.key == "acme").unwrap();
     assert!(
         item.changes.contains(&"password".to_string())
@@ -59,9 +76,14 @@ fn config_sets_password_analytics_and_images_idempotently() {
         "{item:?}"
     );
     let version = p.password_version;
-    config_io::apply(&mut conn, &doc(yaml2), Mode::Merge)
-        .unwrap()
-        .unwrap();
+    config_io::apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &doc(yaml2),
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     let p = pages::get_by_slug(&conn, "acme").unwrap().unwrap();
     assert_eq!(p.password_version, version + 1);
     assert!(p.logo_sha.is_none());
@@ -73,7 +95,13 @@ fn config_sets_password_analytics_and_images_idempotently() {
 fn config_rejects_bad_extras_with_field_errors() {
     let conn = test_conn();
     let yaml = "status_pages:\n  - slug: acme\n    title: Acme\n    password: short\n    analytics:\n      provider: google\n      site_id: \"G-1\\\"><script>\"\n    favicon: \"data:image/svg+xml;base64,PHN2Zz4=\"\n";
-    let plan = config_io::plan(&conn, &doc(yaml), Mode::Merge).unwrap();
+    let plan = config_io::plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc(yaml),
+        Mode::Merge,
+    )
+    .unwrap();
     let fields: Vec<&str> = plan
         .errors
         .iter()
@@ -87,7 +115,13 @@ fn config_rejects_bad_extras_with_field_errors() {
         "status_pages:\n  - slug: acme\n    title: Acme\n    password: \"{}\"\n",
         crate::notification::SECRET_MASK
     );
-    let plan = config_io::plan(&conn, &doc(&masked), Mode::Merge).unwrap();
+    let plan = config_io::plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc(&masked),
+        Mode::Merge,
+    )
+    .unwrap();
     assert!(
         plan.errors
             .iter()
@@ -130,7 +164,12 @@ fn exports_mask_secrets_and_images_unless_asked() {
     };
     extras::set_analytics(&conn, id, &ga).unwrap();
 
-    let plain = config_io::export(&conn, false).unwrap();
+    let plain = config_io::export(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        false,
+    )
+    .unwrap();
     let p = &plain.status_pages.as_ref().unwrap()[0];
     assert_eq!(
         p.password.as_deref(),
@@ -149,20 +188,31 @@ fn exports_mask_secrets_and_images_unless_asked() {
 
     // The plain export re-applies without changes (mask keeps the password).
     assert!(
-        !config_io::plan(&conn, &plain, Mode::Merge)
-            .unwrap()
-            .has_changes()
+        !config_io::plan(
+            &conn,
+            &crate::notification::tests_support::test_key(),
+            &plain,
+            Mode::Merge
+        )
+        .unwrap()
+        .has_changes()
     );
 
     // A full export restores everything on a fresh instance.
-    let full = config_io::export(&conn, true).unwrap();
+    let full =
+        config_io::export(&conn, &crate::notification::tests_support::test_key(), true).unwrap();
     let fp = &full.status_pages.as_ref().unwrap()[0];
     assert_eq!(fp.password_hash.as_deref(), Some(hash.as_str()));
     assert_eq!(fp.logo.as_deref(), Some(png_data_url().as_str()));
     let mut fresh = test_conn();
-    config_io::apply(&mut fresh, &full, Mode::Merge)
-        .unwrap()
-        .unwrap();
+    config_io::apply(
+        &mut fresh,
+        &crate::notification::tests_support::test_key(),
+        &full,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     let restored = pages::get(&fresh, page_id(&fresh, "acme"))
         .unwrap()
         .unwrap();
@@ -249,11 +299,21 @@ fn kuma_icons_passwords_and_analytics_map() {
     // The whole import plans cleanly and applies.
     let mut conn = test_conn();
     let mut import = import;
-    let plan = crate::kuma_import::plan(&conn, &mut import).unwrap();
+    let plan = crate::kuma_import::plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &mut import,
+    )
+    .unwrap();
     assert!(plan.errors.is_empty(), "{:?}", plan.errors);
-    config_io::apply(&mut conn, &import.doc, Mode::Merge)
-        .unwrap()
-        .unwrap();
+    config_io::apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &import.doc,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     let acme = pages::get_by_slug(&conn, "acme").unwrap().unwrap();
     assert!(acme.logo_sha.is_some() && acme.favicon_sha.is_some());
     assert_eq!(acme.analytics.provider, Provider::Matomo);

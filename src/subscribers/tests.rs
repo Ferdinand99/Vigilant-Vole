@@ -535,18 +535,32 @@ fn only_confirmed_subscribers_of_an_enabled_page_are_planned() {
     assert_eq!(plan.subscribers.len(), 1);
     assert_eq!(plan.subscribers[0].0.target, "https://93.184.216.34/a");
     assert!(plan.subscribers[0].1.starts_with("vvs_"));
-    assert!(plan.mail.is_none());
+    assert!(plan.mail.is_err());
 
     // An inactive or non-email channel gives no mail config.
     let hook =
         crate::db::notifications::insert_channel(&conn, "H", "webhook", "{}", false).unwrap();
-    assert!(mail_config(&conn, Some(hook)).unwrap().is_none());
+    assert!(mail_config(&conn, &key, Some(hook)).unwrap().is_err());
     let mail =
         crate::db::notifications::insert_channel(&conn, "M", "email", r#"{"from":"a@b.c"}"#, false)
             .unwrap();
-    assert!(mail_config(&conn, Some(mail)).unwrap().is_some());
+    assert!(mail_config(&conn, &key, Some(mail)).unwrap().is_ok());
     crate::db::notifications::set_active(&conn, mail, false).unwrap();
-    assert!(mail_config(&conn, Some(mail)).unwrap().is_none());
+    assert!(mail_config(&conn, &key, Some(mail)).unwrap().is_err());
+
+    // A sealed SMTP password is opened; under another instance key the mail
+    // config is refused with "enter it again" instead of sending garbage.
+    let config = serde_json::json!({"from": "a@b.c", "username": "u", "password": "smtp-pass"});
+    let sealed = crate::notification::seal_config(&key, "email", &config);
+    assert!(!sealed.contains("smtp-pass"));
+    let mail =
+        crate::db::notifications::insert_channel(&conn, "S", "email", &sealed, false).unwrap();
+    assert_eq!(mail_config(&conn, &key, Some(mail)).unwrap(), Ok(config));
+    let other = Key::from(&[1u8; 64]);
+    assert_eq!(
+        mail_config(&conn, &other, Some(mail)).unwrap(),
+        Err(crate::notification::sealed::unreadable_message().to_string())
+    );
 
     // Pages that show the monitors are found for maintenance announcements.
     let found = db::pages_with_monitors(&conn, &[1, 2]).unwrap();

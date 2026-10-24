@@ -1,5 +1,6 @@
 //! Test fixtures for notifications.
 
+use axum_extra::extract::cookie::Key;
 use time::macros::datetime;
 
 use crate::db::models::{EventKind, NotificationEvent};
@@ -18,4 +19,9 @@ pub fn event(kind: EventKind) -> NotificationEvent {
         url: None,
         occurred_at: datetime!(2026-10-19 14:03:12 UTC),
     }
+}
+
+/// The instance key tests seal channel secrets with.
+pub fn test_key() -> Key {
+    Key::from(&[42u8; 64])
 }

@@ -51,10 +51,11 @@ async fn app() -> TestApp {
     db::run_migrations(&pool, &std::env::temp_dir()).await;
     let (tx, _) = broadcast::channel(16);
     let http = reqwest::Client::new();
+    let key = Key::generate();
     let state = AppState {
-        scheduler: Scheduler::new(pool.clone(), tx.clone(), http.clone()),
+        scheduler: Scheduler::new(pool.clone(), tx.clone(), http.clone(), key.clone()),
         db: pool,
-        session_key: Key::generate(),
+        session_key: key,
         update_tx: tx,
         http,
         sign_in_limits: Default::default(),

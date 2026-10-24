@@ -33,6 +33,35 @@ fn multipart_file(field: &str, name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
     (format!("multipart/form-data; boundary={boundary}"), body)
 }
 
+/// A copy of `db` with the channel secrets opened with `key`: what a
+/// database backup holds.
+fn opened_copy(
+    db: &std::path::Path,
+    key: &axum_extra::extract::cookie::Key,
+    to: &std::path::Path,
+) -> rusqlite::Connection {
+    common::copy_db(db, to);
+    let conn = rusqlite::Connection::open(to).unwrap();
+    vigilant_vole::notification::sealed::open_stored(&conn, key).unwrap();
+    conn
+}
+
+/// The stored configs of every channel, joined (to look for a secret).
+fn channel_configs(db: &std::path::Path) -> String {
+    let conn = open_ro(db);
+    let mut stmt = conn
+        .prepare("SELECT config FROM notification_channels ORDER BY id")
+        .unwrap();
+    stmt.query_map([], |r| r.get::<_, String>(0))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join(
+            "
+",
+        )
+}
+
 fn monitor_names(db: &std::path::Path) -> Vec<String> {
     let conn = open_ro(db);
     let mut stmt = conn
@@ -83,12 +112,24 @@ async fn database_backup_restores_after_a_restart() {
         "the server-side snapshot file is cleaned up"
     );
 
-    // The snapshot is the live database at that moment.
-    let diff = diff_databases(&open_ro(&snapshot), &open_ro(&dir.db()));
+    // The snapshot is the live database at that moment, with the channel
+    // secrets opened (they are sealed with this instance's key, which the
+    // snapshot doesn't hold), so it restores on any instance.
+    let secret = f.manifest["values"]["channel_secret"].as_str().unwrap();
+    let key = server.state.session_key.clone();
+    let live = opened_copy(&dir.db(), &key, &downloads.path().join("live-opened.db"));
+    let diff = diff_databases(&open_ro(&snapshot), &live);
     assert!(
         diff.is_empty(),
         "snapshot differs from the live database: {diff:?}"
     );
+    assert_eq!(
+        diff_databases(&open_ro(&snapshot), &open_ro(&dir.db())),
+        vec!["notification_channels: rows differ".to_string()],
+        "only the sealed secrets differ"
+    );
+    assert!(channel_configs(&snapshot).contains(secret));
+    assert!(!channel_configs(&dir.db()).contains(secret));
     for (table, expected) in f.manifest["counts"].as_object().unwrap() {
         if table == "schema_migrations" {
             continue;
@@ -155,12 +196,19 @@ async fn database_backup_restores_after_a_restart() {
     server.stop_and_release().await;
     let server = Server::start(&dir).await.unwrap();
 
-    // The data is exactly the snapshot again.
-    let diff = diff_databases(&open_ro(&snapshot), &open_ro(&dir.db()));
+    // The data is exactly the snapshot again, its secrets sealed again.
+    let key = server.state.session_key.clone();
+    let restored = opened_copy(
+        &dir.db(),
+        &key,
+        &downloads.path().join("restored-opened.db"),
+    );
+    let diff = diff_databases(&open_ro(&snapshot), &restored);
     assert!(
         diff.is_empty(),
         "restored database differs from the backup: {diff:?}"
     );
+    assert!(!channel_configs(&dir.db()).contains(secret));
     assert!(monitor_names(&dir.db()).contains(&"Website".to_string()));
     assert!(!dir.path().join("restore-pending.db").exists());
 

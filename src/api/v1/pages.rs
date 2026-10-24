@@ -340,8 +340,8 @@ fn save(
 }
 
 fn changed(state: &AppState) {
-    crate::api::public_status::invalidate_domains();
-    crate::maintenance::invalidate();
+    crate::api::public_status::invalidate_domains(state);
+    crate::maintenance::invalidate(state);
     state.notify_update();
 }
 

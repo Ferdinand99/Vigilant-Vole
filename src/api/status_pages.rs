@@ -333,7 +333,7 @@ async fn create(
     };
     match created {
         Some(id) => {
-            super::public_status::invalidate_domains();
+            super::public_status::invalidate_domains(&state);
             let jar = flash(jar, "success", crate::i18n::t("sp.created"));
             Ok((jar, Redirect::to(&format!("/status-pages/{id}/edit"))).into_response())
         }
@@ -373,7 +373,7 @@ async fn delete_page(
     if !state.with_conn(move |c| db_pages::delete(c, id)).await? {
         return Err(ApiError::NotFound);
     }
-    super::public_status::invalidate_domains();
+    super::public_status::invalidate_domains(&state);
     let jar = flash(jar, "success", crate::i18n::t("sp.deleted"));
     Ok((jar, [("hx-redirect", "/status-pages")], StatusCode::OK).into_response())
 }
@@ -918,7 +918,7 @@ async fn save_settings(
             .await?;
         match saved {
             Ok(()) => {
-                super::public_status::invalidate_domains();
+                super::public_status::invalidate_domains(&state);
                 let jar = flash(jar, "success", crate::i18n::t("sp.saved"));
                 return Ok((
                     jar,

@@ -12,6 +12,7 @@ pub(crate) mod tests_support;
 
 use std::ops::Deref;
 
+use axum_extra::extract::cookie::Key;
 use futures_util::future::join_all;
 use serde_json::Value;
 
@@ -79,15 +80,31 @@ const _: () = assert!(
     "list every kit provider"
 );
 
-/// Deliver one event to one channel.
+/// Deliver one event to one stored channel: its secrets are opened with the
+/// instance key first. A secret that can't be opened (another
+/// `session.key`) fails the delivery with "enter it again"; nothing is sent.
 pub async fn send(
     http: &reqwest::Client,
+    key: &Key,
     channel: &NotificationChannel,
     event: &NotificationEvent,
 ) -> Result<(), String> {
+    let channel = sealed::open_channel(key, channel)?;
     let config: Value = serde_json::from_str(&channel.config)
         .map_err(|e| format!("invalid channel config: {e}"))?;
     send_config(http, &channel.kind, &config, event).await
+}
+
+/// A stored channel's config with its secrets opened (see
+/// [`sealed::open_config`]); unreadable secrets are left out and named.
+pub fn open_config(key: &Key, channel: &NotificationChannel) -> sealed::Opened {
+    let stored = serde_json::from_str(&channel.config).unwrap_or_else(|_| serde_json::json!({}));
+    sealed::open_config(key, &channel.kind, &stored)
+}
+
+/// `config` as it is stored for a `kind` channel: secrets sealed.
+pub fn seal_config(key: &Key, kind: &str, config: &Value) -> String {
+    sealed::seal_config(key, kind, config).to_string()
 }
 
 /// Deliver one event using a kind + config that may not be saved yet
@@ -114,10 +131,11 @@ pub async fn send_config(
 /// Deliver one event to every channel concurrently; failures are logged.
 pub async fn send_all(
     http: &reqwest::Client,
+    key: &Key,
     channels: &[NotificationChannel],
     event: &NotificationEvent,
 ) {
-    let results = join_all(channels.iter().map(|c| send(http, c, event))).await;
+    let results = join_all(channels.iter().map(|c| send(http, key, c, event))).await;
     for (channel, result) in channels.iter().zip(results) {
         if let Err(err) = result {
             tracing::warn!(channel = %channel.name, kind = %channel.kind, %err, "failed to send notification");

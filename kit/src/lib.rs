@@ -13,6 +13,7 @@
 pub mod auth;
 pub mod components;
 pub mod config;
+pub mod crypto;
 pub mod db;
 pub mod docs;
 pub mod http;

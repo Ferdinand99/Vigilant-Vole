@@ -30,6 +30,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use axum_extra::extract::cookie::Key;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -572,8 +573,10 @@ fn new_monitor_value(m: &NewMonitor) -> Map<String, Value> {
     }
 }
 
-/// Builds the document for the current database.
-pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Document> {
+/// Builds the document for the current database. With `include_secrets`,
+/// channel secrets are opened with the instance `key` (a secret that can't
+/// be opened is left out).
+pub fn export(conn: &Connection, key: &Key, include_secrets: bool) -> rusqlite::Result<Document> {
     let settings = db_settings::load(conn)?;
     let tags = db_tags::list_tags(conn)?;
     let channels = db_notifications::list_channels(conn)?;
@@ -671,7 +674,7 @@ pub fn export(conn: &Connection, include_secrets: bool) -> rusqlite::Result<Docu
         .iter()
         .map(|c| {
             let config = if include_secrets {
-                serde_json::from_str(&c.config).unwrap_or_else(|_| empty_object())
+                notification::open_config(key, c).config
             } else {
                 notification::redacted_config(c)
             };
@@ -1101,20 +1104,23 @@ pub struct Applied {
     pub maintenance_changed: bool,
 }
 
-/// Computes the plan for `doc` against the database.
-pub fn plan(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<Plan> {
-    Ok(prepare(conn, doc, mode)?.0)
+/// Computes the plan for `doc` against the database. `key` is the instance
+/// key: stored channel secrets are opened with it, and sealed with it in
+/// what [`apply`] writes.
+pub fn plan(conn: &Connection, key: &Key, doc: &Document, mode: Mode) -> rusqlite::Result<Plan> {
+    Ok(prepare(conn, key, doc, mode)?.0)
 }
 
 /// Applies `doc` in one transaction. `Err(plan)` (nothing written) when the
 /// plan has errors.
 pub fn apply(
     conn: &mut Connection,
+    key: &Key,
     doc: &Document,
     mode: Mode,
 ) -> rusqlite::Result<Result<Applied, Plan>> {
     let tx = conn.transaction()?;
-    let (plan, ops) = prepare(&tx, doc, mode)?;
+    let (plan, ops) = prepare(&tx, key, doc, mode)?;
     if !plan.is_ok() {
         return Ok(Err(plan));
     }
@@ -1165,7 +1171,12 @@ impl Placeholders {
     }
 }
 
-fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(Plan, Ops)> {
+fn prepare(
+    conn: &Connection,
+    secrets: &Key,
+    doc: &Document,
+    mode: Mode,
+) -> rusqlite::Result<(Plan, Ops)> {
     let cur = Current::load(conn)?;
     let mut plan = Plan {
         mode,
@@ -1263,6 +1274,7 @@ fn prepare(conn: &Connection, doc: &Document, mode: Mode) -> rusqlite::Result<(P
             plan_channel(
                 c,
                 &key,
+                secrets,
                 existing,
                 &mut plan,
                 &mut ops,
@@ -1640,22 +1652,35 @@ pub fn validate_channel(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn plan_channel(
     c: &ChannelDoc,
     key: &str,
+    secrets: &Key,
     existing: Option<&crate::db::models::NotificationChannel>,
     plan: &mut Plan,
     ops: &mut Ops,
     ph: &mut Placeholders,
     channel_ids: &mut HashMap<String, i64>,
 ) {
-    let stored: Option<Value> =
-        existing.map(|e| serde_json::from_str(&e.config).unwrap_or_else(|_| empty_object()));
+    let opened = existing.map(|e| notification::open_config(secrets, e));
+    let stored: Option<Value> = opened.as_ref().map(|o| o.config.clone());
     if let Some(e) = existing
         && e.kind != c.kind
     {
         plan.error(KIND_CHANNEL, key, Some("kind"), format!("This channel is a {} channel; its kind can’t change. Delete it or use another name.", e.kind));
         return;
+    }
+    // A stored secret that can't be opened (another instance key) is only
+    // replaced, never kept.
+    if let Some(opened) = &opened {
+        let unreadable = opened.reentry_errors(&c.config, &[]);
+        if !unreadable.is_empty() {
+            for (field, msg) in unreadable {
+                plan.error(KIND_CHANNEL, key, Some(&format!("config.{field}")), msg);
+            }
+            return;
+        }
     }
     let config = match validate_channel(&c.name, &c.kind, &c.config, stored.as_ref()) {
         Ok(cfg) => cfg,
@@ -1669,7 +1694,7 @@ fn plan_channel(
     let w = ChannelWrite {
         name: c.name.trim().into(),
         kind: c.kind.clone(),
-        config: config.to_string(),
+        config: notification::seal_config(secrets, &c.kind, &config),
         active: c.active,
         is_default: c.is_default,
     };
@@ -3119,10 +3144,12 @@ pub async fn import(
     dry_run: bool,
 ) -> Result<Plan, ImportError> {
     if dry_run {
-        let plan = state.with_conn(move |c| plan(c, &doc, mode)).await?;
+        let key = state.session_key.clone();
+        let plan = state.with_conn(move |c| plan(c, &key, &doc, mode)).await?;
         return Ok(plan);
     }
-    let result = state.with_conn(move |c| apply(c, &doc, mode)).await?;
+    let key = state.session_key.clone();
+    let result = state.with_conn(move |c| apply(c, &key, &doc, mode)).await?;
     let applied = result.map_err(ImportError::Invalid)?;
     after_apply(state, &applied).await;
     Ok(applied.plan)
@@ -3150,10 +3177,10 @@ pub async fn after_apply(state: &AppState, applied: &Applied) {
         state.scheduler.reload(*id).await;
     }
     if applied.maintenance_changed {
-        crate::maintenance::invalidate();
+        crate::maintenance::invalidate(state);
     }
     if applied.pages_changed {
-        crate::api::public_status::invalidate_domains();
+        crate::api::public_status::invalidate_domains(state);
     }
     if discovery_changed(&applied.plan) {
         // Sync now rather than on the next minute tick.

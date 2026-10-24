@@ -687,11 +687,12 @@ pub(crate) mod test_support {
         crate::db::run_migrations(&pool, &dir.join("backups")).await;
         let (update_tx, _) = tokio::sync::broadcast::channel(16);
         let http = reqwest::Client::new();
-        let scheduler = Scheduler::new(pool.clone(), update_tx.clone(), http.clone());
+        let key = Key::generate();
+        let scheduler = Scheduler::new(pool.clone(), update_tx.clone(), http.clone(), key.clone());
         AppState {
             db: pool,
             scheduler,
-            session_key: Key::generate(),
+            session_key: key,
             update_tx,
             http,
             sign_in_limits: Default::default(),

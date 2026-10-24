@@ -591,6 +591,7 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
             "kit/0001_core.sql",
             "kit/0002_token_scopes.sql",
             "kit/0003_passkeys.sql",
+            "kit/0004_sealed_secrets.sql",
             "0001_notes.sql"
         ]
     );

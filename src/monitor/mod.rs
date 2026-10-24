@@ -37,6 +37,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 use std::time::Duration;
 
+use axum_extra::extract::cookie::Key;
 use deadpool_sqlite::Pool;
 use futures_util::future::join_all;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -113,6 +114,8 @@ struct Inner {
     pool: Pool,
     /// Shared client for notifications (not for checks).
     http: reqwest::Client,
+    /// The instance key, to open the channels' sealed secrets.
+    key: Key,
     updates: Arc<UpdateCoalescer>,
     tasks: StdMutex<HashMap<i64, TaskEntry>>,
     runtimes: StdMutex<HashMap<i64, Arc<AsyncMutex<Runtime>>>>,
@@ -142,7 +145,12 @@ fn lock<T>(m: &StdMutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Scheduler {
-    pub fn new(pool: Pool, update_tx: broadcast::Sender<()>, http: reqwest::Client) -> Self {
+    pub fn new(
+        pool: Pool,
+        update_tx: broadcast::Sender<()>,
+        http: reqwest::Client,
+        key: Key,
+    ) -> Self {
         let max_checks = std::env::var("VV_MAX_CONCURRENT_CHECKS")
             .ok()
             .and_then(|v| v.trim().parse::<usize>().ok())
@@ -152,6 +160,7 @@ impl Scheduler {
             inner: Arc::new(Inner {
                 pool,
                 http,
+                key,
                 updates: Arc::new(UpdateCoalescer::new(update_tx)),
                 tasks: StdMutex::new(HashMap::new()),
                 runtimes: StdMutex::new(HashMap::new()),
@@ -799,6 +808,7 @@ impl Scheduler {
     fn dispatch(&self, monitor: &Monitor, notices: Vec<Notice>, occurred_at: OffsetDateTime) {
         let pool = self.inner.pool.clone();
         let http = self.inner.http.clone();
+        let key = self.inner.key.clone();
         let monitor_id = monitor.id;
         let monitor_name = monitor.name.clone();
         let monitor_type = monitor.monitor_type.as_str().to_string();
@@ -849,7 +859,7 @@ impl Scheduler {
                 let results = join_all(
                     channels
                         .iter()
-                        .map(|c| notification::send(&http, c, &event)),
+                        .map(|c| notification::send(&http, &key, c, &event)),
                 )
                 .await;
                 for (channel, result) in channels.iter().zip(results) {
