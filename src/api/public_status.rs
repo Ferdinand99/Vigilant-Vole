@@ -1726,37 +1726,47 @@ pub mod markdown {
 
         #[test]
         fn pathological_input_renders_in_linear_time() {
-            let n = 100_000;
-            let inputs = [
-                "[".repeat(n),
-                "[a](".repeat(n / 4),
-                "[a]".repeat(n / 3),
-                "**a ".repeat(n / 4),
-                "*".repeat(n),
-                "_a".repeat(n / 2),
-                "* a".repeat(n / 3),
-                "`".repeat(n),
-                "(http://\"".repeat(n / 9),
-                " http://x".repeat(n / 9),
-                "*_`[**](".repeat(n / 8),
-                "a_*".repeat(n / 3),
-                "[a](x".repeat(n / 5) + ")",
-                "_*`".repeat(n / 3) + "**",
-            ];
-            for input in &inputs {
-                // Best of three, so a busy test machine doesn't fail it.
-                let took = (0..3)
+            let inputs = |n: usize| {
+                [
+                    "[".repeat(n),
+                    "[a](".repeat(n / 4),
+                    "[a]".repeat(n / 3),
+                    "**a ".repeat(n / 4),
+                    "*".repeat(n),
+                    "_a".repeat(n / 2),
+                    "* a".repeat(n / 3),
+                    "`".repeat(n),
+                    "(http://\"".repeat(n / 9),
+                    " http://x".repeat(n / 9),
+                    "*_`[**](".repeat(n / 8),
+                    "a_*".repeat(n / 3),
+                    "[a](x".repeat(n / 5) + ")",
+                    "_*`".repeat(n / 3) + "**",
+                ]
+            };
+            // Best of three, so a busy test machine doesn't fail it.
+            let time = |input: &str| {
+                (0..3)
                     .map(|_| {
                         let started = std::time::Instant::now();
                         assert!(!render(input).is_empty());
                         started.elapsed()
                     })
                     .min()
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+            };
+            let small = inputs(25_000);
+            let large = inputs(100_000);
+            for (small, large) in small.iter().zip(&large) {
+                let took = time(large);
+                // Fast in absolute terms, or growing linearly: 4x the input
+                // may take at most ~10x as long (quadratic would be 16x). The
+                // ratio holds on a loaded machine, where both runs slow down.
+                let base = time(small).max(std::time::Duration::from_micros(200));
                 assert!(
-                    took < std::time::Duration::from_millis(50),
-                    "{:?}… took {took:?}",
-                    &input[..12]
+                    took < std::time::Duration::from_millis(50) || took < base * 10,
+                    "{:?}… took {took:?} (a quarter of it took {base:?})",
+                    &large[..12]
                 );
             }
         }
