@@ -23,9 +23,9 @@ jobs:
     name: Clippy and tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@1.99
+      - uses: dtolnay/rust-toolchain@1.120
         with:
           components: clippy, rustfmt
 
@@ -58,9 +58,9 @@ jobs:
     name: Upgrade and backup drills
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@1.99
+      - uses: dtolnay/rust-toolchain@1.120
 
       - uses: Swatinem/rust-cache@v2
 
