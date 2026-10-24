@@ -13,6 +13,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use axum_extra::extract::cookie::Key;
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
@@ -2082,9 +2083,9 @@ fn map_maintenance(row: &Row) -> Result<MaintenanceDoc, String> {
 /// Removes objects that fail validation (recording why) until the plan is
 /// clean, then returns that plan. Kuma data is messy; one bad monitor must
 /// not block the rest.
-pub fn plan(conn: &Connection, import: &mut KumaImport) -> rusqlite::Result<Plan> {
+pub fn plan(conn: &Connection, key: &Key, import: &mut KumaImport) -> rusqlite::Result<Plan> {
     for _ in 0..8 {
-        let plan = config_io::plan(conn, &import.doc, Mode::Merge)?;
+        let plan = config_io::plan(conn, key, &import.doc, Mode::Merge)?;
         if plan.errors.is_empty() {
             return Ok(plan);
         }
@@ -2110,7 +2111,7 @@ pub fn plan(conn: &Connection, import: &mut KumaImport) -> rusqlite::Result<Plan
             return Ok(plan);
         }
     }
-    config_io::plan(conn, &import.doc, Mode::Merge)
+    config_io::plan(conn, key, &import.doc, Mode::Merge)
 }
 
 /// Drops one object (and references to it). Returns whether anything was removed.

@@ -210,7 +210,7 @@ fn validate(
 }
 
 fn changed(state: &AppState) {
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(state);
     state.notify_update();
 }
 

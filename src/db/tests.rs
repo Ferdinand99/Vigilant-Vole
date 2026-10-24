@@ -613,14 +613,18 @@ fn a_fresh_database_adopts_the_core_set_after_our_migrations() {
     let ran = apply_migrations(&mut conn).unwrap();
     assert!(ran.contains(&"0104_adopt_kit_core.sql".to_string()));
     // The adoption records kit/0001 only; the passkeys' core migration
-    // (vole-kit 0.4) runs after it.
+    // (vole-kit 0.4) and the sealed secrets' record (0.5) run after it.
     assert_eq!(
         ran.iter()
             .rev()
-            .take(2)
+            .take(3)
             .map(String::as_str)
             .collect::<Vec<_>>(),
-        ["kit/0003_passkeys.sql", "0105_heartbeat_raw_status.sql"]
+        [
+            "kit/0004_sealed_secrets.sql",
+            "kit/0003_passkeys.sql",
+            "0105_heartbeat_raw_status.sql"
+        ]
     );
     assert!(!ran.contains(&"kit/0001_core.sql".to_string()), "{ran:?}");
     assert!(applied(&conn).contains(&"kit/0001_core.sql".to_string()));
@@ -663,7 +667,7 @@ fn the_core_row_does_not_hide_a_newer_migration() {
     let names = applied(&conn);
     assert_eq!(
         names.last().map(String::as_str),
-        Some("kit/0003_passkeys.sql")
+        Some("kit/0004_sealed_secrets.sql")
     );
     assert!(apply_migrations(&mut conn).unwrap().is_empty());
     conn.execute(

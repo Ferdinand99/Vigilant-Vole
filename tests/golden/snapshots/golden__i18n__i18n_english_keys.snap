@@ -1271,6 +1271,7 @@ notif.err_pushover_expire
 notif.err_pushover_retry
 notif.err_reenter_secret
 notif.err_required
+notif.err_secret_unreadable
 notif.err_service
 notif.err_signl4
 notif.err_telegram_token

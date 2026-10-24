@@ -917,3 +917,38 @@ fn provider_fields_take_the_product_name_from_the_configuration() {
     }
     assert!(marked >= 10, "{marked}");
 }
+
+#[tokio::test]
+async fn a_sealed_channel_sends_once_opened_and_never_sealed() {
+    use axum_extra::extract::cookie::Key;
+    let (base, captured) = capture_server(StatusCode::OK, "ok").await;
+    let key = Key::from(&[11u8; 64]);
+    let plain = json!({"url": format!("{base}/hook?key=s3cret"), "headers": {"Authorization": "Bearer t0ken"}});
+    let ch = channel("webhook", sealed::seal_config(&key, "webhook", &plain));
+    assert!(!ch.config.contains("s3cret") && !ch.config.contains("t0ken"));
+    let e = alert(AlertKind::Problem, Some("HTTP 503"), None);
+
+    // Opened with the instance key: delivered with the plaintext secrets.
+    let opened = sealed::open_channel(&key, &ch).unwrap();
+    send(&client(), &opened, &e).await.unwrap();
+    {
+        let reqs = captured.lock().unwrap();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].uri.query(), Some("key=s3cret"));
+        assert_eq!(reqs[0].headers["authorization"], "Bearer t0ken");
+    }
+
+    // Still sealed (not opened, or another key): refused, nothing sent.
+    let err = send(&client(), &ch, &e).await.unwrap_err();
+    assert_eq!(err, sealed::unreadable_message());
+    let other = Key::from(&[12u8; 64]);
+    assert_eq!(
+        sealed::open_channel(&other, &ch).unwrap_err(),
+        sealed::unreadable_message()
+    );
+    assert_eq!(captured.lock().unwrap().len(), 1);
+    // The API's view masks sealed secrets like plaintext ones.
+    let shown = redacted_config(&ch);
+    assert_eq!(shown["url"], SECRET_MASK);
+    assert_eq!(shown["headers"]["Authorization"], SECRET_MASK);
+}

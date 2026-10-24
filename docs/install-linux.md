@@ -184,7 +184,9 @@ the LXC script, run `update` in the container instead.
   Keep `/etc/vigilant-vole/vigilant-vole.env` too if you changed it. On Proxmox, a container backup
   (`vzdump`) covers everything.
 
-A backup contains everything (users, tokens, notification secrets): store it like a password.
+A backup contains everything (users, tokens, notification secrets): store it like a password. Keep
+`session.key` with the database: notification channel secrets are sealed with it, and without it they
+have to be entered again.
 
 ## Behind a reverse proxy
 

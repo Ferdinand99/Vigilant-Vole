@@ -24,7 +24,7 @@ async fn set_base(t: &TestApp, base: Option<&'static str>) {
         })
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
 }
 
 /// Subscriptions on for page `pid`, with an email channel and webhooks, and
@@ -57,7 +57,7 @@ async fn enable(t: &TestApp, pid: i64, email: bool, webhooks: bool) {
         })
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
 }
 
 async fn subscribers(t: &TestApp, pid: i64) -> Vec<db::Subscriber> {
@@ -141,7 +141,7 @@ async fn the_form_only_exists_when_the_page_offers_subscriptions() {
         .with_conn(move |c| c.execute("UPDATE status_pages SET published = 0 WHERE id = ?1", [pid]))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (status, _, _) = get(&t, "/status/acme/subscribe", None, None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
@@ -419,7 +419,7 @@ async fn without_a_public_url_nothing_is_offered_and_the_host_header_is_never_us
         })
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (status, _, _) = get(&t, "/status/acme/subscribe", None, None).await;
     assert_eq!(status, StatusCode::OK);
     let (_, _, tab) = get(&t, &url, None, Some(&ed)).await;
@@ -562,7 +562,7 @@ async fn password_pages_ask_for_the_password_first() {
         .with_conn(move |c| extras::set_password_hash(c, pid, Some(&hash)))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (status, _, body) = get(&t, "/status/acme/subscribe", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(!body.contains("name=\"email\""), "{body}");

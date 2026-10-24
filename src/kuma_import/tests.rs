@@ -286,7 +286,12 @@ fn tags_notifications_pages_and_maintenance_map() {
 fn planning_skips_invalid_entries_and_applies_cleanly() {
     let mut import = read_file(&kuma_db("apply")).unwrap();
     let mut conn = test_conn();
-    let plan = plan(&conn, &mut import).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &mut import,
+    )
+    .unwrap();
     assert!(plan.is_ok(), "{:?}", plan.errors);
     // The Slack channel without a webhook URL fails validation and is skipped, not fatal.
     assert!(
@@ -299,9 +304,14 @@ fn planning_skips_invalid_entries_and_applies_cleanly() {
         Some(Action::Create)
     );
 
-    let applied = config_io::apply(&mut conn, &import.doc, Mode::Merge)
-        .unwrap()
-        .unwrap();
+    let applied = config_io::apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &import.doc,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert!(!applied.monitor_ids.is_empty());
     let monitors = db_monitors::list_monitors(&conn).unwrap();
     let push = monitors
@@ -331,7 +341,12 @@ fn planning_skips_invalid_entries_and_applies_cleanly() {
 
     // Importing again changes nothing.
     let mut again = read_file(&kuma_db("again")).unwrap();
-    let second = super::plan(&conn, &mut again).unwrap();
+    let second = super::plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &mut again,
+    )
+    .unwrap();
     assert!(
         !second.has_changes(),
         "{:?}",

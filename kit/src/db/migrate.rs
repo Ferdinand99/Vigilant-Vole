@@ -43,10 +43,20 @@ pub const PASSKEYS: (&str, &str) = (
     include_str!("../../migrations/0003_passkeys.sql"),
 );
 
+/// Changes no table: records that notification channel secrets are sealed
+/// ([`crate::notify::sealed`]). Running it gives the database its
+/// pre-migration copy (plaintext secrets, for a rollback) before the product
+/// seals them, and makes older versions, which can't read sealed secrets,
+/// refuse the database. Every product with notification channels runs it.
+pub const SEALED_SECRETS: (&str, &str) = (
+    "kit/0004_sealed_secrets.sql",
+    include_str!("../../migrations/0004_sealed_secrets.sql"),
+);
+
 /// The kit's core migrations, `(name, sql)` in order: every product's
 /// default for [`MigrationSet::core`]. The names start with `kit/` so they
 /// never collide with a product's file names.
-pub const CORE: &[(&str, &str)] = &[CORE_TABLES, TOKEN_SCOPES, PASSKEYS];
+pub const CORE: &[(&str, &str)] = &[CORE_TABLES, TOKEN_SCOPES, PASSKEYS, SEALED_SECRETS];
 
 /// What a product tells the runner about its migrations.
 pub struct MigrationSet {
@@ -680,6 +690,7 @@ mod tests {
                 "kit/0001_core.sql",
                 "kit/0002_token_scopes.sql",
                 "kit/0003_passkeys.sql",
+                "kit/0004_sealed_secrets.sql",
                 "0001_things.sql"
             ]
         );
@@ -759,7 +770,7 @@ mod tests {
     #[test]
     fn the_token_scope_table_can_be_added_later() {
         static WITHOUT: MigrationSet = MigrationSet {
-            core: &[CORE_TABLES, PASSKEYS],
+            core: &[CORE_TABLES, PASSKEYS, SEALED_SECRETS],
             adopt_core: None,
             migrations: NEW_PRODUCT.migrations,
             fk_off_marker: "-- fk=off",

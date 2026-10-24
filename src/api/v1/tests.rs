@@ -64,11 +64,12 @@ async fn harness() -> Harness {
     crate::db::run_migrations(&pool, &dir.join("backups")).await;
     let (update_tx, _) = tokio::sync::broadcast::channel(16);
     let http = reqwest::Client::new();
-    let scheduler = Scheduler::new(pool.clone(), update_tx.clone(), http.clone());
+    let key = Key::generate();
+    let scheduler = Scheduler::new(pool.clone(), update_tx.clone(), http.clone(), key.clone());
     let state = AppState {
         db: pool,
         scheduler,
-        session_key: Key::generate(),
+        session_key: key,
         update_tx,
         http,
         sign_in_limits: Default::default(),
@@ -695,9 +696,10 @@ async fn notification_channels_are_redacted_and_keep_secrets_on_update() {
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        stored.config.contains("very-secret") && stored.config.contains("Mole") && !stored.active
-    );
+    // Stored sealed: the secret opens with the instance key, the rest is readable.
+    assert!(!stored.config.contains("very-secret") && stored.config.contains("Mole"));
+    let opened = crate::notification::open_config(&h.state.session_key, &stored).config;
+    assert!(opened["url"] == url && opened["username"] == "Mole" && !stored.active);
 
     let (status, err) = h
         .json(
@@ -1843,6 +1845,7 @@ async fn channel_update_to_a_new_server_needs_the_secret_again() {
         .unwrap()
         .unwrap();
     assert!(stored.config.contains("push.example.com"));
+    assert!(!stored.config.contains("STORED-TOKEN"));
     // …a retyped token is fine, and so is a masked token on the same server.
     let (status, _) = h
         .json(
@@ -1861,7 +1864,149 @@ async fn channel_update_to_a_new_server_needs_the_secret_again() {
         .await
         .unwrap()
         .unwrap();
-    assert!(stored.config.contains("\"NEW\"") && stored.config.contains("new.example"));
+    let opened = crate::notification::open_config(&h.state.session_key, &stored).config;
+    assert!(opened["app_token"] == "NEW" && stored.config.contains("new.example"));
+}
+
+/// A local server that answers 200 and records each request's query and
+/// `Authorization` header.
+async fn capture() -> (String, Arc<std::sync::Mutex<Vec<(String, String)>>>) {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let app = Router::new().fallback(move |req: Request<ReqBody>| {
+        let log = log.clone();
+        async move {
+            let auth = req
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            let query = req.uri().query().unwrap_or_default().to_string();
+            log.lock().unwrap().push((query, auth));
+            "ok"
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    (format!("http://{addr}"), seen)
+}
+
+#[tokio::test]
+async fn channel_secrets_are_sealed_and_a_lost_key_asks_for_them_again() {
+    let h = harness().await;
+    let (base, seen) = capture().await;
+    let config = json!({"url": format!("{base}/hook?key=s3cret"), "headers": {"Authorization": "Bearer t0ken"}});
+    let (status, ch) = h
+        .json(
+            Method::POST,
+            "/api/v1/notification-channels",
+            &h.editor,
+            Some(json!({"name": "Hook", "kind": "webhook", "config": config})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{ch}");
+    let id = ch["id"].as_i64().unwrap();
+    let uri = format!("/api/v1/notification-channels/{id}");
+    let raw = || async {
+        h.state
+            .with_conn(move |c| crate::db::notifications::get_channel(c, id))
+            .await
+            .unwrap()
+            .unwrap()
+            .config
+    };
+    let stored = raw().await;
+    assert!(
+        !stored.contains("s3cret") && !stored.contains("t0ken"),
+        "{stored}"
+    );
+    assert!(stored.contains(crate::kit::crypto::PREFIX), "{stored}");
+    // The API masks it as before.
+    let (_, shown) = h.json(Method::GET, &uri, &h.viewer, None).await;
+    assert_eq!(shown["config"]["url"], crate::notification::SECRET_MASK);
+    assert_eq!(
+        shown["config"]["headers"]["Authorization"],
+        crate::notification::SECRET_MASK
+    );
+
+    // A test send opens the secrets.
+    let (status, res) = h
+        .json(Method::POST, &format!("{uri}/test"), &h.editor, None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(
+        seen.lock().unwrap().clone(),
+        vec![("key=s3cret".to_string(), "Bearer t0ken".to_string())]
+    );
+
+    // The instance key is replaced (a database restored without its
+    // `session.key`): the secrets were sealed under a key that is gone.
+    let lost = crate::kit::notify::sealed::seal_config(&Key::from(&[7u8; 64]), "webhook", &config)
+        .to_string();
+    h.state
+        .with_conn(move |c| {
+            c.execute(
+                "UPDATE notification_channels SET config = ?2 WHERE id = ?1",
+                rusqlite::params![id, lost],
+            )
+        })
+        .await
+        .unwrap();
+    let unreadable = crate::kit::notify::sealed::unreadable_message();
+    // Sending fails cleanly and sends nothing.
+    let (status, res) = h
+        .json(Method::POST, &format!("{uri}/test"), &h.editor, None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{res}");
+    assert!(res.to_string().contains("instance key changed"), "{res}");
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    // The edit page says to enter it again instead of failing.
+    let mut editor = Browser::login(&h, "editor").await;
+    let (status, html) = editor
+        .get(&format!("/settings/notifications/{id}/edit"))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("instance key changed"), "{html}");
+    // Renaming keeps it as it is; a config without the secret is refused…
+    let (status, _) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"name": "Renamed"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, err) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"config": {"method": "PUT"}})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    assert_eq!(err["error"]["fields"]["config.url"], unreadable, "{err}");
+    // …and entering it again makes the channel work.
+    let (status, _) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"config": config})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, res) = h
+        .json(Method::POST, &format!("{uri}/test"), &h.editor, None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{res}");
+    assert_eq!(seen.lock().unwrap().len(), 2);
+    assert!(!raw().await.contains("s3cret"));
 }
 
 /// A same-origin form post from a logged-in browser.

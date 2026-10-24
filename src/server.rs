@@ -40,9 +40,24 @@ pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
     let (update_tx, _) = tokio::sync::broadcast::channel(16);
     let http = build_http_client();
     // The engine gets its own connections so web load can't delay checks.
-    let engine_pool = db::build_engine_pool(&config.db_path());
-    let scheduler = Scheduler::new(engine_pool, update_tx.clone(), http.clone());
     let session_key = auth::load_or_create_key(&config.data_dir);
+    // Channels saved before secrets were sealed (or restored from a backup
+    // that holds them in plaintext) get sealed now, once.
+    let key = session_key.clone();
+    if let Err(err) = db::interact(&pool, move |c| {
+        crate::notification::sealed::seal_stored(c, &key)
+    })
+    .await
+    {
+        tracing::warn!(%err, "couldn't seal the secrets of notification channels");
+    }
+    let engine_pool = db::build_engine_pool(&config.db_path());
+    let scheduler = Scheduler::new(
+        engine_pool,
+        update_tx.clone(),
+        http.clone(),
+        session_key.clone(),
+    );
     Ok(AppState {
         db: pool,
         scheduler,

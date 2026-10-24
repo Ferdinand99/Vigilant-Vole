@@ -521,13 +521,14 @@ static SNAPSHOTS: LazyLock<Mutex<HashMap<String, Snapshot>>> =
 /// Wakes the background job early (after edits).
 static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
 
-/// Drop every cached snapshot and wake the background job. Call after any
-/// maintenance window (or group membership) change.
-pub fn invalidate() {
+/// Drop every cached snapshot and wake the background job, and drop the
+/// instance's cached public views. Call after any maintenance window (or
+/// group membership) change.
+pub fn invalidate(state: &AppState) {
     if let Ok(mut map) = SNAPSHOTS.lock() {
         map.clear();
     }
-    crate::api::public_status::invalidate_views();
+    crate::api::public_status::invalidate_views(state);
     WAKE.notify_one();
 }
 
@@ -812,7 +813,7 @@ async fn notify_window(
             .map(|b| format!("{}/maintenance/{window_id}/edit", b.trim_end_matches('/'))),
         occurred_at: time::OffsetDateTime::now_utc(),
     };
-    crate::notification::send_all(&state.http, &channels, &event).await;
+    crate::notification::send_all(&state.http, &state.session_key, &channels, &event).await;
 }
 
 #[cfg(test)]

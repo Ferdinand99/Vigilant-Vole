@@ -12,6 +12,10 @@
 //!
 //! Errors returned by [`send`] are safe to log and show: they never contain
 //! the request URL or any secret from the channel config.
+//!
+//! Stored configs have their secrets sealed ([`sealed`]); open them
+//! ([`sealed::open_channel`], [`sealed::open_config`]) before sending. A
+//! config with a secret that is still sealed is refused, never sent.
 
 pub mod alert;
 pub mod apis;
@@ -38,6 +42,7 @@ pub mod pushbullet;
 pub mod pushover;
 pub mod rocketchat;
 pub mod schema;
+pub mod sealed;
 pub mod signal;
 pub mod slack;
 pub mod teams;
@@ -205,6 +210,11 @@ async fn send_config_in_scope(
     event: &Alert,
 ) -> Result<(), String> {
     let schema = provider(kind).ok_or_else(|| format!("unsupported channel kind '{kind}'"))?;
+    // A sealed secret here wasn't opened, or couldn't be (another instance
+    // key): never send the sealed text to the provider.
+    if sealed::has_sealed(schema, config) {
+        return Err(sealed::unreadable_message().to_string());
+    }
     // Monitor targets can carry credentials (`https://user:pass@…`, `?token=`);
     // they never leave in a notification.
     let event = &Alert {

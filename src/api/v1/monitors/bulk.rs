@@ -344,7 +344,7 @@ pub(super) async fn bulk(
             bulk_edit::apply(c, &ids, &edit)
         })
         .await?;
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(&state);
     for id in &outcome.updated {
         state.scheduler.reload(*id).await;
     }

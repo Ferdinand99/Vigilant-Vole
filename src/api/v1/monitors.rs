@@ -747,7 +747,7 @@ fn save(
 }
 
 async fn after_change(state: &AppState, id: i64) {
-    crate::maintenance::invalidate();
+    crate::maintenance::invalidate(state);
     state.scheduler.reload(id).await;
     state.notify_update();
 }

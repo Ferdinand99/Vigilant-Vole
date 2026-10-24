@@ -884,7 +884,7 @@ async fn action(
 }
 
 fn changed(state: &AppState) {
-    maintenance::invalidate();
+    maintenance::invalidate(state);
     state.notify_update();
 }
 

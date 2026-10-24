@@ -74,7 +74,14 @@ maintenance:
 fn seeded() -> Connection {
     let mut conn = test_conn();
     let doc = parse_document(SEED).unwrap();
-    let applied = apply(&mut conn, &doc, Mode::Merge).unwrap().unwrap();
+    let applied = apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
     conn
 }
@@ -144,15 +151,27 @@ fn export_import_round_trip_is_lossless() {
         },
     )
     .unwrap();
-    let first = export(&conn, true).unwrap();
+    let first = export(&conn, &crate::notification::tests_support::test_key(), true).unwrap();
     for format in [Format::Yaml, Format::Json] {
         let text = render(&first, format).unwrap();
         let parsed = parse_document(&text).unwrap();
         let mut fresh = test_conn();
-        let applied = apply(&mut fresh, &parsed, Mode::Merge).unwrap().unwrap();
+        let applied = apply(
+            &mut fresh,
+            &crate::notification::tests_support::test_key(),
+            &parsed,
+            Mode::Merge,
+        )
+        .unwrap()
+        .unwrap();
         assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
         assert_eq!(
-            export(&fresh, true).unwrap(),
+            export(
+                &fresh,
+                &crate::notification::tests_support::test_key(),
+                true
+            )
+            .unwrap(),
             first,
             "{format:?} round trip"
         );
@@ -162,8 +181,14 @@ fn export_import_round_trip_is_lossless() {
 #[test]
 fn reapplying_an_export_is_a_no_op() {
     let conn = seeded();
-    let doc = export(&conn, true).unwrap();
-    let plan = plan(&conn, &doc, Mode::Merge).unwrap();
+    let doc = export(&conn, &crate::notification::tests_support::test_key(), true).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap();
     assert!(plan.is_ok(), "{:?}", plan.errors);
     assert!(
         !plan.has_changes(),
@@ -178,7 +203,7 @@ fn reapplying_an_export_is_a_no_op() {
 #[test]
 fn dry_run_plan_reports_creates_updates_and_changed_fields() {
     let conn = seeded();
-    let mut doc = export(&conn, true).unwrap();
+    let mut doc = export(&conn, &crate::notification::tests_support::test_key(), true).unwrap();
     let monitors = doc.monitors.as_mut().unwrap();
     let api = monitors.iter_mut().find(|m| m.name == "API").unwrap();
     api.options
@@ -194,7 +219,13 @@ fn dry_run_plan_reports_creates_updates_and_changed_fields() {
         notifications: None,
         push_token: None,
     });
-    let plan = plan(&conn, &doc, Mode::Merge).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap();
     assert_eq!(plan.action_for(KIND_MONITOR, "API"), Some(Action::Update));
     let item = plan.items.iter().find(|i| i.key == "API").unwrap();
     assert_eq!(item.changes, vec!["interval_seconds".to_string()]);
@@ -223,10 +254,22 @@ fn merge_leaves_unlisted_objects_but_replace_deletes_them() {
     )
     .unwrap();
     let doc = parse_document("monitors:\n  - name: API\n    monitor_type: http\n    target: https://api.example.com/health\n    notifications: []\n").unwrap();
-    let merge = plan(&conn, &doc, Mode::Merge).unwrap();
+    let merge = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap();
     assert_eq!(merge.summary().delete, 0);
 
-    let replace = plan(&conn, &doc, Mode::Replace).unwrap();
+    let replace = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Replace,
+    )
+    .unwrap();
     for key in ["Backend", "db-port", "Cron job"] {
         assert_eq!(
             replace.action_for(KIND_MONITOR, key),
@@ -242,7 +285,14 @@ fn merge_leaves_unlisted_objects_but_replace_deletes_them() {
     // Sections missing from the document are left alone.
     assert!(replace.items.iter().all(|i| i.kind == KIND_MONITOR));
 
-    let applied = apply(&mut conn, &doc, Mode::Replace).unwrap().unwrap();
+    let applied = apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Replace,
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(applied.deleted_monitor_ids.len(), 3);
     let names: Vec<String> = db_monitors::list_monitors(&conn)
         .unwrap()
@@ -253,19 +303,28 @@ fn merge_leaves_unlisted_objects_but_replace_deletes_them() {
     assert!(names.contains(&"API".to_string()) && names.contains(&"Container".to_string()));
     // Docker monitors are not exported either.
     assert!(
-        export(&conn, false)
-            .unwrap()
-            .monitors
-            .unwrap()
-            .iter()
-            .all(|m| m.name != "Container")
+        export(
+            &conn,
+            &crate::notification::tests_support::test_key(),
+            false
+        )
+        .unwrap()
+        .monitors
+        .unwrap()
+        .iter()
+        .all(|m| m.name != "Container")
     );
 }
 
 #[test]
 fn exports_without_secrets_mask_them_and_masks_keep_stored_values() {
     let mut conn = seeded();
-    let doc = export(&conn, false).unwrap();
+    let doc = export(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        false,
+    )
+    .unwrap();
     let text = render(&doc, Format::Yaml).unwrap();
     for secret in [
         "secret-token",
@@ -294,7 +353,14 @@ fn exports_without_secrets_mask_them_and_masks_keep_stored_values() {
     assert_eq!(api.options["http_headers"]["X-Trace"], "1");
 
     // Re-importing the redacted document changes nothing and keeps the secrets.
-    let applied = apply(&mut conn, &doc, Mode::Merge).unwrap().unwrap();
+    let applied = apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert!(!applied.plan.has_changes(), "{:?}", applied.plan.items);
     let api = monitor_named(&conn, "API");
     assert_eq!(api.basic_auth_pass.as_deref(), Some("hunter2hunter2"));
@@ -306,7 +372,13 @@ fn exports_without_secrets_mask_them_and_masks_keep_stored_values() {
 
     // A fresh instance can't invent the secrets: the plan says so.
     let fresh = test_conn();
-    let plan = plan(&fresh, &doc, Mode::Merge).unwrap();
+    let plan = plan(
+        &fresh,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap();
     assert!(
         plan.errors
             .iter()
@@ -354,7 +426,13 @@ monitors:
 "#,
     )
     .unwrap();
-    let plan = plan(&conn, &doc, Mode::Merge).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap();
     let field_of = |key: &str| {
         plan.errors
             .iter()
@@ -373,7 +451,16 @@ monitors:
     );
     // Nothing applies while anything is invalid.
     let mut conn = conn;
-    assert!(apply(&mut conn, &doc, Mode::Merge).unwrap().is_err());
+    assert!(
+        apply(
+            &mut conn,
+            &crate::notification::tests_support::test_key(),
+            &doc,
+            Mode::Merge
+        )
+        .unwrap()
+        .is_err()
+    );
     assert!(db_monitors::list_monitors(&conn).unwrap().is_empty());
 }
 
@@ -389,7 +476,14 @@ fn undeclared_tags_are_created_with_the_default_colour() {
 ",
     )
     .unwrap();
-    let applied = apply(&mut conn, &doc, Mode::Merge).unwrap().unwrap();
+    let applied = apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(
         applied.plan.action_for(KIND_TAG, "env"),
         Some(Action::Create)
@@ -424,7 +518,13 @@ monitors:
 "#,
     )
     .unwrap();
-    let plan = plan(&conn, &doc, Mode::Merge).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap();
     assert!(
         plan.errors
             .iter()
@@ -444,7 +544,14 @@ fn children_are_created_after_parents_listed_later() {
         "monitors:\n  - name: Child\n    monitor_type: ping\n    target: 192.0.2.1\n    parent: Group\n  - name: Group\n    monitor_type: group\n",
     )
     .unwrap();
-    apply(&mut conn, &doc, Mode::Merge).unwrap().unwrap();
+    apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(
         monitor_named(&conn, "Child").parent_id,
         Some(monitor_named(&conn, "Group").id)
@@ -472,7 +579,13 @@ maintenance:
 "#,
     )
     .unwrap();
-    let plan = plan(&conn, &doc, Mode::Merge).unwrap();
+    let plan = plan(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        &doc,
+        Mode::Merge,
+    )
+    .unwrap();
     let has = |kind: &str, key: &str| plan.errors.iter().any(|e| e.kind == kind && e.key == key);
     assert!(has(KIND_SETTING, "timezone"));
     assert!(has(KIND_SETTING, "retention_days"));
@@ -576,10 +689,26 @@ fn backup_validation_accepts_our_database_and_rejects_others() {
 fn discovery_setting_changes_are_detected() {
     let conn = test_conn();
     let doc = parse_document("settings:\n  discovery_enabled: true\n").unwrap();
-    assert!(discovery_changed(&plan(&conn, &doc, Mode::Merge).unwrap()));
+    assert!(discovery_changed(
+        &plan(
+            &conn,
+            &crate::notification::tests_support::test_key(),
+            &doc,
+            Mode::Merge
+        )
+        .unwrap()
+    ));
     let doc =
         parse_document("settings:\n  site_name: Other\n  discovery_enabled: false\n").unwrap();
-    assert!(!discovery_changed(&plan(&conn, &doc, Mode::Merge).unwrap()));
+    assert!(!discovery_changed(
+        &plan(
+            &conn,
+            &crate::notification::tests_support::test_key(),
+            &doc,
+            Mode::Merge
+        )
+        .unwrap()
+    ));
 }
 
 #[test]
@@ -600,9 +729,14 @@ fn http_auth_methods_round_trip_with_masked_secrets() {
     })
     .to_string();
     let mut conn = test_conn();
-    let applied = apply(&mut conn, &parse_document(&doc).unwrap(), Mode::Merge)
-        .unwrap()
-        .unwrap();
+    let applied = apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &parse_document(&doc).unwrap(),
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
     // Documents without `auth_method` keep meaning basic auth.
     assert_eq!(monitor_named(&conn, "Legacy").auth_method, "basic");
@@ -617,7 +751,12 @@ fn http_auth_methods_round_trip_with_masked_secrets() {
     );
 
     // Exports hide the client secret and the private key, but not the certificates.
-    let masked = export(&conn, false).unwrap();
+    let masked = export(
+        &conn,
+        &crate::notification::tests_support::test_key(),
+        false,
+    )
+    .unwrap();
     let text = render(&masked, Format::Yaml).unwrap();
     for secret in ["hunter2hunter2", "client-secret-value", "PRIVATE KEY"] {
         assert!(!text.contains(secret), "{secret} leaked:\n{text}");
@@ -636,11 +775,22 @@ fn http_auth_methods_round_trip_with_masked_secrets() {
     assert_eq!(find("Oauth").options["oauth_client_secret"], SECRET_MASK);
     assert_eq!(find("Mtls").options["tls_client_key"], SECRET_MASK);
     assert_eq!(find("Mtls").options["auth_method"], "mtls");
-    let full = render(&export(&conn, true).unwrap(), Format::Yaml).unwrap();
+    let full = render(
+        &export(&conn, &crate::notification::tests_support::test_key(), true).unwrap(),
+        Format::Yaml,
+    )
+    .unwrap();
     assert!(full.contains("client-secret-value") && full.contains("PRIVATE KEY"));
 
     // Re-importing the masked export changes nothing and keeps the stored secrets.
-    let applied = apply(&mut conn, &masked, Mode::Merge).unwrap().unwrap();
+    let applied = apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &masked,
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert!(!applied.plan.has_changes(), "{:?}", applied.plan.items);
     assert_eq!(
         monitor_named(&conn, "Oauth").oauth_client_secret.as_deref(),
@@ -652,7 +802,13 @@ fn http_auth_methods_round_trip_with_masked_secrets() {
     );
 
     // A fresh instance can't invent them.
-    let plan = plan(&test_conn(), &masked, Mode::Merge).unwrap();
+    let plan = plan(
+        &test_conn(),
+        &crate::notification::tests_support::test_key(),
+        &masked,
+        Mode::Merge,
+    )
+    .unwrap();
     for field in ["oauth_client_secret", "tls_client_key", "basic_auth_pass"] {
         assert!(
             plan.errors
@@ -675,7 +831,13 @@ fn bad_http_auth_in_a_document_is_reported_with_the_forms_messages() {
         ],
     })
     .to_string();
-    let plan = plan(&test_conn(), &parse_document(&doc).unwrap(), Mode::Merge).unwrap();
+    let plan = plan(
+        &test_conn(),
+        &crate::notification::tests_support::test_key(),
+        &parse_document(&doc).unwrap(),
+        Mode::Merge,
+    )
+    .unwrap();
     for field in [
         "oauth_token_url",
         "oauth_client_id",
@@ -708,9 +870,14 @@ fn explicit_auth_method_none_is_respected_and_legacy_documents_mean_basic() {
     })
     .to_string();
     let mut conn = test_conn();
-    let applied = apply(&mut conn, &parse_document(&doc).unwrap(), Mode::Merge)
-        .unwrap()
-        .unwrap();
+    let applied = apply(
+        &mut conn,
+        &crate::notification::tests_support::test_key(),
+        &parse_document(&doc).unwrap(),
+        Mode::Merge,
+    )
+    .unwrap()
+    .unwrap();
     assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
     let off = monitor_named(&conn, "Off");
     assert_eq!(

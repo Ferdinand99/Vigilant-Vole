@@ -21,3 +21,4 @@ expression: "applied_migrations(&conn).join(\"\\n\")"
 0105_heartbeat_raw_status.sql
 kit/0001_core.sql
 kit/0003_passkeys.sql
+kit/0004_sealed_secrets.sql

@@ -38,7 +38,12 @@ fn scheduler(db: &TestDb) -> (Scheduler, broadcast::Receiver<()>) {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let (tx, rx) = broadcast::channel(64);
     (
-        Scheduler::new(db.pool.clone(), tx, reqwest::Client::new()),
+        Scheduler::new(
+            db.pool.clone(),
+            tx,
+            reqwest::Client::new(),
+            crate::notification::tests_support::test_key(),
+        ),
         rx,
     )
 }

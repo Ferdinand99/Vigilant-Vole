@@ -29,7 +29,7 @@ async fn the_public_page_shows_the_timeline_of_updates() {
         })
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (status, _, body) = get(&t, "/status/acme", None, None).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("incident-updates"), "{body}");
@@ -50,7 +50,7 @@ async fn the_public_page_shows_the_timeline_of_updates() {
         .with_conn(move |c| db_incidents::add_update(c, pid, iid, "resolved", "Fixed"))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (_, _, body) = get(&t, "/status/acme", None, None).await;
     assert!(
         body.contains("Resolved") && body.contains("Fixed"),
@@ -139,7 +139,7 @@ async fn feeds_respect_publishing_and_passwords() {
         .with_conn(move |c| extras::set_password_hash(c, pid, Some(&hash)))
         .await
         .unwrap();
-    invalidate_views();
+    invalidate_views(&t.state);
     let (status, headers, body) = get(&t, "/status/acme/feed.xml", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(headers.get("cache-control"), Some("no-store"));

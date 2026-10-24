@@ -162,6 +162,9 @@ pub fn build_router(state: AppState) -> Router {
             crate::i18n::layer,
         ))
         .layer(middleware::from_fn(error::negotiate))
+        .layer(axum::Extension(public_status::ViewScope(
+            state.config.data_dir.clone(),
+        )))
         .layer(middleware::from_fn(
             crate::kit::http::headers::security_headers,
         ))

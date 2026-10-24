@@ -320,16 +320,12 @@ async fn create_channel(
     let active = input.active.unwrap_or(true);
     let apply = input.apply_existing;
     let saved_kind = kind.clone();
+    let config = notification::seal_config(&state.session_key, &kind, &config);
     let channel = state
         .with_conn(move |c| {
             let tx = c.transaction()?;
-            let id = db_notifications::insert_channel(
-                &tx,
-                &name,
-                &saved_kind,
-                &config.to_string(),
-                is_default,
-            )?;
+            let id =
+                db_notifications::insert_channel(&tx, &name, &saved_kind, &config, is_default)?;
             if !active {
                 db_notifications::set_active(&tx, id, false)?;
             }
@@ -365,24 +361,43 @@ async fn update_channel(
             "A channel’s kind can’t change. Create a new channel instead.",
         ));
     }
-    let stored: Value = serde_json::from_str(&channel.config).unwrap_or_else(|_| json!({}));
+    let opened = notification::open_config(&state.session_key, &channel);
+    let stored = opened.config.clone();
     let name = input
         .name
         .clone()
         .unwrap_or_else(|| channel.name.clone())
         .trim()
         .to_string();
-    // Secrets left out or masked keep the stored value (`schema::merge_secrets`).
-    let config = input.config.clone().unwrap_or_else(|| stored.clone());
-    let config = crate::config_io::validate_channel(&name, &channel.kind, &config, Some(&stored))
-        .map_err(channel_errors)?;
+    // Without a config the stored one stays as it is. Secrets left out or
+    // masked keep the stored value (`schema::merge_secrets`).
+    let config = match &input.config {
+        None => channel.config.clone(),
+        Some(config) => {
+            // A stored secret that can't be opened (another instance key)
+            // has to be sent again.
+            let unreadable = opened.reentry_errors(config, &[]);
+            if !unreadable.is_empty() {
+                return Err(channel_errors(
+                    unreadable
+                        .into_iter()
+                        .map(|(field, msg)| (format!("config.{field}"), msg))
+                        .collect(),
+                ));
+            }
+            let config =
+                crate::config_io::validate_channel(&name, &channel.kind, config, Some(&stored))
+                    .map_err(channel_errors)?;
+            notification::seal_config(&state.session_key, &channel.kind, &config)
+        }
+    };
     let active = input.active.unwrap_or(channel.active);
     let is_default = input.is_default.unwrap_or(channel.is_default);
     let apply = input.apply_existing;
     let updated = state
         .with_conn(move |c| {
             let tx = c.transaction()?;
-            db_notifications::update_channel(&tx, id, &name, &config.to_string(), is_default)?;
+            db_notifications::update_channel(&tx, id, &name, &config, is_default)?;
             db_notifications::set_active(&tx, id, active)?;
             if apply {
                 db_notifications::apply_to_all(&tx, id)?;
@@ -420,7 +435,7 @@ async fn test_channel(
     let channel = load_channel(&state, id).await?;
     let settings = state.settings().await?;
     let event = notification::test_event(&settings.site_name, settings.base_url.as_deref());
-    match notification::send(&state.http, &channel, &event).await {
+    match notification::send(&state.http, &state.session_key, &channel, &event).await {
         Ok(()) => Ok(json_ok(&HeaderMap::new(), &json!({ "ok": true }))),
         Err(err) => Ok(V1Error::new(
             StatusCode::BAD_GATEWAY,
