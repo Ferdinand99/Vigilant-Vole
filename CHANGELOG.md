@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.11.0...v0.11.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **kit:** passkey button after in-app navigation, clearer passkey notes ([#44](https://github.com/Ferdinand99/Vigilant-Vole/issues/44)) ([21e73a3](https://github.com/Ferdinand99/Vigilant-Vole/commit/21e73a39d909f19f2ed8191c6c071024ffef7859))
+
 ## [0.11.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.10.0...v0.11.0) (2026-10-23)
 
 
