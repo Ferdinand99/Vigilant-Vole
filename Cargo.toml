@@ -44,7 +44,7 @@ webpki-root-certs = "1"
 
 [package]
 name = "vigilant-vole"
-version = "0.11.1"
+version = "0.12.0"
 edition = "2024"
 
 [dependencies]
