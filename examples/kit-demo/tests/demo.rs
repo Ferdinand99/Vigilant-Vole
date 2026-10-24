@@ -1421,7 +1421,7 @@ async fn passkeys_register_and_sign_in_without_password_or_code() {
     assert!(page.body.contains("data-passkey-add"));
     assert!(
         page.body
-            .contains("Passkeys work at https://demo.test over HTTPS.")
+            .contains(r#"Passkeys work at <a href="https://demo.test/settings/security#passkeys">https://demo.test</a> over HTTPS. Open that address to add one."#)
     );
     assert!(
         page.body

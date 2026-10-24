@@ -137,9 +137,10 @@
   {% endcall %}
   {%- match passkey_origin %}
   {%- when Some(origin) %}
-  <div class="callout status-info" data-passkey-note data-origin="{{ origin }}">
+  {%- let where_text = tr("sec.pk_where") %}
+  <div class="callout status-info" data-passkey-note data-origin="{{ origin }}" data-msg-unsupported="{{ tr("sec.pk_no_support") }}">
     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#info"></use></svg>
-    <div class="callout-body">{{ tr1("sec.pk_where", "url", origin) }}</div>
+    <div class="callout-body">{% if let Some((before, after)) = where_text.split_once("{url}") %}{{ before }}<a href="{{ origin }}/settings/security#passkeys">{{ origin }}</a>{{ after }}{% else %}{{ where_text }}{% endif %}</div>
   </div>
   {%- when None %}
   {{ m::callout("info", tr("sec.pk_no_url")) }}
@@ -288,5 +289,3 @@
 </dialog>
 {%- endfor %}
 {% endblock %}
-
-{% block scripts %}{% if passkey_origin.is_some() %}<script src="/static/passkeys.js" defer></script>{% endif %}{% endblock %}

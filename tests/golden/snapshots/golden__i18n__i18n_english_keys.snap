@@ -1746,6 +1746,7 @@ sec.pk_last_used
 sec.pk_name
 sec.pk_name_bad
 sec.pk_never_used
+sec.pk_no_support
 sec.pk_no_url
 sec.pk_none
 sec.pk_rename

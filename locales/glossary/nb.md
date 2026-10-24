@@ -21,3 +21,4 @@ Kilde: `locales/en.toml`. Stil hentet fra eksisterende `locales/nb.toml`.
 | webhook subscriber | webhook-abonnent | |
 | pending (sign-up) | venter | også «ubekreftet påmelding» |
 | maintenance started / ended | vedlikehold startet / avsluttet | som event_kind |
+| passkey | passnøkkel (passnøkkelen, passnøkler, passnøklene) | Apples term; ikke «tilgangsnøkkel» |

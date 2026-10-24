@@ -25,6 +25,7 @@ content-type: text/html; charset=utf-8
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/sse.js" defer></script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/passkeys.js" defer></script>
   
 </head>
 <body>
