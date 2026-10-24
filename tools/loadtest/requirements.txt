@@ -1,7 +1,7 @@
 # Load test harness (tools/loadtest/loadtest.py). Python 3.10+.
 # Pinned with every transitive dependency so CI runs are reproducible.
 aiohappyeyeballs==2.7.1
-aiohttp==3.13.5
+aiohttp==3.14.4
 aiosignal==1.4.0
 async-timeout==5.0.1 ; python_version < "3.11"
 attrs==26.1.0
