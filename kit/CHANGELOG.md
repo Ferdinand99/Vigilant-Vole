@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.4.1...vole-kit-v0.5.0) (2026-10-24)
+
+
+### Features
+
+* **kit:** seal notification channel secrets at rest ([#47](https://github.com/Ferdinand99/Vigilant-Vole/issues/47)) ([5978952](https://github.com/Ferdinand99/Vigilant-Vole/commit/59789523580ba9d9cf4d3ff60b7f0dbac9f3dfab))
+
 ## [0.4.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.4.0...vole-kit-v0.4.1) (2026-10-24)
 
 
