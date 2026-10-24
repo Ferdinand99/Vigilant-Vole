@@ -1,13 +1,34 @@
 /* Passkeys (vole-kit): log in with a passkey, and add one under Settings →
-   Security. The pages load this only when the instance's public URL allows
-   passkeys; the buttons stay hidden unless this page is on that origin in a
-   browser that has WebAuthn. The server checks everything
-   (vole_kit::auth::webauthn); this only carries bytes between it and
-   navigator.credentials. No inline script (CSP): texts come in data-msg-*
-   attributes. */
+   Security. The login page loads this when the instance's public URL allows
+   passkeys, and every signed-in page loads it, because the settings menu
+   reaches Security by a boosted (htmx) navigation that doesn't run the new
+   page's scripts. So it wires up whatever is on the page now, at load and
+   after every htmx swap, and each element only once. The buttons stay
+   hidden unless this page is on the public URL's origin in a browser that
+   has WebAuthn; otherwise Security says which of the two is missing. The
+   server checks everything (vole_kit::auth::webauthn); this only carries
+   bytes between it and navigator.credentials. No inline script (CSP): texts
+   come in data-msg-* attributes. */
 (function () {
   "use strict";
   var d = document;
+  if (window.VVPasskeys) return;
+  window.VVPasskeys = true;
+
+  /* Elements already wired up. Not an attribute: htmx keeps pages in its
+     history cache as HTML, and a restored copy needs wiring up again. */
+  var done = typeof WeakSet === "function" ? new WeakSet() : null;
+  function once(el) {
+    if (!el) return false;
+    if (done) {
+      if (done.has(el)) return false;
+      done.add(el);
+      return true;
+    }
+    if (el.vvPasskeys) return false;
+    el.vvPasskeys = true;
+    return true;
+  }
 
   /* ---------------------------------------------------- base64url helpers */
   function toBytes(text) {
@@ -101,8 +122,8 @@
   }
 
   /* ------------------------------------------------------------- log in */
-  var signin = d.querySelector("[data-passkey-signin]");
-  if (signin && usableAt(signin.getAttribute("data-origin"))) {
+  function setupSignin(signin) {
+    if (!usableAt(signin.getAttribute("data-origin"))) return;
     var form = signin.closest("form");
     var autofill = null;
     var busy = false;
@@ -208,12 +229,24 @@
   }
 
   /* --------------------------------------------- Settings → Security */
-  var note = d.querySelector("[data-passkey-note]");
-  var add = d.querySelector("[data-passkey-add]");
-  var register = d.querySelector("form[data-passkey-register]");
-  if (note && add && register && usableAt(note.getAttribute("data-origin"))) {
+  /* The note says why there is no button: another address than the public
+     URL (the server's text, with the link), or a browser without WebAuthn.
+     On the right address in a browser that has it, the note goes and the
+     button comes. */
+  function setupSecurity(note) {
+    var add = d.querySelector("[data-passkey-add]");
+    var register = d.querySelector("form[data-passkey-register]");
+    if (location.origin !== note.getAttribute("data-origin")) return;
+    if (!supported()) {
+      var body = note.querySelector(".callout-body");
+      var text = note.getAttribute("data-msg-unsupported");
+      if (body && text) body.textContent = text;
+      return;
+    }
+    if (!add || !register) return;
     note.hidden = true;
     add.hidden = false;
+    if (!once(register)) return;
     var submit = d.querySelector('button[type="submit"][form="' + register.id + '"]');
     var adding = false;
     register.addEventListener("submit", function (e) {
@@ -242,4 +275,18 @@
         });
     });
   }
+
+  /* Whatever this page has that isn't wired up yet. A no-op elsewhere. */
+  function init() {
+    var signin = d.querySelector("[data-passkey-signin]");
+    if (once(signin)) setupSignin(signin);
+    var note = d.querySelector("[data-passkey-note]");
+    if (once(note)) setupSecurity(note);
+  }
+
+  init();
+  /* htmx swaps (boosted navigation, partial updates, the back button). */
+  ["htmx:load", "htmx:afterSettle", "htmx:historyRestore"].forEach(function (name) {
+    d.addEventListener(name, init);
+  });
 })();
