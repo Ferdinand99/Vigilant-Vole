@@ -281,7 +281,7 @@ CREATE TABLE "monitors" (
     tls_client_key TEXT,
     tls_ca_cert TEXT,
     grpc_proto TEXT                            -- for the upcoming gRPC keyword type (unused yet)
-, remote_browser_id INTEGER REFERENCES remote_browsers(id) ON DELETE SET NULL, browser_selector TEXT, browser_wait TEXT NOT NULL DEFAULT 'load', browser_viewport TEXT NOT NULL DEFAULT 'desktop', browser_js_errors INTEGER NOT NULL DEFAULT 0);
+, remote_browser_id INTEGER REFERENCES remote_browsers(id) ON DELETE SET NULL, browser_selector TEXT, browser_wait TEXT NOT NULL DEFAULT 'load', browser_viewport TEXT NOT NULL DEFAULT 'desktop', browser_js_errors INTEGER NOT NULL DEFAULT 0, check_from_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL);
 
 -- table notification_channels (on notification_channels)
 CREATE TABLE "notification_channels" (
@@ -635,6 +635,7 @@ monitors
   58 browser_wait TEXT 1 'load' 0
   59 browser_viewport TEXT 1 'desktop' 0
   60 browser_js_errors INTEGER 1 0 0
+  61 check_from_agent_id INTEGER 0 - 0
   index idx_monitors_external unique=1 origin=c partial=1
   index idx_monitors_parent unique=0 origin=c partial=0
   index sqlite_autoindex_monitors_1 unique=1 origin=u partial=0

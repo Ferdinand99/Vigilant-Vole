@@ -84,12 +84,26 @@ impl App {
     /// Starts the app on `dir` the way `vigilant-vole serve` does (including
     /// migrations), minus the monitor scheduler.
     pub async fn start(dir: DataDir) -> App {
+        Self::start_with(dir, false).await
+    }
+
+    /// Like [`App::start`], but the scheduler keeps running (nothing is
+    /// started at boot; saving or reloading a monitor starts its task). For
+    /// tests that need the engine, e.g. the agent watchdog.
+    #[allow(dead_code)] // used by `tests/agent_handlers.rs`, not the golden tests
+    pub async fn start_with_engine(dir: DataDir) -> App {
+        Self::start_with(dir, true).await
+    }
+
+    async fn start_with(dir: DataDir, engine: bool) -> App {
         let state = vigilant_vole::server::prepare(dir.config())
             .await
             .unwrap_or_else(|e| panic!("startup: {e}"));
         // No checks: they would add heartbeats (and reach the network) while
         // pages are rendered. Once shut down, saving a monitor starts nothing.
-        state.scheduler.shutdown().await;
+        if !engine {
+            state.scheduler.shutdown().await;
+        }
         let router = api::build_router(state.clone());
         App {
             state,

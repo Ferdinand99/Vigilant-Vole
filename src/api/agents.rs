@@ -202,8 +202,9 @@ async fn agent_monitors(
     AuthedAgent(agent): AuthedAgent,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
+    let agent_id = agent.id;
     let mut monitors = state
-        .with_conn(|c| db_agents::list_agent_monitors(c))
+        .with_conn(move |c| db_agents::list_agent_monitors(c, agent_id))
         .await?;
     for m in &mut monitors {
         m.push_token = None;
@@ -286,8 +287,9 @@ async fn agent_results(
         )
             .into_response());
     }
+    let agent_id = agent.id;
     let monitors = state
-        .with_conn(|c| db_agents::list_agent_monitors(c))
+        .with_conn(move |c| db_agents::list_agent_monitors(c, agent_id))
         .await?;
     let intervals: HashMap<i64, i64> = monitors
         .iter()
@@ -390,6 +392,8 @@ pub struct AgentRow {
     pub online: bool,
     pub active: bool,
     pub reporting: i64,
+    /// Active monitors only this agent checks (paused when it is deleted).
+    pub checks: i64,
 }
 
 /// A token to show once, with ready-to-paste snippets.
@@ -409,6 +413,8 @@ struct AgentsTemplate {
     agents: Vec<AgentRow>,
     shown: Option<ShownToken>,
     agent_monitors: i64,
+    /// Of `agent_monitors`, the ones a single agent checks instead of this server.
+    agent_checked_monitors: i64,
     name_value: String,
     location_value: String,
     name_error: String,
@@ -462,11 +468,12 @@ async fn render_page(
     form: CreateForm,
     name_error: String,
 ) -> ApiResult<(SignedCookieJar, Response)> {
-    let (list, agent_monitors) = state
+    let (list, agent_monitors, agent_checked_monitors) = state
         .with_conn(|c| {
             Ok((
                 db_agents::list_agents(c)?,
                 db_agents::count_agent_monitors(c)?,
+                db_agents::count_agent_checked_monitors(c)?,
             ))
         })
         .await?;
@@ -482,6 +489,7 @@ async fn render_page(
             online: s.online,
             active: s.agent.active,
             reporting: s.reporting_monitors,
+            checks: s.checked_monitors,
         })
         .collect();
     let (ctx, jar) = PageCtx::build(
@@ -498,6 +506,7 @@ async fn render_page(
         agents,
         shown,
         agent_monitors,
+        agent_checked_monitors,
         name_value: form.name,
         location_value: form.location,
         name_error,
@@ -628,13 +637,23 @@ async fn set_agent_active(
     // Lenient body parsing: the "Disable" form posts no fields at all.
     let active =
         url::form_urlencoded::parse(body.as_bytes()).any(|(k, v)| k == "active" && v == "true");
-    let found = state
-        .with_conn(move |c| db_agents::set_active(c, id, active))
+    let (found, checked) = state
+        .with_conn(move |c| {
+            Ok((
+                db_agents::set_active(c, id, active)?,
+                db_agents::monitors_checked_by(c, id)?,
+            ))
+        })
         .await?;
     if !found {
         return Err(ApiError::NotFound);
     }
     tracing::info!(agent_id = id, active, user = %user.username, "remote agent toggled");
+    // Monitors it checks go down while it is disabled and wait for its
+    // results again once it is enabled.
+    for monitor_id in checked {
+        state.scheduler.reload(monitor_id).await;
+    }
     let msg = if active {
         crate::i18n::t("agents.enabled")
     } else {
@@ -649,19 +668,34 @@ async fn delete_agent(
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
     user.require(Role::Admin)?;
-    let found = state
-        .with_conn(move |c| db_agents::delete_agent(c, id))
-        .await?;
-    if !found {
-        return Err(ApiError::NotFound);
-    }
+    let deleted = state
+        .with_conn(move |c| db_agents::delete_agent_pausing_monitors(c, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
     tracing::info!(agent_id = id, user = %user.username, "remote agent deleted");
+    // Paused in the same transaction (the foreign key cleared
+    // `check_from_agent_id`): their targets may only be reachable from the
+    // agent, so this server doesn't take over.
+    if !deleted.paused.is_empty() {
+        tracing::info!(
+            agent_id = id,
+            monitors = ?deleted.paused,
+            "monitors checked by the deleted agent were paused"
+        );
+    }
+    for monitor_id in &deleted.checked {
+        state.scheduler.reload(*monitor_id).await;
+    }
+    crate::maintenance::invalidate(&state);
     state.notify_update();
+    let message = match deleted.paused.len() {
+        0 => crate::i18n::t("agents.deleted").to_string(),
+        n => crate::i18n::tn("agents.deleted_paused", n as i64),
+    };
     let mut response = StatusCode::OK.into_response();
-    response.headers_mut().insert(
-        "hx-trigger",
-        toast_trigger(crate::i18n::t("agents.deleted"), "success"),
-    );
+    response
+        .headers_mut()
+        .insert("hx-trigger", toast_trigger(&message, "success"));
     Ok(response)
 }
 
@@ -958,6 +992,73 @@ mod tests {
                 by_id(mtls).tls_client_key.as_deref()
             ),
             (Some("CERT"), Some("KEY"))
+        );
+    }
+
+    #[tokio::test]
+    async fn the_checking_agent_alone_gets_and_reports_its_monitors() {
+        let f = fixture("127.0.0.1:1").await;
+        let (home_token, home_id, checked) = f
+            .state
+            .with_conn(|c| {
+                let t = db_agents::generate_token();
+                let home = db_agents::insert_agent(c, "home", "", &t)?;
+                let checked = db_monitors::insert_monitor(
+                    c,
+                    &NewMonitor {
+                        name: "nas".into(),
+                        monitor_type: MonitorType::Tcp,
+                        target: "10.0.3.7:445".into(),
+                        check_from_agent_id: Some(home),
+                        ..NewMonitor::default()
+                    },
+                )?;
+                Ok((t.token, home, checked))
+            })
+            .await
+            .unwrap();
+        let list = |token: String| {
+            let state = f.state.clone();
+            async move {
+                let (status, _, body) = send(
+                    &state,
+                    get_monitors(Some(&token)).body(Body::empty()).unwrap(),
+                )
+                .await;
+                assert_eq!(status, StatusCode::OK);
+                let list: MonitorsResponse = serde_json::from_str(&body).unwrap();
+                list.monitors.iter().map(|m| m.id).collect::<Vec<i64>>()
+            }
+        };
+        // `run_on_agents` monitors go to every agent; the checked one only to its agent.
+        assert_eq!(
+            list(home_token.clone()).await,
+            vec![f.agent_monitor, checked]
+        );
+        assert_eq!(list(f.token.clone()).await, vec![f.agent_monitor]);
+
+        let other = serde_json::json!([{"monitor_id": checked, "status": "up"}]);
+        let (_, _, text) = send(&f.state, post_results(&f.token, &other)).await;
+        let resp: ResultsResponse = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp.accepted, 0, "another agent can't report it");
+
+        let mine =
+            serde_json::json!([{"monitor_id": checked, "status": "down", "message": "refused"}]);
+        let (_, _, text) = send(&f.state, post_results(&home_token, &mine)).await;
+        let resp: ResultsResponse = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp.accepted, 1);
+        // The monitor's own status and history, plus the agent's own row.
+        let latest = f
+            .state
+            .with_conn(move |c| crate::db::heartbeats::latest_local(c, checked))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.status, HeartbeatStatus::Down);
+        assert_eq!(latest.message.as_deref(), Some("refused"));
+        assert_eq!(
+            agent_heartbeats(&f.state, home_id).await,
+            vec![(checked, "down".to_string())]
         );
     }
 

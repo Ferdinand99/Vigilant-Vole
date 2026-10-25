@@ -370,14 +370,17 @@ pub enum Skip {
     TimeoutOverInterval,
     /// An escalation channel on a monitor without an escalation delay.
     EscalationDelay,
+    /// Agent settings on a monitor one agent checks instead of the server.
+    AgentChecked,
 }
 
 impl Skip {
-    pub const ALL: [Skip; 4] = [
+    pub const ALL: [Skip; 5] = [
         Skip::Agents,
         Skip::Timing,
         Skip::TimeoutOverInterval,
         Skip::EscalationDelay,
+        Skip::AgentChecked,
     ];
 
     /// Stable machine code (REST API).
@@ -387,6 +390,7 @@ impl Skip {
             Skip::Timing => "timing_unsupported",
             Skip::TimeoutOverInterval => "timeout_exceeds_interval",
             Skip::EscalationDelay => "escalation_needs_delay",
+            Skip::AgentChecked => "agent_checked",
         }
     }
 
@@ -397,6 +401,7 @@ impl Skip {
             Skip::Timing => crate::i18n::t("bulk.reason_timing"),
             Skip::TimeoutOverInterval => crate::i18n::t("bulk.reason_timeout"),
             Skip::EscalationDelay => crate::i18n::t("bulk.reason_escalation"),
+            Skip::AgentChecked => crate::i18n::t("bulk.reason_agent_checked"),
         }
     }
 }
@@ -406,7 +411,10 @@ pub fn apply_settings(m: &mut NewMonitor, edit: &BulkEdit) -> Vec<Skip> {
     let mut skips = Vec::new();
     let kind = m.monitor_type;
     if edit.run_on_agents.is_some() || edit.confirm_with_agents.is_some() {
-        if kind.runs_on_agents() {
+        if m.check_from_agent_id.is_some() && kind.runs_on_agents() {
+            // Its agent's results already are its status.
+            skips.push(Skip::AgentChecked);
+        } else if kind.runs_on_agents() {
             if let Some(on) = edit.run_on_agents {
                 m.run_on_agents = on;
             }

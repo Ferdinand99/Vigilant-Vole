@@ -78,6 +78,21 @@ pages, badges, uptime and alerting use; the real result is kept next to it for t
  "raw_status": "up", "raw_status_since": "2026-10-19T14:01:00Z", "raw_message": "200 OK", "…": "…"}
 ```
 
+### Agent-checked monitors
+
+`check_from_agent_id` (integer or `null`, default `null`) names the [remote agent](remote-agents.md#checks-only-an-agent-can-reach)
+(`GET /api/v1/agents` lists them) that checks the monitor instead of this server. `null` means this server checks
+it. The agent's results are then the monitor's status, history and uptime, and the monitor goes `down` when the agent
+stops reporting or is disabled. Writes are rejected with `422` on `check_from_agent_id` for an unknown agent, for
+`push`, `group` and `real_browser` monitors, and together with `run_on_agents` or `confirm_with_agents` set to
+`true` (send those as `false`). `POST …/{id}/check` answers `409` for such a monitor: only the agent runs it. Deleting
+the agent (Settings → Remote agents) pauses its monitors and sets the field to `null`, so a monitor resumed later is
+checked by this server. `GET /api/v1/agents` reports `checked_monitors` per agent (active monitors only it checks).
+
+```bash
+curl -X PATCH -H "$AUTH" -H 'Content-Type: application/json' $BASE/api/v1/monitors/12 -d '{"check_from_agent_id": 3}'
+```
+
 Public and machine endpoints (no API token):
 
 | Endpoint | Auth | Purpose |
@@ -175,6 +190,7 @@ monitor is left alone and listed in `skipped` (one entry per monitor and reason)
 | `timing_unsupported` | any timing on a group; timeout or retry interval on a push monitor |
 | `timeout_exceeds_interval` | the monitor's timeout would end up longer than its interval |
 | `escalation_needs_delay` | an escalation channel on a monitor without an *Escalate after* delay |
+| `agent_checked` | agent settings on a monitor that one agent checks instead of this server (`check_from_agent_id`) |
 
 ## Service monitors
 

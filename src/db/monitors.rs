@@ -17,7 +17,7 @@ pub const MONITOR_COLUMNS: &str = "id, name, description, monitor_type, target, 
     auth_method, oauth_token_url, oauth_client_id, oauth_client_secret, oauth_scope,
     oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert,
     remote_browser_id, browser_selector, browser_wait, browser_viewport, browser_js_errors,
-    grpc_proto";
+    grpc_proto, check_from_agent_id";
 
 /// `MONITOR_COLUMNS` qualified with the `m.` table alias, for joins.
 fn monitor_columns_aliased() -> String {
@@ -93,6 +93,7 @@ pub fn row_to_monitor(row: &Row) -> rusqlite::Result<Monitor> {
         browser_viewport: row.get("browser_viewport")?,
         browser_js_errors: row.get("browser_js_errors")?,
         grpc_proto: row.get("grpc_proto")?,
+        check_from_agent_id: row.get("check_from_agent_id")?,
     })
 }
 
@@ -158,6 +159,7 @@ macro_rules! monitor_params {
             ":browser_viewport": $m.browser_viewport,
             ":browser_js_errors": $m.browser_js_errors,
             ":grpc_proto": $m.grpc_proto,
+            ":check_from_agent_id": $m.check_from_agent_id,
             $($extra)*
         }
     };
@@ -178,7 +180,7 @@ pub fn insert_monitor(conn: &Connection, m: &NewMonitor) -> rusqlite::Result<i64
             auth_method, oauth_token_url, oauth_client_id, oauth_client_secret, oauth_scope,
             oauth_audience, oauth_client_auth, tls_client_cert, tls_client_key, tls_ca_cert,
             remote_browser_id, browser_selector, browser_wait, browser_viewport, browser_js_errors,
-            grpc_proto
+            grpc_proto, check_from_agent_id
         ) VALUES (
             :name, :description, :monitor_type, :target, :parent_id, :interval_seconds,
             :retry_interval_seconds, :timeout_seconds, :retries, :active, :upside_down, :http_method,
@@ -191,7 +193,7 @@ pub fn insert_monitor(conn: &Connection, m: &NewMonitor) -> rusqlite::Result<i64
             :auth_method, :oauth_token_url, :oauth_client_id, :oauth_client_secret, :oauth_scope,
             :oauth_audience, :oauth_client_auth, :tls_client_cert, :tls_client_key, :tls_ca_cert,
             :remote_browser_id, :browser_selector, :browser_wait, :browser_viewport, :browser_js_errors,
-            :grpc_proto
+            :grpc_proto, :check_from_agent_id
         )",
         monitor_params!(m,),
     )?;
@@ -233,6 +235,7 @@ pub fn update_monitor(conn: &Connection, id: i64, m: &NewMonitor) -> rusqlite::R
             remote_browser_id = :remote_browser_id, browser_selector = :browser_selector,
             browser_wait = :browser_wait, browser_viewport = :browser_viewport,
             browser_js_errors = :browser_js_errors, grpc_proto = :grpc_proto,
+            check_from_agent_id = :check_from_agent_id,
             updated_at = datetime('now')
          WHERE id = :id",
         monitor_params!(m, ":id": id),
@@ -294,8 +297,10 @@ pub fn list_monitors_with_latest(conn: &Connection) -> rusqlite::Result<Vec<Moni
                 (SELECT GROUP_CONCAT(status) FROM (
                      SELECT status FROM heartbeats WHERE monitor_id = m.id AND agent_id IS NULL
                      ORDER BY checked_at DESC, id DESC LIMIT ?1
-                 )) AS recent_statuses
+                 )) AS recent_statuses,
+                a.name AS check_from_agent_name
          FROM monitors m
+         LEFT JOIN agents a ON a.id = m.check_from_agent_id
          LEFT JOIN heartbeats h ON h.id = (
              SELECT id FROM heartbeats WHERE monitor_id = m.id AND agent_id IS NULL
              ORDER BY checked_at DESC, id DESC LIMIT 1
@@ -307,7 +312,9 @@ pub fn list_monitors_with_latest(conn: &Connection) -> rusqlite::Result<Vec<Moni
         let monitor = row_to_monitor(row)?;
         let status: Option<String> = row.get("last_status")?;
         let recent_statuses: Option<String> = row.get("recent_statuses")?;
+        let agent_name: Option<String> = row.get("check_from_agent_name")?;
         Ok(MonitorWithStatus {
+            checked_by: agent_name.filter(|_| monitor.is_agent_checked()),
             monitor,
             status: status.and_then(|s| HeartbeatStatus::parse(&s)),
             response_time_ms: row.get("last_response_time_ms")?,

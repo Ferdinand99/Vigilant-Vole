@@ -901,3 +901,102 @@ fn explicit_auth_method_none_is_respected_and_legacy_documents_mean_basic() {
         );
     }
 }
+
+#[test]
+fn check_from_names_an_agent_and_round_trips() {
+    let key = crate::notification::tests_support::test_key();
+    let mut conn = test_conn();
+    let home =
+        crate::db::agents::insert_agent(&conn, "Home", "", &crate::db::agents::generate_token())
+            .unwrap();
+    let doc = parse_document(
+        r#"
+monitors:
+  - name: NAS
+    monitor_type: tcp
+    target: 10.0.3.7:445
+    check_from: home
+  - name: Website
+    monitor_type: http
+    target: https://example.com/
+"#,
+    )
+    .unwrap();
+    let applied = apply(&mut conn, &key, &doc, Mode::Merge).unwrap().unwrap();
+    assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
+    assert_eq!(monitor_named(&conn, "NAS").check_from_agent_id, Some(home));
+    assert_eq!(monitor_named(&conn, "Website").check_from_agent_id, None);
+
+    let exported = export(&conn, &key, false).unwrap();
+    let text = render(&exported, Format::Yaml).unwrap();
+    assert!(text.contains("check_from: Home"), "{text}");
+    assert!(!text.contains("check_from_agent_id"), "{text}");
+    let again = plan(&conn, &key, &parse_document(&text).unwrap(), Mode::Merge).unwrap();
+    assert!(
+        again.errors.is_empty() && !again.has_changes(),
+        "{:?} {:?}",
+        again.errors,
+        again.items
+    );
+
+    // Leaving it out moves the monitor back to this server.
+    let back = plan(
+        &conn,
+        &key,
+        &parse_document(&text.replace("check_from: Home", "")).unwrap(),
+        Mode::Merge,
+    )
+    .unwrap();
+    let item = back.items.iter().find(|i| i.key == "NAS").unwrap();
+    assert!(item.changes.contains(&"check_from".to_string()), "{item:?}");
+}
+
+#[test]
+fn check_from_errors_name_the_problem() {
+    let key = crate::notification::tests_support::test_key();
+    let mut conn = test_conn();
+    crate::db::agents::insert_agent(&conn, "Home", "", &crate::db::agents::generate_token())
+        .unwrap();
+    let doc = parse_document(
+        r#"
+monitors:
+  - name: Unknown
+    monitor_type: tcp
+    target: 10.0.3.7:445
+    check_from: Cabin
+  - name: Push
+    monitor_type: push
+    check_from: Home
+  - name: Both
+    monitor_type: tcp
+    target: 10.0.3.8:22
+    check_from: Home
+    run_on_agents: true
+"#,
+    )
+    .unwrap();
+    let p = apply(&mut conn, &key, &doc, Mode::Merge)
+        .unwrap()
+        .unwrap_err();
+    let error = |key: &str| {
+        p.errors
+            .iter()
+            .find(|e| e.key == key)
+            .unwrap_or_else(|| panic!("no error for {key}: {:?}", p.errors))
+    };
+    assert_eq!(error("Unknown").field.as_deref(), Some("check_from"));
+    assert!(
+        error("Unknown")
+            .message
+            .contains("No remote agent named “Cabin”")
+    );
+    assert_eq!(error("Push").field.as_deref(), Some("check_from"));
+    assert_eq!(
+        error("Push").message,
+        crate::i18n::t("validation.check_from_type")
+    );
+    assert_eq!(
+        error("Both").message,
+        crate::i18n::t("validation.check_from_agents")
+    );
+}

@@ -90,7 +90,7 @@
             </td>
             <td data-label="{{ tr("agents.version") }}">{% if a.version.is_empty() %}<span class="muted">—</span>{% else %}<span class="num">{{ a.version }}</span>{% endif %}</td>
             <td data-label="{{ tr("agents.last_seen") }}">{% match a.last_seen_at %}{% when Some(at) %}{{ m::time_ago(at) }}{% when None %}<span class="muted">{{ tr("common.never") }}</span>{% endmatch %}</td>
-            <td class="num" data-label="{{ tr("agents.reporting") }}">{{ trn("count.monitors", a.reporting) }}</td>
+            <td class="num" data-label="{{ tr("agents.reporting") }}">{{ trn("count.monitors", a.reporting) }}{% if a.checks > 0 %} <span class="muted">{{ trn("agents.checked_only", a.checks) }}</span>{% endif %}</td>
             <td class="td-actions">
               <button type="button" class="btn btn-icon btn-plain" popovertarget="agent-menu-{{ a.id }}" aria-label="{{ tr1("detail.more_actions_for", "name", a.name) }}">{{ m::icon("more") }}</button>
               <div class="menu" id="agent-menu-{{ a.id }}" popover>
@@ -108,7 +108,7 @@
                 <hr class="menu-sep">
                 <button class="menu-item menu-item-danger" type="button" hx-delete="/settings/agents/{{ a.id }}"
                   hx-target="#agent-{{ a.id }}" hx-swap="outerHTML" hx-confirm="{{ tr1("detail.delete_q", "name", a.name) }}"
-                  data-confirm-message="{{ tr("agents.delete_msg") }}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+                  data-confirm-message="{% if a.checks > 0 %}{{ trn("agents.delete_msg_checked", a.checks) }}{% else %}{{ tr("agents.delete_msg") }}{% endif %}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
               </div>
             </td>
           </tr>
@@ -126,6 +126,9 @@
   <div class="card">
     <dl class="dl dl-stack">
       <div class="dl-row"><dt>{{ tr("agents.how_count") }}</dt><dd class="num">{{ agent_monitors }}</dd></div>
+      {%- if agent_checked_monitors > 0 %}
+      <div class="dl-row"><dt>{{ tr("agents.how_count_checked") }}</dt><dd class="num">{{ agent_checked_monitors }}</dd></div>
+      {%- endif %}
       <div class="dl-row"><dt>{{ tr("agents.how_choose") }}</dt><dd>{{ tr("agents.how_choose_text") }}</dd></div>
       <div class="dl-row"><dt>{{ tr("agents.how_avoid") }}</dt><dd>{{ tr("agents.how_avoid_text") }}</dd></div>
     </dl>

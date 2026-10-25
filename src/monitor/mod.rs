@@ -24,6 +24,10 @@
 //! Remote agents: results with `agent_id = Some` are recorded (upside-down
 //! applied) but never drive the monitor's state — the local check is
 //! authoritative, agent results only confirm it (`confirm_with_agents`).
+//! The exception are agent-checked monitors (`check_from_agent_id`): they get
+//! no local check, the chosen agent's results go through the state machine
+//! like local checks, and a watchdog records `down` when that agent stops
+//! reporting (2× interval + [`AGENT_REPORT_GRACE_SECS`]) or is disabled.
 //! `ingest_external` expects RAW outcomes; the engine applies upside-down.
 
 pub mod alerting;
@@ -77,6 +81,9 @@ const CHECK_TIMEOUT_GRACE: Duration = Duration::from_secs(5);
 const PUSH_GRACE_FACTOR: f64 = 1.1;
 /// SSE "something changed" signals are coalesced to at most one per this gap.
 const UPDATE_MIN_GAP: Duration = Duration::from_millis(250);
+/// Agent-checked monitors go down after 2× interval + this many seconds
+/// without a result from their agent (covers the agent's 5 s result flush).
+pub const AGENT_REPORT_GRACE_SECS: i64 = 15;
 /// Nested group depth limit (also breaks parent cycles).
 const MAX_GROUP_DEPTH: usize = 8;
 
@@ -92,6 +99,10 @@ enum Source {
     Push,
     PushMissed,
     Group,
+    /// A result from the agent that checks the monitor (`check_from_agent_id`).
+    Agent,
+    /// The agent that checks the monitor didn't report or is disabled.
+    AgentMissed,
 }
 
 impl Source {
@@ -101,6 +112,8 @@ impl Source {
             Source::Push => "push",
             Source::PushMissed => "push_missed",
             Source::Group => "group",
+            Source::Agent => "agent",
+            Source::AgentMissed => "agent_missed",
         }
     }
 }
@@ -124,6 +137,10 @@ struct Inner {
     reload_lock: AsyncMutex<()>,
     permits: Arc<Semaphore>,
     shut_down: AtomicBool,
+    /// Agent watchdog: grace on top of 2× interval, and the extra wait after
+    /// a (re)start (one agent poll). Shorter in tests.
+    agent_grace: Duration,
+    agent_start_extra: Duration,
 }
 
 struct TaskEntry {
@@ -167,8 +184,19 @@ impl Scheduler {
                 reload_lock: AsyncMutex::new(()),
                 permits: Arc::new(Semaphore::new(max_checks)),
                 shut_down: AtomicBool::new(false),
+                agent_grace: Duration::from_secs(AGENT_REPORT_GRACE_SECS.unsigned_abs()),
+                agent_start_extra: Duration::from_secs(crate::agent::protocol::POLL_SECONDS),
             }),
         }
+    }
+
+    /// Agent watchdog timings for tests (before any task is started).
+    #[cfg(test)]
+    fn with_agent_timing(mut self, grace: Duration, start_extra: Duration) -> Self {
+        let inner = Arc::get_mut(&mut self.inner).expect("scheduler not shared yet");
+        inner.agent_grace = grace;
+        inner.agent_start_extra = start_extra;
+        self
     }
 
     /// Load every active monitor and start its loop/watchdog. First checks are
@@ -276,7 +304,10 @@ impl Scheduler {
     /// - `agent_id = None` (push endpoint): goes through the state machine like
     ///   a local check and resets the push watchdog.
     /// - `agent_id = Some` (remote agent): recorded with its agent id; used to
-    ///   confirm local failures, never drives the monitor's status.
+    ///   confirm local failures, never drives the monitor's status — unless
+    ///   it is the agent that checks the monitor (`check_from_agent_id`):
+    ///   then it also goes through the state machine like a local check and
+    ///   resets the agent watchdog.
     ///
     /// Results for unknown, paused or group monitors are ignored.
     pub async fn ingest_external(
@@ -305,6 +336,16 @@ impl Scheduler {
             }
         };
         match agent_id {
+            Some(agent_id)
+                if monitor.is_agent_checked() && monitor.check_from_agent_id == Some(agent_id) =>
+            {
+                // Kept with its agent id too (Settings → Remote agents, the
+                // monitor page and `/metrics` show what each agent reports).
+                self.record_agent_result(&monitor, agent_id, outcome.clone())
+                    .await;
+                self.record(&monitor, outcome, Source::Agent).await;
+                self.wake(monitor_id);
+            }
             Some(agent_id) => self.record_agent_result(&monitor, agent_id, outcome).await,
             None => {
                 let source = if monitor.monitor_type == MonitorType::Push {
@@ -321,7 +362,8 @@ impl Scheduler {
     }
 
     /// Run one check right now (the "Check now" button) and return the status
-    /// it recorded. `None` for unknown, paused, push and group monitors, or if
+    /// it recorded. `None` for unknown, paused, push, group and agent-checked
+    /// monitors (the server doesn't run those itself), or if
     /// the check couldn't be recorded. The regular schedule is unaffected.
     pub async fn check_now(&self, monitor_id: i64) -> Option<HeartbeatStatus> {
         let monitor = match db::interact(&self.inner.pool, move |c| {
@@ -329,7 +371,11 @@ impl Scheduler {
         })
         .await
         {
-            Ok(Some(m)) if m.active && m.monitor_type.is_active_check() => m,
+            Ok(Some(m))
+                if m.active && m.monitor_type.is_active_check() && !m.is_agent_checked() =>
+            {
+                m
+            }
             Ok(_) => return None,
             Err(err) => {
                 tracing::warn!(monitor_id, %err, "check now: failed to load monitor");
@@ -376,6 +422,12 @@ impl Scheduler {
         );
         let abort = match monitor.monitor_type {
             MonitorType::Group => None,
+            _ if monitor.is_agent_checked() => {
+                let fut = self
+                    .clone()
+                    .agent_watch_loop(Arc::new(monitor), wake.clone());
+                Some(tokio::spawn(fut.instrument(span)).abort_handle())
+            }
             MonitorType::Push => {
                 let fut = self.clone().push_loop(Arc::new(monitor), wake.clone());
                 Some(tokio::spawn(fut.instrument(span)).abort_handle())
@@ -484,6 +536,75 @@ impl Scheduler {
                 // Couldn't record (DB trouble): back off instead of spinning.
                 tokio::time::sleep(retry).await;
             }
+        }
+    }
+
+    /// Watchdog of an agent-checked monitor: the server runs no check, the
+    /// agent's results arrive through [`Scheduler::ingest_external`] (which
+    /// wakes this loop). Records `down` when no result came for 2× interval plus
+    /// the grace (then again every retry interval), or right away and then
+    /// every retry interval while the agent is disabled. A deleted agent
+    /// clears `check_from_agent_id`; the reload that follows starts local checks.
+    async fn agent_watch_loop(self, monitor: Arc<Monitor>, wake: Arc<Notify>) {
+        let Some(agent_id) = monitor.check_from_agent_id else {
+            return;
+        };
+        let window = Duration::from_secs((monitor.interval_seconds.max(1) * 2).unsigned_abs())
+            + self.inner.agent_grace;
+        let retry = Duration::from_secs(monitor.effective_retry_interval().max(1).unsigned_abs());
+        // A (re)start gets a full window plus one agent poll: the agent may
+        // only now learn about the monitor.
+        let mut last_heard = tokio::time::Instant::now();
+        let mut wait = window + self.inner.agent_start_extra;
+        loop {
+            let agent = db::interact(&self.inner.pool, move |c| {
+                crate::db::agents::get_agent(c, agent_id)
+            })
+            .await;
+            let (name, active) = match agent {
+                Ok(Some(a)) => (a.name, a.active),
+                Ok(None) => {
+                    tracing::info!(agent_id, "checking agent is gone; waiting for the reload");
+                    return;
+                }
+                Err(err) => {
+                    tracing::warn!(agent_id, %err, "failed to load the checking agent");
+                    tokio::time::sleep(retry).await;
+                    continue;
+                }
+            };
+            if !active {
+                let outcome = CheckOutcome::down(format!("Agent {name} is disabled"));
+                self.record(&monitor, outcome, Source::AgentMissed).await;
+                // Results of a disabled agent are refused, so only a reload
+                // (re-enabled, edited) ends this.
+                tokio::time::sleep(retry).await;
+                continue;
+            }
+            tokio::select! {
+                () = tokio::time::sleep(wait) => {}
+                () = wake.notified() => {
+                    last_heard = tokio::time::Instant::now();
+                    wait = window;
+                    continue;
+                }
+            }
+            let silent = tokio::time::Instant::now().saturating_duration_since(last_heard);
+            let outcome = CheckOutcome::down(format!(
+                "Agent {name} has not reported for {} s",
+                silent.as_secs()
+            ));
+            if self
+                .record(&monitor, outcome, Source::AgentMissed)
+                .await
+                .is_none()
+            {
+                tracing::warn!(
+                    monitor_id = monitor.id,
+                    "could not record a missed agent report"
+                );
+            }
+            wait = retry;
         }
     }
 
@@ -597,7 +718,12 @@ impl Scheduler {
         let runtime = self.runtime(monitor_id);
         let mut guard = runtime.lock().await;
         let now = OffsetDateTime::now_utc();
-        let cfg = AlertConfig::for_monitor(monitor);
+        let mut cfg = AlertConfig::for_monitor(monitor);
+        // A silent or disabled agent is an outage, whatever the check's
+        // upside-down mode says about the service.
+        if source == Source::AgentMissed {
+            cfg.upside_down = false;
+        }
         let need_seed = guard.state.is_none();
         let want_votes = cfg.confirm_with_agents && source == Source::Local;
         let interval = monitor.interval_seconds;
@@ -635,7 +761,7 @@ impl Scheduler {
         match source {
             Source::Push => prev.last_push_at = Some(now),
             Source::PushMissed => prev.last_miss_at = Some(now),
-            Source::Local | Source::Group => {}
+            Source::Local | Source::Group | Source::Agent | Source::AgentMissed => {}
         }
         let previous_status = prev.last_status;
         let obs = Observation {

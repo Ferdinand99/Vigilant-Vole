@@ -257,6 +257,7 @@ pub(crate) mod test_support {
             browser_viewport: n.browser_viewport,
             browser_js_errors: false,
             grpc_proto: None,
+            check_from_agent_id: None,
         }
     }
 }

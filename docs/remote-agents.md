@@ -8,7 +8,10 @@ Use agents to:
 
 - see a service from more than one place (each agent's latest result shows on the monitor page and in
   [`/metrics`](metrics.md));
-- **confirm outages** before alerting, so a problem with the server's own network doesn't page you.
+- **confirm outages** before alerting, so a problem with the server's own network doesn't page you;
+- **check what only the agent can reach**: let one agent check a monitor *instead of* the server, e.g. LAN
+  addresses and Docker containers at home while the server runs on a public VPS
+  (see [Checks only an agent can reach](#checks-only-an-agent-can-reach)).
 
 Agents only need outbound HTTPS to the server. They have no web UI, no database and no inbound port.
 Run one with Docker, as a systemd service from the Linux installer, in a Proxmox container, or as a plain
@@ -21,7 +24,9 @@ binary (see [3. Start the agent](#3-start-the-agent)).
 Compose and binary commands. Only a SHA-256 of the token is stored.
 
 From the same page you can **rotate** the token (the old one stops working immediately), **disable**
-the agent (it gets `403` and its results stop counting) or delete it.
+the agent (it gets `403` and its results stop counting) or delete it. Deleting an agent pauses the monitors it
+checks for the server (see [Checks only an agent can reach](#checks-only-an-agent-can-reach)); the confirmation
+says how many.
 
 ## 2. Pick the monitors
 
@@ -33,8 +38,9 @@ On a monitor's form, under the alerting options:
 | **Confirm outages with agents** | `confirm_with_agents` | When the local check fails (after retries), only mark the monitor down and notify if no agent has a fresh result, or a strict majority of the fresh agent results are down. Otherwise the monitor stays *pending* with "Local check failed; N/M remote agents report up". |
 
 "Fresh" means the agent's latest result for that monitor is at most 2× the monitor's interval old, and only
-enabled agents count. The local check is always authoritative for the monitor's own status, history, uptime and
-badges; agent results confirm it, they never drive it on their own.
+enabled agents count. With these two switches the local check is always authoritative for the monitor's own
+status, history, uptime and badges; agent results confirm it, they never drive it on their own. To let one agent's
+results *be* the monitor's status, use **Check from** instead (next section).
 
 To pre-tick the second switch for every new monitor, set `agent_confirmation_default: true` under
 `settings:` in a [config-as-code](config-as-code.md) document (there's no UI toggle for it yet).
@@ -44,6 +50,41 @@ Steam, game servers, domain expiry, and the service types below) except **real b
 remote browsers (Settings → Remote browsers), which agents don't have, so real-browser monitors are never sent
 to agents (the form says so when you tick *Check from remote agents too*). Push and group monitors have
 nothing to run.
+
+## Checks only an agent can reach
+
+Some things can only be checked from one place: a NAS at `10.0.3.7`, a router's admin page, the Docker containers
+on the home server. Run Vigilant Vole on a public VPS, run an agent (the same image, `agent` mode) on the home
+server, and pick that agent under **Check from** on the monitor's form (below *Remote agents*; the default is
+*This server*):
+
+- **The server doesn't run the check.** The chosen agent runs it on the monitor's own interval, whether or not
+  *Check from remote agents too* is on. Agents of any version do this: the server simply lists the monitor for that
+  agent (and only that agent).
+- **The agent's results are the monitor's status.** Each one goes through the same pipeline as a local check:
+  history, status changes, retries and *pending*, maintenance windows, notifications, uptime, badges, status pages
+  and the live dashboard. The monitor page and the monitor list say "Checked by agent *name*".
+- **Silence is an outage.** When the agent sends no result for the monitor for more than 2× its interval plus
+  15 seconds, the monitor records `down` with "Agent *name* has not reported for *n* s" (then again every retry
+  interval), and recovers with the agent's next result. So when the whole home goes offline, power, internet or the
+  home server itself, its monitors go down and the VPS alerts you. After a server restart the agent gets one extra
+  poll interval (30 s) to report. Like a missed push, a silent agent records a `down` result every retry interval
+  until it reports again; [retention](config-as-code.md#settings) (Settings → General) cleans that history up as
+  usual.
+- **Disabled agent:** its monitors go down with "Agent *name* is disabled" until you enable it again.
+- **Deleted agent:** its monitors are **paused** in the same step (the server logs which ones, and the message
+  after deleting says how many), so targets only that agent could reach don't all go down from the server at once.
+  They no longer name an agent: resume one and this server checks it, or pick another agent under *Check from*
+  first.
+
+*Check from remote agents too* and *Confirm outages with agents* don't apply to such a monitor (the form hides them,
+the API and config files reject the combination), and *Check now* is not offered: only the agent runs it. Push,
+group and real-browser monitors are always checked by the server. Docker container monitors use the agent host's
+Docker socket, so mount it into the agent container
+(see [Docker discovery](docker-discovery.md#permissions)).
+
+In the [API](api.md#agent-checked-monitors) the field is `check_from_agent_id`; in
+[config-as-code](config-as-code.md) it is `check_from: <agent name>`.
 
 ## 3. Start the agent
 
@@ -163,7 +204,7 @@ Logging follows `RUST_LOG` (default `info`).
   An agent that gets a monitor it doesn't understand skips it with a warning and runs the others.
 
 **Trust model.** An agent token can read the full configuration of the monitors marked *Check from remote
-agents too* — including their own headers and credentials (basic-auth and service passwords, RADIUS/SNMP
+agents too* and of the monitors it checks for the server (*Check from*) — including their own headers and credentials (basic-auth and service passwords, RADIUS/SNMP
 secrets, the OAuth2 client secret and the mTLS private key), because the agent needs them to run the
 check (push tokens are never sent). It can report results for those monitors only, and can't read or change
 anything else. Treat agent hosts accordingly, and rotate the token if one is compromised.
@@ -171,7 +212,10 @@ anything else. Treat agent hosts accordingly, and rotate the token if one is com
 ## Seeing the results
 
 - **Monitor page**: the latest result from each agent next to the local status.
-- **Settings → Remote agents**: online/offline (checked in within 90 s), version, last seen.
+- **Settings → Remote agents**: online/offline (checked in within 90 s), version, last seen, and how many monitors
+  each agent reported on in the last 15 minutes, with how many of them only that agent checks ("12 monitors (4
+  checked only by this agent)"). *Monitors run on agents* counts both kinds; *Checked only by one agent* is the
+  agent-checked part.
 - **Prometheus**: `vigilant_agent_up`, `vigilant_agent_last_seen_timestamp_seconds`,
   `vigilant_agent_monitor_status`, `vigilant_agent_monitor_response_time_seconds`.
-- **API**: `GET /api/v1/agents` (admin).
+- **API**: `GET /api/v1/agents` (admin); `checked_monitors` is the number of active monitors only that agent checks.

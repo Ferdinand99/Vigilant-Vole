@@ -45,6 +45,8 @@ pub struct AgentSummary {
     pub seen_secs_ago: Option<i64>,
     /// Distinct monitors this agent reported on in the last 15 minutes.
     pub reporting_monitors: i64,
+    /// Active monitors only this agent checks (`check_from_agent_id`).
+    pub checked_monitors: i64,
 }
 
 /// A freshly generated token: the plaintext (show once), its display prefix
@@ -175,10 +177,35 @@ pub fn set_active(conn: &Connection, id: i64, active: bool) -> rusqlite::Result<
     Ok(n > 0)
 }
 
-/// Delete an agent (its heartbeats cascade).
-pub fn delete_agent(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
-    let n = conn.execute("DELETE FROM agents WHERE id = ?1", params![id])?;
-    Ok(n > 0)
+/// What [`delete_agent_pausing_monitors`] did.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DeletedAgent {
+    /// Every monitor the agent checked (now paused, `check_from_agent_id` cleared).
+    pub checked: Vec<i64>,
+    /// The ones that were active and got paused by the deletion.
+    pub paused: Vec<i64>,
+}
+
+/// Deletes an agent in one transaction, pausing every monitor it checked
+/// first: for targets only that agent can reach, falling back to checks from
+/// this server would turn them all down at once. The foreign key then clears
+/// `check_from_agent_id`, so a monitor resumed later is checked by this
+/// server. Its heartbeats cascade. `None` when the agent doesn't exist.
+pub fn delete_agent_pausing_monitors(
+    conn: &mut Connection,
+    id: i64,
+) -> rusqlite::Result<Option<DeletedAgent>> {
+    let tx = conn.transaction()?;
+    let checked = monitors_checked_by(&tx, id)?;
+    let paused = super::monitors::set_active_many(&tx, &checked, false)?;
+    for monitor_id in &paused {
+        super::events::log_paused(&tx, *monitor_id)?;
+    }
+    if tx.execute("DELETE FROM agents WHERE id = ?1", params![id])? == 0 {
+        return Ok(None); // rolled back
+    }
+    tx.commit()?;
+    Ok(Some(DeletedAgent { checked, paused }))
 }
 
 /// Every agent with online state and recent activity, newest first.
@@ -187,7 +214,9 @@ pub fn list_agents(conn: &Connection) -> rusqlite::Result<Vec<AgentSummary>> {
         "SELECT {AGENT_COLUMNS},
             CAST(strftime('%s', 'now') AS INTEGER) - CAST(strftime('%s', last_seen_at) AS INTEGER) AS seen_ago,
             (SELECT COUNT(DISTINCT h.monitor_id) FROM heartbeats h
-              WHERE h.agent_id = agents.id AND h.checked_at >= datetime('now', '-15 minutes')) AS reporting
+              WHERE h.agent_id = agents.id AND h.checked_at >= datetime('now', '-15 minutes')) AS reporting,
+            (SELECT COUNT(*) FROM monitors m
+              WHERE m.check_from_agent_id = agents.id AND m.active = 1) AS checked
          FROM agents ORDER BY created_at DESC, id DESC"
     ))?;
     let rows = stmt.query_map([], |row| {
@@ -197,32 +226,69 @@ pub fn list_agents(conn: &Connection) -> rusqlite::Result<Vec<AgentSummary>> {
             online: agent.active && seen_secs_ago.is_some_and(|s| s <= ONLINE_WITHIN_SECS),
             seen_secs_ago,
             reporting_monitors: row.get("reporting")?,
+            checked_monitors: row.get("checked")?,
             agent,
         })
     })?;
     rows.collect()
 }
 
-/// Active monitors that remote agents should run: `run_on_agents = 1` and an
-/// type agents can run (never push, group or real browser).
-pub fn list_agent_monitors(conn: &Connection) -> rusqlite::Result<Vec<Monitor>> {
+/// Types agents can run (never push, group or real browser), as SQL.
+const AGENT_TYPES_SQL: &str = "monitor_type NOT IN ('push', 'group', 'real_browser')";
+
+/// Active monitors agent `agent_id` should run: the ones every agent runs
+/// (`run_on_agents = 1`, not checked by one agent) and the ones it checks
+/// for the server (`check_from_agent_id`). Only types agents can run.
+pub fn list_agent_monitors(conn: &Connection, agent_id: i64) -> rusqlite::Result<Vec<Monitor>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {MONITOR_COLUMNS} FROM monitors
-         WHERE active = 1 AND run_on_agents = 1 AND monitor_type NOT IN ('push', 'group', 'real_browser')
+         WHERE active = 1 AND {AGENT_TYPES_SQL}
+           AND ((run_on_agents = 1 AND check_from_agent_id IS NULL) OR check_from_agent_id = ?1)
          ORDER BY id"
     ))?;
-    let rows = stmt.query_map([], row_to_monitor)?;
+    let rows = stmt.query_map(params![agent_id], row_to_monitor)?;
     rows.collect()
 }
 
-/// Number of monitors agents currently run.
+/// Number of monitors agents currently run (for all of them or checked by one).
 pub fn count_agent_monitors(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row(
-        "SELECT COUNT(*) FROM monitors
-         WHERE active = 1 AND run_on_agents = 1 AND monitor_type NOT IN ('push', 'group', 'real_browser')",
+        &format!(
+            "SELECT COUNT(*) FROM monitors
+             WHERE active = 1 AND {AGENT_TYPES_SQL}
+               AND (run_on_agents = 1 OR check_from_agent_id IS NOT NULL)"
+        ),
         [],
         |r| r.get(0),
     )
+}
+
+/// Active monitors one agent checks instead of this server (part of
+/// [`count_agent_monitors`]).
+pub fn count_agent_checked_monitors(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM monitors
+             WHERE active = 1 AND {AGENT_TYPES_SQL} AND check_from_agent_id IS NOT NULL"
+        ),
+        [],
+        |r| r.get(0),
+    )
+}
+
+/// Ids of the monitors (active or paused) that agent `agent_id` checks for the server.
+pub fn monitors_checked_by(conn: &Connection, agent_id: i64) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt =
+        conn.prepare("SELECT id FROM monitors WHERE check_from_agent_id = ?1 ORDER BY id")?;
+    let rows = stmt.query_map(params![agent_id], |r| r.get(0))?;
+    rows.collect()
+}
+
+/// Every agent as `(id, name, active)`, by name (for pickers and name lookups).
+pub fn list_agent_names(conn: &Connection) -> rusqlite::Result<Vec<(i64, String, bool)>> {
+    let mut stmt = conn.prepare("SELECT id, name, active FROM agents ORDER BY name, id")?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    rows.collect()
 }
 
 /// Latest result per (agent, monitor) within the last hour.
@@ -252,11 +318,6 @@ pub fn latest_agent_results(conn: &Connection) -> rusqlite::Result<Vec<AgentResu
         })
     })?;
     rows.collect()
-}
-
-/// Is `monitor_id` a monitor agents may report on right now?
-pub fn is_agent_monitor(monitor: &Monitor) -> bool {
-    monitor.active && monitor.run_on_agents && monitor.monitor_type.runs_on_agents()
 }
 
 #[cfg(test)]
@@ -319,6 +380,53 @@ mod tests {
     }
 
     #[test]
+    fn deleting_an_agent_pauses_the_monitors_it_checked() {
+        let mut conn = test_conn();
+        let id = insert_agent(&conn, "home", "", &generate_token()).unwrap();
+        let base = NewMonitor {
+            name: "nas".into(),
+            monitor_type: MonitorType::Tcp,
+            target: "10.0.3.7:445".into(),
+            check_from_agent_id: Some(id),
+            ..NewMonitor::default()
+        };
+        let active = db_monitors::insert_monitor(&conn, &base).unwrap();
+        let paused = db_monitors::insert_monitor(
+            &conn,
+            &NewMonitor {
+                active: false,
+                ..base.clone()
+            },
+        )
+        .unwrap();
+        let local = db_monitors::insert_monitor(
+            &conn,
+            &NewMonitor {
+                check_from_agent_id: None,
+                ..base
+            },
+        )
+        .unwrap();
+        let out = delete_agent_pausing_monitors(&mut conn, id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.checked, vec![active, paused]);
+        assert_eq!(out.paused, vec![active]);
+        for m in [active, paused] {
+            let m = db_monitors::get_monitor(&conn, m).unwrap().unwrap();
+            assert!(!m.active && m.check_from_agent_id.is_none());
+        }
+        assert!(
+            db_monitors::get_monitor(&conn, local)
+                .unwrap()
+                .unwrap()
+                .active
+        );
+        assert!(get_agent(&conn, id).unwrap().is_none());
+        assert_eq!(delete_agent_pausing_monitors(&mut conn, id).unwrap(), None);
+    }
+
+    #[test]
     fn agent_monitors_are_filtered() {
         let conn = test_conn();
         let base = NewMonitor {
@@ -354,7 +462,7 @@ mod tests {
             },
         )
         .unwrap();
-        let ids: Vec<i64> = list_agent_monitors(&conn)
+        let ids: Vec<i64> = list_agent_monitors(&conn, 1)
             .unwrap()
             .iter()
             .map(|m| m.id)

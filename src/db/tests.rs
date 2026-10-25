@@ -623,7 +623,7 @@ fn a_fresh_database_adopts_the_core_set_after_our_migrations() {
         [
             "kit/0004_sealed_secrets.sql",
             "kit/0003_passkeys.sql",
-            "0105_heartbeat_raw_status.sql"
+            "0106_agent_checked_monitors.sql"
         ]
     );
     assert!(!ran.contains(&"kit/0001_core.sql".to_string()), "{ran:?}");
@@ -678,7 +678,7 @@ fn the_core_row_does_not_hide_a_newer_migration() {
     let err = apply_migrations(&mut conn).unwrap_err();
     assert!(
         matches!(&err, super::MigrationError::NewerSchema { schema, known, .. }
-            if schema == "0110_from_the_future" && known == "0105_heartbeat_raw_status"),
+            if schema == "0110_from_the_future" && known == "0106_agent_checked_monitors"),
         "{err:?}"
     );
 }

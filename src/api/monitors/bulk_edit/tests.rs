@@ -231,6 +231,22 @@ fn agent_settings_skip_types_agents_cant_run() {
 }
 
 #[test]
+fn agent_settings_skip_agent_checked_monitors() {
+    let edit = BulkEdit {
+        run_on_agents: Some(true),
+        ..BulkEdit::default()
+    };
+    let mut m = NewMonitor {
+        monitor_type: MonitorType::Tcp,
+        check_from_agent_id: Some(3),
+        ..NewMonitor::default()
+    };
+    assert_eq!(apply_settings(&mut m, &edit), vec![Skip::AgentChecked]);
+    assert!(!m.run_on_agents);
+    assert_eq!(Skip::AgentChecked.code(), "agent_checked");
+}
+
+#[test]
 fn timing_follows_the_form_per_type() {
     let edit = BulkEdit {
         interval: Some(120),

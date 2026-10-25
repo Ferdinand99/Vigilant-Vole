@@ -4,6 +4,8 @@ expression: "english.join(\"\\n\")"
 ---
 agents.agents
 agents.binary
+agents.checked_only.one
+agents.checked_only.other
 agents.connect
 agents.connect_foot_1
 agents.connect_foot_2
@@ -11,7 +13,11 @@ agents.copy_command
 agents.copy_compose
 agents.create
 agents.delete_msg
+agents.delete_msg_checked.one
+agents.delete_msg_checked.other
 agents.deleted
+agents.deleted_paused.one
+agents.deleted_paused.other
 agents.disabled
 agents.empty_text
 agents.empty_title
@@ -24,6 +30,7 @@ agents.how_avoid_text
 agents.how_choose
 agents.how_choose_text
 agents.how_count
+agents.how_count_checked
 agents.how_to_run
 agents.last_seen
 agents.location
@@ -209,6 +216,7 @@ bulk.no_channels_text
 bulk.not_applied
 bulk.nothing_changed
 bulk.nothing_chosen
+bulk.reason_agent_checked
 bulk.reason_agents
 bulk.reason_escalation
 bulk.reason_timeout
@@ -387,6 +395,7 @@ detail.chart_sub
 detail.check_every
 detail.check_now
 detail.checked
+detail.checked_by_agent
 detail.checks_empty_text
 detail.checks_empty_title
 detail.checks_from_agents
@@ -558,6 +567,10 @@ form.body_encoding
 form.body_encoding_help
 form.body_placeholder
 form.channel_off
+form.check_from
+form.check_from_disabled
+form.check_from_help
+form.check_from_server
 form.checks
 form.checks_unit
 form.color
@@ -2268,6 +2281,9 @@ validation.browser_selector_long
 validation.browser_unknown
 validation.browser_viewport
 validation.browser_wait
+validation.check_from_agents
+validation.check_from_type
+validation.check_from_unknown
 validation.codes_hint
 validation.container_spaces
 validation.description_long

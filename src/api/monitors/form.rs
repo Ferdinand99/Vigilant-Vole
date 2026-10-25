@@ -182,6 +182,8 @@ pub struct FormValues {
     pub flap_detection: bool,
     pub run_on_agents: bool,
     pub confirm_with_agents: bool,
+    /// Agent id that checks the monitor instead of this server ("" = this server).
+    pub check_from: String,
     /// `(channel_id, mode)` for every channel the form knows about.
     pub channels: Vec<(i64, ChannelMode)>,
     /// Selected tags with their values.
@@ -266,6 +268,10 @@ impl FormValues {
             flap_detection: m.flap_detection,
             run_on_agents: m.run_on_agents,
             confirm_with_agents: m.confirm_with_agents,
+            check_from: m
+                .check_from_agent_id
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
             channels,
             tags: tags.iter().map(|t| (t.tag_id, t.value.clone())).collect(),
             new_tag_name: String::new(),
@@ -411,6 +417,7 @@ impl FormValues {
             flap_detection: p.flag("flap_detection"),
             run_on_agents: p.flag("run_on_agents"),
             confirm_with_agents: p.flag("confirm_with_agents"),
+            check_from: p.text("check_from_agent_id"),
             channels,
             tags,
             new_tag_name: p.text("new_tag_name"),
@@ -507,6 +514,8 @@ pub struct FormContext {
     /// Real-browser monitors may be saved without any remote browser
     /// (config imports, which warn about it instead).
     pub browser_optional: bool,
+    /// Remote agent ids (enabled or not) a monitor may be checked from.
+    pub agent_ids: Vec<i64>,
 }
 
 /// A validated submission.
@@ -620,6 +629,41 @@ pub(crate) fn check_timeout_fits(e: &mut Errors, timeout: i64, interval: i64) {
             crate::i18n::t("validation.timeout_gt_interval").into(),
         );
     }
+}
+
+/// `check_from_agent_id`: the agent that checks the monitor instead of this
+/// server. Only for types agents can run, and not together with
+/// `run_on_agents` / `confirm_with_agents` (the agent's results already are
+/// the monitor's status).
+fn check_from(v: &FormValues, kind: MonitorType, cx: &FormContext, e: &mut Errors) -> Option<i64> {
+    let raw = v.check_from.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let id = match raw.parse::<i64>() {
+        Ok(id) if cx.agent_ids.contains(&id) => id,
+        _ => {
+            e.insert(
+                "check_from_agent_id",
+                crate::i18n::t("validation.check_from_unknown").into(),
+            );
+            return None;
+        }
+    };
+    if !kind.runs_on_agents() {
+        e.insert(
+            "check_from_agent_id",
+            crate::i18n::t("validation.check_from_type").into(),
+        );
+        return None;
+    }
+    if v.run_on_agents || v.confirm_with_agents {
+        e.insert(
+            "check_from_agent_id",
+            crate::i18n::t("validation.check_from_agents").into(),
+        );
+    }
+    Some(id)
 }
 
 /// Why a tag name can't be used (`None` when it can; empty names are the caller's business).
@@ -1535,6 +1579,7 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         m.run_on_agents = false;
         m.confirm_with_agents = false;
     }
+    m.check_from_agent_id = check_from(v, kind, cx, &mut e);
 
     // -- push ------------------------------------------------------------
     if kind != MonitorType::Push {
@@ -1647,6 +1692,67 @@ mod tests {
         assert_eq!(ok.monitor.retries, 1);
         assert!(ok.monitor.flap_detection);
         assert!(ok.channels.is_empty() && ok.tags.is_empty() && ok.new_tag.is_none());
+    }
+
+    #[test]
+    fn check_from_takes_a_known_agent_for_types_agents_can_run() {
+        let cx = FormContext {
+            agent_ids: vec![4, 9],
+            ..FormContext::default()
+        };
+        let http = base_pairs("http", "http://10.0.3.7/");
+        let ok = run(with(http.clone(), "check_from_agent_id", "9"), &cx).unwrap();
+        assert_eq!(ok.monitor.check_from_agent_id, Some(9));
+        assert_eq!(
+            run(http.clone(), &cx).unwrap().monitor.check_from_agent_id,
+            None
+        );
+
+        let unknown = run(with(http.clone(), "check_from_agent_id", "5"), &cx).unwrap_err();
+        assert_eq!(
+            unknown["check_from_agent_id"],
+            crate::i18n::t("validation.check_from_unknown")
+        );
+        for kind in ["push", "group"] {
+            let errors =
+                run(with(base_pairs(kind, ""), "check_from_agent_id", "4"), &cx).unwrap_err();
+            assert_eq!(
+                errors["check_from_agent_id"],
+                crate::i18n::t("validation.check_from_type"),
+                "{kind}"
+            );
+        }
+        let mut browser = NewMonitor {
+            monitor_type: MonitorType::RealBrowser,
+            target: "https://shop.example.com/".into(),
+            check_from_agent_id: Some(4),
+            ..NewMonitor::default()
+        };
+        browser.timeout_seconds = 30;
+        let values = FormValues::from_new(&browser, Vec::new(), &[]);
+        let errors = validate(&values, &NewMonitor::default(), &cx).unwrap_err();
+        assert!(errors.contains_key("check_from_agent_id"));
+    }
+
+    #[test]
+    fn check_from_rules_out_the_other_agent_options() {
+        let cx = FormContext {
+            agent_ids: vec![4],
+            ..FormContext::default()
+        };
+        let checked = with(
+            base_pairs("http", "http://10.0.3.7/"),
+            "check_from_agent_id",
+            "4",
+        );
+        for flag in ["run_on_agents", "confirm_with_agents"] {
+            let errors = run(with(checked.clone(), flag, "true"), &cx).unwrap_err();
+            assert_eq!(
+                errors["check_from_agent_id"],
+                crate::i18n::t("validation.check_from_agents"),
+                "{flag}"
+            );
+        }
     }
 
     #[test]
