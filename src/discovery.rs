@@ -1030,6 +1030,7 @@ mod tests {
                 browser_viewport: "desktop".into(),
                 browser_js_errors: false,
                 grpc_proto: None,
+                check_from_agent_id: None,
             },
             paused_by_discovery,
         }

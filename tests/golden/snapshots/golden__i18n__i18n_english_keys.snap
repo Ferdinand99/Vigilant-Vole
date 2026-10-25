@@ -209,6 +209,7 @@ bulk.no_channels_text
 bulk.not_applied
 bulk.nothing_changed
 bulk.nothing_chosen
+bulk.reason_agent_checked
 bulk.reason_agents
 bulk.reason_escalation
 bulk.reason_timeout
@@ -387,6 +388,7 @@ detail.chart_sub
 detail.check_every
 detail.check_now
 detail.checked
+detail.checked_by_agent
 detail.checks_empty_text
 detail.checks_empty_title
 detail.checks_from_agents
@@ -558,6 +560,10 @@ form.body_encoding
 form.body_encoding_help
 form.body_placeholder
 form.channel_off
+form.check_from
+form.check_from_disabled
+form.check_from_help
+form.check_from_server
 form.checks
 form.checks_unit
 form.color
@@ -2268,6 +2274,9 @@ validation.browser_selector_long
 validation.browser_unknown
 validation.browser_viewport
 validation.browser_wait
+validation.check_from_agents
+validation.check_from_type
+validation.check_from_unknown
 validation.codes_hint
 validation.container_spaces
 validation.description_long

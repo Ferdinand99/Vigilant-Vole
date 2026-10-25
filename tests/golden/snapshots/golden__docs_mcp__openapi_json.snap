@@ -62,7 +62,7 @@ content-type: application/json
             "agentToken": []
           }
         ],
-        "summary": "For remote agents: the monitors to run (Bearer vva_… token, ETag).",
+        "summary": "For remote agents: the monitors to run, the ones it checks for the server included (Bearer vva_… token, ETag).",
         "tags": [
           "Push and machine endpoints"
         ],
@@ -962,7 +962,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Create a monitor. Same validation as the monitor form; unknown tag names are created.",
+        "summary": "Create a monitor. Same validation as the monitor form; unknown tag names are created. check_from_agent_id (an agent id, null = this server) lets one remote agent check it instead of this server.",
         "tags": [
           "Monitors"
         ],
@@ -1049,7 +1049,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.",
+        "summary": "Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay, agent_checked.",
         "tags": [
           "Monitors"
         ],
@@ -1454,7 +1454,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Run a check right now and return its result (409 for paused, push and group monitors).",
+        "summary": "Run a check right now and return its result (409 for paused, push, group and agent-checked monitors).",
         "tags": [
           "Monitors"
         ],

@@ -226,6 +226,8 @@ pub struct Row {
     tag_ids: Vec<i64>,
     /// Name of the parent group (shown in flat/filtered lists).
     pub group_name: String,
+    /// Name of the agent that checks the monitor ("" = this server).
+    pub checked_by: String,
     pub is_group: bool,
     uptime: Option<f64>,
     created_at: String,
@@ -380,6 +382,7 @@ fn make_row(m: &MonitorWithStatus, mut tags: Vec<MonitorTag>, group_name: String
         tag_ids,
         tags,
         group_name,
+        checked_by: m.checked_by.clone().unwrap_or_default(),
         is_group: m.monitor.monitor_type == MonitorType::Group,
         uptime: m.uptime_24h,
         created_at: m.monitor.created_at.clone(),
@@ -424,6 +427,7 @@ fn matches_search(row: &Row, needle: &str) -> bool {
         || hay(&row.target)
         || hay(row.type_label)
         || hay(&row.group_name)
+        || hay(&row.checked_by)
         || row.tags.iter().any(|t| hay(&t.name) || hay(&t.value))
         || hay(&row.more_tags_tip)
 }
@@ -755,6 +759,7 @@ mod tests {
             response_time_ms: None,
             recent: vec![],
             uptime_24h: uptime,
+            checked_by: None,
         }
     }
 

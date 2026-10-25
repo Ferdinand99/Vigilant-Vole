@@ -2895,3 +2895,92 @@ async fn bulk_edit_validation_and_roles() {
     let (status, out) = post(&h.editor, json!({"ids": [424242], "set": set})).await;
     assert_eq!((status, out["updated"].as_i64()), (StatusCode::OK, Some(0)));
 }
+
+#[tokio::test]
+async fn check_from_agent_id_is_read_and_written() {
+    let h = harness().await;
+    let agent = h
+        .state
+        .with_conn(|c| {
+            crate::db::agents::insert_agent(c, "home", "", &crate::db::agents::generate_token())
+        })
+        .await
+        .unwrap();
+    let (status, created) = h
+        .json(
+            Method::POST,
+            "/api/v1/monitors",
+            &h.editor,
+            Some(json!({"name": "NAS", "monitor_type": "tcp", "target": "10.0.3.7:445", "check_from_agent_id": agent})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["check_from_agent_id"], agent);
+    let id = created["id"].as_i64().unwrap();
+    let (_, shown) = h
+        .json(
+            Method::GET,
+            &format!("/api/v1/monitors/{id}"),
+            &h.viewer,
+            None,
+        )
+        .await;
+    assert_eq!(shown["check_from_agent_id"], agent);
+
+    // Not together with the other agent options, not for push, not an unknown agent.
+    for body in [
+        json!({"run_on_agents": true}),
+        json!({"confirm_with_agents": true}),
+        json!({"check_from_agent_id": agent + 100}),
+    ] {
+        let (status, err) = h
+            .json(
+                Method::PATCH,
+                &format!("/api/v1/monitors/{id}"),
+                &h.editor,
+                Some(body.clone()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body} {err}");
+        assert!(
+            err["error"]["fields"]["check_from_agent_id"].is_string(),
+            "{err}"
+        );
+    }
+    let (status, err) = h
+        .json(
+            Method::POST,
+            "/api/v1/monitors",
+            &h.editor,
+            Some(json!({"name": "Cron", "monitor_type": "push", "check_from_agent_id": agent})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{err}");
+    assert_eq!(
+        err["error"]["fields"]["check_from_agent_id"],
+        crate::i18n::t("validation.check_from_type")
+    );
+
+    // On demand checks are the agent's job.
+    let (status, _) = h
+        .json(
+            Method::POST,
+            &format!("/api/v1/monitors/{id}/check"),
+            &h.editor,
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Back to this server.
+    let (status, back) = h
+        .json(
+            Method::PATCH,
+            &format!("/api/v1/monitors/{id}"),
+            &h.editor,
+            Some(json!({"check_from_agent_id": null})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{back}");
+    assert!(back["check_from_agent_id"].is_null());
+}

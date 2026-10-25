@@ -106,7 +106,7 @@ Example response:
 
 ### POST /api/v1/monitors
 
-Create a monitor. Same validation as the monitor form; unknown tag names are created.
+Create a monitor. Same validation as the monitor form; unknown tag names are created. check_from_agent_id (an agent id, null = this server) lets one remote agent check it instead of this server.
 
 - Access: editor (write token of an editor or admin)
 - Success: `201 Created`
@@ -428,7 +428,7 @@ Example response:
 
 ### POST /api/v1/monitors/{id}/check
 
-Run a check right now and return its result (409 for paused, push and group monitors).
+Run a check right now and return its result (409 for paused, push, group and agent-checked monitors).
 
 - Access: editor (write token of an editor or admin)
 - Success: `200 OK`
@@ -565,7 +565,7 @@ Example response:
 
 ### POST /api/v1/monitors/bulk
 
-Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.
+Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay, agent_checked.
 
 - Access: editor (write token of an editor or admin)
 - Success: `200 OK`
@@ -1492,7 +1492,7 @@ Example response:
 
 ### GET /api/agent/v1/monitors
 
-For remote agents: the monitors to run (Bearer vva_… token, ETag).
+For remote agents: the monitors to run, the ones it checks for the server included (Bearer vva_… token, ETag).
 
 - Access: remote agent token (`Authorization: Bearer vva_…`)
 - Success: `200 OK`

@@ -389,6 +389,11 @@ pub struct Monitor {
     /// (server reflection).
     #[serde(default)]
     pub grpc_proto: Option<String>,
+    // -- agent-checked (see `monitor::agent_watch_loop`) --
+    /// `agents.id` of the one agent that checks this monitor instead of the
+    /// server; `None` = this server checks it.
+    #[serde(default)]
+    pub check_from_agent_id: Option<i64>,
 }
 
 fn default_auth_method() -> String {
@@ -470,7 +475,13 @@ impl Monitor {
             browser_viewport: self.browser_viewport.clone(),
             browser_js_errors: self.browser_js_errors,
             grpc_proto: self.grpc_proto.clone(),
+            check_from_agent_id: self.check_from_agent_id,
         }
+    }
+
+    /// Checked by a remote agent instead of this server.
+    pub fn is_agent_checked(&self) -> bool {
+        self.check_from_agent_id.is_some() && self.monitor_type.runs_on_agents()
     }
 
     /// Interval to wait before the next check while failing.
@@ -543,6 +554,7 @@ pub struct NewMonitor {
     pub browser_viewport: String,
     pub browser_js_errors: bool,
     pub grpc_proto: Option<String>,
+    pub check_from_agent_id: Option<i64>,
 }
 
 impl Default for NewMonitor {
@@ -606,6 +618,7 @@ impl Default for NewMonitor {
             browser_viewport: default_browser_viewport(),
             browser_js_errors: false,
             grpc_proto: None,
+            check_from_agent_id: None,
         }
     }
 }
@@ -620,6 +633,8 @@ pub struct MonitorWithStatus {
     /// entries are left-padding for monitors that don't have this much history yet.
     pub recent: Vec<Option<HeartbeatStatus>>,
     pub uptime_24h: Option<f64>,
+    /// Name of the agent that checks the monitor instead of this server.
+    pub checked_by: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

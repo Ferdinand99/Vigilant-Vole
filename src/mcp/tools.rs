@@ -280,7 +280,7 @@ static TOOLS: LazyLock<Vec<Tool>> = LazyLock::new(|| {
         Tool {
             name: "create_monitor",
             title: "Create a monitor",
-            description: "Create a monitor. Needs at least `name`, `monitor_type` (http, keyword, tcp, ping, dns, tls, push, …) and usually `target`. Same fields and validation as the REST API: interval_seconds, timeout_seconds, retries, tags, notifications, … Unknown tag names are created.",
+            description: "Create a monitor. Needs at least `name`, `monitor_type` (http, keyword, tcp, ping, dns, tls, push, …) and usually `target`. Same fields and validation as the REST API: interval_seconds, timeout_seconds, retries, tags, notifications, check_from_agent_id (a remote agent that checks it instead of this server), … Unknown tag names are created.",
             write: true,
             heavy: false,
             schema: json!({
@@ -328,7 +328,7 @@ static TOOLS: LazyLock<Vec<Tool>> = LazyLock::new(|| {
         Tool {
             name: "check_now",
             title: "Check now",
-            description: "Run a check right now and return its result. Not possible for paused, push and group monitors.",
+            description: "Run a check right now and return its result. Not possible for paused, push, group and agent-checked monitors.",
             write: true,
             heavy: false,
             schema: monitor_id(),

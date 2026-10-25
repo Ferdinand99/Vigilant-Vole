@@ -102,7 +102,7 @@ pub static ROUTES: &[RouteDoc] = &[
     r("GET", "/api/v1/monitors", "viewer", "Monitors", "List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.")
         .q(&["status: up | down | pending | maintenance | paused | unknown", "type: monitor type, e.g. http", "tag: tag name", "q: search name, target and description", LIMIT_Q, CURSOR_Q])
         .res(r#"{"data": [ …monitor… ], "next_cursor": "42"}"#),
-    r("POST", "/api/v1/monitors", "editor", "Monitors", "Create a monitor. Same validation as the monitor form; unknown tag names are created.")
+    r("POST", "/api/v1/monitors", "editor", "Monitors", "Create a monitor. Same validation as the monitor form; unknown tag names are created. check_from_agent_id (an agent id, null = this server) lets one remote agent check it instead of this server.")
         .req(MONITOR_CREATE)
         .res(MONITOR_EXAMPLE),
     r("GET", "/api/v1/monitors/{id}", "viewer", "Monitors", "Get one monitor with status, maintenance and the real result (raw_status, raw_status_since, raw_message) as in the list. Passwords are masked; push tokens are shown to editors only.").res(MONITOR_EXAMPLE),
@@ -115,7 +115,7 @@ pub static ROUTES: &[RouteDoc] = &[
     r("DELETE", "/api/v1/monitors/{id}", "editor", "Monitors", "Delete a monitor and its history. Returns 204."),
     r("POST", "/api/v1/monitors/{id}/pause", "editor", "Monitors", "Pause checks and alerts.").res(MONITOR_EXAMPLE),
     r("POST", "/api/v1/monitors/{id}/resume", "editor", "Monitors", "Resume a paused monitor.").res(MONITOR_EXAMPLE),
-    r("POST", "/api/v1/monitors/{id}/check", "editor", "Monitors", "Run a check right now and return its result (409 for paused, push and group monitors).")
+    r("POST", "/api/v1/monitors/{id}/check", "editor", "Monitors", "Run a check right now and return its result (409 for paused, push, group and agent-checked monitors).")
         .res(r#"{"status": "up", "heartbeat": {"id": 991, "status": "up", "raw_status": "up", "response_time_ms": 84, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}}"#),
     r("GET", "/api/v1/monitors/{id}/heartbeats", "viewer", "Monitors", "Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance by older versions.")
         .q(&["since: UTC time, e.g. 2026-10-19 00:00:00", LIMIT_Q, CURSOR_Q])
@@ -129,7 +129,7 @@ pub static ROUTES: &[RouteDoc] = &[
     r("PUT", "/api/v1/monitors/{id}/tags", "editor", "Monitors", "Replace a monitor's tags (names are created if new).")
         .req(r#"["production", {"name": "env", "value": "prod"}, {"id": 4}]"#)
         .res(MONITOR_EXAMPLE),
-    r("POST", "/api/v1/monitors/bulk", "editor", "Monitors", "Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.")
+    r("POST", "/api/v1/monitors/bulk", "editor", "Monitors", "Change settings on many monitors at once (ids, or every monitor matching a filter like the list's). Each setting is optional; it uses the monitor form's validation and one transaction. Settings that don't apply to a monitor's type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay, agent_checked.")
         .req(r#"{"filter": {"type": "http", "tag": "production"}, "set": {"run_on_agents": true, "confirm_with_agents": true, "interval_seconds": 120, "channels": {"add": [{"name": "Ops Discord", "escalation": false}], "remove": [3]}, "tags": {"add": [{"name": "eu", "color": "teal", "value": "west"}], "remove": ["legacy"]}}}"#)
         .res(r#"{"updated": 38, "skipped": [{"id": 12, "reason": "agents_unsupported"}]}"#),
     // -- Tags --
@@ -225,7 +225,7 @@ pub static ROUTES: &[RouteDoc] = &[
         .q(&["duration: 24h | 7d | 30d", "style: flat | flat-square", "label: custom label"]),
     r("GET", "/api/status-page/{slug}", "public", "Push and machine endpoints", "A published status page as JSON (CORS enabled), for embedding.")
         .res(r#"{"title": "Acme status", "overall": {"indicator": "operational", "title": "All systems operational"}, "sections": [ … ], "incidents": [ … ]}"#),
-    r("GET", "/api/agent/v1/monitors", "agent token", "Push and machine endpoints", "For remote agents: the monitors to run (Bearer vva_… token, ETag)."),
+    r("GET", "/api/agent/v1/monitors", "agent token", "Push and machine endpoints", "For remote agents: the monitors to run, the ones it checks for the server included (Bearer vva_… token, ETag)."),
     r("POST", "/api/agent/v1/results", "agent token", "Push and machine endpoints", "For remote agents: a batch of up to 500 results.")
         .req(r#"{"results": [{"monitor_id": 7, "status": "up", "response_time_ms": 120, "message": "200 OK", "checked_at": "2026-10-19 14:03:00"}]}"#),
     r("GET", "/metrics", "metrics token", "Push and machine endpoints", "Prometheus metrics (when enabled). Bearer token or basic-auth password; Kuma-compatible series included."),

@@ -16,7 +16,7 @@
   <span class="dot status-{{ r.status }}" role="img" aria-label="{{ r.status_label }}"></span>
   <div class="list-main">
     <a class="list-title list-title-wrap stretched" href="/monitors/{{ r.id }}">{{ r.name }}</a>
-    <span class="list-sub">{{ r.type_label }}{% if !r.target.is_empty() %} · {{ r.target }}{% endif %}{% if data.flat && !r.group_name.is_empty() %} · {{ tr1("dashboard.in_group", "name", r.group_name) }}{% endif %}</span>
+    <span class="list-sub">{{ r.type_label }}{% if !r.target.is_empty() %} · {{ r.target }}{% endif %}{% if data.flat && !r.group_name.is_empty() %} · {{ tr1("dashboard.in_group", "name", r.group_name) }}{% endif %}{% if !r.checked_by.is_empty() %} · {{ tr1("detail.checked_by_agent", "name", r.checked_by) }}{% endif %}</span>
     {%- if !r.tags.is_empty() %}
     <span class="tags">{% for t in r.tags %}{{ m::tag(&t.name, &t.color, &t.value) }}{% endfor %}
       {%- if r.more_tags > 0 %}<span class="badge" data-tip="{{ r.more_tags_tip }}" aria-label="{{ tr2("dashboard.more_tags", "n", r.more_tags, "tags", r.more_tags_tip) }}">+{{ r.more_tags }}</span>{% endif %}</span>

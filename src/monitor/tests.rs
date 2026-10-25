@@ -585,3 +585,282 @@ fn start_jitter_stays_within_window_and_spreads_monitors() {
     );
     assert!(start_jitter(5, 10) < Duration::from_secs(10));
 }
+
+// -- agent-checked monitors ---------------------------------------------------
+
+/// A scheduler whose agent watchdog fires 2 × interval after the last result.
+fn fast_agent_scheduler(db: &TestDb) -> Scheduler {
+    scheduler(db)
+        .0
+        .with_agent_timing(Duration::ZERO, Duration::ZERO)
+}
+
+async fn insert_agent(db: &TestDb, id: i64, name: &str) {
+    let name = name.to_string();
+    db::interact(&db.pool, move |c| {
+        c.execute(
+            "INSERT INTO agents (id, name, prefix, token_hash) VALUES (?1, ?2, 'p', 'h' || ?1)",
+            params![id, name],
+        )
+    })
+    .await
+    .unwrap();
+}
+
+/// A TCP monitor on a port nothing listens on (a local check would be down),
+/// checked by agent `agent_id`.
+fn agent_checked(agent_id: i64) -> NewMonitor {
+    NewMonitor {
+        name: "home-lan".into(),
+        monitor_type: MonitorType::Tcp,
+        target: "127.0.0.1:1".into(),
+        interval_seconds: 1,
+        timeout_seconds: 1,
+        check_from_agent_id: Some(agent_id),
+        ..NewMonitor::default()
+    }
+}
+
+/// `(agent_id, status, message)` of every heartbeat, oldest first.
+async fn all_heartbeats(db: &TestDb, id: i64) -> Vec<(Option<i64>, String, Option<String>)> {
+    db::interact(&db.pool, move |c| {
+        let mut stmt = c.prepare(
+            "SELECT agent_id, status, message FROM heartbeats WHERE monitor_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        rows.collect()
+    })
+    .await
+    .unwrap()
+}
+
+/// Waits until the monitor's latest local heartbeat matches.
+async fn wait_for_local(db: &TestDb, id: i64, secs: u64, want: impl Fn(&str, &str) -> bool) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(secs);
+    loop {
+        let rows = all_heartbeats(db, id).await;
+        if let Some((_, status, message)) = rows.iter().rev().find(|(a, _, _)| a.is_none())
+            && want(status, message.as_deref().unwrap_or(""))
+        {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no matching heartbeat; got {rows:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+#[tokio::test]
+async fn agent_checked_monitors_are_never_checked_locally() {
+    let db = test_db().await;
+    let s = fast_agent_scheduler(&db);
+    insert_agent(&db, 7, "home").await;
+    let id = insert(
+        &db,
+        NewMonitor {
+            interval_seconds: 3600,
+            ..agent_checked(7)
+        },
+    )
+    .await;
+    s.reload(id).await;
+    assert!(s.is_running(id), "the agent watchdog runs");
+    assert_eq!(s.check_now(id).await, None, "no on-demand local check");
+    tokio::time::sleep(Duration::from_millis(1_800)).await;
+    assert!(
+        all_heartbeats(&db, id).await.is_empty(),
+        "nothing ran locally"
+    );
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_checking_agent_drives_status_history_and_notifications() {
+    use axum::{Router, routing::post};
+    use std::sync::Mutex;
+
+    // A webhook that records the events it receives.
+    let received: Arc<Mutex<Vec<String>>> = Arc::default();
+    let sink = received.clone();
+    let app = Router::new().route(
+        "/hook",
+        post(move |body: String| {
+            let sink = sink.clone();
+            async move {
+                let v: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                sink.lock()
+                    .unwrap()
+                    .push(v["event"].as_str().unwrap_or_default().to_string());
+                "ok"
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/hook", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await });
+
+    let db = test_db().await;
+    let s = fast_agent_scheduler(&db);
+    insert_agent(&db, 7, "home").await;
+    insert_agent(&db, 8, "other").await;
+    let id = insert(
+        &db,
+        NewMonitor {
+            interval_seconds: 3600,
+            ..agent_checked(7)
+        },
+    )
+    .await;
+    let key = crate::notification::tests_support::test_key();
+    let config =
+        crate::notification::seal_config(&key, "webhook", &serde_json::json!({ "url": url }));
+    db::interact(&db.pool, move |c| {
+        let ch = db_notifications::insert_channel(c, "hook", "webhook", &config, false)?;
+        db_notifications::set_monitor_channels(c, id, &[(ch, false)])
+    })
+    .await
+    .unwrap();
+
+    s.ingest_external(id, CheckOutcome::up(4), Some(7)).await;
+    s.ingest_external(id, CheckOutcome::down("connection refused"), Some(7))
+        .await;
+    // Another agent's result is only recorded under its own id.
+    s.ingest_external(id, CheckOutcome::up(2), Some(8)).await;
+    s.ingest_external(id, CheckOutcome::up(4), Some(7)).await;
+
+    assert_eq!(statuses(&db, id).await, ["up", "down", "up"]);
+    let agent_rows: Vec<Option<i64>> = all_heartbeats(&db, id)
+        .await
+        .into_iter()
+        .filter_map(|(a, _, _)| a)
+        .map(Some)
+        .collect();
+    assert_eq!(agent_rows, [Some(7), Some(7), Some(8), Some(7)]);
+    let events = monitor_events(&db, id).await;
+    assert_eq!(events.len(), 1);
+    assert!(events[0].kind == MonitorEventKind::Down && !events[0].is_open());
+    assert_eq!(
+        s.status_snapshot(id).await.unwrap().status,
+        Some(HeartbeatStatus::Up)
+    );
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while received.lock().unwrap().len() < 2 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "notifications never arrived"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(*received.lock().unwrap(), ["down", "up"]);
+}
+
+#[tokio::test]
+async fn a_silent_agent_marks_its_monitors_down_until_it_reports_again() {
+    let db = test_db().await;
+    let s = fast_agent_scheduler(&db);
+    insert_agent(&db, 7, "home").await;
+    let id = insert(&db, agent_checked(7)).await;
+    s.reload(id).await;
+    s.ingest_external(id, CheckOutcome::up(4), Some(7)).await;
+
+    // interval 1 s: nothing for > 2 s.
+    wait_for_local(&db, id, 6, |status, message| {
+        status == "down" && message.starts_with("Agent home has not reported for ")
+    })
+    .await;
+    let (_, _, message) = all_heartbeats(&db, id).await.pop().unwrap();
+    assert!(message.unwrap().ends_with(" s"));
+
+    s.ingest_external(id, CheckOutcome::up(4), Some(7)).await;
+    assert_eq!(
+        s.status_snapshot(id).await.unwrap().status,
+        Some(HeartbeatStatus::Up)
+    );
+    assert_eq!(
+        statuses(&db, id).await.last().map(String::as_str),
+        Some("up")
+    );
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_silent_agent_is_down_even_for_upside_down_monitors() {
+    let db = test_db().await;
+    let s = fast_agent_scheduler(&db);
+    insert_agent(&db, 7, "home").await;
+    let id = insert(
+        &db,
+        NewMonitor {
+            upside_down: true,
+            ..agent_checked(7)
+        },
+    )
+    .await;
+    s.reload(id).await;
+    wait_for_local(&db, id, 6, |status, message| {
+        status == "down" && message.starts_with("Agent home has not reported")
+    })
+    .await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_disabled_agent_marks_its_monitors_down() {
+    let db = test_db().await;
+    let s = fast_agent_scheduler(&db);
+    insert_agent(&db, 7, "home").await;
+    let id = insert(
+        &db,
+        NewMonitor {
+            interval_seconds: 3600,
+            ..agent_checked(7)
+        },
+    )
+    .await;
+    db::interact(&db.pool, |c| crate::db::agents::set_active(c, 7, false))
+        .await
+        .unwrap();
+    s.reload(id).await;
+    wait_for_local(&db, id, 3, |status, message| {
+        status == "down" && message == "Agent home is disabled"
+    })
+    .await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_deleted_agent_hands_its_monitors_back_to_this_server() {
+    let db = test_db().await;
+    let s = fast_agent_scheduler(&db);
+    insert_agent(&db, 7, "home").await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let id = insert(
+        &db,
+        NewMonitor {
+            target: format!("127.0.0.1:{port}"),
+            interval_seconds: 3600,
+            ..agent_checked(7)
+        },
+    )
+    .await;
+    s.reload(id).await;
+    assert_eq!(s.check_now(id).await, None);
+
+    db::interact(&db.pool, |c| crate::db::agents::delete_agent(c, 7))
+        .await
+        .unwrap();
+    let m = db::interact(&db.pool, move |c| db_monitors::get_monitor(c, id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(m.check_from_agent_id, None, "the foreign key clears it");
+    s.reload(id).await;
+    // A local check loop now: the first check runs within the reload spread.
+    wait_for_local(&db, id, 5, |status, _| status == "up").await;
+    assert_eq!(s.check_now(id).await, Some(HeartbeatStatus::Up));
+    s.shutdown().await;
+}

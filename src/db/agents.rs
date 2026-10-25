@@ -203,26 +203,49 @@ pub fn list_agents(conn: &Connection) -> rusqlite::Result<Vec<AgentSummary>> {
     rows.collect()
 }
 
-/// Active monitors that remote agents should run: `run_on_agents = 1` and an
-/// type agents can run (never push, group or real browser).
-pub fn list_agent_monitors(conn: &Connection) -> rusqlite::Result<Vec<Monitor>> {
+/// Types agents can run (never push, group or real browser), as SQL.
+const AGENT_TYPES_SQL: &str = "monitor_type NOT IN ('push', 'group', 'real_browser')";
+
+/// Active monitors agent `agent_id` should run: the ones every agent runs
+/// (`run_on_agents = 1`, not checked by one agent) and the ones it checks
+/// for the server (`check_from_agent_id`). Only types agents can run.
+pub fn list_agent_monitors(conn: &Connection, agent_id: i64) -> rusqlite::Result<Vec<Monitor>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {MONITOR_COLUMNS} FROM monitors
-         WHERE active = 1 AND run_on_agents = 1 AND monitor_type NOT IN ('push', 'group', 'real_browser')
+         WHERE active = 1 AND {AGENT_TYPES_SQL}
+           AND ((run_on_agents = 1 AND check_from_agent_id IS NULL) OR check_from_agent_id = ?1)
          ORDER BY id"
     ))?;
-    let rows = stmt.query_map([], row_to_monitor)?;
+    let rows = stmt.query_map(params![agent_id], row_to_monitor)?;
     rows.collect()
 }
 
-/// Number of monitors agents currently run.
+/// Number of monitors agents currently run (for all of them or checked by one).
 pub fn count_agent_monitors(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row(
-        "SELECT COUNT(*) FROM monitors
-         WHERE active = 1 AND run_on_agents = 1 AND monitor_type NOT IN ('push', 'group', 'real_browser')",
+        &format!(
+            "SELECT COUNT(*) FROM monitors
+             WHERE active = 1 AND {AGENT_TYPES_SQL}
+               AND (run_on_agents = 1 OR check_from_agent_id IS NOT NULL)"
+        ),
         [],
         |r| r.get(0),
     )
+}
+
+/// Ids of the monitors (active or paused) that agent `agent_id` checks for the server.
+pub fn monitors_checked_by(conn: &Connection, agent_id: i64) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt =
+        conn.prepare("SELECT id FROM monitors WHERE check_from_agent_id = ?1 ORDER BY id")?;
+    let rows = stmt.query_map(params![agent_id], |r| r.get(0))?;
+    rows.collect()
+}
+
+/// Every agent as `(id, name, active)`, by name (for pickers and name lookups).
+pub fn list_agent_names(conn: &Connection) -> rusqlite::Result<Vec<(i64, String, bool)>> {
+    let mut stmt = conn.prepare("SELECT id, name, active FROM agents ORDER BY name, id")?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    rows.collect()
 }
 
 /// Latest result per (agent, monitor) within the last hour.
@@ -252,11 +275,6 @@ pub fn latest_agent_results(conn: &Connection) -> rusqlite::Result<Vec<AgentResu
         })
     })?;
     rows.collect()
-}
-
-/// Is `monitor_id` a monitor agents may report on right now?
-pub fn is_agent_monitor(monitor: &Monitor) -> bool {
-    monitor.active && monitor.run_on_agents && monitor.monitor_type.runs_on_agents()
 }
 
 #[cfg(test)]
@@ -354,7 +372,7 @@ mod tests {
             },
         )
         .unwrap();
-        let ids: Vec<i64> = list_agent_monitors(&conn)
+        let ids: Vec<i64> = list_agent_monitors(&conn, 1)
             .unwrap()
             .iter()
             .map(|m| m.id)

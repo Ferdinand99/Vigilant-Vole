@@ -141,11 +141,18 @@
   <section class="form-section" aria-labelledby="sec-agents" data-show-when="monitor_type!=push,group"{% if f.is_type("push") || f.is_type("group") %} hidden{% endif %}>
     <h2 class="form-section-title" id="sec-agents">{{ tr("nav.agents") }}</h2>
     <div class="card">
-      {{ m::switch("run_on_agents", tr("form.run_on_agents"), f.v.run_on_agents, tr("form.run_on_agents_help")) }}
-      {{ m::switch("confirm_with_agents", tr("form.confirm_agents"), f.v.confirm_with_agents, tr("form.confirm_agents_help")) }}
-      <div data-show-when="monitor_type=real_browser"{% if !f.is_type("real_browser") %} hidden{% endif %}>
-        <div data-show-when="run_on_agents=true"{% if !f.v.run_on_agents %} hidden{% endif %}>
-          {{ m::callout("info", tr("browser.agents_note_text"), tr("browser.agents_note_title")) }}
+      {%- if f.check_from_choices.len() > 1 %}
+      <div data-show-when="monitor_type!=push,group,real_browser"{% if f.is_type("push") || f.is_type("group") || f.is_type("real_browser") %} hidden{% endif %}>
+        {{ fm::select("check_from_agent_id", tr("form.check_from"), &f.check_from_choices, f.v.check_from.as_str(), tr("form.check_from_help"), f.err("check_from_agent_id")) }}
+      </div>
+      {%- endif %}
+      <div data-show-when="check_from_agent_id="{% if f.agent_checked() %} hidden{% endif %}>
+        {{ m::switch("run_on_agents", tr("form.run_on_agents"), f.v.run_on_agents, tr("form.run_on_agents_help")) }}
+        {{ m::switch("confirm_with_agents", tr("form.confirm_agents"), f.v.confirm_with_agents, tr("form.confirm_agents_help")) }}
+        <div data-show-when="monitor_type=real_browser"{% if !f.is_type("real_browser") %} hidden{% endif %}>
+          <div data-show-when="run_on_agents=true"{% if !f.v.run_on_agents %} hidden{% endif %}>
+            {{ m::callout("info", tr("browser.agents_note_text"), tr("browser.agents_note_title")) }}
+          </div>
         </div>
       </div>
       {%- if !f.has_agents %}

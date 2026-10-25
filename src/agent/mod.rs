@@ -2,7 +2,7 @@
 //! Owned by the integrations agent.
 //!
 //! The agent polls `GET /api/agent/v1/monitors` every 30 seconds (with
-//! `If-None-Match`), runs each `run_on_agents` monitor on its own interval
+//! `If-None-Match`), runs each listed monitor (`run_on_agents`, or checked by this agent) on its own interval
 //! with the same [`checkers::run_check`] the server uses (bounded
 //! concurrency, jittered start), buffers RAW results and posts them to
 //! `POST /api/agent/v1/results` every 5 seconds. When the server is

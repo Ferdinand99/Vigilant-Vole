@@ -202,8 +202,9 @@ async fn agent_monitors(
     AuthedAgent(agent): AuthedAgent,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
+    let agent_id = agent.id;
     let mut monitors = state
-        .with_conn(|c| db_agents::list_agent_monitors(c))
+        .with_conn(move |c| db_agents::list_agent_monitors(c, agent_id))
         .await?;
     for m in &mut monitors {
         m.push_token = None;
@@ -286,8 +287,9 @@ async fn agent_results(
         )
             .into_response());
     }
+    let agent_id = agent.id;
     let monitors = state
-        .with_conn(|c| db_agents::list_agent_monitors(c))
+        .with_conn(move |c| db_agents::list_agent_monitors(c, agent_id))
         .await?;
     let intervals: HashMap<i64, i64> = monitors
         .iter()
@@ -628,13 +630,23 @@ async fn set_agent_active(
     // Lenient body parsing: the "Disable" form posts no fields at all.
     let active =
         url::form_urlencoded::parse(body.as_bytes()).any(|(k, v)| k == "active" && v == "true");
-    let found = state
-        .with_conn(move |c| db_agents::set_active(c, id, active))
+    let (found, checked) = state
+        .with_conn(move |c| {
+            Ok((
+                db_agents::set_active(c, id, active)?,
+                db_agents::monitors_checked_by(c, id)?,
+            ))
+        })
         .await?;
     if !found {
         return Err(ApiError::NotFound);
     }
     tracing::info!(agent_id = id, active, user = %user.username, "remote agent toggled");
+    // Monitors it checks go down while it is disabled and wait for its
+    // results again once it is enabled.
+    for monitor_id in checked {
+        state.scheduler.reload(monitor_id).await;
+    }
     let msg = if active {
         crate::i18n::t("agents.enabled")
     } else {
@@ -649,13 +661,28 @@ async fn delete_agent(
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
     user.require(Role::Admin)?;
-    let found = state
-        .with_conn(move |c| db_agents::delete_agent(c, id))
+    let (found, checked) = state
+        .with_conn(move |c| {
+            let checked = db_agents::monitors_checked_by(c, id)?;
+            Ok((db_agents::delete_agent(c, id)?, checked))
+        })
         .await?;
     if !found {
         return Err(ApiError::NotFound);
     }
     tracing::info!(agent_id = id, user = %user.username, "remote agent deleted");
+    // `check_from_agent_id` is cleared by the foreign key: the monitors this
+    // agent checked are checked by this server again.
+    if !checked.is_empty() {
+        tracing::info!(
+            agent_id = id,
+            monitors = ?checked,
+            "monitors checked by the deleted agent fall back to this server"
+        );
+    }
+    for monitor_id in checked {
+        state.scheduler.reload(monitor_id).await;
+    }
     state.notify_update();
     let mut response = StatusCode::OK.into_response();
     response.headers_mut().insert(
@@ -958,6 +985,73 @@ mod tests {
                 by_id(mtls).tls_client_key.as_deref()
             ),
             (Some("CERT"), Some("KEY"))
+        );
+    }
+
+    #[tokio::test]
+    async fn the_checking_agent_alone_gets_and_reports_its_monitors() {
+        let f = fixture("127.0.0.1:1").await;
+        let (home_token, home_id, checked) = f
+            .state
+            .with_conn(|c| {
+                let t = db_agents::generate_token();
+                let home = db_agents::insert_agent(c, "home", "", &t)?;
+                let checked = db_monitors::insert_monitor(
+                    c,
+                    &NewMonitor {
+                        name: "nas".into(),
+                        monitor_type: MonitorType::Tcp,
+                        target: "10.0.3.7:445".into(),
+                        check_from_agent_id: Some(home),
+                        ..NewMonitor::default()
+                    },
+                )?;
+                Ok((t.token, home, checked))
+            })
+            .await
+            .unwrap();
+        let list = |token: String| {
+            let state = f.state.clone();
+            async move {
+                let (status, _, body) = send(
+                    &state,
+                    get_monitors(Some(&token)).body(Body::empty()).unwrap(),
+                )
+                .await;
+                assert_eq!(status, StatusCode::OK);
+                let list: MonitorsResponse = serde_json::from_str(&body).unwrap();
+                list.monitors.iter().map(|m| m.id).collect::<Vec<i64>>()
+            }
+        };
+        // `run_on_agents` monitors go to every agent; the checked one only to its agent.
+        assert_eq!(
+            list(home_token.clone()).await,
+            vec![f.agent_monitor, checked]
+        );
+        assert_eq!(list(f.token.clone()).await, vec![f.agent_monitor]);
+
+        let other = serde_json::json!([{"monitor_id": checked, "status": "up"}]);
+        let (_, _, text) = send(&f.state, post_results(&f.token, &other)).await;
+        let resp: ResultsResponse = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp.accepted, 0, "another agent can't report it");
+
+        let mine =
+            serde_json::json!([{"monitor_id": checked, "status": "down", "message": "refused"}]);
+        let (_, _, text) = send(&f.state, post_results(&home_token, &mine)).await;
+        let resp: ResultsResponse = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp.accepted, 1);
+        // The monitor's own status and history, plus the agent's own row.
+        let latest = f
+            .state
+            .with_conn(move |c| crate::db::heartbeats::latest_local(c, checked))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.status, HeartbeatStatus::Down);
+        assert_eq!(latest.message.as_deref(), Some("refused"));
+        assert_eq!(
+            agent_heartbeats(&f.state, home_id).await,
+            vec![(checked, "down".to_string())]
         );
     }
 

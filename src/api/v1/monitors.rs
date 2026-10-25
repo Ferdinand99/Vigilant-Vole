@@ -697,6 +697,10 @@ fn save(
         child_count,
         remote_browser_ids: crate::db::remote_browsers::ids(conn)?,
         browser_optional: false,
+        agent_ids: crate::db::agents::list_agent_names(conn)?
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect(),
     };
     let base = existing.map(Monitor::to_new).unwrap_or_default();
     let valid = match form::validate(&values, &base, &cx) {
@@ -915,7 +919,7 @@ async fn check_now(
             ))
         }
         None => Err(V1Error::conflict(
-            "This monitor can’t be checked on demand (paused, push or group).",
+            "This monitor can’t be checked on demand (paused, push, group or checked by an agent).",
         )),
     }
 }

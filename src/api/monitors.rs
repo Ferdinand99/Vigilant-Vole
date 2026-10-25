@@ -483,6 +483,9 @@ pub struct FormData {
     pub header_rows: Vec<(String, String)>,
     pub push_url: Option<String>,
     pub has_agents: bool,
+    /// "Check from": `(value, label)`, this server first, then the enabled
+    /// agents (and the chosen one, even when it is disabled).
+    pub check_from_choices: Vec<(String, String)>,
     /// `(value, label)` for the authentication method select.
     pub auth_methods: Vec<(&'static str, String)>,
     pub oauth_client_auths: Vec<(&'static str, String)>,
@@ -535,6 +538,11 @@ impl FormData {
 
     pub fn is_type(&self, t: &str) -> bool {
         self.v.monitor_type == t
+    }
+
+    /// Whether an agent checks the monitor instead of this server.
+    pub fn agent_checked(&self) -> bool {
+        !self.v.check_from.trim().is_empty()
     }
 
     /// The game picker of a game server monitor: (scheme, name, default
@@ -591,6 +599,8 @@ struct FormEnv {
     channels: Vec<ChannelOption>,
     tags: Vec<Tag>,
     has_agents: bool,
+    /// `(id, name, active)` of every agent.
+    agents: Vec<(i64, String, bool)>,
     base_url: Option<String>,
     agent_confirmation_default: bool,
     remote_browsers: Vec<(i64, String)>,
@@ -627,8 +637,8 @@ fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<Fo
         .collect();
     let channels = channel_options(conn)?;
     let tags = db_tags::list_tags(conn)?;
-    let has_agents: bool =
-        conn.query_row("SELECT EXISTS(SELECT 1 FROM agents)", [], |r| r.get(0))?;
+    let agents = crate::db::agents::list_agent_names(conn)?;
+    let has_agents = !agents.is_empty();
     let child_count = match editing {
         Some(m) => db_monitors::children(conn, m.id)?.len(),
         None => 0,
@@ -647,7 +657,9 @@ fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<Fo
             child_count,
             remote_browser_ids: remote_browsers.iter().map(|(id, _)| *id).collect(),
             browser_optional: false,
+            agent_ids: agents.iter().map(|(id, _, _)| *id).collect(),
         },
+        agents,
         remote_browsers,
         groups,
         channels,
@@ -730,6 +742,24 @@ fn form_data(
             .as_deref()
             .map(|t| push_url(env.base_url.as_deref(), headers, t)),
         has_agents: env.has_agents,
+        check_from_choices: std::iter::once((
+            String::new(),
+            crate::i18n::t("form.check_from_server").to_string(),
+        ))
+        .chain(
+            env.agents
+                .iter()
+                .filter(|(id, _, active)| *active || v.check_from == id.to_string())
+                .map(|(id, name, active)| {
+                    let label = if *active {
+                        name.clone()
+                    } else {
+                        crate::i18n::tf("form.check_from_disabled", &[("name", name)])
+                    };
+                    (id.to_string(), label)
+                }),
+        )
+        .collect(),
         auth_methods: AUTH_METHODS
             .iter()
             .map(|m| {
@@ -1828,6 +1858,8 @@ struct DetailTemplate {
     events: Vec<EventView>,
     heartbeats: HeartbeatsTemplate,
     agents: Vec<AgentResult>,
+    /// Name of the agent that checks the monitor instead of this server.
+    checked_by: Option<String>,
     children: Vec<ChildView>,
     push: Option<PushCardTemplate>,
     browser: Option<super::remote_browsers::BrowserPanel>,
@@ -1885,6 +1917,7 @@ struct DetailBundle {
     heartbeats: Vec<Heartbeat>,
     latest: Option<Heartbeat>,
     agents: Vec<AgentResult>,
+    checked_by: Option<String>,
     children: Vec<ChildView>,
     channels: Vec<String>,
     base_url: Option<String>,
@@ -1953,6 +1986,13 @@ fn load_detail(conn: &Connection, id: i64, range: Range) -> rusqlite::Result<Opt
         heartbeats: db_heartbeats::list_page(conn, id, None, HEARTBEAT_PAGE)?,
         latest: db_heartbeats::latest_local(conn, id)?,
         agents: db_heartbeats::agent_results(conn, id)?,
+        checked_by: match monitor
+            .check_from_agent_id
+            .filter(|_| monitor.is_agent_checked())
+        {
+            Some(agent_id) => crate::db::agents::get_agent(conn, agent_id)?.map(|a| a.name),
+            None => None,
+        },
         children,
         channels,
         base_url: db_settings::load(conn)?.base_url,
@@ -2102,6 +2142,7 @@ async fn detail(
             events,
             heartbeats,
             agents: b.agents,
+            checked_by: b.checked_by,
             children: b.children,
             push,
             browser: b.browser,

@@ -1290,6 +1290,7 @@ mod tests {
             browser_viewport: new.browser_viewport,
             browser_js_errors: false,
             grpc_proto: None,
+            check_from_agent_id: None,
         }
     }
 

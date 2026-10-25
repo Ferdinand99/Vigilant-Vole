@@ -365,7 +365,13 @@ mod tests {
         {
             crate::db::apply_one(&mut conn, &name, &sql).unwrap();
         }
-        let m = monitor(&conn, "a");
+        // Columns of that schema only (`insert_monitor` writes newer ones).
+        conn.execute(
+            "INSERT INTO monitors (name, monitor_type, target) VALUES ('a', 'http', 'https://a.test')",
+            [],
+        )
+        .unwrap();
+        let m = conn.last_insert_rowid();
         conn.execute(
             "INSERT INTO maintenance_windows (id, title, strategy, weekdays, time_from, time_to, timezone, skip_until)
              VALUES (7, 'Weekly', 'weekly', '1,3', '22:00', '23:00', 'Europe/Oslo', '2026-01-01 00:00:00')",

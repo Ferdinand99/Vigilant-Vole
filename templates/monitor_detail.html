@@ -29,7 +29,7 @@
     </div>
     {%- if ctx.can_edit() %}
     <div class="page-actions">
-      {%- if monitor.active && monitor.monitor_type.is_active_check() %}
+      {%- if monitor.active && monitor.monitor_type.is_active_check() && !monitor.is_agent_checked() %}
       <form method="post" action="/monitors/{{ monitor.id }}/check">
         <button type="submit" class="btn btn-secondary btn-collapse" aria-label="{{ tr("detail.check_now") }}" data-tip="{{ tr("detail.check_now") }}">{{ m::icon("refresh") }}<span>{{ tr("detail.check_now") }}</span></button>
       </form>
@@ -227,7 +227,9 @@
         <div class="dl-row"><dt>{{ tr("form.upside_down") }}</dt><dd>{{ tr("common.on") }}</dd></div>
         {%- endif %}
         <div class="dl-row"><dt>{{ tr("detail.alerts") }}</dt><dd>{% if channels.is_empty() %}<span class="muted">{{ tr("common.none") }}</span>{% else %}{{ channels|join(", ") }}{% endif %}</dd></div>
-        {%- if monitor.monitor_type.runs_on_agents() && (monitor.run_on_agents || monitor.confirm_with_agents) %}
+        {%- if let Some(agent) = checked_by %}
+        <div class="dl-row"><dt>{{ tr("nav.agents") }}</dt><dd>{{ tr1("detail.checked_by_agent", "name", agent) }}</dd></div>
+        {%- else if monitor.monitor_type.runs_on_agents() && (monitor.run_on_agents || monitor.confirm_with_agents) %}
         <div class="dl-row"><dt>{{ tr("nav.agents") }}</dt><dd>{% if monitor.run_on_agents %}{{ tr("detail.checks_from_agents") }}{% endif %}{% if monitor.run_on_agents && monitor.confirm_with_agents %} · {% endif %}{% if monitor.confirm_with_agents %}{{ tr("detail.confirms_outages") }}{% endif %}</dd></div>
         {%- endif %}
         {%- if monitor.source == "docker" %}

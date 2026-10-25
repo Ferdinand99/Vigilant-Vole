@@ -2,40 +2,40 @@
 source: tests/golden/schema.rs
 expression: out
 ---
-fresh schema sha256 b5a453c7a94ec729
+fresh schema sha256 440ae61e5c80c2da
 
 == v0.1.0
 had: 6
-applied: 0095_more_monitor_types.sql, 0096_http_auth.sql, 0097_sqlserver_mongodb.sql, 0098_status_page_extras.sql, 0099_real_browser.sql, 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
+applied: 0095_more_monitor_types.sql, 0096_http_auth.sql, 0097_sqlserver_mongodb.sql, 0098_status_page_extras.sql, 0099_real_browser.sql, 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, 0106_agent_checked_monitors.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
 backup: vigilant-vole-before-0095_more_monitor_types-<unix-seconds>.db
-schema sha256 b5a453c7a94ec729
+schema sha256 440ae61e5c80c2da
 
 == v0.2.0
 had: 8
-applied: 0097_sqlserver_mongodb.sql, 0098_status_page_extras.sql, 0099_real_browser.sql, 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
+applied: 0097_sqlserver_mongodb.sql, 0098_status_page_extras.sql, 0099_real_browser.sql, 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, 0106_agent_checked_monitors.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
 backup: vigilant-vole-before-0097_sqlserver_mongodb-<unix-seconds>.db
-schema sha256 b5a453c7a94ec729
+schema sha256 440ae61e5c80c2da
 
 == v0.3.0
 had: 11
-applied: 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
+applied: 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, 0106_agent_checked_monitors.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
 backup: vigilant-vole-before-0100_maintenance_strategies-<unix-seconds>.db
-schema sha256 b5a453c7a94ec729
+schema sha256 440ae61e5c80c2da
 
 == v0.4.0
 had: 11
-applied: 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
+applied: 0100_maintenance_strategies.sql, 0101_incident_updates.sql, 0102_status_page_subscribers.sql, 0103_subscriber_tokens.sql, 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, 0106_agent_checked_monitors.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
 backup: vigilant-vole-before-0100_maintenance_strategies-<unix-seconds>.db
-schema sha256 b5a453c7a94ec729
+schema sha256 440ae61e5c80c2da
 
 == v0.5.0
 had: 15
-applied: 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
+applied: 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, 0106_agent_checked_monitors.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
 backup: vigilant-vole-before-0104_adopt_kit_core-<unix-seconds>.db
-schema sha256 b5a453c7a94ec729
+schema sha256 440ae61e5c80c2da
 
 == v0.5.1
 had: 15
-applied: 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
+applied: 0104_adopt_kit_core.sql, 0105_heartbeat_raw_status.sql, 0106_agent_checked_monitors.sql, kit/0003_passkeys.sql, kit/0004_sealed_secrets.sql
 backup: vigilant-vole-before-0104_adopt_kit_core-<unix-seconds>.db
-schema sha256 b5a453c7a94ec729
+schema sha256 440ae61e5c80c2da

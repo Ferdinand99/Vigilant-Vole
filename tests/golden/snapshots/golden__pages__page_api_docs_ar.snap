@@ -194,7 +194,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="post--api-v1-monitors">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors</code></span>
-          <span class="list-sub">Create a monitor. Same validation as the monitor form; unknown tag names are created.</span>
+          <span class="list-sub">Create a monitor. Same validation as the monitor form; unknown tag names are created. check_from_agent_id (an agent id, null = this server) lets one remote agent check it instead of this server.</span>
         </span>
         <span class="list-trail"><span class="badge status-pending">editor</span></span>
         <div class="list-full">
@@ -489,7 +489,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="post--api-v1-monitors-id-check">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors/{id}/check</code></span>
-          <span class="list-sub">Run a check right now and return its result (409 for paused, push and group monitors).</span>
+          <span class="list-sub">Run a check right now and return its result (409 for paused, push, group and agent-checked monitors).</span>
         </span>
         <span class="list-trail"><span class="badge status-pending">editor</span></span>
         <div class="list-full">
@@ -610,7 +610,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="post--api-v1-monitors-bulk">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/monitors/bulk</code></span>
-          <span class="list-sub">Change settings on many monitors at once (ids, or every monitor matching a filter like the list&#39;s). Each setting is optional; it uses the monitor form&#39;s validation and one transaction. Settings that don&#39;t apply to a monitor&#39;s type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay.</span>
+          <span class="list-sub">Change settings on many monitors at once (ids, or every monitor matching a filter like the list&#39;s). Each setting is optional; it uses the monitor form&#39;s validation and one transaction. Settings that don&#39;t apply to a monitor&#39;s type are skipped and listed: agents_unsupported, timing_unsupported, timeout_exceeds_interval, escalation_needs_delay, agent_checked.</span>
         </span>
         <span class="list-trail"><span class="badge status-pending">editor</span></span>
         <div class="list-full">
@@ -1455,7 +1455,7 @@ status_pages:
       <li class="list-row list-row-wrap" id="get--api-agent-v1-monitors">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/agent/v1/monitors</code></span>
-          <span class="list-sub">For remote agents: the monitors to run (Bearer vva_… token, ETag).</span>
+          <span class="list-sub">For remote agents: the monitors to run, the ones it checks for the server included (Bearer vva_… token, ETag).</span>
         </span>
         <span class="list-trail"><span class="badge status-info">agent token</span></span>
       </li>

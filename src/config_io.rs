@@ -561,10 +561,14 @@ const MONITOR_SPECIAL: &[&str] = &[
     "source",
     "external_id",
     "remote_browser_id",
+    "check_from_agent_id",
 ];
 
 /// Monitor option naming its remote browser (instead of `remote_browser_id`).
 const REMOTE_BROWSER_OPTION: &str = "remote_browser";
+/// Monitor option naming the remote agent that checks it (instead of
+/// `check_from_agent_id`); missing or empty = this server.
+const CHECK_FROM_OPTION: &str = "check_from";
 
 fn new_monitor_value(m: &NewMonitor) -> Map<String, Value> {
     match serde_json::to_value(m) {
@@ -589,6 +593,10 @@ pub fn export(conn: &Connection, key: &Key, include_secrets: bool) -> rusqlite::
         .into_iter()
         .map(|b| (b.id, b.name))
         .collect();
+    let agent_names: HashMap<i64, String> = crate::db::agents::list_agent_names(conn)?
+        .into_iter()
+        .map(|(id, name, _)| (id, name))
+        .collect();
 
     let mut monitors: Vec<&Monitor> = all_monitors
         .iter()
@@ -607,6 +615,9 @@ pub fn export(conn: &Connection, key: &Key, include_secrets: bool) -> rusqlite::
         options.retain(|k, v| defaults.get(k) != Some(v));
         if let Some(name) = m.remote_browser_id.and_then(|id| browser_names.get(&id)) {
             options.insert(REMOTE_BROWSER_OPTION.into(), Value::String(name.clone()));
+        }
+        if let Some(name) = m.check_from_agent_id.and_then(|id| agent_names.get(&id)) {
+            options.insert(CHECK_FROM_OPTION.into(), Value::String(name.clone()));
         }
         if let Some(Value::String(h)) = options.get("http_headers").cloned() {
             let value = if include_secrets {
@@ -1141,6 +1152,8 @@ struct Current {
     pages: Vec<db_pages::StatusPage>,
     windows: Vec<db_maint::MaintenanceWindow>,
     browsers: Vec<crate::db::remote_browsers::RemoteBrowser>,
+    /// `(id, name, active)` of every remote agent (referenced by name).
+    agents: Vec<(i64, String, bool)>,
 }
 
 impl Current {
@@ -1156,6 +1169,7 @@ impl Current {
             pages: db_pages::list(conn)?.into_iter().map(|s| s.page).collect(),
             windows: db_maint::list(conn)?,
             browsers: crate::db::remote_browsers::list(conn)?,
+            agents: crate::db::agents::list_agent_names(conn)?,
         })
     }
 }
@@ -1734,7 +1748,7 @@ fn plan_channel(
 pub fn monitor_from_doc(m: &MonitorDoc) -> Result<NewMonitor, (String, String)> {
     let mut obj = new_monitor_value(&NewMonitor::default());
     for (k, v) in &m.options {
-        if k == REMOTE_BROWSER_OPTION {
+        if k == REMOTE_BROWSER_OPTION || k == CHECK_FROM_OPTION {
             continue; // resolved by name in `plan_monitors`
         }
         if MONITOR_SPECIAL.contains(&k.as_str()) || !obj.contains_key(k) {
@@ -1956,6 +1970,51 @@ fn plan_monitors(
                 continue;
             }
         }
+        match m.options.get(CHECK_FROM_OPTION) {
+            None | Some(Value::Null) => {}
+            Some(Value::String(name)) if name.trim().is_empty() => {}
+            Some(Value::String(name)) => {
+                let found: Vec<i64> = cur
+                    .agents
+                    .iter()
+                    .filter(|(_, n, _)| norm(n) == norm(name))
+                    .map(|(id, _, _)| *id)
+                    .collect();
+                match found.as_slice() {
+                    [id] => nm.check_from_agent_id = Some(*id),
+                    [] => {
+                        plan.error(
+                            KIND_MONITOR,
+                            key,
+                            Some(CHECK_FROM_OPTION),
+                            format!("No remote agent named “{}”.", name.trim()),
+                        );
+                        continue;
+                    }
+                    _ => {
+                        plan.error(
+                            KIND_MONITOR,
+                            key,
+                            Some(CHECK_FROM_OPTION),
+                            format!(
+                                "Several remote agents are named “{}”. Rename one in Settings → Remote agents.",
+                                name.trim()
+                            ),
+                        );
+                        continue;
+                    }
+                }
+            }
+            Some(_) => {
+                plan.error(
+                    KIND_MONITOR,
+                    key,
+                    Some(CHECK_FROM_OPTION),
+                    "Give the remote agent’s name.",
+                );
+                continue;
+            }
+        }
 
         // Secrets the export masked. A masked password stays masked:
         // `form::validate` keeps the stored one only while the target and
@@ -2128,15 +2187,16 @@ fn plan_monitors(
             child_count,
             remote_browser_ids: browsers.iter().map(|(_, b)| *b).collect(),
             browser_optional: true,
+            agent_ids: cur.agents.iter().map(|(id, _, _)| *id).collect(),
         };
         let valid = match form::validate(&values, &base, &cx) {
             Ok(v) => v,
             Err(errors) => {
                 for (field, msg) in errors {
-                    let field = if field == "parent_id" {
-                        "parent"
-                    } else {
-                        field
+                    let field = match field {
+                        "parent_id" => "parent",
+                        "check_from_agent_id" => CHECK_FROM_OPTION,
+                        other => other,
                     };
                     plan.error(KIND_MONITOR, key, Some(field), msg);
                 }
@@ -2297,12 +2357,10 @@ fn diff_fields(a: &NewMonitor, b: &NewMonitor) -> Vec<String> {
     let mut out: Vec<String> = a
         .iter()
         .filter(|(k, v)| b.get(*k) != Some(*v))
-        .map(|(k, _)| {
-            if k == "parent_id" {
-                "parent".to_string()
-            } else {
-                k.clone()
-            }
+        .map(|(k, _)| match k.as_str() {
+            "parent_id" => "parent".to_string(),
+            "check_from_agent_id" => CHECK_FROM_OPTION.to_string(),
+            _ => k.clone(),
         })
         .collect();
     out.sort();
