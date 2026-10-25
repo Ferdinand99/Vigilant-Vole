@@ -265,6 +265,7 @@ default one.
 | `flap_detection` | bool | `true` | Mute alerts while a monitor flaps (≥ 4 changes in 10 checks). |
 | `run_on_agents` | bool | `false` | Remote agents run this check too. |
 | `confirm_with_agents` | bool | `false` | Only alert when agents confirm the outage. |
+| `check_from` | string | this server | The remote agent's `name` (case-insensitive) that checks this monitor instead of this server; its results are the monitor's status, and the monitor goes down when the agent stops reporting ([details](remote-agents.md#checks-only-an-agent-can-reach)). Agents aren't part of the document: create them in Settings → Remote agents first. An unknown or ambiguous name is a validation error, and so are `push`, `group` and `real_browser` monitors and `run_on_agents` / `confirm_with_agents` together with it. Leaving it out means this server checks the monitor. |
 | `sort_order` | int | `0` | Dashboard order. |
 | `remote_browser` | string | first one | `real_browser`: the remote browser's `name`. Without one, the first remote browser is used (the plan warns when there is none yet). |
 | `browser_selector` | string | – | `real_browser`: CSS selector that must match; checked instead of `keyword` (which is the visible text to find). `keyword_invert` inverts either. |
@@ -383,6 +384,11 @@ monitors:
   - name: Postgres port
     monitor_type: tcp
     target: db.internal:5432
+
+  - name: Home NAS
+    monitor_type: tcp
+    target: 10.0.3.7:445
+    check_from: Home                 # the agent named "Home" checks it, not this server
 
   - name: Nightly backup
     monitor_type: push

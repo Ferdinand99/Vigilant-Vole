@@ -59,7 +59,7 @@ Editing tools (write token held by an editor or admin):
 
 | Tool | What it does |
 |---|---|
-| `create_monitor`, `update_monitor` | Same fields and validation as the REST API |
+| `create_monitor`, `update_monitor` | Same fields and validation as the REST API (`check_from_agent_id` included: a remote agent that checks the monitor instead of this server) |
 | `pause_monitor`, `resume_monitor`, `check_now` | |
 | `bulk_edit` | `POST /api/v1/monitors/bulk` semantics: `ids` or a `filter`, and `set` |
 | `create_incident`, `update_incident` | Post an incident; change it; add a timeline update (`investigating`, `identified`, `monitoring`, `resolved`) |
