@@ -832,7 +832,7 @@ async fn a_disabled_agent_marks_its_monitors_down() {
 }
 
 #[tokio::test]
-async fn a_deleted_agent_hands_its_monitors_back_to_this_server() {
+async fn a_deleted_agent_pauses_its_monitors() {
     let db = test_db().await;
     let s = fast_agent_scheduler(&db);
     insert_agent(&db, 7, "home").await;
@@ -848,18 +848,41 @@ async fn a_deleted_agent_hands_its_monitors_back_to_this_server() {
     )
     .await;
     s.reload(id).await;
-    assert_eq!(s.check_now(id).await, None);
+    assert!(s.is_running(id));
 
-    db::interact(&db.pool, |c| crate::db::agents::delete_agent(c, 7))
-        .await
-        .unwrap();
+    let deleted = db::interact(&db.pool, |c| {
+        crate::db::agents::delete_agent_pausing_monitors(c, 7)
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        (deleted.checked.clone(), deleted.paused),
+        (vec![id], vec![id])
+    );
+    s.reload(id).await;
     let m = db::interact(&db.pool, move |c| db_monitors::get_monitor(c, id))
         .await
         .unwrap()
         .unwrap();
+    assert!(!m.active, "paused");
     assert_eq!(m.check_from_agent_id, None, "the foreign key clears it");
+    assert!(!s.is_running(id), "nothing runs for it");
+    assert_eq!(s.check_now(id).await, None);
+    tokio::time::sleep(Duration::from_millis(1_600)).await;
+    assert!(statuses(&db, id).await.is_empty(), "no local check ran");
+    let events = monitor_events(&db, id).await;
+    assert!(
+        events
+            .iter()
+            .any(|e| e.kind == MonitorEventKind::Paused && e.is_open())
+    );
+
+    // Resumed later: this server checks it.
+    db::interact(&db.pool, move |c| db_monitors::set_active(c, id, true))
+        .await
+        .unwrap();
     s.reload(id).await;
-    // A local check loop now: the first check runs within the reload spread.
     wait_for_local(&db, id, 5, |status, _| status == "up").await;
     assert_eq!(s.check_now(id).await, Some(HeartbeatStatus::Up));
     s.shutdown().await;
