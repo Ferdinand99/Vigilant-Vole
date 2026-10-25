@@ -24,7 +24,9 @@ binary (see [3. Start the agent](#3-start-the-agent)).
 Compose and binary commands. Only a SHA-256 of the token is stored.
 
 From the same page you can **rotate** the token (the old one stops working immediately), **disable**
-the agent (it gets `403` and its results stop counting) or delete it.
+the agent (it gets `403` and its results stop counting) or delete it. Deleting an agent pauses the monitors it
+checks for the server (see [Checks only an agent can reach](#checks-only-an-agent-can-reach)); the confirmation
+says how many.
 
 ## 2. Pick the monitors
 
@@ -66,10 +68,14 @@ server, and pick that agent under **Check from** on the monitor's form (below *R
   15 seconds, the monitor records `down` with "Agent *name* has not reported for *n* s" (then again every retry
   interval), and recovers with the agent's next result. So when the whole home goes offline, power, internet or the
   home server itself, its monitors go down and the VPS alerts you. After a server restart the agent gets one extra
-  poll interval (30 s) to report.
+  poll interval (30 s) to report. Like a missed push, a silent agent records a `down` result every retry interval
+  until it reports again; [retention](config-as-code.md#settings) (Settings → General) cleans that history up as
+  usual.
 - **Disabled agent:** its monitors go down with "Agent *name* is disabled" until you enable it again.
-- **Deleted agent:** its monitors fall back to *This server* (the server logs which ones) and are checked locally
-  again. Pick another agent if the server can't reach them.
+- **Deleted agent:** its monitors are **paused** in the same step (the server logs which ones, and the message
+  after deleting says how many), so targets only that agent could reach don't all go down from the server at once.
+  They no longer name an agent: resume one and this server checks it, or pick another agent under *Check from*
+  first.
 
 *Check from remote agents too* and *Confirm outages with agents* don't apply to such a monitor (the form hides them,
 the API and config files reject the combination), and *Check now* is not offered: only the agent runs it. Push,
@@ -206,7 +212,10 @@ anything else. Treat agent hosts accordingly, and rotate the token if one is com
 ## Seeing the results
 
 - **Monitor page**: the latest result from each agent next to the local status.
-- **Settings → Remote agents**: online/offline (checked in within 90 s), version, last seen.
+- **Settings → Remote agents**: online/offline (checked in within 90 s), version, last seen, and how many monitors
+  each agent reported on in the last 15 minutes, with how many of them only that agent checks ("12 monitors (4
+  checked only by this agent)"). *Monitors run on agents* counts both kinds; *Checked only by one agent* is the
+  agent-checked part.
 - **Prometheus**: `vigilant_agent_up`, `vigilant_agent_last_seen_timestamp_seconds`,
   `vigilant_agent_monitor_status`, `vigilant_agent_monitor_response_time_seconds`.
-- **API**: `GET /api/v1/agents` (admin).
+- **API**: `GET /api/v1/agents` (admin); `checked_monitors` is the number of active monitors only that agent checks.

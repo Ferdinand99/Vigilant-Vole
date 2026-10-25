@@ -85,8 +85,9 @@ pages, badges, uptime and alerting use; the real result is kept next to it for t
 it. The agent's results are then the monitor's status, history and uptime, and the monitor goes `down` when the agent
 stops reporting or is disabled. Writes are rejected with `422` on `check_from_agent_id` for an unknown agent, for
 `push`, `group` and `real_browser` monitors, and together with `run_on_agents` or `confirm_with_agents` set to
-`true` (send those as `false`). `POST …/{id}/check` answers `409` for such a monitor: only the agent runs it. When the
-agent is deleted the field becomes `null` and this server checks the monitor again.
+`true` (send those as `false`). `POST …/{id}/check` answers `409` for such a monitor: only the agent runs it. Deleting
+the agent (Settings → Remote agents) pauses its monitors and sets the field to `null`, so a monitor resumed later is
+checked by this server. `GET /api/v1/agents` reports `checked_monitors` per agent (active monitors only it checks).
 
 ```bash
 curl -X PATCH -H "$AUTH" -H 'Content-Type: application/json' $BASE/api/v1/monitors/12 -d '{"check_from_agent_id": 3}'
