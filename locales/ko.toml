@@ -916,6 +916,10 @@ err_name_long = "{max}자 이하로 입력하세요"
 enabled = "에이전트 활성화됨"
 disabled = "에이전트 비활성화됨. 토큰이 더 이상 작동하지 않아요."
 deleted = "에이전트 삭제됨"
+deleted_paused.other = "에이전트 삭제됨. 확인하던 모니터 {n}개를 일시 중지했어요."
+delete_msg_checked.other = "토큰이 작동을 멈추고 결과가 삭제돼요. 확인하는 모니터 {n}개는 일시 중지돼요."
+checked_only.other = "(이 에이전트만 확인하는 모니터 {n}개)"
+how_count_checked = "한 에이전트만 확인"
 
 [integ]
 mcp_title = "MCP 및 AI 어시스턴트"

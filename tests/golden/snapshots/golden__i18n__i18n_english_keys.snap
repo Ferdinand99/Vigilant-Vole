@@ -4,6 +4,8 @@ expression: "english.join(\"\\n\")"
 ---
 agents.agents
 agents.binary
+agents.checked_only.one
+agents.checked_only.other
 agents.connect
 agents.connect_foot_1
 agents.connect_foot_2
@@ -11,7 +13,11 @@ agents.copy_command
 agents.copy_compose
 agents.create
 agents.delete_msg
+agents.delete_msg_checked.one
+agents.delete_msg_checked.other
 agents.deleted
+agents.deleted_paused.one
+agents.deleted_paused.other
 agents.disabled
 agents.empty_text
 agents.empty_title
@@ -24,6 +30,7 @@ agents.how_avoid_text
 agents.how_choose
 agents.how_choose_text
 agents.how_count
+agents.how_count_checked
 agents.how_to_run
 agents.last_seen
 agents.location

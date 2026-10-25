@@ -927,6 +927,13 @@ err_name_long = "Verwende höchstens {max} Zeichen"
 enabled = "Agent aktiviert"
 disabled = "Agent deaktiviert. Sein Token funktioniert nicht mehr."
 deleted = "Agent gelöscht"
+deleted_paused.one = "Agent gelöscht. {n} Monitor, den er geprüft hat, ist pausiert."
+deleted_paused.other = "Agent gelöscht. {n} Monitore, die er geprüft hat, sind pausiert."
+delete_msg_checked.one = "Sein Token funktioniert nicht mehr und seine Ergebnisse werden gelöscht. {n} Monitor, den er prüft, wird pausiert."
+delete_msg_checked.other = "Sein Token funktioniert nicht mehr und seine Ergebnisse werden gelöscht. {n} Monitore, die er prüft, werden pausiert."
+checked_only.one = "({n} nur von diesem Agent geprüft)"
+checked_only.other = "({n} nur von diesem Agent geprüft)"
+how_count_checked = "Nur von einem Agent geprüft"
 
 [integ]
 mcp_title = "MCP und KI-Assistenten"

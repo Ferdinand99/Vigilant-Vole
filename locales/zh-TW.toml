@@ -916,6 +916,10 @@ err_name_long = "最多使用 {max} 個字元"
 enabled = "已啟用代理程式"
 disabled = "已停用代理程式。其權杖已失效。"
 deleted = "已刪除代理程式"
+deleted_paused.other = "已刪除代理程式。它檢查的 {n} 個監控項目已暫停。"
+delete_msg_checked.other = "其權杖會失效，其結果也會一併刪除。它檢查的 {n} 個監控項目會暫停。"
+checked_only.other = "（其中 {n} 個僅由此代理程式檢查）"
+how_count_checked = "僅由一個代理程式檢查"
 
 [integ]
 mcp_title = "MCP 與 AI 助理"

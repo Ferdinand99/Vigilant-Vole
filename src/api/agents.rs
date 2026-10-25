@@ -392,6 +392,8 @@ pub struct AgentRow {
     pub online: bool,
     pub active: bool,
     pub reporting: i64,
+    /// Active monitors only this agent checks (paused when it is deleted).
+    pub checks: i64,
 }
 
 /// A token to show once, with ready-to-paste snippets.
@@ -411,6 +413,8 @@ struct AgentsTemplate {
     agents: Vec<AgentRow>,
     shown: Option<ShownToken>,
     agent_monitors: i64,
+    /// Of `agent_monitors`, the ones a single agent checks instead of this server.
+    agent_checked_monitors: i64,
     name_value: String,
     location_value: String,
     name_error: String,
@@ -464,11 +468,12 @@ async fn render_page(
     form: CreateForm,
     name_error: String,
 ) -> ApiResult<(SignedCookieJar, Response)> {
-    let (list, agent_monitors) = state
+    let (list, agent_monitors, agent_checked_monitors) = state
         .with_conn(|c| {
             Ok((
                 db_agents::list_agents(c)?,
                 db_agents::count_agent_monitors(c)?,
+                db_agents::count_agent_checked_monitors(c)?,
             ))
         })
         .await?;
@@ -484,6 +489,7 @@ async fn render_page(
             online: s.online,
             active: s.agent.active,
             reporting: s.reporting_monitors,
+            checks: s.checked_monitors,
         })
         .collect();
     let (ctx, jar) = PageCtx::build(
@@ -500,6 +506,7 @@ async fn render_page(
         agents,
         shown,
         agent_monitors,
+        agent_checked_monitors,
         name_value: form.name,
         location_value: form.location,
         name_error,
@@ -661,34 +668,34 @@ async fn delete_agent(
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
     user.require(Role::Admin)?;
-    let (found, checked) = state
-        .with_conn(move |c| {
-            let checked = db_agents::monitors_checked_by(c, id)?;
-            Ok((db_agents::delete_agent(c, id)?, checked))
-        })
-        .await?;
-    if !found {
-        return Err(ApiError::NotFound);
-    }
+    let deleted = state
+        .with_conn(move |c| db_agents::delete_agent_pausing_monitors(c, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
     tracing::info!(agent_id = id, user = %user.username, "remote agent deleted");
-    // `check_from_agent_id` is cleared by the foreign key: the monitors this
-    // agent checked are checked by this server again.
-    if !checked.is_empty() {
+    // Paused in the same transaction (the foreign key cleared
+    // `check_from_agent_id`): their targets may only be reachable from the
+    // agent, so this server doesn't take over.
+    if !deleted.paused.is_empty() {
         tracing::info!(
             agent_id = id,
-            monitors = ?checked,
-            "monitors checked by the deleted agent fall back to this server"
+            monitors = ?deleted.paused,
+            "monitors checked by the deleted agent were paused"
         );
     }
-    for monitor_id in checked {
-        state.scheduler.reload(monitor_id).await;
+    for monitor_id in &deleted.checked {
+        state.scheduler.reload(*monitor_id).await;
     }
+    crate::maintenance::invalidate(&state);
     state.notify_update();
+    let message = match deleted.paused.len() {
+        0 => crate::i18n::t("agents.deleted").to_string(),
+        n => crate::i18n::tn("agents.deleted_paused", n as i64),
+    };
     let mut response = StatusCode::OK.into_response();
-    response.headers_mut().insert(
-        "hx-trigger",
-        toast_trigger(crate::i18n::t("agents.deleted"), "success"),
-    );
+    response
+        .headers_mut()
+        .insert("hx-trigger", toast_trigger(&message, "success"));
     Ok(response)
 }
 

@@ -916,6 +916,10 @@ err_name_long = "{max}文字以内にしてください"
 enabled = "エージェントを有効にしました"
 disabled = "エージェントを無効にしました。トークンは使えなくなります。"
 deleted = "エージェントを削除しました"
+deleted_paused.other = "エージェントを削除しました。チェックしていた{n}件のモニターを一時停止しました。"
+delete_msg_checked.other = "トークンは使えなくなり、結果も削除されます。チェックしている{n}件のモニターは一時停止されます。"
+checked_only.other = "（うち{n}件はこのエージェントのみがチェック）"
+how_count_checked = "1つのエージェントのみがチェック"
 
 [integ]
 mcp_title = "MCPとAIアシスタント"

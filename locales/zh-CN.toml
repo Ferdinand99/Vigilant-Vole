@@ -916,6 +916,10 @@ err_name_long = "最多使用 {max} 个字符"
 enabled = "探针已启用"
 disabled = "探针已禁用，其令牌不再有效。"
 deleted = "探针已删除"
+deleted_paused.other = "探针已删除。它检查的 {n} 个监控项已暂停。"
+delete_msg_checked.other = "它的令牌会失效，其结果也会被删除。它检查的 {n} 个监控项会被暂停。"
+checked_only.other = "（其中 {n} 个仅由此探针检查）"
+how_count_checked = "仅由一个探针检查"
 
 [integ]
 mcp_title = "MCP 与 AI 助手"

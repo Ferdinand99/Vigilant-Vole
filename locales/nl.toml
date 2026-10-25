@@ -928,6 +928,13 @@ err_name_long = "Gebruik maximaal {max} tekens"
 enabled = "Agent ingeschakeld"
 disabled = "Agent uitgeschakeld. Het token werkt niet meer."
 deleted = "Agent verwijderd"
+deleted_paused.one = "Agent verwijderd. {n} monitor die hij controleerde is gepauzeerd."
+deleted_paused.other = "Agent verwijderd. {n} monitors die hij controleerde zijn gepauzeerd."
+delete_msg_checked.one = "Het token werkt niet meer en de resultaten van de agent worden verwijderd. {n} monitor die hij controleert wordt gepauzeerd."
+delete_msg_checked.other = "Het token werkt niet meer en de resultaten van de agent worden verwijderd. {n} monitors die hij controleert worden gepauzeerd."
+checked_only.one = "({n} alleen door deze agent gecontroleerd)"
+checked_only.other = "({n} alleen door deze agent gecontroleerd)"
+how_count_checked = "Alleen door één agent gecontroleerd"
 
 [integ]
 mcp_title = "MCP en AI-assistenten"

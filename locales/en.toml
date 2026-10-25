@@ -1011,6 +1011,13 @@ err_name_long = "Use at most {max} characters"
 enabled = "Agent enabled"
 disabled = "Agent disabled. Its token no longer works."
 deleted = "Agent deleted"
+deleted_paused.one = "Agent deleted. {n} monitor it checked is paused."
+deleted_paused.other = "Agent deleted. {n} monitors it checked are paused."
+delete_msg_checked.one = "Its token stops working and its results are deleted. The {n} monitor it checks is paused."
+delete_msg_checked.other = "Its token stops working and its results are deleted. The {n} monitors it checks are paused."
+checked_only.one = "({n} checked only by this agent)"
+checked_only.other = "({n} checked only by this agent)"
+how_count_checked = "Checked only by one agent"
 
 [integ]
 mcp_title = "MCP and AI assistants"
