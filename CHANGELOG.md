@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.12.1...v0.13.0) (2026-10-25)
+
+
+### Features
+
+* agent-checked monitors ("Check from") ([#59](https://github.com/Ferdinand99/Vigilant-Vole/issues/59)) ([43c5808](https://github.com/Ferdinand99/Vigilant-Vole/commit/43c5808c716bb2a4370548c0e2475f2521a066e3))
+
 ## [0.12.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.12.0...v0.12.1) (2026-10-24)
 
 
