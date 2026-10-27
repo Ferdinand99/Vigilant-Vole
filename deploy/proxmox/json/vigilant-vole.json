@@ -74,7 +74,7 @@
       "type": "warning"
     },
     {
-      "text": "Set a setup token (var_setup_token, or VV_SETUP_TOKEN in /etc/vigilant-vole/vigilant-vole.env) to require /setup?token=<value> for the first visit.",
+      "text": "The setup wizard needs a setup token: set one (var_setup_token, or VV_SETUP_TOKEN in /etc/vigilant-vole/vigilant-vole.env) and open /setup?token=<value>, or read the one the app logs at start (journalctl -u vigilant-vole).",
       "type": "info"
     },
     {

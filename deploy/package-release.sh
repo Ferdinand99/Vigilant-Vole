@@ -53,6 +53,7 @@ and vigilant-vole.service. Update with \`... install.sh) update\`.
     DATA_DIR=./data PORT=3001 ./vigilant-vole serve
 
 Open http://localhost:3001 and create the admin account in the setup wizard.
+It asks for the setup token the app logs at start (or set VV_SETUP_TOKEN yourself).
 Remote probe agent: \`VV_AGENT_TOKEN=vva_... ./vigilant-vole agent --server https://status.example.com\`.
 
 Ping monitors need unprivileged ICMP (net.ipv4.ping_group_range) or CAP_NET_RAW.

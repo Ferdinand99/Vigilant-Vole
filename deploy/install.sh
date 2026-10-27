@@ -504,9 +504,12 @@ PORT=${port:-$DEFAULT_PORT}
 # trust X-Forwarded-* for secure cookies, client IPs and generated URLs.
 #VV_TRUST_PROXY=1
 
-# Require /setup?token=<value> for the first-run setup page, so nobody else
-# can claim a fresh instance that is reachable from the network.
+# The first-run setup page needs /setup?token=<value>, so nobody else can
+# claim a fresh instance that is reachable from the network. Unset, the app
+# makes up a token and logs it once at start (journalctl -u vigilant-vole).
 #VV_SETUP_TOKEN=
+# Skip the token: the first visitor creates the admin (scripted installs).
+#VV_SETUP_OPEN=1
 
 # Merge a YAML/JSON config document into the database on every start.
 #VV_CONFIG_FILE=/etc/vigilant-vole/vigilant.yml
@@ -748,7 +751,8 @@ print_url() {
     echo "First visit: http://$host:$p/setup?token=<VV_SETUP_TOKEN from $ENV_FILE>"
   else
     echo "Open it and create the admin account in the setup wizard right away."
-    echo "(Until then anyone who can reach it can. Set VV_SETUP_TOKEN in $ENV_FILE to lock that down.)"
+    echo "The wizard needs the setup token the app logged at start: journalctl -u $SERVICE | grep 'setup token'"
+    echo "(Or set VV_SETUP_TOKEN in $ENV_FILE, or VV_SETUP_OPEN=1 to skip the token.)"
   fi
   echo "Settings: $ENV_FILE   Data: $DATA_DIR   Logs: journalctl -u $SERVICE -f"
   echo "Update:   bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/$REPO/main/deploy/install.sh)\" -- update"

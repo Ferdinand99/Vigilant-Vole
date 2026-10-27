@@ -51,9 +51,10 @@ The script ([`deploy/install.sh`](../deploy/install.sh)):
 (For an agent, steps 4 and 5 write `/etc/vigilant-vole/agent.env` and start `vigilant-vole-agent.service`
 instead; see [Remote agent](#remote-agent).)
 
-Open `http://<server>:3001` and create the admin account in the setup wizard **right away** (until then,
-anyone who can reach the page can). To lock the wizard first, set `VV_SETUP_TOKEN` in the env file and
-open `/setup?token=<value>`.
+Open `http://<server>:3001` and create the admin account in the setup wizard **right away**. The wizard
+needs a setup token: set `VV_SETUP_TOKEN` in the env file and open `/setup?token=<value>`, or leave it
+unset and read the one the app made up from the log (`journalctl -u vigilant-vole | grep "setup token"`).
+`VV_SETUP_OPEN=1` skips the token (anyone who can reach the page first creates the admin).
 
 Options (put them after `--`):
 
@@ -88,7 +89,7 @@ The answers can be given up front, which is what an unattended run (`mode=defaul
 | Variable | Meaning |
 |---|---|
 | `var_mode` | `server` (default) or `agent` |
-| `var_setup_token` | server: require `/setup?token=<value>` for the setup wizard |
+| `var_setup_token` | server: the setup token for `/setup?token=<value>` (unset: the app makes one up and logs it) |
 | `var_agent_server` | agent, required: URL of your Vigilant Vole server |
 | `var_agent_token` | agent, required: the `vva_…` token from Settings → Remote agents |
 | `var_agent_name` | agent: display name (default: the container's hostname) |

@@ -751,8 +751,8 @@
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
               <p>
                 <span class="callout-title">Finish setup right away</span>
-                Until the first admin exists, anyone who can reach the page can create one. Set
-                <code>VV_SETUP_TOKEN</code> to require a secret in the setup link.
+                Until the first admin exists, the wizard needs a setup token: the app logs one at start
+                (or set your own with <code>VV_SETUP_TOKEN</code>), so nobody else can claim a fresh instance.
               </p>
             </div>
           </div>
