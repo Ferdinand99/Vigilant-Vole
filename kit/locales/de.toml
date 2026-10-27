@@ -271,6 +271,10 @@ pk_unsupported = "Dieser Browser unterstützt keine Passkeys."
 pk_no_support = "Dieser Browser unterstützt keine Passkeys. Versuche einen anderen Browser oder melde dich mit deinem Passwort an."
 pk_exists = "Dieser Passkey ist für dein Konto bereits gespeichert."
 pk_failed = "Der Passkey konnte nicht gespeichert werden. Versuche es erneut."
+reauth_needed = "Gib dein Passwort ein, um diese Änderung zu bestätigen."
+your_password = "Dein Passwort"
+revoke_tokens = "Meine API-Tokens ebenfalls widerrufen"
+revoke_tokens_help = "Skripte, die sie verwenden, funktionieren nicht mehr, bis du neue erstellst."
 
 [users]
 sub = "Wer sich anmelden darf und was er ändern kann."
@@ -330,6 +334,8 @@ reset_pk = "Passkeys entfernen"
 reset_pk_q = "Alle Passkeys von {name} entfernen?"
 reset_pk_msg = "Die Person wird überall abgemeldet und meldet sich mit ihrem Passwort an, bis sie wieder einen Passkey hinzufügt."
 pk_reset = "Passkeys von {name} entfernt. Die Person wurde überall abgemeldet."
+revoke_tokens = "Auch die API-Tokens dieses Nutzers widerrufen"
+admin_password_help = "Dein eigenes Passwort, um das Hinzufügen eines Admins zu bestätigen."
 
 [tokens]
 new = "Neues Token"
@@ -366,6 +372,7 @@ err_expiry = "Wähle, wann das Token abläuft."
 err_limit = "Du hast schon 50 Tokens. Widerrufe einige, die du nicht mehr brauchst."
 created = "Token erstellt"
 revoked = "Token widerrufen"
+password_help = "Nötig für Lese- und Schreibzugriff und für Tokens, die nie ablaufen. Nicht nötig für ein schreibgeschütztes Token mit Ablaufdatum."
 
 [auth]
 welcome = "Willkommen"

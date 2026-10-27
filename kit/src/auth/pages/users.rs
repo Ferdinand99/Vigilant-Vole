@@ -3,6 +3,9 @@
 //! - `POST /settings/users/{id}` (display name + role)
 //! - `POST /settings/users/{id}/password` (set a temporary password)
 //! - `POST /settings/users/{id}/2fa/reset`
+//!
+//! Adding or promoting an administrator, and resetting a password or
+//! two-factor, ask the admin for their own password again.
 //! - `POST /settings/users/{id}/passkeys/reset`
 //! - `POST /settings/users/{id}/enable` · `/disable` · `/delete`
 //!
@@ -17,6 +20,7 @@ use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
 use crate::auth::{self, CurrentUser, Role};
+use crate::db::api_tokens as db_tokens;
 use crate::db::passkeys as db_passkeys;
 use crate::db::users::{self as db_users, User, UserChangeError};
 use crate::http::{ApiResult, HtmlTemplate};
@@ -131,6 +135,9 @@ pub struct CreateForm {
     role: String,
     #[serde(default)]
     password: String,
+    /// The admin's own password, needed to add an administrator.
+    #[serde(default)]
+    current_password: String,
 }
 
 pub(super) async fn create(
@@ -173,6 +180,13 @@ pub(super) async fn create(
             crate::i18n::tf("users.err_taken", &[("name", &username)]),
         ));
     }
+    // A new administrator outlasts a stolen session: confirm it's you.
+    if role == Role::Admin
+        && let Err(msg) =
+            super::security::require_password(&core, &user, form.current_password).await?
+    {
+        return Ok(back(jar, "error", msg));
+    }
     let hash = auth::hash_password_async(form.password).await?;
     let (name, shown) = (username.clone(), display_name.clone());
     core.with_conn(move |c| db_users::insert_user_full(c, &name, &hash, role, &shown))
@@ -191,6 +205,9 @@ pub struct UpdateForm {
     display_name: String,
     #[serde(default)]
     role: String,
+    /// The admin's own password, needed to make someone an administrator.
+    #[serde(default)]
+    current_password: String,
 }
 
 pub(super) async fn update(
@@ -211,6 +228,19 @@ pub(super) async fn update(
     if id == user.id && role != user.role {
         return Ok(back(jar, "error", crate::i18n::t("users.err_own_role")));
     }
+    // Promoting is as good as adding an administrator.
+    if role == Role::Admin {
+        let promoting = core
+            .with_conn(move |c| db_users::get_user(c, id))
+            .await?
+            .is_some_and(|target| target.role != Role::Admin);
+        if promoting
+            && let Err(msg) =
+                super::security::require_password(&core, &user, form.current_password).await?
+        {
+            return Ok(back(jar, "error", msg));
+        }
+    }
     let result = core
         .with_conn(move |c| db_users::update_profile(c, id, &display_name, role))
         .await?;
@@ -227,6 +257,21 @@ pub(super) async fn update(
 pub struct ResetPasswordForm {
     #[serde(default)]
     password: String,
+    /// The admin's own password.
+    #[serde(default)]
+    current_password: String,
+    /// Also revoke the user's API tokens (the sheet's box is on by default;
+    /// a form that doesn't send it keeps them).
+    #[serde(default)]
+    revoke_tokens: bool,
+}
+
+/// The admin's own password, for the actions that take over or unlock
+/// someone's sign-in.
+#[derive(Deserialize)]
+pub struct ConfirmForm {
+    #[serde(default)]
+    current_password: String,
 }
 
 pub(super) async fn reset_password(
@@ -254,10 +299,23 @@ pub(super) async fn reset_password(
             crate::i18n::tf("users.err_temp_password", &[("problem", problem)]),
         ));
     }
+    if let Err(msg) = super::security::require_password(&core, &user, form.current_password).await?
+    {
+        return Ok(back(jar, "error", msg));
+    }
     let hash = auth::hash_password_async(form.password).await?;
-    core.with_conn(move |c| db_users::set_password(c, id, &hash))
+    let revoke = form.revoke_tokens;
+    let revoked = core
+        .with_conn(move |c| {
+            db_users::set_password(c, id, &hash)?;
+            if revoke {
+                db_tokens::delete_all_for_user(c, id)
+            } else {
+                Ok(0)
+            }
+        })
         .await?;
-    tracing::info!(admin = %user.username, user = %target.username, "password reset by admin");
+    tracing::info!(admin = %user.username, user = %target.username, revoked_tokens = revoked, "password reset by admin");
     Ok(back(
         jar,
         "success",
@@ -270,6 +328,7 @@ pub(super) async fn reset_two_factor(
     user: CurrentUser,
     jar: SignedCookieJar,
     Path(id): Path<i64>,
+    Form(form): Form<ConfirmForm>,
 ) -> ApiResult<Response> {
     user.require_admin()?;
     let Some(target) = core.with_conn(move |c| db_users::get_user(c, id)).await? else {
@@ -279,6 +338,10 @@ pub(super) async fn reset_two_factor(
             change_message(UserChangeError::NotFound),
         ));
     };
+    if let Err(msg) = super::security::require_password(&core, &user, form.current_password).await?
+    {
+        return Ok(back(jar, "error", msg));
+    }
     core.with_conn(move |c| {
         db_users::disable_totp(c, id)?;
         db_users::bump_session_version(c, id)

@@ -271,6 +271,10 @@ pk_unsupported = "Bu tarayıcı geçiş anahtarlarını desteklemiyor."
 pk_no_support = "Bu tarayıcı geçiş anahtarlarını desteklemiyor. Başka bir tarayıcı deneyin veya parolanızla giriş yapın."
 pk_exists = "Bu geçiş anahtarı hesabınız için zaten kayıtlı."
 pk_failed = "Geçiş anahtarı kaydedilemedi. Yeniden deneyin."
+reauth_needed = "Bu değişikliği onaylamak için parolanızı girin."
+your_password = "Parolanız"
+revoke_tokens = "API belirteçlerimi de iptal et"
+revoke_tokens_help = "Bunları kullanan betikler, yenilerini oluşturana kadar çalışmaz."
 
 [users]
 sub = "Kimlerin giriş yapabileceği ve neleri değiştirebileceği."
@@ -330,6 +334,8 @@ reset_pk = "Geçiş anahtarlarını kaldır"
 reset_pk_q = "{name} için tüm geçiş anahtarları kaldırılsın mı?"
 reset_pk_msg = "Her yerde oturumları kapatılır ve yeniden bir geçiş anahtarı ekleyene kadar parolalarıyla giriş yaparlar."
 pk_reset = "{name} için geçiş anahtarları kaldırıldı. Her yerdeki oturumları kapatıldı."
+revoke_tokens = "Kullanıcının API belirteçlerini de iptal et"
+admin_password_help = "Bir yönetici eklemeyi onaylamak için kendi parolanız."
 
 [tokens]
 new = "Yeni belirteç"
@@ -366,6 +372,7 @@ err_expiry = "Belirtecin ne zaman sona ereceğini seçin."
 err_limit = "Zaten 50 belirteciniz var. Artık kullanmadıklarınızı iptal edin."
 created = "Belirteç oluşturuldu"
 revoked = "Belirteç iptal edildi"
+password_help = "Okuma ve yazma erişimi ile hiç sona ermeyen belirteçler için gerekir. Süresi dolan salt okunur belirteç için gerekmez."
 
 [auth]
 welcome = "Hoş geldiniz"

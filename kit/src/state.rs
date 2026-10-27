@@ -39,7 +39,24 @@ impl FromRef<Core> for Key {
 
 impl Core {
     /// A new instance's state, with fresh sign-in throttles.
+    ///
+    /// Called inside a Tokio runtime, it also seals the plaintext
+    /// two-factor secrets of an older database in the background
+    /// ([`auth::totp::seal_stored`](super::auth::totp::seal_stored); a
+    /// login meanwhile still works with either form). A product that builds
+    /// its `Core` another way calls that function itself after migrating.
     pub fn new(db: Pool, session_key: Key, http: reqwest::Client, cfg: &'static KitConfig) -> Self {
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let (pool, key) = (db.clone(), session_key.clone());
+            runtime.spawn(async move {
+                let sealed =
+                    super::db::interact(&pool, move |c| super::auth::totp::seal_stored(c, &key))
+                        .await;
+                if let Err(err) = sealed {
+                    tracing::warn!(%err, "couldn't seal the stored two-factor secrets");
+                }
+            });
+        }
         Self {
             db,
             session_key,

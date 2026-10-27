@@ -262,6 +262,10 @@ pk_unsupported = "此瀏覽器不支援密碼金鑰。"
 pk_no_support = "此瀏覽器不支援密碼金鑰。請改用其他瀏覽器，或使用密碼登入。"
 pk_exists = "此密碼金鑰已儲存在你的帳號中。"
 pk_failed = "無法儲存密碼金鑰。請再試一次。"
+reauth_needed = "請輸入密碼以確認此變更。"
+your_password = "你的密碼"
+revoke_tokens = "同時撤銷我的 API 權杖"
+revoke_tokens_help = "使用這些權杖的腳本會停止運作，直到你建立新的權杖。"
 
 [users]
 sub = "誰可以登入，以及他們能變更什麼。"
@@ -321,6 +325,8 @@ reset_pk = "移除密碼金鑰"
 reset_pk_q = "移除 {name} 的所有密碼金鑰？"
 reset_pk_msg = "對方會在所有地方登出，在重新新增密碼金鑰之前需以密碼登入。"
 pk_reset = "已移除 {name} 的密碼金鑰，對方已在所有地方登出。"
+revoke_tokens = "同時撤銷該使用者的 API 權杖"
+admin_password_help = "你自己的密碼，用於確認新增管理員。"
 
 [tokens]
 new = "新增權杖"
@@ -357,6 +363,7 @@ err_expiry = "請選擇權杖的到期時間。"
 err_limit = "你已有 50 個權杖。請撤銷一些不再使用的。"
 created = "已建立權杖"
 revoked = "已撤銷權杖"
+password_help = "讀寫存取和永不過期的權杖需要密碼。會過期的唯讀權杖則不需要。"
 
 [auth]
 welcome = "歡迎"

@@ -191,6 +191,16 @@ pub struct CreateForm {
     scope: String,
     #[serde(default)]
     expires: String,
+    /// The creator's current password, needed for [`needs_reauth`] tokens.
+    #[serde(default)]
+    current_password: String,
+}
+
+/// Tokens that outlast a stolen session: write access, or no expiry. The
+/// creator confirms their password first; a short-lived read-only token
+/// doesn't ask.
+fn needs_reauth(scope: TokenScope, expires_in: Option<i64>) -> bool {
+    scope == TokenScope::Write || expires_in.is_none()
 }
 
 fn back(jar: SignedCookieJar, kind: &str, message: &str) -> Response {
@@ -225,6 +235,12 @@ pub(super) async fn create(
     else {
         return Ok(back(jar, "error", crate::i18n::t("tokens.err_expiry")));
     };
+    if needs_reauth(scope, expires_in)
+        && let Err(msg) =
+            super::security::require_password(&core, &user, form.current_password).await?
+    {
+        return Ok(back(jar, "error", &msg));
+    }
     let uid = user.id;
     let count = core
         .with_conn(move |c| db_tokens::list_for_user(c, uid))

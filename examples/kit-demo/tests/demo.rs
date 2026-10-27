@@ -592,6 +592,7 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
             "kit/0002_token_scopes.sql",
             "kit/0003_passkeys.sql",
             "kit/0004_sealed_secrets.sql",
+            "kit/0005_sealed_totp.sql",
             "0001_notes.sql"
         ]
     );
@@ -1567,7 +1568,10 @@ async fn passkeys_register_and_sign_in_without_password_or_code() {
     assert_eq!(res.location(), "/settings/security#passkeys");
     assert!(app.get("/settings/security").await.body.contains("Laptop"));
     let res = app
-        .post(&format!("/settings/security/passkeys/{pk}/delete"), &[])
+        .post(
+            &format!("/settings/security/passkeys/{pk}/delete"),
+            &[("current_password", PASSWORD)],
+        )
         .await;
     assert_eq!(res.location(), "/settings/security#passkeys");
     assert!(

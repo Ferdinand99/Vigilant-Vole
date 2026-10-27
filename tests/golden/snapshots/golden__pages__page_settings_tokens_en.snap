@@ -188,6 +188,11 @@ content-type: text/html; charset=utf-8
           <option value="never">Never</option>
         </select>
       </div>
+      <div class="field">
+        <label class="label" for="nt-password">Your password</label>
+        <input id="nt-password" name="current_password" type="password" maxlength="1024" autocomplete="current-password" aria-describedby="nt-password-help">
+        <p class="help" id="nt-password-help">Needed for read and write access and for tokens that never expire. Not needed for a read-only token that expires.</p>
+      </div>
     </form>
   </div>
   <footer class="sheet-foot">

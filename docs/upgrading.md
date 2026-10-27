@@ -157,6 +157,18 @@ Running an older version on a database a newer version has migrated is **not sup
   (`vigilant-vole-before-kit-0004_sealed_secrets-….db`), with the secrets still in plaintext. 0.11.x
   refuses a database 0.12.0 has started on. It couldn't read the sealed secrets and would send them to
   the providers as they are. To go back, restore that copy.
+- **The release after 0.13.0** records `kit/0005_sealed_totp.sql` (no table changes) and then seals the
+  two-factor secrets of your users. The upgrade takes the usual copy first
+  (`vigilant-vole-before-kit-0005_sealed_totp-….db`, or named after the first other migration the
+  release adds), with the two-factor secrets still in plaintext and a `….db.plaintext-secrets` file
+  next to it.
+  0.13.0 refuses a database the new release has started on. To go back, restore that copy. **Copies like
+  this one, and the ones made before 0.12.0's sealing, are deleted automatically**: at the first start
+  after the one that took it, once the database holds no plaintext secret, or after 7 days, whichever
+  comes first. Only files that name the sealing migrations or carry the marker are touched; a copy from
+  before this release named after another migration stays until you delete it. Copy the file elsewhere
+  if you need to keep a rollback longer than that. A **Database backup** download opens the two-factor
+  secrets like the channel secrets, so it restores on any instance.
 - **0.5.0 and older** don't check. They start, and in a test of 0.4.0 on a 0.5.0 database the dashboard,
   status pages and API writes worked, but anything the newer version stores (incident updates,
   subscribers, new maintenance options) is ignored and can end up inconsistent. Don't rely on it:

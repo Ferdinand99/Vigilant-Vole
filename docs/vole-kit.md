@@ -35,7 +35,7 @@ kit/
 ├── migrations/         # the core set: 0001_core.sql (users, api_tokens, settings),
 │                       #   0002_token_scopes.sql (api_token_scopes),
 │                       #   0003_passkeys.sql (passkeys, passkey_challenges),
-│                       #   0004_sealed_secrets.sql (a record only, no table)
+│                       #   0004_sealed_secrets.sql, 0005_sealed_totp.sql (records only, no table)
 ├── templates/          # layouts, macros, the shared pages
 └── src/
 examples/kit-demo/      # a second product on the kit (tests only, not released)
@@ -97,7 +97,7 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `crypto` | sealing small secrets at rest under the instance key: `seal`, `open`, `is_sealed`, `Sealer`, `OpenError`, `PREFIX` (see "Sealed secrets") |
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `migrate_with` + `MigrateOptions`) |
+| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `migrate_with` + `MigrateOptions`) |
 | `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, `session_write_allowed`/`session_write_guard`); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
@@ -389,6 +389,35 @@ All are additive for a product's code; the behaviour changes are listed.
   host is an error. A non-2xx answer shows its status and at most the first
   80 characters of the body. `net::is_public` (the stricter rule for
   strangers' webhooks) moved here from Vigilant Vole's `subscribers`.
+* **Re-authentication** (VK-10). The pages ask the signed-in user for the
+  current password again (`sec.reauth_needed`; the same throttled check as
+  for adding a passkey or changing the password: counted before it is
+  verified, key `reauth:<id>`, cleared by a right one) before:
+  * creating an API token with **write** access or **no expiry**
+    (`current_password` on the new token sheet; a read-only token that
+    expires needs none; product scopes follow the same rule);
+  * adding a user with the **admin** role, or making a user an admin
+    (`current_password` on the add and edit sheets);
+  * an admin's **password reset** or **two-factor reset** of a user
+    (`current_password`; the 2FA reset is a sheet now, not a confirm
+    dialog);
+  * **deleting a passkey** (`current_password`; the delete button opens a
+    sheet). Renaming stays as it was.
+
+  New tokens default to 90 days (the sheet's selected option; "never" is
+  still offered, behind the password). Existing tokens are untouched.
+  There is no passkey or TOTP alternative: every account has a password,
+  and the one confirmation mechanism the kit had was the password.
+  Changing your own password and an admin's password reset offer **"Also
+  revoke API tokens"** (`revoke_tokens`, a checkbox that is on in the
+  forms; a post that doesn't send it keeps the tokens). It deletes all
+  tokens of that user (`db::api_tokens::delete_all_for_user`), including
+  a product's scoped ones, such as a CI token.
+* **TOTP secrets sealed** (VK-12). `users.totp_secret` (the secret of a
+  finished enrolment and the pending one) holds `sealed:v1:…` under the
+  purpose `vole-kit/totp` instead of base32. See "Sealed secrets". The
+  pre-migration copies that still hold plaintext secrets are deleted by
+  a later start, or after 7 days (see "Pre-migration copies").
 * **Discord** (VK-14, part) sends `allowed_mentions: {"parse": []}`, so a
   name like `@everyone` pings nobody.
 * **Small ones** (VK-15, part). `CurrentUser::scope_allows_path` matches
@@ -418,6 +447,23 @@ No code change is needed. What users and operators notice:
 * After turning two-factor on or off, or adding or deleting a passkey, the
   user's other devices have to sign in again.
 * A damaged `session.key` stops the start (restore it from a backup).
+* Creating a write or never-expiring API token, adding or promoting an
+  admin, an admin's password or two-factor reset and deleting a passkey
+  ask for the user's password. A script that posts these forms must send
+  `current_password`.
+  The new-token sheet selects 90 days; tokens that exist keep their
+  expiry. The password form and an admin's reset have a checkbox "Also
+  revoke API tokens", on by default.
+* Two-factor secrets are sealed in the database (see "Sealed secrets"). A
+  product on `migrate::CORE` records `kit/0005_sealed_totp.sql` at the
+  next start and takes the pre-migration copy; `Core::new` then seals the
+  secrets in the background, with no code change. **Going back to 0.5
+  needs that copy** (it holds the secrets in plaintext): 0.5 refuses the
+  database, as for any newer migration, and could not check a code in a
+  sealed secret.
+* A product that lists its core set by hand adds `migrate::SEALED_TOTP`
+  (a product that builds `Core` without `Core::new` also calls
+  `auth::totp::seal_stored` after migrating, as Vigilant Vole does).
 * Everybody who signed up before keeps their session version, so no one is
   signed out by the upgrade.
 
@@ -758,6 +804,80 @@ it. If `session.key` is lost or replaced (a new data directory, a
 database restored without its key), the channel's edit form shows the
 field as not saved, with "enter it again". A save that leaves it out is
 refused, and sending fails with that message, logged by the product.
+
+### Two-factor secrets
+
+The base32 secret of a user's TOTP (`users.totp_secret`, the pending one
+while enrolling too) is sealed like a channel secret, under the purpose
+`vole-kit/totp` (`auth::totp::PURPOSE`). Recovery codes were always Argon2
+hashes and are unchanged.
+
+* The pages seal when they store (`totp::seal_secret(&core.session_key, ..)`)
+  and open when they use it (`totp::open_secret`): showing the QR code
+  while enrolling, confirming the first code, every login and `2fa/disable`.
+  `db::users` still stores and returns the text as it is, so
+  `set_pending_totp_secret` and `get_totp` keep their signatures.
+* `open_secret` accepts **plaintext** too, so a login keeps working
+  between the migration and the sealing, and for a product's tests that
+  store a plaintext secret directly. A sealed secret that doesn't open (a
+  replaced `session.key`) opens as `None`: that user's codes never match,
+  logged at WARN, and their recovery codes still work. Turning two-factor
+  off and on again, with a recovery code to get in, makes a new one.
+* `totp::seal_stored(conn, key)` seals every plaintext secret in place and
+  returns how many it sealed; a second run changes nothing. It swaps each
+  row only while it still holds the text it read, so an enrolment started
+  meanwhile isn't overwritten. `Core::new` runs it in the background when
+  called inside a Tokio runtime (Keen Kestrel and Wise Wren build their
+  `Core` that way, so they need no change). A product that builds `Core`
+  by hand calls it at startup after migrating, next to
+  `notify::sealed::seal_stored` (Vigilant Vole does, in `server::prepare`).
+* `totp::open_stored(conn, key)` is the opposite, for a **copy** that has
+  to work on another instance (Vigilant Vole's backup download runs it
+  with the channel secrets' `open_stored`); the instance that restores it
+  seals again at its start.
+* `totp::has_plaintext_stored(conn)` says whether any plaintext is left.
+
+The migration `kit/0005_sealed_totp.sql` (`migrate::SEALED_TOTP`, in
+`CORE`) changes no table. It is there so that an upgrade takes its
+pre-migration copy first and an older kit refuses the database, like
+`SEALED_SECRETS`. **Rolling back to a kit without it needs that copy**:
+the copy has the secrets in plaintext, and the older kit would otherwise
+read `sealed:v1:…` as a base32 secret and reject every code.
+
+### Pre-migration copies
+
+The runner's copy before an upgrade (`VACUUM INTO`, in the product's
+backups folder) holds whatever was in the database, so the copies taken
+before the sealing migrations (`SEALED_SECRETS`, `SEALED_TOTP`) hold the
+channel and two-factor secrets in plaintext. `migrate()` now deletes them
+(`migrate::prune_plaintext_backups`, called at the end of every start of
+the product's main database):
+
+* **when** a later start finds no plaintext secret left in the database
+  (`totp::has_plaintext_stored`, `notify::sealed::has_plaintext_stored`):
+  the earlier start sealed them. The copy this start took itself is kept
+  for the next one.
+* **or after 7 days** (`PLAINTEXT_BACKUP_MAX_AGE`, by the file's
+  modification time), whatever the database holds.
+
+Only these files are ever touched, all regular files (never a link) in
+the backups folder:
+
+* `{backup_prefix}kit-0004_sealed_secrets-{unix time}[-n].db` and
+  `{backup_prefix}kit-0005_sealed_totp-{unix time}[-n].db`, the names of
+  copies taken when one of those two was the first pending migration;
+* any `….db` with a `….db.plaintext-secrets` file next to it. The runner
+  writes that marker whenever the pending migrations include one of the
+  two, so copies named after another migration (a product migration that
+  ran first) are found too. The marker goes with the copy; a marker
+  whose copy is gone is removed.
+
+A copy from before this release that carries another migration's name has
+no marker and stays: delete it yourself once the instance has run on
+sealed data. Everything else in the folder (manual copies, the copies a
+restore moves aside, notes) is left alone. A failure to delete is logged
+and never stops a start. There is no setting to keep them longer: copy one
+elsewhere if a rollback must stay possible after a week.
 Nothing crashes. The other fields and the other channels keep working.
 
 **Security note.** Sealing protects the secrets in a copy of the database
@@ -919,6 +1039,12 @@ The kit has its own migration set, `vole_kit::db::migrate::CORE`:
   in plaintext) before the product seals them, and older versions, which
   would send the sealed text to the provider, refuse the database. Vigilant
   Vole's set is `&[CORE_TABLES, PASSKEYS, SEALED_SECRETS]`.
+* `SEALED_TOTP`, `kit/migrations/0005_sealed_totp.sql`, changes no table.
+  It records that two-factor secrets are sealed (see "Two-factor secrets"),
+  with the same effect as the one above: the upgrade's copy holds them in
+  plaintext, and older kits refuse the database. Every product on
+  `migrate::CORE` has it; Vigilant Vole's set is `&[CORE_TABLES, PASSKEYS,
+  SEALED_SECRETS, SEALED_TOTP]`.
 
 Core migrations are recorded in `schema_migrations` under `kit/…` names, so
 they can't clash with a product's file names.
@@ -1341,7 +1467,8 @@ proof:
 * a fresh database has the core tables (with `api_token_scopes`,
   `passkeys` and `passkey_challenges`) plus `notes`, with
   `kit/0001_core.sql`, `kit/0002_token_scopes.sql`,
-  `kit/0003_passkeys.sql` and `kit/0004_sealed_secrets.sql` recorded first;
+  `kit/0003_passkeys.sql`, `kit/0004_sealed_secrets.sql` and
+  `kit/0005_sealed_totp.sql` recorded first;
 * passkeys: without a public URL only the note; with one, adding a passkey
   needs the password, the software authenticator's credential is stored
   (transports filtered, the user handle kept for the next one), a replayed
@@ -1580,11 +1707,14 @@ value with the old code and seal it again (a one-time startup step like
   only deletes the browser's copy, and there is no list of devices.
   Bumping the version signs out all devices, which the security changes
   above now do.
-* **Re-authentication for persistence-grade actions** (VK-10): write
-  tokens without expiry, admin user creation and resets, passkey deletion.
+* **Re-authentication by passkey or TOTP** (VK-10, rest). The confirmation
+  is the password only; every account has one. Renaming a passkey and the
+  admin's reset of a user's passkeys ask for nothing.
 * **Sealed secrets** (VK-11, rest): binding the AAD to the row and field,
-  a key id and rotation. TOTP secrets and old pre-migration backups are
-  still plaintext (VK-12).
+  a key id and rotation. The TOTP secrets are sealed (VK-12), and the
+  pre-migration copies are deleted as described under "Pre-migration
+  copies"; the copies of earlier releases whose name carries another
+  migration are not.
 * **CSRF origin scheme** (VK-13), **SSE re-authorisation** (VK-08) and the
   **per-account sign-in throttle** (VK-03: a stranger's failures can still
   put a known account in backoff).
@@ -1634,12 +1764,15 @@ It also adds the building blocks Keen Kestrel built itself (see
 * Passkeys are bound to the public URL's host (the RP ID). Changing it, or
   the public URL being wrong, leaves them useless until users add new ones;
   the password keeps working.
-* Channel secrets are sealed under `session.key`. Replacing that file (or
-  restoring a database without it) makes every sealed secret unreadable.
-  The channels then ask for them again and their alerts fail, logged. A
+* Channel and two-factor secrets are sealed under `session.key`. Replacing
+  that file (or restoring a database without it) makes every sealed secret
+  unreadable. The channels then ask for them again and their alerts fail,
+  logged; the users with two-factor on can only sign in with a recovery
+  code (then turn it off and on again). A
   plaintext secret that looks exactly like `sealed:v1:<base64 of 28+
   bytes>` would be taken for a sealed one and never sealed.
-* `seal_stored` runs at startup, not as a migration. A copy of the
+* `seal_stored` (channels and two-factor secrets) runs at startup, not as a
+  migration. A copy of the
   database taken between the migrations and that step still holds
   plaintext. The pre-migration copy does on purpose, for a rollback.
 * Vigilant Vole's core set leaves out `kit/0002_token_scopes.sql`. If it ever

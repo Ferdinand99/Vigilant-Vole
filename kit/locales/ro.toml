@@ -280,6 +280,10 @@ pk_unsupported = "Acest browser nu acceptă chei de acces."
 pk_no_support = "Acest browser nu acceptă chei de acces. Încearcă alt browser sau autentifică-te cu parola."
 pk_exists = "Această cheie de acces este deja salvată pentru contul tău."
 pk_failed = "Cheia de acces nu a putut fi salvată. Încearcă din nou."
+reauth_needed = "Introdu parola ca să confirmi această modificare."
+your_password = "Parola ta"
+revoke_tokens = "Revocă și tokenurile mele API"
+revoke_tokens_help = "Scripturile care le folosesc nu vor mai funcționa până creezi altele noi."
 
 [users]
 sub = "Cine se poate autentifica și ce poate modifica."
@@ -339,6 +343,8 @@ reset_pk = "Elimină cheile de acces"
 reset_pk_q = "Elimini toate cheile de acces pentru {name}?"
 reset_pk_msg = "Este deconectat de peste tot și se autentifică cu parola până adaugă din nou o cheie de acces."
 pk_reset = "Cheile de acces au fost eliminate pentru {name}. A fost deconectat de peste tot."
+revoke_tokens = "Revocă și tokenurile lui API"
+admin_password_help = "Propria ta parolă, pentru a confirma adăugarea unui administrator."
 
 [tokens]
 new = "Token nou"
@@ -375,6 +381,7 @@ err_expiry = "Alege când expiră tokenul."
 err_limit = "Ai deja 50 de tokenuri. Revocă unele pe care nu le mai folosești."
 created = "Token creat"
 revoked = "Token revocat"
+password_help = "Necesară pentru acces de citire și scriere și pentru tokenurile care nu expiră niciodată. Nu e necesară pentru un token doar pentru citire care expiră."
 
 [auth]
 welcome = "Bun venit"

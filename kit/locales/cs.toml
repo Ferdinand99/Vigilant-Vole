@@ -289,6 +289,10 @@ pk_unsupported = "Tento prohlížeč přístupové klíče nepodporuje."
 pk_no_support = "Tento prohlížeč přístupové klíče nepodporuje. Zkuste jiný prohlížeč, nebo se přihlaste heslem."
 pk_exists = "Tento přístupový klíč už je k vašemu účtu uložen."
 pk_failed = "Přístupový klíč se nepodařilo uložit. Zkuste to znovu."
+reauth_needed = "Zadejte své heslo a potvrďte tuto změnu."
+your_password = "Vaše heslo"
+revoke_tokens = "Zrušit také platnost mých API tokenů"
+revoke_tokens_help = "Skripty, které je používají, přestanou fungovat, dokud nevytvoříte nové."
 
 [users]
 sub = "Kdo se může přihlásit a co může měnit."
@@ -348,6 +352,8 @@ reset_pk = "Odebrat přístupové klíče"
 reset_pk_q = "Odebrat všechny přístupové klíče uživatele {name}?"
 reset_pk_msg = "Budou odhlášeni všude a budou se přihlašovat heslem, dokud znovu nepřidají přístupový klíč."
 pk_reset = "Přístupové klíče uživatele {name} jsou odebrány. Byl odhlášen všude."
+revoke_tokens = "Zrušit také platnost jeho API tokenů"
+admin_password_help = "Vaše vlastní heslo, kterým potvrdíte přidání správce."
 
 [tokens]
 new = "Nový token"
@@ -384,6 +390,7 @@ err_expiry = "Vyberte, kdy token vyprší."
 err_limit = "Už máte 50 tokenů. Zrušte ty, které nepoužíváte."
 created = "Token je vytvořen"
 revoked = "Platnost tokenu je zrušena"
+password_help = "Potřebné pro přístup ke čtení i zápisu a pro tokeny, které nikdy nevyprší. Pro token jen ke čtení s platností není potřeba."
 
 [auth]
 welcome = "Vítejte"

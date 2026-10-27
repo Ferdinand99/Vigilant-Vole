@@ -470,6 +470,9 @@ async fn changing_two_factor_or_passkeys_signs_other_devices_out() {
         .unwrap()
         .secret
         .unwrap();
+    // Stored sealed.
+    assert!(crate::crypto::is_sealed(&secret));
+    let secret = totp::open_secret(&app.core.session_key, &secret).unwrap();
     let t = totp::build(&secret, "ada", "Kit").unwrap();
     let code = totp::code_at(&t, now());
     let res = app
@@ -553,7 +556,7 @@ async fn changing_two_factor_or_passkeys_signs_other_devices_out() {
         .post(
             &mut here,
             &format!("/settings/security/passkeys/{id}/delete"),
-            &[],
+            &[("current_password", PASSWORD)],
         )
         .await;
     assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
@@ -780,4 +783,591 @@ async fn passkey_sign_in_and_password_sign_in_throttle_separately() {
         )
         .await;
     assert_eq!(res.status, StatusCode::SEE_OTHER);
+}
+
+// ---------------------------------------------------------------------------
+// VK-10
+// ---------------------------------------------------------------------------
+
+const BOB_PASSWORD: &str = "Bob-Own-Pass-2026-Zq!";
+const NEW_PASSWORD: &str = "Second-Pass-2026-Qz!";
+
+impl App {
+    async fn tokens_of(&self, user: i64) -> Vec<db::api_tokens::ApiToken> {
+        self.core
+            .with_conn(move |c| db::api_tokens::list_for_user(c, user))
+            .await
+            .unwrap()
+    }
+
+    async fn give_token(&self, user: i64) {
+        let token = tokens::generate();
+        let (hash, prefix) = (tokens::hash(&token), tokens::display_prefix(&token));
+        self.core
+            .with_conn(move |c| {
+                db::api_tokens::insert(c, user, "script", &prefix, &hash, TokenScope::Read, None)
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn user_row(&self, id: i64) -> users::User {
+        self.core
+            .with_conn(move |c| users::get_user(c, id))
+            .await
+            .unwrap()
+            .expect("user exists")
+    }
+
+    /// Turns two-factor on for `id` the way an older kit stored it: the
+    /// secret in plaintext.
+    async fn plaintext_two_factor(&self, id: i64, secret: &'static str) {
+        self.core
+            .with_conn(move |c| {
+                users::set_pending_totp_secret(c, id, secret)?;
+                users::enable_totp(c, id, 0, &["hash".to_string()])
+            })
+            .await
+            .unwrap();
+    }
+
+    /// A refused change: back to the page with this flash.
+    fn assert_flash(&self, res: &Res, key: &'static str) {
+        self.assert_flash_text(res, crate::i18n::t(key));
+    }
+
+    fn assert_flash_text(&self, res: &Res, text: &str) {
+        assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+        assert_eq!(self.flash(res).as_deref(), Some(text));
+    }
+}
+
+async fn new_token(app: &App, b: &mut Browser, scope: &str, expires: &str, password: &str) -> Res {
+    let mut form = vec![("name", "ci"), ("scope", scope), ("expires", expires)];
+    if !password.is_empty() {
+        form.push(("current_password", password));
+    }
+    app.post(b, "/settings/tokens", &form).await
+}
+
+#[tokio::test]
+async fn write_tokens_and_tokens_without_expiry_need_the_password() {
+    let (app, mut ada) = App::set_up().await;
+
+    // The sheet offers 90 days unless you choose otherwise.
+    let page = app.get(&mut ada, "/settings/tokens").await;
+    assert!(
+        page.body.contains(r#"<option value="90" selected>"#),
+        "{}",
+        page.body
+    );
+
+    // A read-only token that expires needs nothing.
+    let res = new_token(&app, &mut ada, "read", "30", "").await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    assert_eq!(app.tokens_of(1).await.len(), 1);
+
+    // Write access, or no expiry: the password is asked for first.
+    for (scope, expires) in [("write", "30"), ("read", "never"), ("write", "never")] {
+        let res = new_token(&app, &mut ada, scope, expires, "").await;
+        app.assert_flash(&res, "sec.reauth_needed");
+        let res = new_token(&app, &mut ada, scope, expires, "not the password").await;
+        app.assert_flash(&res, "sec.wrong_password");
+    }
+    assert_eq!(app.tokens_of(1).await.len(), 1, "nothing was created");
+
+    // With the password they are created, and nothing else changes.
+    for (scope, expires) in [("write", "never"), ("read", "never"), ("write", "90")] {
+        let res = new_token(&app, &mut ada, scope, expires, PASSWORD).await;
+        assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    }
+    let all = app.tokens_of(1).await;
+    assert_eq!(all.len(), 4);
+    assert_eq!(
+        all.iter().filter(|t| t.expires_at.is_none()).count(),
+        2,
+        "the two that never expire"
+    );
+    // The right password forgot the failures.
+    assert!(
+        app.core
+            .limits
+            .account
+            .retry_after("reauth:1", std::time::Instant::now())
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn token_reauthentication_counts_parallel_guesses_before_checking_them() {
+    let (app, ada) = App::set_up().await;
+    let cookie = ada
+        .cookies
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let requests = (0..30).map(|i| {
+        let guess = format!("wrong guess {i}");
+        let body = url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs([
+                ("name", "ci"),
+                ("scope", "write"),
+                ("expires", "never"),
+                ("current_password", guess.as_str()),
+            ])
+            .finish();
+        let mut req = Request::post("/settings/tokens")
+            .header(header::HOST, HOST)
+            .header(header::ORIGIN, format!("http://{HOST}"))
+            .header(header::COOKIE, &cookie)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(body))
+            .unwrap();
+        req.extensions_mut().insert(ConnectInfo(
+            "127.0.0.1:40000".parse::<SocketAddr>().unwrap(),
+        ));
+        app.router.clone().oneshot(req)
+    });
+    let results = futures_util::future::join_all(requests).await;
+    let wrong = crate::i18n::t("sec.wrong_password");
+    let mut checked = 0;
+    for res in results {
+        let res = res.unwrap();
+        let res = Res {
+            status: res.status(),
+            headers: res.headers().clone(),
+            body: String::new(),
+        };
+        assert_eq!(res.status, StatusCode::SEE_OTHER);
+        if app.flash(&res).as_deref() == Some(wrong) {
+            checked += 1;
+        }
+    }
+    assert!(
+        (1..=6).contains(&checked),
+        "{checked} of 30 parallel guesses were checked"
+    );
+    assert!(app.tokens_of(1).await.is_empty());
+}
+
+#[tokio::test]
+async fn adding_or_promoting_an_administrator_needs_the_password() {
+    let (app, mut ada) = App::set_up().await;
+    let add = |name: &'static str, role: &'static str, password: &'static str| {
+        let mut form = vec![
+            ("username", name),
+            ("display_name", ""),
+            ("role", role),
+            ("password", "Temp-Pass-2026-Zq!"),
+        ];
+        if !password.is_empty() {
+            form.push(("current_password", password));
+        }
+        form
+    };
+
+    // An administrator: refused without the password, and with a wrong one.
+    let res = app
+        .post(&mut ada, "/settings/users", &add("bob", "admin", ""))
+        .await;
+    app.assert_flash(&res, "sec.reauth_needed");
+    let res = app
+        .post(&mut ada, "/settings/users", &add("bob", "admin", "nope"))
+        .await;
+    app.assert_flash(&res, "sec.wrong_password");
+    let taken = app
+        .core
+        .with_conn(|c| users::username_taken(c, "bob"))
+        .await
+        .unwrap();
+    assert!(!taken, "no user was created");
+
+    // A viewer needs no confirmation.
+    let res = app
+        .post(&mut ada, "/settings/users", &add("bob", "viewer", ""))
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    assert_eq!(app.user_row(2).await.role, Role::Viewer);
+
+    // Making that user an administrator is the same step.
+    let promote = |password: &'static str| {
+        let mut form = vec![("display_name", ""), ("role", "admin")];
+        if !password.is_empty() {
+            form.push(("current_password", password));
+        }
+        form
+    };
+    let res = app.post(&mut ada, "/settings/users/2", &promote("")).await;
+    app.assert_flash(&res, "sec.reauth_needed");
+    assert_eq!(app.user_row(2).await.role, Role::Viewer);
+    let res = app
+        .post(&mut ada, "/settings/users/2", &promote(PASSWORD))
+        .await;
+    app.assert_flash(&res, "users.saved");
+    assert_eq!(app.user_row(2).await.role, Role::Admin);
+
+    // Editing an administrator, or demoting one, asks for nothing.
+    for role in ["admin", "editor"] {
+        let res = app
+            .post(
+                &mut ada,
+                "/settings/users/2",
+                &[("display_name", "Bob"), ("role", role)],
+            )
+            .await;
+        app.assert_flash(&res, "users.saved");
+    }
+
+    // With the password, an administrator is created.
+    let res = app
+        .post(&mut ada, "/settings/users", &add("cy", "admin", PASSWORD))
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    assert_eq!(app.user_row(3).await.role, Role::Admin);
+}
+
+#[tokio::test]
+async fn admin_resets_need_the_admin_password_and_can_revoke_tokens() {
+    let (app, mut ada) = App::set_up().await;
+    let bob = app.user("bob", BOB_PASSWORD).await;
+    app.give_token(bob).await;
+    app.plaintext_two_factor(bob, "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")
+        .await;
+    let reset = |password: &'static str, revoke: bool| {
+        let mut form = vec![("password", NEW_PASSWORD)];
+        if !password.is_empty() {
+            form.push(("current_password", password));
+        }
+        if revoke {
+            form.push(("revoke_tokens", "true"));
+        }
+        form
+    };
+    let path = format!("/settings/users/{bob}/password");
+
+    // No password, or a wrong one: nothing changes.
+    let res = app.post(&mut ada, &path, &reset("", true)).await;
+    app.assert_flash(&res, "sec.reauth_needed");
+    let res = app.post(&mut ada, &path, &reset("nope", true)).await;
+    app.assert_flash(&res, "sec.wrong_password");
+    let hash = app.user_row(bob).await.password_hash;
+    assert!(crate::auth::verify_password(&hash, BOB_PASSWORD));
+    assert_eq!(app.tokens_of(bob).await.len(), 1);
+
+    // Confirmed, without the box: the tokens stay.
+    let res = app.post(&mut ada, &path, &reset(PASSWORD, false)).await;
+    app.assert_flash_text(
+        &res,
+        &crate::i18n::tf("users.password_reset", &[("name", "bob")]),
+    );
+    let hash = app.user_row(bob).await.password_hash;
+    assert!(crate::auth::verify_password(&hash, NEW_PASSWORD));
+    assert_eq!(app.tokens_of(bob).await.len(), 1);
+    // Confirmed, with it: they are revoked, and only bob's.
+    app.give_token(1).await;
+    let res = app.post(&mut ada, &path, &reset(PASSWORD, true)).await;
+    app.assert_flash_text(
+        &res,
+        &crate::i18n::tf("users.password_reset", &[("name", "bob")]),
+    );
+    assert!(app.tokens_of(bob).await.is_empty());
+    assert_eq!(app.tokens_of(1).await.len(), 1);
+
+    // Two-factor: the same confirmation.
+    let tfa = format!("/settings/users/{bob}/2fa/reset");
+    let res = app.post(&mut ada, &tfa, &[]).await;
+    app.assert_flash(&res, "sec.reauth_needed");
+    let res = app
+        .post(&mut ada, &tfa, &[("current_password", "nope")])
+        .await;
+    app.assert_flash(&res, "sec.wrong_password");
+    assert!(app.user_row(bob).await.totp_enabled);
+    let res = app
+        .post(&mut ada, &tfa, &[("current_password", PASSWORD)])
+        .await;
+    app.assert_flash_text(
+        &res,
+        &crate::i18n::tf("users.tfa_reset", &[("name", "bob")]),
+    );
+    assert!(!app.user_row(bob).await.totp_enabled);
+}
+
+#[tokio::test]
+async fn deleting_a_passkey_needs_the_password() {
+    let (app, mut here) = App::set_up().await;
+    let mut laptop = app.sign_in("ada", PASSWORD).await;
+    let id = app
+        .core
+        .with_conn(|c| {
+            db_passkeys::insert(
+                c,
+                &db_passkeys::NewPasskey {
+                    user_id: 1,
+                    credential_id: b"credential",
+                    public_key: b"key",
+                    alg: -7,
+                    user_handle: b"handle",
+                    name: "Old key",
+                    sign_count: 0,
+                    transports: "",
+                    backup_eligible: false,
+                    backed_up: false,
+                },
+            )
+        })
+        .await
+        .unwrap()
+        .expect("inserted");
+    let path = format!("/settings/security/passkeys/{id}/delete");
+    let count = || async {
+        app.core
+            .with_conn(|c| db_passkeys::list_for_user(c, 1))
+            .await
+            .unwrap()
+            .len()
+    };
+
+    let res = app.post(&mut here, &path, &[]).await;
+    app.assert_flash(&res, "sec.reauth_needed");
+    let res = app
+        .post(&mut here, &path, &[("current_password", "nope")])
+        .await;
+    app.assert_flash(&res, "sec.wrong_password");
+    assert_eq!(count().await, 1);
+    assert!(app.signed_in(&mut laptop).await, "nobody was signed out");
+
+    let res = app
+        .post(&mut here, &path, &[("current_password", PASSWORD)])
+        .await;
+    app.assert_flash(&res, "sec.pk_deleted");
+    assert_eq!(count().await, 0);
+    assert!(!app.signed_in(&mut laptop).await);
+}
+
+#[tokio::test]
+async fn changing_the_password_can_revoke_the_api_tokens() {
+    let (app, mut ada) = App::set_up().await;
+    let bob = app.user("bob", BOB_PASSWORD).await;
+    app.give_token(1).await;
+    app.give_token(bob).await;
+
+    // The box is on in the form.
+    let page = app.get(&mut ada, "/settings/security").await;
+    assert!(
+        page.body
+            .contains(r#"name="revoke_tokens" value="true" checked"#),
+        "{}",
+        page.body
+    );
+
+    let change = |from: &'static str, to: &'static str, revoke: bool| {
+        let mut form = vec![
+            ("current_password", from),
+            ("new_password", to),
+            ("confirm_password", to),
+        ];
+        if revoke {
+            form.push(("revoke_tokens", "true"));
+        }
+        form
+    };
+    // Unticked: the tokens stay.
+    let res = app
+        .post(
+            &mut ada,
+            "/settings/security/password",
+            &change(PASSWORD, NEW_PASSWORD, false),
+        )
+        .await;
+    app.assert_flash(&res, "sec.password_changed");
+    assert_eq!(app.tokens_of(1).await.len(), 1);
+    // Ticked: this user's are revoked, nobody else's.
+    let res = app
+        .post(
+            &mut ada,
+            "/settings/security/password",
+            &change(NEW_PASSWORD, PASSWORD, true),
+        )
+        .await;
+    app.assert_flash(&res, "sec.password_changed");
+    assert!(app.tokens_of(1).await.is_empty());
+    assert_eq!(app.tokens_of(bob).await.len(), 1);
+    assert!(
+        app.signed_in(&mut ada).await,
+        "this browser stays signed in"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// VK-12
+// ---------------------------------------------------------------------------
+
+const TOTP_SECRET: &str = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+
+async fn raw_secret(core: &Core) -> Option<String> {
+    core.with_conn(|c| {
+        c.query_row("SELECT totp_secret FROM users WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+    })
+    .await
+    .unwrap()
+}
+
+/// A TOTP login on a new device: the password, then the current code.
+async fn totp_login(app: &App, secret: &str) -> StatusCode {
+    app.core
+        .with_conn(|c| c.execute("UPDATE users SET totp_last_step = NULL", []))
+        .await
+        .unwrap();
+    let mut b = Browser::default();
+    let res = app
+        .post(
+            &mut b,
+            "/login",
+            &[("username", "ada"), ("password", PASSWORD)],
+        )
+        .await;
+    assert_eq!(res.location(), "/login/2fa", "{}", res.body);
+    let t = totp::build(secret, "ada", "Kit").unwrap();
+    let code = totp::code_at(&t, now());
+    let res = app.post(&mut b, "/login/2fa", &[("code", &code)]).await;
+    if res.status == StatusCode::SEE_OTHER {
+        assert!(app.signed_in(&mut b).await);
+    }
+    res.status
+}
+
+#[tokio::test]
+async fn new_two_factor_secrets_are_stored_sealed_and_still_work() {
+    let (app, mut ada) = App::set_up().await;
+    let res = app
+        .post(&mut ada, "/settings/security/2fa/setup", &[])
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    let stored = raw_secret(&app.core).await.unwrap();
+    assert!(crate::crypto::is_sealed(&stored), "{stored}");
+    let secret = totp::open_secret(&app.core.session_key, &stored).unwrap();
+    assert!(!stored.contains(&secret));
+
+    // The enrolment shows the secret (opened) to type into an app, and the
+    // right code turns two-factor on.
+    let page = app.get(&mut ada, "/settings/security").await;
+    assert!(
+        page.body.contains(&totp::format_secret(&secret)),
+        "{}",
+        page.body
+    );
+    let t = totp::build(&secret, "ada", "Kit").unwrap();
+    let res = app
+        .post(
+            &mut ada,
+            "/settings/security/2fa/enable",
+            &[("code", &totp::code_at(&t, now()))],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    assert_eq!(
+        raw_secret(&app.core).await.as_deref(),
+        Some(stored.as_str())
+    );
+    assert_eq!(totp_login(&app, &secret).await, StatusCode::SEE_OTHER);
+
+    // A sealed secret that can't be opened (a replaced session.key) never
+    // matches: the login is refused, not a server error.
+    let foreign = crate::crypto::seal(&Key::generate(), totp::PURPOSE, TOTP_SECRET);
+    app.core
+        .with_conn(move |c| c.execute("UPDATE users SET totp_secret = ?1", [foreign]))
+        .await
+        .unwrap();
+    assert_eq!(totp_login(&app, &secret).await, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn plaintext_two_factor_secrets_are_sealed_without_breaking_logins() {
+    let (app, _ada) = App::set_up().await;
+    app.plaintext_two_factor(1, TOTP_SECRET).await;
+    assert_eq!(raw_secret(&app.core).await.as_deref(), Some(TOTP_SECRET));
+
+    // Before the migration has run, the plaintext secret logs in.
+    assert_eq!(totp_login(&app, TOTP_SECRET).await, StatusCode::SEE_OTHER);
+
+    // The migration seals it ...
+    let key = app.core.session_key.clone();
+    let sealed = app
+        .core
+        .with_conn(move |c| totp::seal_stored(c, &key))
+        .await
+        .unwrap();
+    assert_eq!(sealed, 1);
+    let stored = raw_secret(&app.core).await.unwrap();
+    assert!(crate::crypto::is_sealed(&stored) && !stored.contains(TOTP_SECRET));
+    // ... once: what is sealed already is left as it is ...
+    let key = app.core.session_key.clone();
+    let again = app
+        .core
+        .with_conn(move |c| totp::seal_stored(c, &key))
+        .await
+        .unwrap();
+    assert_eq!(again, 0);
+    assert_eq!(
+        raw_secret(&app.core).await.as_deref(),
+        Some(stored.as_str())
+    );
+    // ... and the same authenticator app still gets in.
+    assert_eq!(totp_login(&app, TOTP_SECRET).await, StatusCode::SEE_OTHER);
+    let tf = app
+        .core
+        .with_conn(|c| users::get_totp(c, 1))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(tf.enabled && tf.last_step.is_some());
+    assert_eq!(tf.recovery_codes, ["hash"]);
+}
+
+#[tokio::test]
+async fn a_new_core_seals_the_two_factor_secrets_of_an_older_database() {
+    let dir = std::env::temp_dir().join(format!(
+        "vole-kit-totp-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let pool = db::build_pool(&dir.join("kit.db"));
+    db::migrate::run_migrations(&pool, &dir.join("backups")).await;
+    db::interact(&pool, |c| {
+        let id = users::insert_user(c, "ada", "h", Role::Admin)?;
+        users::set_pending_totp_secret(c, id, TOTP_SECRET)?;
+        users::enable_totp(c, id, 0, &[])
+    })
+    .await
+    .unwrap();
+
+    // Starting the product builds its Core, which seals them in the background.
+    let key = Key::generate();
+    let core = Core::new(
+        pool.clone(),
+        key.clone(),
+        reqwest::Client::new(),
+        &crate::testing::CONFIG,
+    );
+    let mut stored = None;
+    for _ in 0..100 {
+        stored = raw_secret(&core).await;
+        if stored.as_deref().is_some_and(crate::crypto::is_sealed) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let stored = stored.unwrap();
+    assert!(crate::crypto::is_sealed(&stored), "{stored}");
+    assert_eq!(
+        totp::open_secret(&key, &stored).as_deref(),
+        Some(TOTP_SECRET)
+    );
+    db::close(&pool).await;
+    let _ = std::fs::remove_dir_all(&dir);
 }

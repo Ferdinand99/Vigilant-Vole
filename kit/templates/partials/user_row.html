@@ -17,9 +17,7 @@
     <button class="menu-item" type="button" data-sheet-open="#reset-pw-{{ u.id }}" commandfor="reset-pw-{{ u.id }}" command="show-modal">{{ m::icon("key") }}{{ tr("users.reset_password") }}</button>
     {%- endif %}
     {%- if u.totp_enabled %}
-    <form method="post" action="/settings/users/{{ u.id }}/2fa/reset" data-confirm="{{ tr1("users.reset_tfa_q", "name", u.username) }}" data-confirm-message="{{ tr("users.reset_tfa_msg") }}" data-confirm-label="{{ tr("users.reset") }}">
-      <button class="menu-item" type="submit">{{ m::icon("shield") }}{{ tr("users.reset_tfa") }}</button>
-    </form>
+    <button class="menu-item" type="button" data-sheet-open="#reset-tfa-{{ u.id }}" commandfor="reset-tfa-{{ u.id }}" command="show-modal">{{ m::icon("shield") }}{{ tr("users.reset_tfa") }}</button>
     {%- endif %}
     {%- if u.passkeys > 0 %}
     <form method="post" action="/settings/users/{{ u.id }}/passkeys/reset" data-confirm="{{ tr1("users.reset_pk_q", "name", u.username) }}" data-confirm-message="{{ tr("users.reset_pk_msg") }}" data-confirm-label="{{ tr("users.reset") }}">

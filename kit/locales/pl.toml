@@ -290,6 +290,10 @@ pk_unsupported = "Ta przeglądarka nie obsługuje kluczy dostępu."
 pk_no_support = "Ta przeglądarka nie obsługuje kluczy dostępu. Spróbuj innej przeglądarki lub zaloguj się hasłem."
 pk_exists = "Ten klucz dostępu jest już zapisany na Twoim koncie."
 pk_failed = "Nie udało się zapisać klucza dostępu. Spróbuj ponownie."
+reauth_needed = "Wpisz swoje hasło, aby potwierdzić tę zmianę."
+your_password = "Twoje hasło"
+revoke_tokens = "Unieważnij też moje tokeny API"
+revoke_tokens_help = "Skrypty, które ich używają, przestaną działać, dopóki nie utworzysz nowych."
 
 [users]
 sub = "Kto może się logować i co może zmieniać."
@@ -349,6 +353,8 @@ reset_pk = "Usuń klucze dostępu"
 reset_pk_q = "Usunąć wszystkie klucze dostępu użytkownika {name}?"
 reset_pk_msg = "Użytkownik zostanie wylogowany wszędzie i będzie logował się hasłem, dopóki ponownie nie doda klucza dostępu."
 pk_reset = "Usunięto klucze dostępu: {name}. Użytkownik został wylogowany wszędzie."
+revoke_tokens = "Unieważnij też jego tokeny API"
+admin_password_help = "Twoje własne hasło, aby potwierdzić dodanie administratora."
 
 [tokens]
 new = "Nowy token"
@@ -385,6 +391,7 @@ err_expiry = "Wybierz, kiedy token wygasa."
 err_limit = "Masz już 50 tokenów. Unieważnij te, których nie używasz."
 created = "Utworzono token"
 revoked = "Unieważniono token"
+password_help = "Wymagane przy dostępie do odczytu i zapisu oraz przy tokenach, które nigdy nie wygasają. Niepotrzebne dla tokenu tylko do odczytu, który wygasa."
 
 [auth]
 welcome = "Witaj"

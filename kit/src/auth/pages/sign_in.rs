@@ -562,8 +562,14 @@ async fn check_second_factor(
     let Some(secret) = tf.secret.filter(|_| tf.enabled) else {
         return Ok(SecondFactor::Invalid);
     };
+    // Sealed at rest; a secret that can't be opened never matches (recovery
+    // codes still do).
+    let secret = totp::open_secret(&core.session_key, &secret);
 
     if totp::normalize_code(code).is_some() {
+        let Some(secret) = secret else {
+            return Ok(SecondFactor::Invalid);
+        };
         let issuer = site_name(core).await;
         let totp = totp::build(&secret, account, &issuer)?;
         let now = u64::try_from(session::now_unix()).unwrap_or(0);

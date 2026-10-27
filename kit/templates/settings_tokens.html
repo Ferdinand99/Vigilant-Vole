@@ -115,6 +115,11 @@
           <option value="never">{{ tr("common.never") }}</option>
         </select>
       </div>
+      <div class="field">
+        <label class="label" for="nt-password">{{ tr("sec.your_password") }}</label>
+        <input id="nt-password" name="current_password" type="password" maxlength="1024" autocomplete="current-password" aria-describedby="nt-password-help">
+        <p class="help" id="nt-password-help">{{ tr("tokens.password_help") }}</p>
+      </div>
     </form>
   </div>
   <footer class="sheet-foot">

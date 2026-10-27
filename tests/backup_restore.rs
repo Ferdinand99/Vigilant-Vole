@@ -33,8 +33,8 @@ fn multipart_file(field: &str, name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
     (format!("multipart/form-data; boundary={boundary}"), body)
 }
 
-/// A copy of `db` with the channel secrets opened with `key`: what a
-/// database backup holds.
+/// A copy of `db` with the channel and two-factor secrets opened with `key`:
+/// what a database backup holds.
 fn opened_copy(
     db: &std::path::Path,
     key: &axum_extra::extract::cookie::Key,
@@ -42,6 +42,7 @@ fn opened_copy(
 ) -> rusqlite::Connection {
     common::copy_db(db, to);
     let conn = rusqlite::Connection::open(to).unwrap();
+    vigilant_vole::kit::auth::totp::open_stored(&conn, key).unwrap();
     vigilant_vole::notification::sealed::open_stored(&conn, key).unwrap();
     conn
 }
@@ -125,8 +126,32 @@ async fn database_backup_restores_after_a_restart() {
     );
     assert_eq!(
         diff_databases(&open_ro(&snapshot), &open_ro(&dir.db())),
-        vec!["notification_channels: rows differ".to_string()],
+        vec![
+            "notification_channels: rows differ".to_string(),
+            "users: rows differ".to_string()
+        ],
         "only the sealed secrets differ"
+    );
+    // The fixture's two-factor user: sealed in the live database, opened in
+    // the snapshot.
+    let totp_secret = f.manifest["credentials"]["totp"]["secret"]
+        .as_str()
+        .unwrap();
+    let stored_totp = |db: &std::path::Path| -> Vec<String> {
+        let conn = open_ro(db);
+        let mut stmt = conn
+            .prepare("SELECT totp_secret FROM users WHERE totp_secret IS NOT NULL")
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    assert_eq!(stored_totp(&snapshot), [totp_secret]);
+    let sealed = stored_totp(&dir.db());
+    assert!(
+        sealed.len() == 1 && sealed[0].starts_with("sealed:v1:"),
+        "{sealed:?}"
     );
     assert!(channel_configs(&snapshot).contains(secret));
     assert!(!channel_configs(&dir.db()).contains(secret));

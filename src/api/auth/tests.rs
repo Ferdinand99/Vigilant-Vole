@@ -934,7 +934,13 @@ async fn token_creation_page_shows_the_token_once() {
     let r = c
         .post(
             "/settings/tokens",
-            &[("name", "CI"), ("scope", "write"), ("expires", "90")],
+            &[
+                ("name", "CI"),
+                ("scope", "write"),
+                ("expires", "90"),
+                // Write access asks for the password again.
+                ("current_password", PASSWORD),
+            ],
         )
         .await;
     assert_eq!(r.status(), StatusCode::OK);

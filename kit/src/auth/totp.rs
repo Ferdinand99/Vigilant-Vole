@@ -7,10 +7,14 @@
 
 use argon2::password_hash::PasswordHasher;
 use argon2::{Algorithm as ArgonAlgorithm, Argon2, Params, Version};
+use axum_extra::extract::cookie::Key;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use rusqlite::{Connection, OptionalExtension as _};
 use totp_rs::{Algorithm, Builder, Secret, Totp};
 
+use crate::crypto::{self, Sealer};
+use crate::db::users as db_users;
 use crate::http::ApiError;
 
 pub const DIGITS: usize = 6;
@@ -121,6 +125,105 @@ pub fn match_step(totp: &Totp, code: &str, now_unix: u64, last_used: Option<i64>
 /// The current code (tests, CLI helpers).
 pub fn code_at(totp: &Totp, now_unix: u64) -> String {
     totp.generate(now_unix).to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Secrets at rest
+// ---------------------------------------------------------------------------
+
+/// The purpose TOTP secrets are sealed for (their own derived key, see
+/// [`crate::crypto`]).
+pub const PURPOSE: &str = "vole-kit/totp";
+
+/// `secret` (base32), sealed for storage in `users.totp_secret`.
+pub fn seal_secret(key: &Key, secret: &str) -> String {
+    crypto::seal(key, PURPOSE, secret)
+}
+
+/// The base32 secret behind a stored `users.totp_secret`. Plaintext, as
+/// versions before sealing wrote it, is returned as it is (until
+/// [`seal_stored`] has sealed it, a login must keep working); `None` when
+/// the value is sealed but can't be opened (the instance key was replaced).
+pub fn open_secret(key: &Key, stored: &str) -> Option<String> {
+    if !crypto::is_sealed(stored) {
+        return Some(stored.to_string());
+    }
+    match crypto::open(key, PURPOSE, stored) {
+        Ok(secret) => Some(secret),
+        Err(err) => {
+            tracing::warn!(%err, "a stored two-factor secret can't be opened; the user has to set up two-factor again");
+            None
+        }
+    }
+}
+
+/// Seals the plaintext TOTP secrets of every user in place and returns how
+/// many changed. Run at startup after the migrations ([`Core::new`] does,
+/// in the background): secrets sealed already (the [`crypto::PREFIX`]) stay
+/// as they are, so a second run changes nothing. A secret saved or removed
+/// while it runs is left alone (compare-and-swap).
+///
+/// [`Core::new`]: crate::state::Core::new
+pub fn seal_stored(conn: &Connection, key: &Key) -> rusqlite::Result<usize> {
+    if !users_table_exists(conn)? {
+        return Ok(0);
+    }
+    let sealer = Sealer::new(key, PURPOSE);
+    let mut changed = 0;
+    for (id, stored) in db_users::stored_totp_secrets(conn)? {
+        if stored.is_empty() || crypto::is_sealed(&stored) {
+            continue;
+        }
+        if db_users::swap_totp_secret(conn, id, &stored, &sealer.seal(&stored))? {
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        tracing::info!(users = changed, "sealed the stored two-factor secrets");
+    }
+    Ok(changed)
+}
+
+/// The opposite of [`seal_stored`], for a **copy** of the database that has
+/// to work without this instance's key (a backup download): every secret
+/// that opens is written back in plaintext. Secrets that don't open stay
+/// sealed. Returns how many changed. Never run it on the live database.
+pub fn open_stored(conn: &Connection, key: &Key) -> rusqlite::Result<usize> {
+    if !users_table_exists(conn)? {
+        return Ok(0);
+    }
+    let mut changed = 0;
+    for (id, stored) in db_users::stored_totp_secrets(conn)? {
+        if !crypto::is_sealed(&stored) {
+            continue;
+        }
+        if let Ok(plain) = crypto::open(key, PURPOSE, &stored)
+            && db_users::swap_totp_secret(conn, id, &stored, &plain)?
+        {
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+/// Whether any TOTP secret is still stored in plaintext.
+pub fn has_plaintext_stored(conn: &Connection) -> rusqlite::Result<bool> {
+    if !users_table_exists(conn)? {
+        return Ok(false);
+    }
+    Ok(db_users::stored_totp_secrets(conn)?
+        .iter()
+        .any(|(_, stored)| !stored.is_empty() && !crypto::is_sealed(stored)))
+}
+
+fn users_table_exists(conn: &Connection) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'",
+        [],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|found| found.is_some())
 }
 
 // ---------------------------------------------------------------------------
@@ -331,5 +434,116 @@ mod tests {
     #[test]
     fn secret_is_grouped_for_reading() {
         assert_eq!(format_secret("ABCDEFGHIJ"), "ABCD EFGH IJ");
+    }
+
+    // -- Secrets at rest ----------------------------------------------------
+
+    const SECRET: &str = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+
+    fn key(byte: u8) -> Key {
+        Key::from(&[byte; 64])
+    }
+
+    fn stored(conn: &Connection, id: i64) -> Option<String> {
+        conn.query_row("SELECT totp_secret FROM users WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_sealed_secret_opens_and_hides_the_plaintext() {
+        let sealed = seal_secret(&key(1), SECRET);
+        assert!(crypto::is_sealed(&sealed));
+        assert!(!sealed.contains(SECRET));
+        assert_eq!(open_secret(&key(1), &sealed).as_deref(), Some(SECRET));
+        // Another instance key (a replaced session.key) can't open it.
+        assert_eq!(open_secret(&key(2), &sealed), None);
+        // Sealed for another purpose: not a TOTP secret.
+        let other = crypto::seal(&key(1), "vole-kit/notification-channels", SECRET);
+        assert_eq!(open_secret(&key(1), &other), None);
+    }
+
+    #[test]
+    fn plaintext_from_before_sealing_still_opens() {
+        assert_eq!(open_secret(&key(1), SECRET).as_deref(), Some(SECRET));
+    }
+
+    #[test]
+    fn stored_secrets_are_sealed_once() {
+        let conn = crate::db::test_conn();
+        let (a, b, c) = (
+            db_users::insert_user(&conn, "a", "h", crate::auth::Role::Viewer).unwrap(),
+            db_users::insert_user(&conn, "b", "h", crate::auth::Role::Viewer).unwrap(),
+            // No secret at all.
+            db_users::insert_user(&conn, "c", "h", crate::auth::Role::Viewer).unwrap(),
+        );
+        let k = key(3);
+        // `a`: plaintext, 2FA on (from before sealing). `b`: sealed already.
+        db_users::set_pending_totp_secret(&conn, a, SECRET).unwrap();
+        db_users::enable_totp(&conn, a, 7, &["hash".into()]).unwrap();
+        let sealed_b = seal_secret(&k, "KRSXG5CTMVRXEZLUKRSXG5CTMVRXEZLU");
+        db_users::set_pending_totp_secret(&conn, b, &sealed_b).unwrap();
+        assert!(has_plaintext_stored(&conn).unwrap());
+
+        assert_eq!(seal_stored(&conn, &k).unwrap(), 1);
+        let now_a = stored(&conn, a).unwrap();
+        assert!(crypto::is_sealed(&now_a));
+        assert_eq!(open_secret(&k, &now_a).as_deref(), Some(SECRET));
+        // What was sealed stays byte for byte, and nothing is left to seal.
+        assert_eq!(stored(&conn, b).as_deref(), Some(sealed_b.as_str()));
+        assert_eq!(stored(&conn, c), None);
+        assert!(!has_plaintext_stored(&conn).unwrap());
+
+        // A second run changes nothing, not even the nonce.
+        assert_eq!(seal_stored(&conn, &k).unwrap(), 0);
+        assert_eq!(stored(&conn, a).as_deref(), Some(now_a.as_str()));
+        // 2FA, the replay guard and the recovery codes are untouched.
+        let tf = db_users::get_totp(&conn, a).unwrap().unwrap();
+        assert!(tf.enabled);
+        assert_eq!(tf.last_step, Some(7));
+        assert_eq!(tf.recovery_codes, ["hash"]);
+    }
+
+    #[test]
+    fn a_secret_that_changed_meanwhile_is_not_overwritten() {
+        let conn = crate::db::test_conn();
+        let id = db_users::insert_user(&conn, "a", "h", crate::auth::Role::Viewer).unwrap();
+        db_users::set_pending_totp_secret(&conn, id, SECRET).unwrap();
+        // `seal_stored` read the old text; the user started over before it wrote.
+        let old = db_users::stored_totp_secrets(&conn).unwrap().remove(0).1;
+        db_users::set_pending_totp_secret(&conn, id, "KRSXG5CTMVRXEZLUKRSXG5CTMVRXEZLU").unwrap();
+        assert!(!db_users::swap_totp_secret(&conn, id, &old, "sealed:v1:x").unwrap());
+        assert_eq!(
+            stored(&conn, id).as_deref(),
+            Some("KRSXG5CTMVRXEZLUKRSXG5CTMVRXEZLU")
+        );
+    }
+
+    #[test]
+    fn a_copy_for_another_instance_gets_its_secrets_opened() {
+        let conn = crate::db::test_conn();
+        let a = db_users::insert_user(&conn, "a", "h", crate::auth::Role::Viewer).unwrap();
+        let b = db_users::insert_user(&conn, "b", "h", crate::auth::Role::Viewer).unwrap();
+        let lost = seal_secret(&key(9), SECRET);
+        db_users::set_pending_totp_secret(&conn, a, &seal_secret(&key(3), SECRET)).unwrap();
+        db_users::set_pending_totp_secret(&conn, b, &lost).unwrap();
+        // `a` opens; `b` was sealed by another key and stays as it is.
+        assert_eq!(open_stored(&conn, &key(3)).unwrap(), 1);
+        assert_eq!(stored(&conn, a).as_deref(), Some(SECRET));
+        assert_eq!(stored(&conn, b).as_deref(), Some(lost.as_str()));
+        // The other instance seals it again at its start.
+        assert_eq!(seal_stored(&conn, &key(4)).unwrap(), 1);
+        assert_eq!(
+            open_secret(&key(4), &stored(&conn, a).unwrap()).as_deref(),
+            Some(SECRET)
+        );
+    }
+
+    #[test]
+    fn sealing_a_database_without_users_is_a_no_op() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert_eq!(seal_stored(&conn, &key(1)).unwrap(), 0);
+        assert!(!has_plaintext_stored(&conn).unwrap());
     }
 }

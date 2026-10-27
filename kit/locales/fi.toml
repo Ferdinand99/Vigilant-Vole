@@ -271,6 +271,10 @@ pk_unsupported = "Tämä selain ei tue pääsyavaimia."
 pk_no_support = "Tämä selain ei tue pääsyavaimia. Kokeile toista selainta tai kirjaudu salasanalla."
 pk_exists = "Tämä pääsyavain on jo tallennettu tilillesi."
 pk_failed = "Pääsyavainta ei voitu tallentaa. Yritä uudelleen."
+reauth_needed = "Vahvista muutos antamalla salasanasi."
+your_password = "Salasanasi"
+revoke_tokens = "Peru myös omat API-tunnukseni"
+revoke_tokens_help = "Niitä käyttävät skriptit lakkaavat toimimasta, kunnes luot uudet."
 
 [users]
 sub = "Kuka voi kirjautua sisään ja mitä he voivat muuttaa."
@@ -330,6 +334,8 @@ reset_pk = "Poista pääsyavaimet"
 reset_pk_q = "Poistetaanko kaikki käyttäjän {name} pääsyavaimet?"
 reset_pk_msg = "Käyttäjä kirjataan ulos kaikkialta, ja hän kirjautuu salasanalla, kunnes lisää taas pääsyavaimen."
 pk_reset = "Käyttäjän {name} pääsyavaimet poistettu. Hänet on kirjattu ulos kaikkialta."
+revoke_tokens = "Peru myös hänen API-tunnuksensa"
+admin_password_help = "Oma salasanasi, jolla vahvistat ylläpitäjän lisäämisen."
 
 [tokens]
 new = "Uusi tunnus"
@@ -366,6 +372,7 @@ err_expiry = "Valitse, milloin tunnus vanhenee."
 err_limit = "Sinulla on jo 50 tunnusta. Peru joitakin, joita et enää käytä."
 created = "Tunnus luotu"
 revoked = "Tunnus peruttu"
+password_help = "Tarvitaan luku- ja kirjoitusoikeuteen sekä tunnuksiin, jotka eivät vanhene koskaan. Ei tarvita vain luku -tunnukseen, joka vanhenee."
 
 [auth]
 welcome = "Tervetuloa"

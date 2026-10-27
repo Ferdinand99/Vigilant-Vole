@@ -270,6 +270,38 @@ pub fn seal_stored(conn: &Connection, key: &Key) -> rusqlite::Result<usize> {
     Ok(changed)
 }
 
+/// Whether any stored channel ([`TABLE`]) still holds a secret in plaintext,
+/// which [`seal_stored`] would seal. No table, no plaintext.
+pub fn has_plaintext_stored(conn: &Connection) -> rusqlite::Result<bool> {
+    if !table_exists(conn)? {
+        return Ok(false);
+    }
+    let mut stmt = conn.prepare(&format!("SELECT kind, config FROM {TABLE}"))?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let plain = |v: &Value| {
+        v.as_str()
+            .is_some_and(|v| !v.is_empty() && !crypto::is_sealed(v))
+    };
+    Ok(rows.iter().any(|(kind, text)| {
+        let (Some(schema), Ok(config)) =
+            (super::provider(kind), serde_json::from_str::<Value>(text))
+        else {
+            return false;
+        };
+        schema
+            .fields
+            .iter()
+            .filter(|f| f.secret)
+            .any(|field| match config.get(field.key) {
+                Some(Value::Object(map)) => map.values().any(plain),
+                Some(v) => plain(v),
+                None => false,
+            })
+    }))
+}
+
 /// The opposite of [`seal_stored`], for a copy of the database that has to
 /// work without this instance's key (a backup to restore elsewhere): every
 /// secret that opens is written back in plaintext. Secrets that don't open
