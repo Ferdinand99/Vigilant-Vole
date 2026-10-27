@@ -247,6 +247,7 @@ fn save(
     sections: Option<&[(String, Vec<i64>)]>,
     hosts: &[String],
     doc: &StatusPageDoc,
+    admin: bool,
 ) -> rusqlite::Result<Result<i64, V1Error>> {
     let current = match id {
         Some(id) => db_pages::get(conn, id)?,
@@ -257,6 +258,15 @@ fn save(
         Ok((extras, _)) => extras,
         Err(errors) => return Ok(Err(V1Error::fields(errors))),
     };
+    if !admin
+        && extras.analytics.as_ref().is_some_and(|a| {
+            db_pages::extras::changes_script_url(current.as_ref().map(|p| &p.analytics), a)
+        })
+    {
+        return Ok(Err(V1Error::forbidden_msg(
+            "Only an administrator can set or change the analytics script URL.",
+        )));
+    }
     if db_pages::slug_taken(conn, &page.slug, id)? {
         return Ok(Err(V1Error::conflict(
             "Another page already uses this slug.",
@@ -395,9 +405,10 @@ async fn create(
     }
     let page = config_io::validate_page(&doc).map_err(V1Error::fields)?;
     let sections = input.sections.as_deref().map(sections_of).transpose()?;
+    let admin = user.is_admin();
     let hosts = request_hosts(&headers);
     let id = state
-        .with_conn(move |c| save(c, None, &page, sections.as_deref(), &hosts, &doc))
+        .with_conn(move |c| save(c, None, &page, sections.as_deref(), &hosts, &doc, admin))
         .await??;
     changed(&state);
     tracing::info!(user = %user.username, page_id = id, "status page created via API");
@@ -422,9 +433,10 @@ async fn update(
     let doc = merge(&input, doc_of(&current));
     let page = config_io::validate_page(&doc).map_err(V1Error::fields)?;
     let sections = input.sections.as_deref().map(sections_of).transpose()?;
+    let admin = user.is_admin();
     let hosts = request_hosts(&headers);
     state
-        .with_conn(move |c| save(c, Some(id), &page, sections.as_deref(), &hosts, &doc))
+        .with_conn(move |c| save(c, Some(id), &page, sections.as_deref(), &hosts, &doc, admin))
         .await??;
     changed(&state);
     Ok(json_ok(&HeaderMap::new(), &load(&state, id).await?))
@@ -457,9 +469,10 @@ async fn set_sections(
         .ok_or_else(V1Error::not_found)?;
     let page = current.to_new();
     let doc = doc_of(&current);
+    let admin = user.is_admin();
     let sections = sections_of(&list)?;
     state
-        .with_conn(move |c| save(c, Some(id), &page, Some(&sections), &[], &doc))
+        .with_conn(move |c| save(c, Some(id), &page, Some(&sections), &[], &doc, admin))
         .await??;
     changed(&state);
     Ok(json_ok(&HeaderMap::new(), &load(&state, id).await?))

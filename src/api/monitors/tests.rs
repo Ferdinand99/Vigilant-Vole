@@ -1148,7 +1148,7 @@ async fn bulk_edit_sheet_renders_and_rerenders_with_errors() {
 #[tokio::test]
 async fn bulk_edit_applies_skips_and_reloads_changed_monitors_only() {
     let t = app().await;
-    let app = router(&t.state, Role::Editor);
+    let app = router(&t.state, Role::Admin);
     let web = seed(&t, "web", MonitorType::Http, 60).await;
     let same = seed(&t, "already", MonitorType::Http, 120).await;
     let push = seed(&t, "cron", MonitorType::Push, 60).await;
@@ -1280,4 +1280,80 @@ async fn bulk_edit_all_matching_the_filter_and_roles() {
         "viewers never get select mode"
     );
     t.state.scheduler.shutdown().await;
+}
+
+#[tokio::test]
+async fn only_administrators_turn_on_run_on_agents() {
+    let t = app().await;
+    let editor = router(&t.state, Role::Editor);
+    let form = format!("{HTTP_FORM}&run_on_agents=true");
+
+    // An editor can't hand the credentials to every agent ...
+    let res = send(&editor, post_form("/monitors/new", &form)).await;
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let html = body_text(res).await;
+    assert!(
+        html.contains("Only an administrator can turn this on"),
+        "{html}"
+    );
+    // ... but can still create the monitor without.
+    let res = send(&editor, post_form("/monitors/new", HTTP_FORM)).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let id = created_id(&res);
+
+    // In bulk neither.
+    let res = send(
+        &editor,
+        htmx_post("/monitors/bulk/edit", &format!("ids={id}&run_on_agents=on")),
+    )
+    .await;
+    assert!(header(&res, "hx-trigger").contains("Only an administrator"));
+    let m = stored(&t, id).await;
+    assert!(!m.run_on_agents);
+
+    // An administrator can; afterwards an editor's edit leaves it alone.
+    let admin = router(&t.state, Role::Admin);
+    let res = send(&admin, post_form(&format!("/monitors/{id}/edit"), &form)).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert!(stored(&t, id).await.run_on_agents);
+    let res = send(&editor, post_form(&format!("/monitors/{id}/edit"), &form)).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert!(stored(&t, id).await.run_on_agents);
+    // Turning it off is theirs to do.
+    let res = send(
+        &editor,
+        post_form(&format!("/monitors/{id}/edit"), HTTP_FORM),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert!(!stored(&t, id).await.run_on_agents);
+}
+
+#[tokio::test]
+async fn url_credentials_stay_out_of_the_pages_everyone_sees() {
+    let t = app().await;
+    let editor = router(&t.state, Role::Editor);
+    let form = HTTP_FORM.replace(
+        "https%3A%2F%2F127.0.0.1",
+        "https%3A%2F%2Falice%3Ahunter2%40127.0.0.1",
+    );
+    let res = send(&editor, post_form("/monitors/new", &form)).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let id = created_id(&res);
+    assert_eq!(
+        stored(&t, id).await.target,
+        "https://alice:hunter2@127.0.0.1:9/health"
+    );
+
+    let viewer = router(&t.state, Role::Viewer);
+    for app in [&viewer, &editor] {
+        for uri in [format!("/monitors/{id}"), "/".to_string()] {
+            let html = body_text(send(app, get(&uri)).await).await;
+            assert!(html.contains("127.0.0.1:9/health"), "{uri}");
+            assert!(!html.contains("hunter2"), "{uri}");
+        }
+    }
+    // Editing works with the stored value.
+    let html = body_text(send(&editor, get(&format!("/monitors/{id}/edit"))).await).await;
+    assert!(html.contains("hunter2"));
 }

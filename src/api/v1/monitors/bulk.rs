@@ -319,6 +319,11 @@ pub(super) async fn bulk(
         .with_conn(|c| Ok((db_notifications::list_channels(c)?, db_tags::list_tags(c)?)))
         .await?;
     let edit = parse_set(&set, &channels, &tags)?;
+    if edit.run_on_agents == Some(true) && !user.is_admin() {
+        return Err(V1Error::forbidden_msg(
+            "Only an administrator can turn on run_on_agents: it hands the monitor's credentials to every agent.",
+        ));
+    }
 
     let outcome = state
         .with_conn(move |c| {

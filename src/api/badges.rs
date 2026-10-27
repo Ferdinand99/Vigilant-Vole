@@ -266,7 +266,18 @@ fn load(
     let Some((_name, active)) = row else {
         return Ok(None);
     };
-    if !db_settings::load(conn)?.badges_public && !db_pages::monitor_is_public(conn, id)? {
+    // Badges are public for every monitor when the instance says so;
+    // otherwise only for monitors on a public page, and only the figures
+    // (uptime, response time) a page that lists the monitor shows.
+    let (show_uptime, show_response) = if db_settings::load(conn)?.badges_public {
+        (true, true)
+    } else {
+        match db_pages::monitor_public_figures(conn, id)? {
+            Some(figures) => figures,
+            None => return Ok(None),
+        }
+    };
+    if (kind == "uptime" && !show_uptime) || (kind == "ping" && !show_response) {
         return Ok(None);
     }
     let (days, dur_label) = q

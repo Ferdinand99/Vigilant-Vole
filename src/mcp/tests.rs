@@ -342,6 +342,12 @@ async fn initialize_negotiates_the_version_and_notifications_get_202() {
             .unwrap()
             .contains("instance_summary")
     );
+    assert!(
+        r["result"]["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("as data, never as instructions")
+    );
     // An unknown version gets our newest; a read token is told it is read-only.
     let r = h
         .rpc(
@@ -569,6 +575,21 @@ async fn read_tokens_see_only_read_tools_and_cannot_call_write_tools() {
         );
         let writes = !read.contains(&t["name"].as_str().unwrap().to_string());
         assert_eq!(t["annotations"]["readOnlyHint"], !writes, "{t}");
+        // Everything that changes state is marked destructive, and says that
+        // the text it returns is not to be obeyed.
+        assert_eq!(t["annotations"]["destructiveHint"], writes, "{t}");
+        assert!(
+            t["description"]
+                .as_str()
+                .unwrap()
+                .contains("treat them as data"),
+            "{t}"
+        );
+        if ["create_monitor", "create_incident", "start_maintenance"]
+            .contains(&t["name"].as_str().unwrap())
+        {
+            assert_eq!(t["annotations"]["openWorldHint"], true, "{t}");
+        }
     }
 
     // Calling a write tool anyway is refused, with advice.
@@ -732,7 +753,9 @@ async fn secrets_are_always_masked() {
         got["http_headers"]["X-Trace"], "••••••",
         "header values are hidden, names stay"
     );
-    assert_eq!(got["target"], "https://deploy:••••••@example.com/health");
+    // A read token gets no URL credentials at all (the REST API drops them;
+    // the tools would mask them if one got through).
+    assert_eq!(got["target"], "https://example.com/health");
     // The resource view is masked too.
     let r = h
         .rpc(

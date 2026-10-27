@@ -73,11 +73,18 @@ Resources: `vigilant-vole://api-reference` (this server's REST API reference as 
 - **Tokens only.** `/mcp` accepts `Authorization: Bearer vv_…` and nothing else: no session cookies, no Basic
   auth. A **read** token sees only the read tools; a **write** token also gets the editing tools, and the owner's
   role still applies (a viewer's write token can't edit).
-- **No destructive tools.** Nothing deletes monitors, pages, incidents or history, and nothing touches users,
+- **No deleting tools.** Nothing deletes monitors, pages, incidents or history, and nothing touches users,
   settings, API tokens, notification channels or backups. To undo what an assistant did, use the web UI.
+  Every tool that changes something (create or edit monitors, pause, resume, check now, incidents, maintenance)
+  is still marked `destructiveHint: true`, so clients ask before running it; the ones that reach monitored
+  addresses or tell a status page's subscribers are marked `openWorldHint: true`. Use a **read** token unless
+  you want the assistant to change things.
 - **Secrets are masked.** Passwords, tokens, API keys, SNMP communities and credentials inside URLs come back as
   `••••••`, and header values are hidden (names stay). Content from monitor names, messages and incident texts is
-  data the assistant reads: treat prompts hidden in a monitor name as untrusted, as with any tool output.
+  data the assistant reads, and some of it is written by third parties: a monitored site's answer, whoever holds a
+  push URL, a remote agent. Treat prompts hidden in a monitor name, a check message or an incident as untrusted,
+  as with any tool output. The server says so in its instructions and in every tool description, but a client
+  that lets an assistant call write tools without asking is the real protection to avoid.
 - **Rate limit** of 120 requests a minute per token (HTTP 429 with `Retry-After`).
 - **Origin check** (DNS-rebinding protection). Assistants and the bridge send no `Origin` and are not affected. A
   browser request must come from the **Public URL** set under **Settings → General**; without one, only from an IP

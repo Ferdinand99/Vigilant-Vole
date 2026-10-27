@@ -13,7 +13,7 @@
 //! material) option set.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
@@ -34,7 +34,8 @@ pub const JSON_OPERATORS: &[&str] = &["==", "!=", "contains", "<", "<=", ">", ">
 
 /// Response bodies are read up to this many bytes (keyword / JSON checks).
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
-const MAX_REDIRECTS_CAP: u32 = 30;
+/// Most redirects ever followed, whatever the monitor asks for.
+const MAX_REDIRECTS_CAP: u32 = 5;
 
 // ---------------------------------------------------------------------------
 // Accepted status codes
@@ -173,6 +174,8 @@ struct ClientKey {
     ignore_tls: bool,
     max_redirects: u32,
     proxy: Option<String>,
+    /// The monitor sends custom headers (see [`redirect_policy`]).
+    custom_headers: bool,
     /// Digest of the mTLS certificate, key and CA ([`http_auth::mtls_fingerprint`]).
     mtls: Option<String>,
 }
@@ -190,6 +193,10 @@ impl ClientKey {
                 .map(str::trim)
                 .filter(|p| !p.is_empty())
                 .map(str::to_string),
+            custom_headers: monitor
+                .http_headers
+                .as_deref()
+                .is_some_and(|h| parse_headers(h).is_ok_and(|m| !m.is_empty())),
             mtls: http_auth::mtls_fingerprint(monitor),
         }
     }
@@ -244,6 +251,61 @@ impl<V: Clone> ClientCache<V> {
     }
 }
 
+/// The error a redirect hop that went past the limit ends with.
+const TOO_MANY_REDIRECTS: &str = "too many redirects";
+
+/// Why the redirect from `previous` (every URL requested so far, the
+/// original first) to `next` must not be followed, if it mustn't. A redirect
+/// is refused when:
+/// - the limit is used up,
+/// - it leads to a link-local or cloud metadata address (names are checked
+///   when they are resolved), or
+/// - the monitor sends custom headers and the redirect leaves the host or
+///   drops from https to http: reqwest only strips `Authorization` and
+///   cookies there, so an `X-Api-Key` would be handed to whoever the server
+///   (or an open redirect on it) names.
+fn redirect_refusal(
+    previous: &[Url],
+    next: &Url,
+    limit: usize,
+    custom_headers: bool,
+) -> Option<String> {
+    if previous.len() > limit {
+        return Some(TOO_MANY_REDIRECTS.into());
+    }
+    if let Some(host) = next.host_str()
+        && let Err(forbidden) = crate::kit::net::check_host(host)
+    {
+        return Some(forbidden.to_string());
+    }
+    let from = previous.last()?;
+    let leaves = from.host_str() != next.host_str()
+        || (from.scheme() == "https" && next.scheme() != "https");
+    (custom_headers && leaves).then(|| {
+        format!(
+            "redirected to {}, which gets none of the monitor's custom headers",
+            next.host_str().unwrap_or("another host")
+        )
+    })
+}
+
+fn redirect_policy(max_redirects: u32, custom_headers: bool) -> reqwest::redirect::Policy {
+    if max_redirects == 0 {
+        return reqwest::redirect::Policy::none();
+    }
+    reqwest::redirect::Policy::custom(move |attempt| {
+        match redirect_refusal(
+            attempt.previous(),
+            attempt.url(),
+            max_redirects as usize,
+            custom_headers,
+        ) {
+            Some(why) => attempt.error(why),
+            None => attempt.follow(),
+        }
+    })
+}
+
 fn client_for(
     key: &ClientKey,
     mtls: Option<(&str, &str, Option<&str>)>,
@@ -260,14 +322,14 @@ fn client_for(
         return Ok(client);
     }
 
-    let redirect = if key.max_redirects == 0 {
-        reqwest::redirect::Policy::none()
-    } else {
-        reqwest::redirect::Policy::limited(key.max_redirects as usize)
-    };
+    let redirect = redirect_policy(key.max_redirects, key.custom_headers);
     let mut builder = crate::tls_roots::http_client()
         .user_agent(crate::server::USER_AGENT)
         .redirect(redirect)
+        // Link-local and cloud metadata addresses are refused when the
+        // connection is made, redirects included. Private and loopback
+        // addresses stay reachable: monitoring the LAN is the point.
+        .dns_resolver(Arc::new(crate::kit::net::GuardedResolver))
         .tls_info(true)
         .danger_accept_invalid_certs(key.ignore_tls)
         .connect_timeout(Duration::from_secs(30))
@@ -308,6 +370,10 @@ async fn check_inner(monitor: &Monitor) -> Result<CheckOutcome, String> {
     let codes = parse_status_codes(&monitor.accepted_status_codes)
         .map_err(|e| format!("Invalid accepted status codes: {e}"))?;
     let url = parse_url(&monitor.target)?;
+    // A literal address never reaches the resolver, so it is checked here.
+    if let Some(host) = url.host_str() {
+        crate::kit::net::check_host(host).map_err(|e| format!("Refused: {e}"))?;
+    }
     let method_name = monitor.http_method.trim().to_ascii_uppercase();
     let method = if method_name.is_empty() {
         Method::GET
@@ -523,11 +589,15 @@ async fn describe_request_error(
         return CheckOutcome::down(format!("Timed out after {}", util::format_secs(timeout)));
     }
     if err.is_redirect() {
-        return CheckOutcome::down(format!(
-            "Too many redirects (limit {}): {}",
-            key.max_redirects,
-            util::root_cause(err)
-        ));
+        let cause = util::root_cause(err);
+        return CheckOutcome::down(if cause == TOO_MANY_REDIRECTS {
+            format!("Too many redirects (limit {}): {cause}", key.max_redirects)
+        } else {
+            format!("Redirect not followed: {cause}")
+        });
+    }
+    if chain.contains(&crate::kit::net::Forbidden.to_string()) {
+        return CheckOutcome::down(format!("Refused: {}", util::root_cause(err)));
     }
     if url.scheme() == "https"
         && !monitor.ignore_tls
@@ -537,6 +607,7 @@ async fn describe_request_error(
             ignore_tls: true,
             max_redirects: 0,
             proxy: key.proxy.clone(),
+            custom_headers: false,
             mtls: None,
         };
         let cert = probe_cert(&probe_key, url, timeout.min(Duration::from_secs(10))).await;
@@ -571,6 +642,7 @@ pub(crate) async fn probe_cert_unverified(url: &Url, timeout: Duration) -> Optio
         ignore_tls: true,
         max_redirects: 0,
         proxy: None,
+        custom_headers: false,
         mtls: None,
     };
     probe_cert(&key, url, timeout).await
@@ -595,7 +667,28 @@ async fn probe_cert(key: &ClientKey, url: &Url, timeout: Duration) -> Option<Cer
 // Keyword / JSON evaluation (pure)
 // ---------------------------------------------------------------------------
 
-const SNIPPET_CHARS: usize = 80;
+// What a monitor reads from the answer stays out of its messages. They are
+// stored and shown to everyone who can see the monitor, sent by notifications
+// and read by assistants, while a monitor can be pointed at any URL the
+// server can reach. So: no body excerpts, and JSON text is described, not
+// quoted. Numbers and booleans are shown, so "queue length > 5" still reads
+// well.
+
+/// How a JSON value appears in a message: numbers, booleans and null as they
+/// are, everything else by kind and size.
+fn describe_json(v: &Value) -> String {
+    match v {
+        Value::Null | Value::Bool(_) | Value::Number(_) => v.to_string(),
+        Value::String(s) => format!("text ({} characters)", s.chars().count()),
+        Value::Array(a) => format!("a list of {}", a.len()),
+        Value::Object(o) => format!("an object with {} keys", o.len()),
+    }
+}
+
+/// The value itself, when it is safe to show.
+fn scalar_json(v: &Value) -> Option<String> {
+    matches!(v, Value::Null | Value::Bool(_) | Value::Number(_)).then(|| v.to_string())
+}
 
 /// `Ok(up message)` / `Err(down message)`. Case-sensitive substring match.
 pub fn evaluate_keyword(body: &str, keyword: &str, invert: bool) -> Result<String, String> {
@@ -610,24 +703,10 @@ pub fn evaluate_keyword(body: &str, keyword: &str, invert: bool) -> Result<Strin
             if body.trim().is_empty() {
                 Err(format!("Keyword \"{shown}\" not found — body is empty"))
             } else {
-                Err(format!(
-                    "Keyword \"{shown}\" not found — body starts: {}",
-                    util::snippet(body, SNIPPET_CHARS)
-                ))
+                Err(format!("Keyword \"{shown}\" not found"))
             }
         }
-        (Some(idx), true) => {
-            // Show a little context around the unwanted match.
-            let mut start = idx.saturating_sub(30);
-            while !body.is_char_boundary(start) {
-                start -= 1;
-            }
-            let prefix = if start > 0 { "…" } else { "" };
-            Err(format!(
-                "Keyword \"{shown}\" found but should be absent — {prefix}{}",
-                util::snippet(&body[start..], SNIPPET_CHARS)
-            ))
-        }
+        (Some(_), true) => Err(format!("Keyword \"{shown}\" found but should be absent")),
     }
 }
 
@@ -659,10 +738,7 @@ pub fn evaluate_json(
         if body.trim().is_empty() {
             "Response is not JSON — body is empty".to_string()
         } else {
-            format!(
-                "Response is not valid JSON ({e}) — body starts: {}",
-                util::snippet(body, SNIPPET_CHARS)
-            )
+            format!("Response is not valid JSON ({e})")
         }
     })?;
     let path = normalize_json_path(path);
@@ -672,16 +748,24 @@ pub fn evaluate_json(
     let actual = nodes
         .first()
         .ok_or_else(|| format!("JSON path {path} matched nothing"))?;
-    let shown = util::truncate(&actual.to_string(), SNIPPET_CHARS);
 
     let Some(expected) = expected.filter(|e| !e.is_empty()) else {
-        return Ok(format!("{path} = {shown}"));
+        return Ok(match scalar_json(actual) {
+            Some(value) => format!("{path} = {value}"),
+            None => format!("{path} matched"),
+        });
     };
     let operator = operator.trim();
     if json_compare(operator, actual, expected)? {
-        Ok(format!("{path} {operator} {expected} (actual: {shown})"))
+        Ok(match scalar_json(actual) {
+            Some(value) => format!("{path} {operator} {expected} (actual: {value})"),
+            None => format!("{path} {operator} {expected}"),
+        })
     } else {
-        Err(format!("{path} is {shown}, expected {operator} {expected}"))
+        Err(format!(
+            "{path} is {}, expected {operator} {expected}",
+            describe_json(actual)
+        ))
     }
 }
 
@@ -722,7 +806,7 @@ pub fn json_compare(operator: &str, actual: &Value, expected: &str) -> Result<bo
             let (Some(a), Ok(b)) = (value_f64(actual), expected.trim().parse::<f64>()) else {
                 return Err(format!(
                     "Cannot compare {} {operator} {expected}: both sides must be numbers",
-                    util::truncate(&actual.to_string(), SNIPPET_CHARS)
+                    describe_json(actual)
                 ));
             };
             Ok(match operator {
@@ -747,6 +831,7 @@ mod tests {
             ignore_tls: false,
             max_redirects: 0,
             proxy: None,
+            custom_headers: false,
             mtls: Some(n.to_string()),
         };
         let mut cache = ClientCache {
@@ -826,10 +911,7 @@ mod tests {
             Ok("Keyword \"OK\" found".into())
         );
         let err = evaluate_keyword("<html>\n  <body>fail</body>", "OK", false).unwrap_err();
-        assert_eq!(
-            err,
-            "Keyword \"OK\" not found — body starts: <html> <body>fail</body>"
-        );
+        assert_eq!(err, "Keyword \"OK\" not found");
     }
 
     #[test]
@@ -841,18 +923,40 @@ mod tests {
     fn keyword_invert() {
         assert!(evaluate_keyword("fine", "ERROR", true).is_ok());
         let err = evaluate_keyword("status: ERROR occurred", "ERROR", true).unwrap_err();
-        assert!(
-            err.starts_with("Keyword \"ERROR\" found but should be absent — status: ERROR"),
-            "{err}"
-        );
+        assert_eq!(err, "Keyword \"ERROR\" found but should be absent");
     }
 
     #[test]
-    fn keyword_snippet_is_capped() {
-        let body = "x".repeat(500);
+    fn messages_never_quote_the_response() {
+        // A monitor can be pointed at any URL the server can reach, and its
+        // messages are shown to viewers and sent by notifications.
+        let secret = "TOPSECRET-token-from-an-internal-service";
+        let body = format!("{secret} and some more text");
         let err = evaluate_keyword(&body, "y", false).unwrap_err();
-        assert!(err.chars().count() < 140, "{err}");
-        assert!(err.ends_with('…'));
+        assert!(!err.contains("TOPSECRET"), "{err}");
+        let err = evaluate_keyword(&body, "and", true).unwrap_err();
+        assert!(!err.contains("TOPSECRET"), "{err}");
+        let err = evaluate_json(&body, "$.a", "==", Some("1")).unwrap_err();
+        assert!(!err.contains("TOPSECRET"), "{err}");
+
+        let json = format!(r#"{{"token":"{secret}","n":7,"on":true,"list":["{secret}"]}}"#);
+        for path in ["$.token", "$.list", "$"] {
+            for expected in [None, Some("x")] {
+                let (Ok(msg) | Err(msg)) = evaluate_json(&json, path, "==", expected);
+                assert!(!msg.contains("TOPSECRET"), "{path}: {msg}");
+            }
+        }
+        let err = evaluate_json(&json, "$.token", "<", Some("1")).unwrap_err();
+        assert!(!err.contains("TOPSECRET"), "{err}");
+        // Numbers and booleans still read well.
+        assert_eq!(
+            evaluate_json(&json, "$.n", "==", None),
+            Ok("$.n = 7".into())
+        );
+        assert_eq!(
+            evaluate_json(&json, "$.on", "==", Some("false")),
+            Err("$.on is true, expected == false".into())
+        );
     }
 
     #[test]
@@ -887,7 +991,7 @@ mod tests {
         let body = r#"{"status":"degraded","count":5,"items":["a"]}"#;
         assert_eq!(
             evaluate_json(body, "status", "==", Some("ok")),
-            Err("$.status is \"degraded\", expected == ok".into())
+            Err("$.status is text (8 characters), expected == ok".into())
         );
         assert_eq!(
             evaluate_json(body, "$.count", ">", Some("1")),
@@ -899,7 +1003,7 @@ mod tests {
         );
         assert_eq!(
             evaluate_json(body, "$.items", "==", None),
-            Ok("$.items = [\"a\"]".into())
+            Ok("$.items matched".into())
         );
         assert!(
             evaluate_json("not json", "$.a", "==", Some("1"))
@@ -931,6 +1035,7 @@ mod tests {
             ignore_tls: false,
             max_redirects: 1,
             proxy: Some("::not a url".into()),
+            custom_headers: false,
             mtls: None,
         };
         assert!(
@@ -1075,6 +1180,153 @@ mod server_tests {
     }
 
     #[tokio::test]
+    async fn metadata_and_link_local_addresses_are_refused() {
+        for target in [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[fd00:ec2::254]/",
+            "http://[fe80::1]/",
+            "http://[::ffff:169.254.169.254]/",
+            "http://0.0.0.0:8080/",
+            // The decimal spelling is normalised by the URL parser.
+            "http://2852039166/",
+        ] {
+            let out = check(&monitor(MonitorType::Http, target)).await;
+            assert_eq!(out.status, HeartbeatStatus::Down, "{target}");
+            let msg = out.message.unwrap();
+            assert!(
+                msg.starts_with("Refused: the address is not allowed"),
+                "{target}: {msg}"
+            );
+        }
+        // The LAN and the machine itself are what monitors are for.
+        let addr = serve().await;
+        assert_eq!(check(&http(addr, "/ok")).await.status, HeartbeatStatus::Up);
+    }
+
+    #[tokio::test]
+    async fn a_redirect_to_a_metadata_address_is_not_followed() {
+        let app = Router::new().route(
+            "/hop",
+            get(|| async { Redirect::temporary("http://169.254.169.254/latest/meta-data/") }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let out = check(&http(addr, "/hop")).await;
+        assert_eq!(out.status, HeartbeatStatus::Down);
+        let msg = out.message.unwrap();
+        assert!(
+            msg.starts_with("Redirect not followed: the address is not allowed"),
+            "{msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn at_most_five_redirects_are_followed() {
+        let addr = serve().await;
+        let mut m = http(addr, "/loop");
+        m.max_redirects = 30;
+        let msg = check(&m).await.message.unwrap();
+        assert!(msg.starts_with("Too many redirects (limit 5)"), "{msg}");
+    }
+
+    #[tokio::test]
+    async fn custom_headers_are_not_sent_to_another_host() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = std::sync::Arc::new(AtomicUsize::new(0));
+        let hits = std::sync::Arc::clone(&seen);
+        let app = Router::new()
+            .route(
+                "/seen",
+                get(move |h: AxHeaders| async move {
+                    if h.get("x-api-key").is_some() {
+                        hits.fetch_add(1, Ordering::SeqCst);
+                    }
+                    "ok"
+                }),
+            )
+            // Same host, other host (another name for the same machine).
+            .route("/same", get(|| async { Redirect::temporary("/seen") }))
+            .route(
+                "/other",
+                get(move || async move {
+                    Redirect::temporary(&format!("http://localhost:{}/seen", addr.port()))
+                }),
+            );
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let mut m = http(addr, "/same");
+        m.http_headers = Some(r#"{"X-Api-Key": "secret"}"#.into());
+        assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
+        assert_eq!(seen.load(Ordering::SeqCst), 1, "kept on the same host");
+
+        let mut m = http(addr, "/other");
+        m.http_headers = Some(r#"{"X-Api-Key": "secret"}"#.into());
+        let out = check(&m).await;
+        assert_eq!(out.status, HeartbeatStatus::Down);
+        let msg = out.message.unwrap();
+        assert!(
+            msg.starts_with("Redirect not followed: redirected to localhost"),
+            "{msg}"
+        );
+        assert_eq!(
+            seen.load(Ordering::SeqCst),
+            1,
+            "never sent to the other host"
+        );
+
+        // Nothing to leak, nothing to stop.
+        let m = http(addr, "/other");
+        assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
+    }
+
+    #[test]
+    fn redirect_rules() {
+        let url = |s: &str| Url::parse(s).unwrap();
+        let first = [url("https://a.example/")];
+        // Own host (also to another path or port): fine, headers or not.
+        assert_eq!(
+            redirect_refusal(&first, &url("https://a.example:8443/x"), 5, true),
+            None
+        );
+        // Another host: only without custom headers.
+        let other = url("https://b.example/");
+        assert_eq!(redirect_refusal(&first, &other, 5, false), None);
+        assert!(redirect_refusal(&first, &other, 5, true).is_some());
+        // A downgrade to http would put them on the wire.
+        let plain = url("http://a.example/");
+        assert_eq!(redirect_refusal(&first, &plain, 5, false), None);
+        assert!(redirect_refusal(&first, &plain, 5, true).is_some());
+        // Upgrading is fine.
+        let http_first = [url("http://a.example/")];
+        assert_eq!(
+            redirect_refusal(&http_first, &url("https://a.example/"), 5, true),
+            None
+        );
+        // Metadata addresses, whatever the headers.
+        let meta = url("http://169.254.169.254/");
+        assert!(redirect_refusal(&first, &meta, 5, false).is_some());
+        assert!(redirect_refusal(&first, &url("http://[fe80::1]/"), 5, false).is_some());
+        assert_eq!(
+            redirect_refusal(&first, &url("http://10.0.0.5/"), 5, false),
+            None
+        );
+        // The limit: the original plus five hops.
+        let six: Vec<Url> = (0..6).map(|_| url("https://a.example/")).collect();
+        assert_eq!(redirect_refusal(&six[..5], &six[0], 5, false), None);
+        assert_eq!(
+            redirect_refusal(&six, &six[0], 5, false).as_deref(),
+            Some(TOO_MANY_REDIRECTS)
+        );
+    }
+
+    #[tokio::test]
     async fn custom_headers_sent() {
         let addr = serve().await;
         let mut m = http(addr, "/headers");
@@ -1121,7 +1373,7 @@ mod server_tests {
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert_eq!(
             out.message.as_deref(),
-            Some("Keyword \"missing\" not found — body starts: hello world OK")
+            Some("Keyword \"missing\" not found")
         );
         m.keyword_invert = true;
         assert_eq!(check(&m).await.status, HeartbeatStatus::Up);

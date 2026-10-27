@@ -83,6 +83,7 @@ async fn the_atom_feed_lists_incidents_with_their_updates() {
             .unwrap_or("")
             .starts_with("application/atom+xml")
     );
+    assert_eq!(headers.get("vary"), Some("host"), "caches key on the Host");
     assert!(body.starts_with("<?xml version=\"1.0\""));
     assert!(body.contains("<feed xmlns=\"http://www.w3.org/2005/Atom\""));
     assert!(

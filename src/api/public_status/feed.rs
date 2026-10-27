@@ -215,6 +215,8 @@ pub async fn feed(
             header::ACCESS_CONTROL_ALLOW_ORIGIN,
             HeaderValue::from_static("*"),
         );
+        // Without a public URL the links come from the request's Host.
+        h.append(header::VARY, HeaderValue::from_static("host"));
     }
     Ok(resp)
 }

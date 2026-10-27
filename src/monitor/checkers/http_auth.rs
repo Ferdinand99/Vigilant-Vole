@@ -249,6 +249,9 @@ pub fn parse_token_url(raw: &str) -> Result<Url, String> {
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none_or(str::is_empty) {
         return Err("The OAuth2 token URL must be an http or https URL".into());
     }
+    if let Some(host) = url.host_str() {
+        crate::kit::net::check_host(host).map_err(|e| format!("The OAuth2 token URL: {e}"))?;
+    }
     Ok(url)
 }
 

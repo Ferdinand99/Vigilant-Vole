@@ -7,7 +7,7 @@
 //! scheduler and by remote agents.
 //!
 //! Every checker returns a short, specific, human-friendly `message`
-//! ("HTTP 503 Service Unavailable", "Keyword \"OK\" not found — body starts: …").
+//! ("HTTP 503 Service Unavailable", "Keyword \"OK\" not found").
 //! Checkers may return [`HeartbeatStatus::Pending`] for transient states
 //! (Docker health "starting"); everything else is `Up` or `Down`.
 //!

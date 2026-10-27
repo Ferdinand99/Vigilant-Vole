@@ -141,6 +141,10 @@ impl Options {
         if !matches!(url.scheme(), "http" | "https") {
             return Err("Only http:// and https:// pages can be checked".into());
         }
+        // The browser resolves names itself; a literal address is checked here.
+        if let Some(host) = url.host_str() {
+            crate::kit::net::check_host(host).map_err(|e| format!("Refused: {e}"))?;
+        }
         let accepted = parse_status_codes(&m.accepted_status_codes)
             .map_err(|e| format!("Accepted status codes: {e}"))?;
         let mut headers: Vec<(String, String)> =
@@ -876,27 +880,22 @@ pub fn judge(expect: &Expect, invert: bool, value: &Value) -> Result<String, Str
                 .get("i")
                 .and_then(Value::as_i64)
                 .is_some_and(|i| i >= 0);
-            let text = |key: &str| {
-                util::snippet(
-                    value.get(key).and_then(Value::as_str).unwrap_or_default(),
-                    80,
-                )
-            };
+            // The page text stays out of the message, which every role sees
+            // and notifications carry; the screenshot is the place for it.
+            let page_is_empty = value
+                .get("head")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .is_empty();
             match (found, invert) {
                 (true, false) => Ok(format!("keyword \"{shown}\" found")),
                 (false, true) => Ok(format!("keyword \"{shown}\" absent, as expected")),
-                (false, false) => match text("head") {
-                    head if head.is_empty() => Err(format!(
-                        "Keyword \"{shown}\" not found — the page has no text"
-                    )),
-                    head => Err(format!(
-                        "Keyword \"{shown}\" not found — page text starts: {head}"
-                    )),
-                },
-                (true, true) => Err(format!(
-                    "Keyword \"{shown}\" found but should be absent — …{}",
-                    text("around")
+                (false, false) if page_is_empty => Err(format!(
+                    "Keyword \"{shown}\" not found — the page has no text"
                 )),
+                (false, false) => Err(format!("Keyword \"{shown}\" not found")),
+                (true, true) => Err(format!("Keyword \"{shown}\" found but should be absent")),
             }
         }
         Expect::Selector(s) => {

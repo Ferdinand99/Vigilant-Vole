@@ -248,6 +248,12 @@ pub async fn sign_up(
     let added = state
         .with_conn(move |c| db::add(c, page_id, kind, &target, lang, &secret))
         .await?;
+    if matches!(added, Added::Full) {
+        // Say so: a visitor who is told to check their inbox for a mail
+        // that never comes can't tell what went wrong.
+        again.error = Some(crate::i18n::t("sub.err_full").into());
+        return Ok(again.respond(StatusCode::SERVICE_UNAVAILABLE));
+    }
     if let (Added::Pending(id), "email") = (added, kind) {
         // In the background: a slow mail server must not make the answer
         // slower (or tell a new address from a known one by timing).

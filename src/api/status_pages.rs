@@ -604,6 +604,8 @@ struct EditTemplate {
     stats: super::public_status::analytics::Stats,
     aform: AnalyticsForm,
     providers: Vec<(&'static str, &'static str)>,
+    /// Only administrators choose the analytics script URL.
+    is_admin: bool,
 }
 
 /// Analytics tab form values and per-field errors.
@@ -806,6 +808,7 @@ async fn render_edit(
                 .iter()
                 .map(|p| (p.as_str(), p.label()))
                 .collect(),
+            is_admin: user.is_admin(),
         }),
     ))
 }
@@ -838,7 +841,16 @@ async fn save_analytics(
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
     let page = load_page(&state, id).await?;
-    let (form, valid) = validate_analytics(input);
+    let (mut form, mut valid) = validate_analytics(input);
+    // The script URL ends up on the page and in its CSP: administrators only.
+    if !user.is_admin()
+        && valid
+            .as_ref()
+            .is_some_and(|a| page_extras::changes_script_url(Some(&page.analytics), a))
+    {
+        form.url_error = crate::i18n::t("spx.script_url_admin").into();
+        valid = None;
+    }
     if let Some(a) = valid {
         state
             .with_conn(move |c| page_extras::set_analytics(c, id, &a))

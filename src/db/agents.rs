@@ -250,6 +250,31 @@ pub fn list_agent_monitors(conn: &Connection, agent_id: i64) -> rusqlite::Result
     rows.collect()
 }
 
+/// Seconds since agent `agent_id` last reported each of `monitor_ids`
+/// (monitors it never reported are left out).
+pub fn result_ages(
+    conn: &Connection,
+    agent_id: i64,
+    monitor_ids: &[i64],
+) -> rusqlite::Result<std::collections::HashMap<i64, i64>> {
+    // One index seek per monitor (`idx_heartbeats_agent`).
+    let mut stmt = conn.prepare(
+        "SELECT CAST(strftime('%s', 'now') AS INTEGER) - CAST(strftime('%s', checked_at) AS INTEGER)
+         FROM heartbeats WHERE agent_id = ?1 AND monitor_id = ?2
+         ORDER BY checked_at DESC LIMIT 1",
+    )?;
+    let mut ages = std::collections::HashMap::new();
+    for id in monitor_ids {
+        if let Some(age) = stmt
+            .query_row(params![agent_id, id], |r| r.get::<_, i64>(0))
+            .optional()?
+        {
+            ages.insert(*id, age);
+        }
+    }
+    Ok(ages)
+}
+
 /// Number of monitors agents currently run (for all of them or checked by one).
 pub fn count_agent_monitors(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row(

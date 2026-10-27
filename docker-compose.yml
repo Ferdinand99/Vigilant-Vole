@@ -34,7 +34,8 @@ services:
     #   - PGID=100
 
     # --- Optional: Docker container monitors + label auto-discovery ---------
-    # Mount the Docker socket read-only; the container adds its `vole` user to
+    # Mount the Docker socket (`:ro` only stops file changes; it does not make
+    # the Docker API read-only); the container adds its `vole` user to
     # the socket's group by itself (no group_add needed).
     # volumes:
     #   - ./data:/data

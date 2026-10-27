@@ -34,7 +34,7 @@ On a monitor's form, under the alerting options:
 
 | Switch | Field | Effect |
 |---|---|---|
-| **Check from remote agents too** | `run_on_agents` | Every enabled agent runs this monitor on the monitor's own interval, in addition to the local check. |
+| **Check from remote agents too** | `run_on_agents` | Every enabled agent runs this monitor on the monitor's own interval, in addition to the local check. Only administrators can turn it on: it hands the monitor's credentials to every agent (turning it off is open to editors). Prefer **Check from** for one trusted agent. |
 | **Confirm outages with agents** | `confirm_with_agents` | When the local check fails (after retries), only mark the monitor down and notify if no agent has a fresh result, or a strict majority of the fresh agent results are down. Otherwise the monitor stays *pending* with "Local check failed; N/M remote agents report up". |
 
 "Fresh" means the agent's latest result for that monitor is at most 2× the monitor's interval old, and only
@@ -191,7 +191,7 @@ Logging follows `RUST_LOG` (default `info`).
 - Every 30 seconds the agent polls `GET /api/agent/v1/monitors` with `Authorization: Bearer vva_…` and
   `If-None-Match`, so an unchanged list costs a `304`.
 - Each monitor runs on its own interval with a jittered start, under the concurrency limit.
-- Results are buffered and posted to `POST /api/agent/v1/results` every 5 seconds (at most 500 per request).
+- Results are buffered and posted to `POST /api/agent/v1/results` every 5 seconds (at most 500 per request and 512 KB). The server takes a result for a monitor no sooner than half of the shorter of its interval and retry interval after the previous one from that agent (at least 5 seconds) and answers `too soon after the previous result` for the others; `--once` runs that follow each other faster than that are partly refused too.
 - If the server is unreachable the agent retries with exponential backoff (up to 60 s) and keeps up to
   5,000 results, dropping the oldest first. The server drops results that are older than 5 minutes
   (or 2× the monitor's interval, if longer) as stale.

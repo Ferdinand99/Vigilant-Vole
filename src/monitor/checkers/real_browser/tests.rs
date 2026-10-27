@@ -653,7 +653,7 @@ fn verdicts_cover_keywords_selectors_and_inversion() {
     assert!(judge(&kw, false, &json!({"i": 0})).is_ok());
     assert_eq!(
         judge(&kw, false, &json!({"i": -1, "head": "Error   page\nhere"})).unwrap_err(),
-        "Keyword \"OK\" not found — page text starts: Error page here"
+        "Keyword \"OK\" not found"
     );
     assert_eq!(
         judge(&kw, false, &json!({"i": -1, "head": ""})).unwrap_err(),

@@ -148,6 +148,9 @@
       {%- endif %}
       <div data-show-when="check_from_agent_id="{% if f.agent_checked() %} hidden{% endif %}>
         {{ m::switch("run_on_agents", tr("form.run_on_agents"), f.v.run_on_agents, tr("form.run_on_agents_help")) }}
+        {%- if f.has_err("run_on_agents") %}
+        <p class="field-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ f.err("run_on_agents") }}</p>
+        {%- endif %}
         {{ m::switch("confirm_with_agents", tr("form.confirm_agents"), f.v.confirm_with_agents, tr("form.confirm_agents_help")) }}
         <div data-show-when="monitor_type=real_browser"{% if !f.is_type("real_browser") %} hidden{% endif %}>
           <div data-show-when="run_on_agents=true"{% if !f.v.run_on_agents %} hidden{% endif %}>

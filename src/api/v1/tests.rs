@@ -2756,8 +2756,18 @@ async fn bulk_edit_by_ids_and_filter() {
             "tags": {"add": [{"name": "eu", "color": "teal", "value": "west"}]},
         },
     });
+    // Handing credentials to every agent is for administrators.
+    let (status, _) = h
+        .json(
+            Method::POST,
+            "/api/v1/monitors/bulk",
+            &h.editor,
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, out) = h
-        .json(Method::POST, "/api/v1/monitors/bulk", &h.editor, Some(body))
+        .json(Method::POST, "/api/v1/monitors/bulk", &h.admin, Some(body))
         .await;
     assert_eq!(status, StatusCode::OK, "{out}");
     assert_eq!(out["updated"], 3);
@@ -2983,4 +2993,225 @@ async fn check_from_agent_id_is_read_and_written() {
         .await;
     assert_eq!(status, StatusCode::OK, "{back}");
     assert!(back["check_from_agent_id"].is_null());
+}
+
+#[tokio::test]
+async fn only_administrators_choose_the_analytics_script_url() {
+    let h = harness().await;
+    let umami = json!({
+        "provider": "umami",
+        "site_id": "123e4567-e89b-12d3-a456-426614174000",
+        "script_url": "https://stats.example/script.js",
+    });
+    let (status, body) = h
+        .json(
+            Method::POST,
+            "/api/v1/status-pages",
+            &h.editor,
+            Some(json!({"title": "Acme", "analytics": umami})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    // The built-in counters stay editable.
+    let (status, page) = h
+        .json(
+            Method::POST,
+            "/api/v1/status-pages",
+            &h.editor,
+            Some(json!({"title": "Acme", "analytics": {"enabled": false}})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{page}");
+    let pid = page["id"].as_i64().unwrap();
+    let uri = format!("/api/v1/status-pages/{pid}");
+    let (status, _) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"analytics": umami})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, page) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.admin,
+            Some(json!({"analytics": umami})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(
+        page["analytics"]["script_url"],
+        "https://stats.example/script.js"
+    );
+    // Re-sending the administrator's address is fine; another one is not;
+    // removing the provider is.
+    let (status, _) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"analytics": umami})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let mut other = umami.clone();
+    other["script_url"] = json!("https://evil.example/x.js");
+    let (status, _) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"analytics": other})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"analytics": {"provider": "none"}})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn credentials_in_urls_are_for_editors() {
+    let h = harness().await;
+    let mut m = http_monitor("Site");
+    m["target"] = json!("https://alice:hunter2@api.example.com/health");
+    m["proxy_url"] = json!("http://pu:proxysecret@proxy.example:3128");
+    let (status, created) = h
+        .json(Method::POST, "/api/v1/monitors", &h.editor, Some(m))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let uri = format!("/api/v1/monitors/{}", created["id"]);
+
+    // Editors work with the stored values.
+    let (_, seen) = h.json(Method::GET, &uri, &h.editor, None).await;
+    assert_eq!(
+        seen["target"],
+        "https://alice:hunter2@api.example.com/health"
+    );
+    assert_eq!(
+        seen["proxy_url"],
+        "http://pu:proxysecret@proxy.example:3128"
+    );
+
+    // Viewers and read tokens never see the credentials.
+    for token in [&h.viewer, &h.admin_read] {
+        let (_, one) = h.json(Method::GET, &uri, token, None).await;
+        assert_eq!(one["target"], "https://api.example.com/health");
+        assert_eq!(one["proxy_url"], "http://proxy.example:3128/");
+        let (_, list) = h.json(Method::GET, "/api/v1/monitors", token, None).await;
+        let text = list.to_string();
+        assert!(
+            !text.contains("hunter2") && !text.contains("proxysecret"),
+            "{text}"
+        );
+        // ... and can't probe for them with the search.
+        let (_, found) = h
+            .json(Method::GET, "/api/v1/monitors?q=hunter2", token, None)
+            .await;
+        assert!(found["data"].as_array().unwrap().is_empty(), "{found}");
+        let (_, found) = h
+            .json(Method::GET, "/api/v1/monitors?q=api.example", token, None)
+            .await;
+        assert_eq!(found["data"].as_array().unwrap().len(), 1, "{found}");
+    }
+
+    // An export without secrets leaves them out; importing it again keeps
+    // the stored ones. With secrets they are in.
+    let (_, yaml) = h
+        .raw(Method::GET, "/api/v1/config", &h.editor, "text/plain", "")
+        .await;
+    assert!(
+        !yaml.contains("hunter2") && !yaml.contains("proxysecret"),
+        "{yaml}"
+    );
+    assert!(yaml.contains("https://api.example.com/health"), "{yaml}");
+    let (status, _) = h
+        .raw(
+            Method::POST,
+            "/api/v1/config",
+            &h.admin,
+            "application/yaml",
+            &yaml,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, seen) = h.json(Method::GET, &uri, &h.editor, None).await;
+    assert_eq!(
+        seen["target"],
+        "https://alice:hunter2@api.example.com/health"
+    );
+    assert_eq!(
+        seen["proxy_url"],
+        "http://pu:proxysecret@proxy.example:3128"
+    );
+    let (_, full) = h
+        .raw(
+            Method::GET,
+            "/api/v1/config?secrets=1&format=json",
+            &h.admin,
+            "text/plain",
+            "",
+        )
+        .await;
+    assert!(full.contains("hunter2") && full.contains("proxysecret"));
+}
+
+#[tokio::test]
+async fn run_on_agents_is_for_administrators_in_the_api() {
+    let h = harness().await;
+    let mut m = http_monitor("Shared");
+    m["run_on_agents"] = json!(true);
+    let (status, body) = h
+        .json(Method::POST, "/api/v1/monitors", &h.editor, Some(m.clone()))
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["error"]["fields"]["run_on_agents"].is_string(),
+        "{body}"
+    );
+    let (status, created) = h
+        .json(Method::POST, "/api/v1/monitors", &h.admin, Some(m))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let uri = format!("/api/v1/monitors/{}", created["id"]);
+    // An editor's other changes keep it on; switching it off is theirs to do.
+    let (status, one) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"interval_seconds": 120})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{one}");
+    assert_eq!(one["run_on_agents"], true);
+    let (status, one) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"run_on_agents": false})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{one}");
+    assert_eq!(one["run_on_agents"], false);
+    // ... but not back on.
+    let (status, _) = h
+        .json(
+            Method::PATCH,
+            &uri,
+            &h.editor,
+            Some(json!({"run_on_agents": true})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }

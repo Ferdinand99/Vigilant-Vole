@@ -34,6 +34,8 @@ pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
 
     let pool = db::build_pool(&config.db_path());
     db::migrate(&pool, &config.data_dir.join("backups")).await?;
+    // The database holds password hashes and sealed secrets: owner only.
+    config.restrict_permissions();
     // Real-browser checks read their remote browser and store screenshots.
     crate::monitor::checkers::real_browser::install(pool.clone());
 

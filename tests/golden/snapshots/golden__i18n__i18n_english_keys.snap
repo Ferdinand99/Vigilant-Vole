@@ -2005,6 +2005,7 @@ spx.remove_password_help
 spx.replace
 spx.save_upload
 spx.script_url
+spx.script_url_admin
 spx.script_url_help
 spx.site_id
 spx.site_id_help
@@ -2059,6 +2060,7 @@ sub.enable
 sub.enable_help
 sub.err_channel
 sub.err_email
+sub.err_full
 sub.err_rate
 sub.err_webhook
 sub.invalid_link
@@ -2321,6 +2323,7 @@ validation.proxy_scheme
 validation.proxy_url
 validation.record_type
 validation.resolver_hint
+validation.run_on_agents_admin
 validation.secret_reenter
 validation.secret_required
 validation.snmp_password_short
@@ -2330,6 +2333,7 @@ validation.tag_name_long
 validation.tag_value_long
 validation.target_docker
 validation.target_domain
+validation.target_forbidden
 validation.target_host
 validation.target_long
 validation.target_url

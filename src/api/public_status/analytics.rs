@@ -7,7 +7,8 @@
 //! in memory; the salt is replaced (and the hashes forgotten) every UTC day,
 //! so visitors can't be followed from one day to the next (like Plausible).
 //! Bots, prefetches and logged-in users don't count. Counters are kept for
-//! max(`retention_days`, 365) days.
+//! max(`retention_days`, 365) days; referrers, which visitors supply, for 90
+//! days, and at most 500 distinct ones are stored per page and day.
 //!
 //! **Third-party:** Plausible, Umami, Matomo or Google Analytics, with the
 //! provider's script on that page only and the page's Content-Security-Policy
@@ -32,6 +33,8 @@ use crate::db::status_pages::{self as db_pages, StatusPage};
 
 /// Counters are kept at least this long.
 const MIN_RETENTION_DAYS: i64 = 365;
+/// Referring domains are kept this long (at most; never longer than the counters).
+const REFERRER_RETENTION_DAYS: i64 = 90;
 /// Distinct visitors remembered per day (across pages) before uniques stop
 /// being told apart; bounds memory under a flood.
 const SEEN_MAX: usize = 500_000;
@@ -99,6 +102,9 @@ fn is_prefetch(headers: &HeaderMap) -> bool {
 }
 
 /// The referring site's host, unless it's this site (or not a web page).
+/// Only http(s) pages count, and only a plain host name or IPv4 address
+/// (letters, digits, dots and hyphens): the value is stored and shown in the
+/// editor, and it is whatever the visitor's browser or script sent.
 pub fn referrer_domain(referer: Option<&str>, own_host: Option<&str>) -> Option<String> {
     let url = url::Url::parse(referer?.trim()).ok()?;
     if !matches!(url.scheme(), "http" | "https") {
@@ -114,7 +120,10 @@ pub fn referrer_domain(referer: Option<&str>, own_host: Option<&str>) -> Option<
             .to_ascii_lowercase();
         h.strip_prefix("www.").map(str::to_string).unwrap_or(h)
     });
-    if host.is_empty() || host.len() > 253 || own.as_deref() == Some(host.as_str()) {
+    let plain = host
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-');
+    if host.is_empty() || host.len() > 253 || !plain || own.as_deref() == Some(host.as_str()) {
         return None;
     }
     Some(host)
@@ -227,7 +236,9 @@ pub async fn count_view(
                     .retention_days
                     .max(MIN_RETENTION_DAYS);
                 let cutoff = today.saturating_sub(jiff::Span::new().days(keep));
-                extras::prune_views(c, &cutoff.to_string())?;
+                let referrers =
+                    today.saturating_sub(jiff::Span::new().days(REFERRER_RETENTION_DAYS.min(keep)));
+                extras::prune_views(c, &cutoff.to_string(), &referrers.to_string())?;
             }
             Ok(())
         })
@@ -496,6 +507,23 @@ mod tests {
         );
         assert_eq!(referrer_domain(Some("android-app://com.slack"), None), None);
         assert_eq!(referrer_domain(Some("not a url"), None), None);
+        // Only plain http(s) hosts: nothing with markup, a user name or an IPv6 literal.
+        assert_eq!(referrer_domain(Some("javascript:alert(1)"), None), None);
+        assert_eq!(referrer_domain(Some("ftp://files.example/"), None), None);
+        assert_eq!(referrer_domain(Some("https://[::1]/x"), None), None);
+        assert_eq!(
+            referrer_domain(Some("https://user:pw@news.example/"), None).as_deref(),
+            Some("news.example")
+        );
+        assert_eq!(
+            referrer_domain(Some("http://192.0.2.7:8080/"), None).as_deref(),
+            Some("192.0.2.7")
+        );
+        assert_eq!(
+            referrer_domain(Some("https://a_b.example/"), None),
+            None,
+            "underscores are not host name characters"
+        );
         assert_eq!(referrer_domain(None, None), None);
     }
 

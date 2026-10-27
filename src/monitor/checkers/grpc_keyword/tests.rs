@@ -453,11 +453,11 @@ fn keywords_are_matched_in_the_json() {
     let json = r#"{"status":"SERVING"}"#;
     assert_eq!(
         evaluate(json, Some("SERVING"), false).unwrap(),
-        r#"Keyword "SERVING" found — {"status":"SERVING"}"#
+        r#"Keyword "SERVING" found — answer of 20 characters"#
     );
     assert_eq!(
         evaluate(json, None, false).unwrap(),
-        r#"OK — {"status":"SERVING"}"#
+        "OK — answer of 20 characters"
     );
     assert_eq!(
         evaluate("{}", Some(""), true).unwrap(),
@@ -466,7 +466,7 @@ fn keywords_are_matched_in_the_json() {
     assert!(
         evaluate(json, Some("serving"), false)
             .unwrap_err()
-            .starts_with("Keyword \"serving\" not found — answer: ")
+            .starts_with("Keyword \"serving\" not found in the answer of ")
     );
     assert!(
         evaluate(json, Some("SERVING"), true)
@@ -547,7 +547,11 @@ async fn keyword_found_missing_and_inverted() {
     let out = check(&m).await;
     assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
     let msg = out.message.unwrap();
-    assert!(msg.starts_with(r#"Keyword ""mood":"HAPPY"" found — {"message":"Hello vole","mood":"HAPPY","stats":{"bigNumber":"9007199254740993"}"#), "{msg}");
+    assert!(
+        msg.starts_with(r#"Keyword ""mood":"HAPPY"" found — answer of "#),
+        "{msg}"
+    );
+    assert!(!msg.contains("Hello vole"), "{msg}");
     assert!(out.response_time_ms.is_some());
 
     m.keyword = Some("Goodbye".into());
@@ -556,7 +560,7 @@ async fn keyword_found_missing_and_inverted() {
     assert!(
         out.message
             .unwrap()
-            .starts_with("Keyword \"Goodbye\" not found — answer: {\"message\":\"Hello vole\"")
+            .starts_with("Keyword \"Goodbye\" not found in the answer of ")
     );
     m.keyword_invert = true;
     assert_eq!(check(&m).await.status, HeartbeatStatus::Up);
@@ -568,11 +572,7 @@ async fn keyword_found_missing_and_inverted() {
     m.target = format!("grpc://{addr}/Greeter/sayHello");
     let out = check(&m).await;
     assert_eq!(out.status, HeartbeatStatus::Up, "{:?}", out.message);
-    assert!(
-        out.message
-            .unwrap()
-            .starts_with("OK — {\"message\":\"Hello vole\"")
-    );
+    assert!(out.message.unwrap().starts_with("OK — answer of "));
 }
 
 #[tokio::test]
