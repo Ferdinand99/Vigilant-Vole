@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.13.0...v0.13.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **kit:** security hardening from the October review ([#62](https://github.com/Ferdinand99/Vigilant-Vole/issues/62)) ([5ef03d4](https://github.com/Ferdinand99/Vigilant-Vole/commit/5ef03d4e29ffdf2403b28b02ddeab335e16d8c6d))
+
 ## [0.13.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.12.1...v0.13.0) (2026-10-25)
 
 
