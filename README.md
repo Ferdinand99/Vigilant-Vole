@@ -488,6 +488,8 @@ Upgrading (Docker, Linux installer, Proxmox, Unraid), where the automatic backup
 - Agent tokens can read the configuration (including credentials) of monitors that run on agents; rotate them if a host is compromised. Only administrators can turn on *Check from remote agents too* (in the form, the API and in bulk), and the server accepts a result for one monitor from one agent no more often than every half interval (at least 5 seconds) and uploads of at most 512 KB, so a compromised agent can't flood the history or flap a monitor.
 - The database, its backups (`data/backups/`) and the scratch space for backup downloads and uploads (`data/tmp/`) are created and tightened to owner-only permissions (0600 and 0700) on Linux, like `session.key`; a backup download is created that way before the secrets are opened in it.
 
+The October 2026 security review of Vigilant Vole and vole-kit (what was found, fixed and left open) is in [docs/security-review-2026-10.md](docs/security-review-2026-10.md).
+
 ## 🔨 Building from source
 
 No local Rust install required — everything can be built inside Docker (BuildKit caches the cargo registry and target dir between builds):
