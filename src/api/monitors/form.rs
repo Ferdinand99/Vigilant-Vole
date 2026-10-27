@@ -516,6 +516,9 @@ pub struct FormContext {
     pub browser_optional: bool,
     /// Remote agent ids (enabled or not) a monitor may be checked from.
     pub agent_ids: Vec<i64>,
+    /// The user is an administrator. Turning `run_on_agents` on hands the
+    /// monitor's credentials to every agent, so only they may.
+    pub admin: bool,
 }
 
 /// A validated submission.
@@ -769,6 +772,13 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
             }
             if url.host_str().is_none_or(str::is_empty) {
                 return Err(crate::i18n::t("validation.url_host").into());
+            }
+            // Link-local and cloud metadata addresses are never checked.
+            if url
+                .host_str()
+                .is_some_and(|h| crate::kit::net::check_host(h).is_err())
+            {
+                return Err(crate::i18n::t("validation.target_forbidden").into());
             }
             Ok(t.to_string())
         }
@@ -1579,6 +1589,12 @@ pub fn validate(v: &FormValues, base: &NewMonitor, cx: &FormContext) -> Result<V
         m.run_on_agents = false;
         m.confirm_with_agents = false;
     }
+    if m.run_on_agents && !base.run_on_agents && !cx.admin {
+        e.insert(
+            "run_on_agents",
+            crate::i18n::t("validation.run_on_agents_admin").into(),
+        );
+    }
     m.check_from_agent_id = check_from(v, kind, cx, &mut e);
 
     // -- push ------------------------------------------------------------
@@ -1812,6 +1828,13 @@ mod tests {
             ),
             (MonitorType::Push, "", true),
             (MonitorType::Group, "ignored", true),
+            // Metadata and link-local addresses are never checked; the LAN is.
+            (MonitorType::Http, "http://169.254.169.254/latest/", false),
+            (MonitorType::Keyword, "https://[fd00:ec2::254]/", false),
+            (MonitorType::JsonQuery, "http://[fe80::1]:8080/x", false),
+            (MonitorType::RealBrowser, "http://169.254.0.1/", false),
+            (MonitorType::Http, "http://10.0.0.1:8080/", true),
+            (MonitorType::Http, "http://localhost:3001/", true),
         ];
         for (kind, target, ok) in cases {
             assert_eq!(

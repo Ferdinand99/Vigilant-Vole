@@ -714,3 +714,52 @@ async fn setting_the_public_url_shows_the_subscribe_link_right_away() {
     let (_, _, page) = get(&t, "/status/acme", None, None).await;
     assert!(page.contains("href=\"/status/acme/subscribe\""), "{page}");
 }
+
+#[tokio::test]
+async fn a_full_page_says_so_instead_of_pretending() {
+    let t = app().await;
+    let (pid, _) = seed(&t, true, None).await;
+    enable(&t, pid, true, false).await;
+    let room = db::MAX_PENDING_PER_PAGE;
+    t.state
+        .with_conn(move |c| {
+            c.execute_batch(&format!(
+                "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {room})
+                 INSERT INTO status_page_subscribers (page_id, kind, target, token_hash)
+                 SELECT {pid}, 'email', 'u' || i || '@example.com', 'h' || i FROM n"
+            ))
+        })
+        .await
+        .unwrap();
+    let (status, body) =
+        sign_up_from(&t, "email=late%40example.com", "203.0.113.9", "localhost").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(
+        body.contains("cannot take new sign-ups right now"),
+        "{body}"
+    );
+    assert!(
+        body.contains("is-invalid")
+            || body.contains("field-error")
+            || body.contains("role=\"alert\""),
+        "{body}"
+    );
+    assert_eq!(subscribers(&t, pid).await.len(), room as usize);
+    // An address that is already waiting still gets the usual answer.
+    let (status, _) = sign_up_from(&t, "email=u1%40example.com", "203.0.113.10", "localhost").await;
+    assert_eq!(status, StatusCode::OK);
+    // Unconfirmed sign-ups expire after a day, and that makes room again.
+    t.state
+        .with_conn(|c| {
+            c.execute(
+                "UPDATE status_page_subscribers SET created_at = datetime('now', '-25 hours')",
+                [],
+            )
+        })
+        .await
+        .unwrap();
+    let (status, body) =
+        sign_up_from(&t, "email=late%40example.com", "203.0.113.11", "localhost").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(subscribers(&t, pid).await.len(), 1);
+}

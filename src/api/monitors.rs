@@ -621,7 +621,11 @@ fn channel_options(conn: &Connection) -> rusqlite::Result<Vec<ChannelOption>> {
         .collect())
 }
 
-fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<FormEnv> {
+fn load_env(
+    conn: &Connection,
+    editing: Option<&Monitor>,
+    admin: bool,
+) -> rusqlite::Result<FormEnv> {
     let excluded: Vec<i64> = match editing {
         Some(m) => {
             let mut ids = db_monitors::descendant_ids(conn, m.id)?;
@@ -658,6 +662,7 @@ fn load_env(conn: &Connection, editing: Option<&Monitor>) -> rusqlite::Result<Fo
             remote_browser_ids: remote_browsers.iter().map(|(id, _)| *id).collect(),
             browser_optional: false,
             agent_ids: agents.iter().map(|(id, _, _)| *id).collect(),
+            admin,
         },
         agents,
         remote_browsers,
@@ -835,9 +840,10 @@ async fn new_form(
     Query(params): Query<NewParams>,
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
+    let admin = user.is_admin();
     let (env, defaults) = state
-        .with_conn(|c| {
-            let env = load_env(c, None)?;
+        .with_conn(move |c| {
+            let env = load_env(c, None, admin)?;
             // New monitors get the default channels (what insert_monitor would attach).
             let defaults: Vec<(i64, bool)> = db_notifications::default_channel_ids(c)?
                 .into_iter()
@@ -882,13 +888,14 @@ async fn new_form(
 async fn load_for_form(
     state: &AppState,
     id: i64,
+    admin: bool,
 ) -> ApiResult<(Monitor, FormEnv, Vec<MonitorTag>, Vec<(i64, bool)>)> {
     state
         .with_conn(move |c| {
             let Some(m) = db_monitors::get_monitor(c, id)? else {
                 return Ok(None);
             };
-            let env = load_env(c, Some(&m))?;
+            let env = load_env(c, Some(&m), admin)?;
             let tags = db_tags::tags_for_monitor(c, id)?;
             let links = db_notifications::monitor_channel_links(c, id)?;
             Ok(Some((m, env, tags, links)))
@@ -905,7 +912,7 @@ async fn edit_form(
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
-    let (m, env, tags, links) = load_for_form(&state, id).await?;
+    let (m, env, tags, links) = load_for_form(&state, id, user.is_admin()).await?;
     let v = FormValues::from_monitor(&m, channel_modes(&env, &links), &tags).masked();
     let heading = crate::i18n::tf("monitor_form.edit_heading", &[("name", &m.name)]);
     let meta = FormMeta {
@@ -940,9 +947,10 @@ async fn clone_form(
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
-    let (m, _, tags, links) = load_for_form(&state, id).await?;
+    let admin = user.is_admin();
+    let (m, _, tags, links) = load_for_form(&state, id, admin).await?;
     // A clone is a new monitor: its parent options must not exclude the source.
-    let env = state.with_conn(|c| load_env(c, None)).await?;
+    let env = state.with_conn(move |c| load_env(c, None, admin)).await?;
     let mut new = m.to_new();
     new.name = copy_name(&m.name);
     new.push_token = None;
@@ -977,7 +985,8 @@ async fn form_fields(
     Query(params): Query<FieldsParams>,
 ) -> ApiResult<impl IntoResponse> {
     user.require(Role::Editor)?;
-    let env = state.with_conn(|c| load_env(c, None)).await?;
+    let admin = user.is_admin();
+    let env = state.with_conn(move |c| load_env(c, None, admin)).await?;
     let base = NewMonitor {
         monitor_type: MonitorType::parse(&params.kind).unwrap_or_default(),
         ..NewMonitor::default()
@@ -1043,7 +1052,8 @@ async fn create(
     Form(pairs): Form<Vec<(String, String)>>,
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
-    let env = state.with_conn(|c| load_env(c, None)).await?;
+    let admin = user.is_admin();
+    let env = state.with_conn(move |c| load_env(c, None, admin)).await?;
     let v = FormValues::from_pairs(&Pairs(pairs), &env.cx.channel_ids);
     let base = NewMonitor::default();
     let mut valid = match form::validate(&v, &base, &env.cx) {
@@ -1086,7 +1096,7 @@ async fn update(
     Form(pairs): Form<Vec<(String, String)>>,
 ) -> ApiResult<Response> {
     user.require(Role::Editor)?;
-    let (existing, env, _, _) = load_for_form(&state, id).await?;
+    let (existing, env, _, _) = load_for_form(&state, id, user.is_admin()).await?;
     let v = FormValues::from_pairs(&Pairs(pairs), &env.cx.channel_ids);
     let base = existing.to_new();
     let mut valid = match form::validate(&v, &base, &env.cx) {
@@ -1608,6 +1618,14 @@ async fn bulk_edit(
         }
     };
 
+    // Sharing credentials with every agent is for administrators.
+    if edit.run_on_agents == Some(true) && !user.is_admin() {
+        return Ok(notice(
+            jar,
+            crate::i18n::t("validation.run_on_agents_admin"),
+            "error",
+        ));
+    }
     let outcome = state
         .with_conn(move |c| bulk_edit::apply(c, &ids, &edit))
         .await?;
@@ -2150,7 +2168,16 @@ async fn detail(
             interval_label,
             retry_label,
             timeout_label,
-            monitor: b.monitor,
+            // The page is for every role: no credentials from the URLs.
+            monitor: Monitor {
+                target: super::metrics::redact_target(&b.monitor.target),
+                proxy_url: b
+                    .monitor
+                    .proxy_url
+                    .as_deref()
+                    .map(super::metrics::redact_target),
+                ..b.monitor
+            },
         }),
     ))
 }

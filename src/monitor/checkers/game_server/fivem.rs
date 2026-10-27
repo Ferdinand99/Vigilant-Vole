@@ -23,6 +23,7 @@ pub(super) fn client() -> Result<&'static reqwest::Client, String> {
             crate::tls_roots::http_client()
                 .user_agent(crate::server::USER_AGENT)
                 .no_proxy()
+                .dns_resolver(std::sync::Arc::new(crate::kit::net::GuardedResolver))
                 .redirect(reqwest::redirect::Policy::none())
                 .danger_accept_invalid_certs(true)
                 .connect_timeout(Duration::from_secs(10))
@@ -46,6 +47,12 @@ pub(super) async fn read_capped(mut reply: reqwest::Response) -> Result<Vec<u8>,
 }
 
 async fn get_json(base: &str, path: &str, timeout: Duration) -> Result<Value, String> {
+    if let Some(host) = reqwest::Url::parse(base)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+    {
+        crate::kit::net::check_host(&host).map_err(|e| format!("Refused: {e}"))?;
+    }
     let reply = client()?
         .get(format!("{base}{path}"))
         .timeout(timeout)

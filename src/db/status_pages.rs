@@ -685,6 +685,24 @@ pub fn monitor_is_public(conn: &Connection, monitor_id: i64) -> rusqlite::Result
     )
 }
 
+/// What the public pages that list a monitor show of it: `(uptime,
+/// response time)`, true when at least one published page without a password
+/// shows it; `None` when the monitor is on no such page.
+pub fn monitor_public_figures(
+    conn: &Connection,
+    monitor_id: i64,
+) -> rusqlite::Result<Option<(bool, bool)>> {
+    conn.query_row(
+        "SELECT COUNT(*), COALESCE(MAX(p.show_uptime), 0), COALESCE(MAX(p.show_response), 0)
+         FROM status_page_monitors spm
+         JOIN status_page_sections s ON s.id = spm.section_id
+         JOIN status_pages p ON p.id = s.status_page_id
+         WHERE spm.monitor_id = ?1 AND p.published = 1 AND p.password_hash IS NULL",
+        params![monitor_id],
+        |r| Ok((r.get::<_, i64>(0)? > 0).then_some((r.get::<_, bool>(1)?, r.get::<_, bool>(2)?))),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -914,6 +932,54 @@ mod tests {
         assert!(!delete_section(&conn, other_page, s2).unwrap());
         assert!(delete_section(&conn, page_id, s2).unwrap());
         assert_eq!(sections(&conn, page_id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn public_figures_follow_the_pages_that_list_the_monitor() {
+        let mut conn = test_conn();
+        let a = monitor(&conn, "a");
+        assert_eq!(monitor_public_figures(&conn, a).unwrap(), None);
+        let page_id = insert(&mut conn, &page("acme")).unwrap();
+        let s = sections(&conn, page_id).unwrap()[0].id;
+        add_monitors(&mut conn, page_id, s, &[a]).unwrap();
+        let mut p = get(&conn, page_id).unwrap().unwrap().to_new();
+        assert_eq!(
+            (p.show_uptime, p.show_response),
+            (true, true),
+            "shown by default"
+        );
+        assert_eq!(
+            monitor_public_figures(&conn, a).unwrap(),
+            Some((true, true))
+        );
+        p.show_response = false;
+        update(&conn, page_id, &p).unwrap();
+        assert_eq!(
+            monitor_public_figures(&conn, a).unwrap(),
+            Some((true, false))
+        );
+        // Another public page that shows them is enough.
+        let other = insert(&mut conn, &page("other")).unwrap();
+        let s2 = sections(&conn, other).unwrap()[0].id;
+        add_monitors(&mut conn, other, s2, &[a]).unwrap();
+        assert_eq!(
+            monitor_public_figures(&conn, a).unwrap(),
+            Some((true, true))
+        );
+        // Not one that is a draft.
+        let mut q = get(&conn, other).unwrap().unwrap().to_new();
+        q.published = false;
+        update(&conn, other, &q).unwrap();
+        assert_eq!(
+            monitor_public_figures(&conn, a).unwrap(),
+            Some((true, false))
+        );
+        p.show_uptime = false;
+        update(&conn, page_id, &p).unwrap();
+        assert_eq!(
+            monitor_public_figures(&conn, a).unwrap(),
+            Some((false, false))
+        );
     }
 
     #[test]

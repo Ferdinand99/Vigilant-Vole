@@ -238,7 +238,7 @@ default one.
 | `http_body` | string | – | Up to 64 KB. For `grpc_keyword`: the request message as a JSON object. |
 | `http_body_encoding` | string | `json` | `json`, `form`, `raw`. |
 | `accepted_status_codes` | string | `200-399` | e.g. `200-299,301,2xx`. |
-| `max_redirects` | int | `10` | 0–30. |
+| `max_redirects` | int | `10` | 0–30; at most 5 redirects are followed whatever is set (and a monitor with custom `http_headers` does not follow a redirect to another host). |
 | `ignore_tls` | bool | `false` | Don't verify certificates. |
 | `auth_method` | string | `none` | HTTP family: `none`, `basic`, `oauth2` or `mtls`. A document that sets `basic_auth_user` without `auth_method` (or with an empty one) means `basic`; an explicit `none` is kept. Only the chosen method's fields below are kept; the others are cleared. |
 | `basic_auth_user` / `basic_auth_pass` | string | – | `basic`. The password is a secret. |

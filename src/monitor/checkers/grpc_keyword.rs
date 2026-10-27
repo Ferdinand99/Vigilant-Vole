@@ -28,9 +28,6 @@ pub mod schema;
 #[cfg(test)]
 mod tests;
 
-/// Characters of the answer shown in messages.
-const SNIPPET_CHARS: usize = 120;
-
 /// A parsed target: where to connect and which method to call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
@@ -93,7 +90,9 @@ pub fn evaluate(json: &str, keyword: Option<&str>, invert: bool) -> Result<Strin
         if json.is_empty() || json == "{}" {
             "empty answer ({})".to_string()
         } else {
-            util::snippet(json, SNIPPET_CHARS)
+            // Not the answer itself: the message is shown to every role and
+            // sent by notifications, and the call can go to any server.
+            format!("answer of {} characters", json.chars().count())
         }
     };
     let Some(keyword) = keyword.filter(|k| !k.is_empty()) else {
@@ -107,11 +106,11 @@ pub fn evaluate(json: &str, keyword: Option<&str>, invert: bool) -> Result<Strin
             shown_answer()
         )),
         (false, false) => Err(format!(
-            "Keyword \"{shown}\" not found — answer: {}",
+            "Keyword \"{shown}\" not found in the {}",
             shown_answer()
         )),
         (true, true) => Err(format!(
-            "Keyword \"{shown}\" found but should be absent — answer: {}",
+            "Keyword \"{shown}\" found but should be absent in the {}",
             shown_answer()
         )),
     }

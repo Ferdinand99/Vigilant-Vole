@@ -365,7 +365,8 @@ fn make_row(m: &MonitorWithStatus, mut tags: Vec<MonitorTag>, group_name: String
     let status = status_key(m);
     let target = match m.monitor.monitor_type {
         MonitorType::Push | MonitorType::Group => String::new(),
-        _ => m.monitor.target.clone(),
+        // No credentials from a URL: the rows are for every role.
+        _ => crate::api::metrics::redact_target(&m.monitor.target),
     };
     Row {
         id: m.monitor.id,

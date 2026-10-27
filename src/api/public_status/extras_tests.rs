@@ -923,7 +923,20 @@ async fn editor_analytics_tab_shows_views_and_saves_settings() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(body.contains("aria-invalid=\"true\""));
     let ok = "analytics_enabled=true&analytics_provider=matomo&analytics_site_id=4&analytics_url=https%3A%2F%2Fstats.acme.test%2F";
-    let (status, headers, _) = send(&t, "POST", &uri, &ed, ok).await;
+    // Choosing the script URL is for administrators.
+    let (status, _, body) = send(&t, "POST", &uri, &ed, ok).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body.contains("Only an administrator can set or change the script URL."));
+    let unchanged = t
+        .state
+        .with_conn(move |c| status_pages::get(c, pid))
+        .await
+        .unwrap()
+        .unwrap()
+        .analytics;
+    assert_eq!(unchanged.provider, Provider::None);
+    let admin = login(&t, "ad", Role::Admin).await;
+    let (status, headers, _) = send(&t, "POST", &uri, &admin, ok).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert_eq!(
         headers.get("location"),
@@ -940,7 +953,147 @@ async fn editor_analytics_tab_shows_views_and_saves_settings() {
         (a.provider, a.site_id.as_str(), a.unique),
         (Provider::Matomo, "4", false)
     );
+    // With the address as the administrator set it, editors can still change
+    // the rest, and see the address without being able to edit it.
+    let same_url = "analytics_enabled=true&analytics_provider=matomo&analytics_site_id=5&analytics_url=https%3A%2F%2Fstats.acme.test%2F";
+    let (status, _, _) = send(&t, "POST", &uri, &ed, same_url).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let (_, _, body) = get(
+        &t,
+        &format!("/status-pages/{pid}/edit?tab=analytics"),
+        None,
+        Some(&ed),
+    )
+    .await;
+    assert!(body.contains(
+        "name=\"analytics_url\" type=\"url\" value=\"https://stats.acme.test/\" readonly"
+    ));
+    let other_url = same_url.replace("stats.acme.test", "evil.test");
+    let (status, _, _) = send(&t, "POST", &uri, &ed, &other_url).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // Editors can switch the third-party script off.
+    let off = "analytics_enabled=true&analytics_provider=none";
+    let (status, _, _) = send(&t, "POST", &uri, &ed, off).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
     let viewer = login(&t, "vi", Role::Viewer).await;
     let (status, _, _) = send(&t, "POST", &uri, &viewer, ok).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn signed_in_users_never_get_the_third_party_script() {
+    let t = app().await;
+    let (pid, _) = seed(&t, true, None).await;
+    let plausible = Analytics {
+        provider: Provider::Plausible,
+        site_id: "status.acme.test".into(),
+        url: "https://plausible.io/js/script.js".into(),
+        ..Analytics::default()
+    }
+    .validated()
+    .unwrap();
+    t.state
+        .with_conn(move |c| extras::set_analytics(c, pid, &plausible))
+        .await
+        .unwrap();
+    invalidate_views(&t.state);
+    // Anonymous visitors (and the shared render cache they fill) get it.
+    let (_, _, body) = get(&t, "/status/acme", None, None).await;
+    assert!(body.contains("https://plausible.io/js/script.js"));
+    // Nobody who is signed in does, whatever the role, so a script URL
+    // can't run next to a session on the app's origin.
+    for (name, role) in [
+        ("ad", Role::Admin),
+        ("ed", Role::Editor),
+        ("vi", Role::Viewer),
+    ] {
+        let cookie = login(&t, name, role).await;
+        let (status, headers, body) = get(&t, "/status/acme", None, Some(&cookie)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!body.contains("plausible.io"), "{name}: {body}");
+        assert!(!body.contains("data-domain"), "{name}");
+        assert!(
+            !headers
+                .get("content-security-policy")
+                .unwrap_or_default()
+                .contains("plausible"),
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_script_url_rule() {
+    // Applied by the web form and the REST API (see api::v1 tests).
+    let url_provider = Analytics {
+        provider: Provider::Umami,
+        url: "https://u.example/script.js".into(),
+        ..Analytics::default()
+    };
+    let none = Analytics::default();
+    assert!(extras::changes_script_url(None, &url_provider));
+    assert!(extras::changes_script_url(Some(&none), &url_provider));
+    assert!(!extras::changes_script_url(
+        Some(&url_provider),
+        &url_provider
+    ));
+    assert!(!extras::changes_script_url(Some(&url_provider), &none));
+    assert!(!extras::changes_script_url(None, &none));
+}
+
+#[tokio::test]
+async fn badges_respect_the_pages_uptime_and_response_switches() {
+    let t = app().await;
+    let (pid, mid) = seed(&t, true, None).await;
+    let badge = |kind: &'static str| format!("/api/badge/{mid}/{kind}?v=figures-{kind}");
+    for kind in ["status", "uptime", "ping"] {
+        let (status, _, _) = get(&t, &badge(kind), None, None).await;
+        assert_eq!(status, StatusCode::OK, "{kind}");
+    }
+    let set = |uptime: bool, response: bool| {
+        let t = &t;
+        async move {
+            let mut p = t
+                .state
+                .with_conn(move |c| status_pages::get(c, pid))
+                .await
+                .unwrap()
+                .unwrap()
+                .to_new();
+            p.show_uptime = uptime;
+            p.show_response = response;
+            t.state
+                .with_conn(move |c| status_pages::update(c, pid, &p))
+                .await
+                .unwrap();
+            invalidate_views(&t.state);
+        }
+    };
+    // Response times off on the page: no ping badge, the others stay.
+    set(true, false).await;
+    for (kind, want) in [
+        ("status", StatusCode::OK),
+        ("uptime", StatusCode::OK),
+        ("ping", StatusCode::NOT_FOUND),
+    ] {
+        let (status, _, _) = get(&t, &badge(kind), None, None).await;
+        assert_eq!(status, want, "{kind}");
+    }
+    set(false, true).await;
+    for (kind, want) in [
+        ("status", StatusCode::OK),
+        ("uptime", StatusCode::NOT_FOUND),
+        ("ping", StatusCode::OK),
+    ] {
+        let (status, _, _) = get(&t, &badge(kind), None, None).await;
+        assert_eq!(status, want, "{kind}");
+    }
+    // The instance-wide switch still makes every badge public.
+    t.state
+        .with_conn(|c| db_settings::set_bool(c, db_settings::BADGES_PUBLIC, true))
+        .await
+        .unwrap();
+    set(false, false).await;
+    let (status, _, _) = get(&t, &badge("uptime"), None, None).await;
+    assert_eq!(status, StatusCode::OK);
 }

@@ -390,6 +390,10 @@ pub struct PublicView {
     /// Logged-in editor (shows an "Edit page" link).
     #[serde(skip)]
     pub can_edit: bool,
+    /// Any signed-in user (whatever the role) is viewing the page. It is on
+    /// the app's own origin then, so third-party script is left out.
+    #[serde(skip)]
+    pub signed_in: bool,
     /// Path of the htmx refresh endpoint.
     #[serde(skip)]
     pub fragment_url: String,
@@ -933,6 +937,7 @@ fn load_view_data(
             && crate::subscribers::link_base_for(conn, &page).is_ok_and(|b| b.is_some()),
         preview: !page.published,
         can_edit: false,
+        signed_in: false,
         fragment_url: format!("/status/{}/fragment", page.slug),
         page,
         rendered: Arc::default(),
@@ -978,7 +983,15 @@ async fn resolve(
         .filter(|v| v.page.published || can_edit)
         .ok_or(ApiError::NotFound)?;
     let access = access::access_for(jar, &view.page, user.is_some());
-    Ok((PublicView { can_edit, ..view }, access))
+    let signed_in = user.is_some();
+    Ok((
+        PublicView {
+            can_edit,
+            signed_in,
+            ..view
+        },
+        access,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,8 +1140,11 @@ fn page_response(view: PublicView) -> Response {
         page.description.clone()
     };
     let protected = page.is_protected();
-    // Third-party analytics only on the real, published page (not previews).
-    let snippet = if view.preview {
+    // Third-party analytics only on the real, published page (not previews)
+    // and never for a signed-in user: the page runs on the app's origin
+    // there, and whoever picks the script URL must not get to run code next
+    // to someone's session.
+    let snippet = if view.preview || view.signed_in {
         None
     } else {
         analytics::snippet(page)
@@ -1137,7 +1153,7 @@ fn page_response(view: PublicView) -> Response {
         .as_ref()
         .and_then(|_| analytics::csp(&page.analytics));
     let noindex = view.preview || protected;
-    let shared = !view.can_edit && !view.preview;
+    let shared = !view.can_edit && !view.preview && !view.signed_in;
     let rendered = view.rendered.clone();
     let tpl = PublicPageTemplate {
         page_title: page.title.clone(),
@@ -1414,7 +1430,10 @@ async fn serve_custom_domain(
                 .get::<ConnectInfo<std::net::SocketAddr>>()
                 .map(|c| c.0);
             analytics::count_view(&state, &view.page, request.headers(), peer, logged_in).await;
-            page_response(view)
+            page_response(PublicView {
+                signed_in: logged_in,
+                ..view
+            })
         }
         Ok(None) => next.run(request).await,
         Err(err) => err.into_response(),

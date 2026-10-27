@@ -21,8 +21,10 @@ pub const MAX_PER_PAGE: i64 = 5_000;
 pub const MAX_PENDING_PER_PAGE: i64 = 1_000;
 /// Most webhook subscribers (confirmed or not) of one page on one host.
 pub const MAX_WEBHOOKS_PER_HOST: i64 = 10;
-/// Unconfirmed email sign-ups are forgotten after this many days.
-pub const PENDING_DAYS: i64 = 3;
+/// Unconfirmed email sign-ups are forgotten after this many hours: a
+/// confirmation mail is read within a day or not at all, and a page's room
+/// for pending sign-ups ([`MAX_PENDING_PER_PAGE`]) comes back sooner.
+pub const PENDING_HOURS: i64 = 24;
 /// Webhook sign-ups wait this many days for an editor's approval.
 pub const PENDING_WEBHOOK_DAYS: i64 = 14;
 /// Consecutive failed deliveries after which a subscriber is dropped.
@@ -364,7 +366,7 @@ pub fn purge_pending(conn: &Connection) -> rusqlite::Result<usize> {
         "DELETE FROM status_page_subscribers
          WHERE confirmed_at IS NULL AND created_at < datetime('now', CASE kind WHEN 'webhook' THEN ?2 ELSE ?1 END)",
         params![
-            format!("-{PENDING_DAYS} days"),
+            format!("-{PENDING_HOURS} hours"),
             format!("-{PENDING_WEBHOOK_DAYS} days")
         ],
     )

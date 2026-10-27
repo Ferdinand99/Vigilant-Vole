@@ -45,6 +45,19 @@ pub const DOCKER_IMAGE: &str = "vigilant-vole:latest";
 /// makes ~14 a minute (a poll every 30 s, a flush every 5 s).
 const RATE_LIMIT: u32 = 120;
 const RATE_WINDOW: Duration = Duration::from_secs(60);
+/// Largest result upload accepted. A batch of [`MAX_BATCH`] results with
+/// ordinary messages is far below this.
+const MAX_RESULTS_BODY: usize = 512 * 1024;
+/// Fewest seconds between two accepted results for one monitor from one agent.
+const MIN_RESULT_GAP_SECS: i64 = 5;
+
+/// How soon after its last result an agent may report a monitor again: half
+/// of the shorter of its interval and its retry interval (agents check at
+/// those paces), but never under [`MIN_RESULT_GAP_SECS`]. A compromised agent
+/// can otherwise write heartbeats and flip a monitor as fast as it likes.
+fn min_result_gap(interval: i64, retry_interval: i64) -> i64 {
+    (interval.min(retry_interval) / 2).max(MIN_RESULT_GAP_SECS)
+}
 
 /// Fixed-window request counters per agent id: `(window start, requests)`.
 static AGENT_RATE: LazyLock<Mutex<HashMap<i64, (Instant, u32)>>> =
@@ -276,6 +289,13 @@ async fn agent_results(
     AuthedAgent(agent): AuthedAgent,
     body: axum::body::Bytes,
 ) -> ApiResult<Response> {
+    if body.len() > MAX_RESULTS_BODY {
+        return Ok((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(serde_json::json!({ "error": "the results are too large" })),
+        )
+            .into_response());
+    }
     let items: Vec<ResultItem> = serde_json::from_slice(&body)
         .map_err(|e| ApiError::bad_request(format!("expected a JSON array of results: {e}")))?;
     if items.len() > MAX_BATCH {
@@ -295,6 +315,25 @@ async fn agent_results(
         .iter()
         .map(|m| (m.id, m.interval_seconds))
         .collect();
+    let gaps: HashMap<i64, i64> = monitors
+        .iter()
+        .map(|m| {
+            (
+                m.id,
+                min_result_gap(m.interval_seconds, m.effective_retry_interval()),
+            )
+        })
+        .collect();
+    let reported: Vec<i64> = items
+        .iter()
+        .map(|i| i.monitor_id)
+        .filter(|id| gaps.contains_key(id))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let ages = state
+        .with_conn(move |c| db_agents::result_ages(c, agent_id, &reported))
+        .await?;
     let now = time::OffsetDateTime::now_utc();
 
     // At most one accepted result per monitor per batch: the newest valid
@@ -311,6 +350,17 @@ async fn agent_results(
             continue;
         }
         match validate_result(&item, &intervals, now) {
+            Ok(_)
+                if ages
+                    .get(&item.monitor_id)
+                    .zip(gaps.get(&item.monitor_id))
+                    .is_some_and(|(age, gap)| age < gap) =>
+            {
+                rejected.push(Rejected {
+                    monitor_id: item.monitor_id,
+                    reason: "too soon after the previous result".into(),
+                });
+            }
             Ok(outcome) => {
                 seen.insert(item.monitor_id);
                 state
@@ -1102,6 +1152,60 @@ mod tests {
             agent_heartbeats(&f.state, f.agent_id).await,
             vec![(f.agent_monitor, "down".to_string())]
         );
+    }
+
+    #[tokio::test]
+    async fn a_monitor_takes_results_no_faster_than_half_its_interval() {
+        let f = fixture("127.0.0.1:1").await;
+        let report =
+            |status: &str| serde_json::json!([{"monitor_id": f.agent_monitor, "status": status}]);
+        let post = |status: &str| post_results(&f.token, &report(status));
+        let (_, _, text) = send(&f.state, post("up")).await;
+        let resp: ResultsResponse = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp.accepted, 1);
+        // Straight away again (the monitor's interval is 1 s: the floor is 5 s).
+        let (status, _, text) = send(&f.state, post("down")).await;
+        assert_eq!(status, StatusCode::OK, "{text}");
+        let resp: ResultsResponse = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp.accepted, 0);
+        assert!(resp.rejected[0].reason.starts_with("too soon"));
+        assert_eq!(
+            agent_heartbeats(&f.state, f.agent_id).await,
+            vec![(f.agent_monitor, "up".to_string())]
+        );
+        // Later it is fine, and one monitor's pace doesn't hold up another.
+        f.state
+            .with_conn(|c| {
+                c.execute(
+                    "UPDATE heartbeats SET checked_at = datetime('now', '-10 seconds')",
+                    [],
+                )
+            })
+            .await
+            .unwrap();
+        let (_, _, text) = send(&f.state, post("down")).await;
+        let resp: ResultsResponse = serde_json::from_str(&text).unwrap();
+        assert_eq!(resp.accepted, 1);
+    }
+
+    #[test]
+    fn result_gap_is_half_the_pace_with_a_floor() {
+        assert_eq!(min_result_gap(60, 60), 30);
+        assert_eq!(min_result_gap(300, 20), 10, "retries are faster");
+        assert_eq!(min_result_gap(20, 20), 10);
+        assert_eq!(min_result_gap(1, 1), MIN_RESULT_GAP_SECS);
+        assert_eq!(min_result_gap(0, 0), MIN_RESULT_GAP_SECS);
+    }
+
+    #[tokio::test]
+    async fn huge_uploads_are_refused() {
+        let f = fixture("127.0.0.1:1").await;
+        let long = "x".repeat(MAX_RESULTS_BODY);
+        let body =
+            serde_json::json!([{"monitor_id": f.agent_monitor, "status": "up", "message": long}]);
+        let (status, _, _) = send(&f.state, post_results(&f.token, &body)).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(agent_heartbeats(&f.state, f.agent_id).await.is_empty());
     }
 
     #[test]

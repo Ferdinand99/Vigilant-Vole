@@ -91,7 +91,19 @@
         {{ m::field_text("analytics_site_id", tr("spx.site_id"), value=&aform.site_id, placeholder="status.example.com…", help=tr("spx.site_id_help"), error=&aform.site_id_error) }}
       </div>
       <div data-show-when="analytics_provider=plausible,umami,matomo">
+        {%- if is_admin %}
         {{ m::field_text("analytics_url", tr("spx.script_url"), value=&aform.url, kind="url", placeholder="https://plausible.io/js/script.js…", help=tr("spx.script_url_help"), error=&aform.url_error) }}
+        {%- else %}
+        {#- Editors see the address but cannot change it; it is sent back unchanged. -#}
+        <div class="field{% if !aform.url_error.is_empty() %} is-invalid{% endif %}">
+          <label class="label" for="f-analytics_url">{{ tr("spx.script_url") }}</label>
+          <input id="f-analytics_url" name="analytics_url" type="url" value="{{ aform.url }}" readonly autocomplete="off" aria-describedby="f-analytics_url-help">
+          <p class="help" id="f-analytics_url-help">{{ tr("spx.script_url_admin") }}</p>
+          {%- if !aform.url_error.is_empty() %}
+          <p class="field-error"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#alert-circle"></use></svg>{{ aform.url_error }}</p>
+          {%- endif %}
+        </div>
+        {%- endif %}
       </div>
     </div>
   </section>

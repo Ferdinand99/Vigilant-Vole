@@ -20,6 +20,7 @@ use bulk::bulk;
 
 mod bulk;
 use crate::api::AppState;
+use crate::api::metrics::redact_target;
 use crate::api::monitors::form::{self, ChannelMode, FormContext, FormValues};
 use crate::auth::{CurrentUser, Role};
 use crate::db::events as db_events;
@@ -110,6 +111,13 @@ pub fn monitor_json(
         }
         if !can_edit && m.push_token.is_some() {
             obj.insert("push_token".into(), json!(SECRET_MASK));
+        }
+        // Credentials written into the target or proxy URL are for editors.
+        if !can_edit {
+            obj.insert("target".into(), json!(redact_target(&m.target)));
+            if let Some(proxy) = &m.proxy_url {
+                obj.insert("proxy_url".into(), json!(redact_target(proxy)));
+            }
         }
         if let Some(h) = &m.http_headers
             && let Ok(parsed @ Value::Object(_)) = serde_json::from_str::<Value>(h)
@@ -242,7 +250,8 @@ impl MonitorFilter {
                 .is_none_or(|t| tags.iter().any(|x| x.name.eq_ignore_ascii_case(t)))
             && needle.as_deref().is_none_or(|n| {
                 m.name.to_lowercase().contains(n)
-                    || m.target.to_lowercase().contains(n)
+                    // Not the stored target: a viewer could probe it for credentials.
+                    || crate::api::metrics::redact_target(&m.target).to_lowercase().contains(n)
                     || m.description.to_lowercase().contains(n)
             })
     }
@@ -564,6 +573,7 @@ fn save(
     conn: &mut Connection,
     existing: Option<&Monitor>,
     req: WriteRequest,
+    admin: bool,
 ) -> rusqlite::Result<Result<i64, V1Error>> {
     // Context, as the monitor form builds it.
     let excluded: Vec<i64> = match existing {
@@ -701,6 +711,7 @@ fn save(
             .into_iter()
             .map(|(id, _, _)| id)
             .collect(),
+        admin,
     };
     let base = existing.map(Monitor::to_new).unwrap_or_default();
     let valid = match form::validate(&values, &base, &cx) {
@@ -763,7 +774,10 @@ async fn create(
 ) -> V1Result<Response> {
     user.require(Role::Editor)?;
     let req = read_body(body, &NewMonitor::default(), None)?;
-    let id = state.with_conn(move |c| save(c, None, req)).await??;
+    let admin = user.is_admin();
+    let id = state
+        .with_conn(move |c| save(c, None, req, admin))
+        .await??;
     after_change(&state, id).await;
     tracing::info!(user = %user.username, monitor_id = id, "monitor created via API");
     let v = fetch(&state, id, true).await?;
@@ -778,6 +792,7 @@ async fn write(
     partial: bool,
 ) -> V1Result<Response> {
     user.require(Role::Editor)?;
+    let admin = user.is_admin();
     let existing = state
         .with_conn(move |c| db_monitors::get_monitor(c, id))
         .await?
@@ -799,7 +814,7 @@ async fn write(
                 Ok(r) => r,
                 Err(e) => return Ok(Err(e)),
             };
-            save(c, Some(&existing), req)
+            save(c, Some(&existing), req, admin)
         })
         .await??;
     after_change(state, id).await;

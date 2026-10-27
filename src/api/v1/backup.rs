@@ -182,7 +182,7 @@ impl Drop for TempFile {
 /// the client sends ends up in a path.
 fn tmp_dir(state: &AppState) -> std::io::Result<PathBuf> {
     let dir = data_dir(state).join("tmp");
-    std::fs::create_dir_all(&dir)?;
+    crate::config::create_private_dir(&dir)?;
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
@@ -207,11 +207,15 @@ async fn download_database(
     let dir = tmp_dir(&state).map_err(ApiError::internal)?;
     let path = dir.join(format!("snapshot-{}.db", random_token(12)));
     let target = path.to_string_lossy().into_owned();
+    // The copy gets the channel and two-factor secrets opened below: created
+    // first, for the owner only (VACUUM INTO accepts an empty file), so it is
+    // never readable by anyone else.
+    crate::config::create_private_file(&path).map_err(ApiError::internal)?;
+    let guard = TempFile(path.clone());
     // VACUUM INTO writes a consistent, compacted copy while the app keeps running.
     state
         .with_conn(move |c| c.execute("VACUUM INTO ?1", [&target]).map(|_| ()))
         .await?;
-    let guard = TempFile(path.clone());
     // The copy holds the channel and two-factor secrets opened, so it
     // restores on any instance (another `session.key`); the restore seals
     // them again.
@@ -456,8 +460,8 @@ async fn read_upload(
                     .join(format!("upload-{}", random_token(12))),
             };
             let guard = TempFile(path.clone());
-            let mut out = tokio::fs::File::create(&path)
-                .await
+            let mut out = crate::config::create_private_file(&path)
+                .map(tokio::fs::File::from_std)
                 .map_err(|e| format!("Can’t store the upload: {e}"))?;
             let mut field = field;
             let mut total = 0usize;

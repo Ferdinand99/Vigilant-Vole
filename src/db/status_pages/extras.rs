@@ -739,6 +739,14 @@ pub struct DocExtras<'a> {
 /// A validated change plus the names of the fields it touches.
 pub type PlannedExtras = (ExtrasChange, Vec<&'static str>);
 
+/// Whether saving `new` over `current` (`None` for a new page) sets or
+/// changes the third-party script URL. The URL becomes a `<script src>` and a
+/// Content-Security-Policy source on the status page, so only an
+/// administrator may choose it (removing it is always fine).
+pub fn changes_script_url(current: Option<&Analytics>, new: &Analytics) -> bool {
+    !new.url.is_empty() && current.is_none_or(|c| c.url != new.url)
+}
+
 /// Validates document extras against the page as stored (`None` for a new
 /// page) and returns the change plus the names of the fields it touches.
 /// Plain passwords are only hashed when they differ from the stored one, so
@@ -897,6 +905,14 @@ pub fn export_doc_extras(
 // Built-in view counters
 // ===========================================================================
 
+/// Most distinct referrer domains stored per page and day; the rest are
+/// counted together as [`OTHER_REFERRER`]. The domain comes from a visitor's
+/// own `Referer` header, so anyone can make up as many as they like.
+pub const MAX_REFERRERS_PER_DAY: i64 = 500;
+/// Where referrers beyond [`MAX_REFERRERS_PER_DAY`] are counted. Never a
+/// host name.
+pub const OTHER_REFERRER: &str = "(other)";
+
 /// Counts one page view on `day` (UTC `YYYY-MM-DD`). `new_visitor`: the
 /// first view of this visitor today. `referrer`: a foreign domain, if any.
 pub fn record_view(
@@ -912,6 +928,28 @@ pub fn record_view(
         params![page_id, day, i64::from(new_visitor)],
     )?;
     if let Some(domain) = referrer {
+        let known = conn
+            .query_row(
+                "SELECT 1 FROM status_page_referrers WHERE page_id = ?1 AND day = ?2 AND domain = ?3",
+                params![page_id, day, domain],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        let domain = if known {
+            domain
+        } else {
+            let distinct: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM status_page_referrers WHERE page_id = ?1 AND day = ?2 AND domain != ?3",
+                params![page_id, day, OTHER_REFERRER],
+                |r| r.get(0),
+            )?;
+            if distinct >= MAX_REFERRERS_PER_DAY {
+                OTHER_REFERRER
+            } else {
+                domain
+            }
+        };
         conn.execute(
             "INSERT INTO status_page_referrers (page_id, day, domain, views) VALUES (?1, ?2, ?3, 1)
              ON CONFLICT (page_id, day, domain) DO UPDATE SET views = views + 1",
@@ -986,15 +1024,21 @@ pub fn top_referrers(
     rows.collect()
 }
 
-/// Deletes counters from days before `before_day`. Returns rows removed.
-pub fn prune_views(conn: &Connection, before_day: &str) -> rusqlite::Result<usize> {
+/// Deletes view counters from days before `before_day` and referrers from
+/// days before `referrers_before_day` (referrers are kept shorter: they are
+/// the part visitors control). Returns rows removed.
+pub fn prune_views(
+    conn: &Connection,
+    before_day: &str,
+    referrers_before_day: &str,
+) -> rusqlite::Result<usize> {
     let a = conn.execute(
         "DELETE FROM status_page_views WHERE day < ?1",
         params![before_day],
     )?;
     let b = conn.execute(
         "DELETE FROM status_page_referrers WHERE day < ?1",
-        params![before_day],
+        params![referrers_before_day],
     )?;
     Ok(a + b)
 }
@@ -1339,8 +1383,61 @@ mod tests {
                 ("other.example".to_string(), 1)
             ]
         );
-        assert_eq!(prune_views(&conn, "2025-10-20").unwrap(), 1);
-        assert_eq!(prune_views(&conn, "2025-10-20").unwrap(), 0);
+        assert_eq!(prune_views(&conn, "2025-10-20", "2025-10-20").unwrap(), 1);
+        assert_eq!(prune_views(&conn, "2025-10-20", "2025-10-20").unwrap(), 0);
+        // Referrers can be dropped sooner than the counters.
+        assert_eq!(prune_views(&conn, "2025-10-20", "2026-10-19").unwrap(), 1);
+        assert_eq!(daily_views(&conn, id, today, 30).unwrap()[27].views, 1);
+        assert!(
+            top_referrers(&conn, id, "2026-09-21", 10)
+                .unwrap()
+                .iter()
+                .all(|(d, _)| d != "other.example")
+        );
+    }
+
+    #[test]
+    fn referrers_per_page_and_day_are_capped() {
+        let mut conn = test_conn();
+        let id = page(&mut conn);
+        for n in 0..MAX_REFERRERS_PER_DAY + 40 {
+            record_view(
+                &conn,
+                id,
+                "2026-10-20",
+                false,
+                Some(&format!("r{n}.example")),
+            )
+            .unwrap();
+        }
+        // A known domain keeps counting; a new day starts over.
+        record_view(&conn, id, "2026-10-20", false, Some("r0.example")).unwrap();
+        record_view(&conn, id, "2026-10-21", false, Some("fresh.example")).unwrap();
+        let rows = top_referrers(&conn, id, "2026-10-20", 1000).unwrap();
+        let get = |d: &str| rows.iter().find(|(x, _)| x == d).map(|(_, n)| *n);
+        assert_eq!(get(OTHER_REFERRER), Some(40));
+        assert_eq!(get("r0.example"), Some(2));
+        assert_eq!(get("fresh.example"), Some(1));
+        let on_day: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM status_page_referrers WHERE day = ?1",
+                ["2026-10-20"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(on_day, MAX_REFERRERS_PER_DAY + 1);
+        // Another page has its own room.
+        let other = pages::insert(
+            &mut conn,
+            &NewStatusPage {
+                slug: "second".into(),
+                title: "Second".into(),
+                ..NewStatusPage::default()
+            },
+        )
+        .unwrap();
+        record_view(&conn, other, "2026-10-20", false, Some("late.example")).unwrap();
+        assert!(top_referrers(&conn, other, "2026-10-20", 10).unwrap()[0].0 == "late.example");
     }
 
     #[test]

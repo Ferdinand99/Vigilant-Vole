@@ -627,6 +627,14 @@ pub fn export(conn: &Connection, key: &Key, include_secrets: bool) -> rusqlite::
             };
             options.insert("http_headers".into(), value);
         }
+        // Credentials written into a URL are secrets too (the stored value is
+        // kept when an export without them is imported again).
+        if !include_secrets && let Some(Value::String(proxy)) = options.get("proxy_url").cloned() {
+            options.insert(
+                "proxy_url".into(),
+                Value::String(crate::api::metrics::redact_target(&proxy)),
+            );
+        }
         for secret in MONITOR_SECRETS {
             if !include_secrets && options.get(*secret).is_some_and(|v| !v.is_null()) {
                 options.insert((*secret).into(), Value::String(SECRET_MASK.into()));
@@ -669,7 +677,11 @@ pub fn export(conn: &Connection, key: &Key, include_secrets: bool) -> rusqlite::
             key: (key != m.name).then_some(key),
             name: m.name.clone(),
             monitor_type: m.monitor_type.as_str().into(),
-            target: m.target.clone(),
+            target: if include_secrets {
+                m.target.clone()
+            } else {
+                crate::api::metrics::redact_target(&m.target)
+            },
             parent: m.parent_id.and_then(|p| keys.get(&p).cloned()),
             options,
             tags: Some(tags),
@@ -2062,6 +2074,19 @@ fn plan_monitors(
             );
             continue;
         }
+        // URL credentials the export left out stay as stored.
+        if let Some(e) = existing {
+            let redact = crate::api::metrics::redact_target;
+            if nm.target != e.target && nm.target == redact(&e.target) {
+                nm.target.clone_from(&e.target);
+            }
+            if let (Some(new), Some(old)) = (nm.proxy_url.as_mut(), e.proxy_url.as_ref())
+                && *new != *old
+                && *new == redact(old)
+            {
+                new.clone_from(old);
+            }
+        }
         if let Some(h) = nm.http_headers.clone()
             && h.contains(SECRET_MASK)
             && let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(&h)
@@ -2188,6 +2213,8 @@ fn plan_monitors(
             remote_browser_ids: browsers.iter().map(|(_, b)| *b).collect(),
             browser_optional: true,
             agent_ids: cur.agents.iter().map(|(id, _, _)| *id).collect(),
+            // Importing is for administrators.
+            admin: true,
         };
         let valid = match form::validate(&values, &base, &cx) {
             Ok(v) => v,
