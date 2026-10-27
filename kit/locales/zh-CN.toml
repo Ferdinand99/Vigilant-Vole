@@ -262,6 +262,10 @@ pk_unsupported = "此浏览器不支持通行密钥。"
 pk_no_support = "此浏览器不支持通行密钥。请换用其他浏览器，或使用密码登录。"
 pk_exists = "此通行密钥已保存到你的账户。"
 pk_failed = "无法保存通行密钥。请重试。"
+reauth_needed = "请输入密码以确认此更改。"
+your_password = "你的密码"
+revoke_tokens = "同时撤销我的 API 令牌"
+revoke_tokens_help = "使用这些令牌的脚本会停止工作，直到你创建新的令牌。"
 
 [users]
 sub = "谁可以登录，以及能更改什么。"
@@ -321,6 +325,8 @@ reset_pk = "移除通行密钥"
 reset_pk_q = "移除{name}的所有通行密钥？"
 reset_pk_msg = "对方会在所有设备上退出登录，在重新添加通行密钥前将使用密码登录。"
 pk_reset = "已移除{name}的通行密钥，对方在所有设备上均已退出登录。"
+revoke_tokens = "同时撤销该用户的 API 令牌"
+admin_password_help = "你自己的密码，用于确认添加管理员。"
 
 [tokens]
 new = "新建令牌"
@@ -357,6 +363,7 @@ err_expiry = "请选择令牌的过期时间。"
 err_limit = "你已有 50 个令牌。请撤销一些不再使用的。"
 created = "令牌已创建"
 revoked = "令牌已撤销"
+password_help = "读写访问和永不过期的令牌需要密码。会过期的只读令牌不需要。"
 
 [auth]
 welcome = "欢迎"

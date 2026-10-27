@@ -16,6 +16,7 @@ use serde::Deserialize;
 
 use crate::auth::guard::{login_jar, secure_cookies};
 use crate::auth::{self, CurrentUser, totp};
+use crate::db::api_tokens as db_tokens;
 use crate::db::passkeys as db_passkeys;
 use crate::db::users as db_users;
 use crate::http::{ApiError, ApiResult, HtmlTemplate};
@@ -78,7 +79,13 @@ async fn security_template(
         .await?;
     let record = record.ok_or(ApiError::Unauthorized)?;
     let tf = tf.unwrap_or_default();
-    let enrolment = match (&tf.secret, tf.enabled) {
+    // A pending secret that can't be opened (the instance key was replaced)
+    // shows as no enrolment: "Set up" starts a new one.
+    let pending = tf
+        .secret
+        .as_deref()
+        .and_then(|stored| totp::open_secret(&core.session_key, stored));
+    let enrolment = match (&pending, tf.enabled) {
         (Some(secret), false) => {
             let issuer = super::sign_in::site_name(core).await;
             let t = totp::build(secret, &record.username, &issuer)?;
@@ -189,6 +196,20 @@ pub(super) async fn confirm_password(
     }
 }
 
+/// [`confirm_password`] for a sheet whose password field is only needed for
+/// some choices (a read-only token needs none): a missing password is asked
+/// for without counting as a guess.
+pub(super) async fn require_password(
+    core: &Core,
+    user: &CurrentUser,
+    password: String,
+) -> ApiResult<Result<(), String>> {
+    if password.is_empty() {
+        return Ok(Err(crate::i18n::t("sec.reauth_needed").into()));
+    }
+    confirm_password(core, user, password).await
+}
+
 /// After a change to how the user signs in (two-factor on or off, a passkey
 /// added or removed): signs their other devices out, so a stolen session
 /// can't outlive the change, and keeps this one signed in.
@@ -264,6 +285,10 @@ pub struct PasswordForm {
     new_password: String,
     #[serde(default)]
     confirm_password: String,
+    /// Also revoke the user's API tokens (the page's box is on by default;
+    /// a form that doesn't send it keeps them).
+    #[serde(default)]
+    revoke_tokens: bool,
 }
 
 pub(super) async fn change_password(
@@ -288,10 +313,19 @@ pub(super) async fn change_password(
     }
     let hash = auth::hash_password_async(form.new_password).await?;
     let id = user.id;
-    let version = core
-        .with_conn(move |c| db_users::set_password(c, id, &hash))
+    let revoke = form.revoke_tokens;
+    let (version, revoked) = core
+        .with_conn(move |c| {
+            let version = db_users::set_password(c, id, &hash)?;
+            let revoked = if revoke {
+                db_tokens::delete_all_for_user(c, id)?
+            } else {
+                0
+            };
+            Ok((version, revoked))
+        })
         .await?;
-    tracing::info!(user = %user.username, "password changed; other sessions signed out");
+    tracing::info!(user = %user.username, revoked_tokens = revoked, "password changed; other sessions signed out");
     // Keep this browser signed in with the new session version.
     let jar = login_jar(jar, id, version, secure_cookies(&headers));
     Ok(back_to_security(
@@ -326,7 +360,8 @@ pub(super) async fn totp_setup(
     jar: SignedCookieJar,
 ) -> ApiResult<Response> {
     let id = user.id;
-    let secret = totp::generate_secret();
+    // Stored sealed; the page opens it again to show the QR code.
+    let secret = totp::seal_secret(&core.session_key, &totp::generate_secret());
     let started = core
         .with_conn(move |c| db_users::set_pending_totp_secret(c, id, &secret))
         .await?;
@@ -379,7 +414,11 @@ pub(super) async fn totp_enable(
         .with_conn(move |c| db_users::get_totp(c, id))
         .await?
         .unwrap_or_default();
-    let Some(secret) = tf.secret.filter(|_| !tf.enabled) else {
+    let Some(secret) = tf
+        .secret
+        .filter(|_| !tf.enabled)
+        .and_then(|stored| totp::open_secret(&core.session_key, &stored))
+    else {
         return Ok(back_to_security(
             jar,
             "info",

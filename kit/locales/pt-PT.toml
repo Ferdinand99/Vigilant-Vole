@@ -280,6 +280,10 @@ pk_unsupported = "Este navegador não suporta chaves de acesso."
 pk_no_support = "Este navegador não suporta chaves de acesso. Experimente outro navegador ou inicie sessão com a palavra-passe."
 pk_exists = "Esta chave de acesso já está guardada na sua conta."
 pk_failed = "Não foi possível guardar a chave de acesso. Tente novamente."
+reauth_needed = "Introduza a sua palavra-passe para confirmar esta alteração."
+your_password = "A sua palavra-passe"
+revoke_tokens = "Revogar também os meus tokens de API"
+revoke_tokens_help = "Os scripts que os usam deixam de funcionar até criar novos."
 
 [users]
 sub = "Quem pode iniciar sessão e o que pode alterar."
@@ -339,6 +343,8 @@ reset_pk = "Remover chaves de acesso"
 reset_pk_q = "Remover todas as chaves de acesso de {name}?"
 reset_pk_msg = "A sessão é terminada em todos os locais e a pessoa inicia sessão com a palavra-passe até voltar a adicionar uma chave de acesso."
 pk_reset = "Chaves de acesso de {name} removidas. A sessão foi terminada em todos os locais."
+revoke_tokens = "Revogar também os tokens de API dele"
+admin_password_help = "A sua própria palavra-passe, para confirmar a adição de um administrador."
 
 [tokens]
 new = "Novo token"
@@ -375,6 +381,7 @@ err_expiry = "Escolha quando o token expira."
 err_limit = "Já tem 50 tokens. Revogue alguns que já não use."
 created = "Token criado"
 revoked = "Token revogado"
+password_help = "Necessária para acesso de leitura e escrita e para tokens que nunca expiram. Não é necessária para um token só de leitura que expira."
 
 [auth]
 welcome = "Bem-vindo"

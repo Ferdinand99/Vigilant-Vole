@@ -279,6 +279,10 @@ pk_unsupported = "Ce navigateur ne prend pas en charge les clés d’accès."
 pk_no_support = "Ce navigateur ne prend pas en charge les clés d’accès. Essayer un autre navigateur ou se connecter avec le mot de passe."
 pk_exists = "Cette clé d’accès est déjà enregistrée pour ce compte."
 pk_failed = "Impossible d’enregistrer la clé d’accès. Réessayer."
+reauth_needed = "Saisissez votre mot de passe pour confirmer cette modification."
+your_password = "Votre mot de passe"
+revoke_tokens = "Révoquer aussi mes jetons d’API"
+revoke_tokens_help = "Les scripts qui les utilisent cesseront de fonctionner jusqu’à ce que vous en créiez de nouveaux."
 
 [users]
 sub = "Qui peut se connecter, et ce qu’il peut modifier."
@@ -338,6 +342,8 @@ reset_pk = "Retirer les clés d’accès"
 reset_pk_q = "Retirer toutes les clés d’accès de {name} ?"
 reset_pk_msg = "Déconnexion de tous les appareils ; la connexion se fait avec le mot de passe jusqu’à l’ajout d’une nouvelle clé d’accès."
 pk_reset = "Clés d’accès de {name} retirées. Déconnexion effectuée partout."
+revoke_tokens = "Révoquer aussi ses jetons d’API"
+admin_password_help = "Votre propre mot de passe, pour confirmer l’ajout d’un administrateur."
 
 [tokens]
 new = "Nouveau jeton"
@@ -374,6 +380,7 @@ err_expiry = "Choisir l’expiration du jeton."
 err_limit = "50 jetons existent déjà. En révoquer certains devenus inutiles."
 created = "Jeton créé"
 revoked = "Jeton révoqué"
+password_help = "Nécessaire pour l’accès en lecture et écriture et pour les jetons qui n’expirent jamais. Inutile pour un jeton en lecture seule qui expire."
 
 [auth]
 welcome = "Bienvenue"

@@ -40,7 +40,9 @@ impl User {
 /// TOTP state for one user (kept out of [`User`] so secrets aren't passed around).
 #[derive(Debug, Clone, Default)]
 pub struct TotpState {
-    /// Base32 secret; present while enrolling (`enabled == false`) and once enabled.
+    /// The secret as stored (sealed; plaintext base32 from before sealing, see
+    /// [`crate::auth::totp::open_secret`]); present while enrolling
+    /// (`enabled == false`) and once enabled.
     pub secret: Option<String>,
     pub enabled: bool,
     /// Last accepted time step (replay protection).
@@ -324,7 +326,33 @@ fn codes_json(codes: &[String]) -> String {
     serde_json::to_string(codes).unwrap_or_else(|_| "[]".into())
 }
 
-/// Stores a fresh, not-yet-confirmed secret. No-op when 2FA is already on.
+/// Every stored TOTP secret as `(user id, stored text)`. The text is what
+/// `users.totp_secret` holds: sealed ([`crate::auth::totp::seal_secret`]) or,
+/// from before sealing, plaintext.
+pub fn stored_totp_secrets(conn: &Connection) -> rusqlite::Result<Vec<(i64, String)>> {
+    let mut stmt = conn
+        .prepare("SELECT id, totp_secret FROM users WHERE totp_secret IS NOT NULL ORDER BY id")?;
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect()
+}
+
+/// Replaces a user's stored TOTP secret `old` with `new`, only while it is
+/// still `old` (compare-and-swap: a secret set or removed meanwhile stays).
+pub fn swap_totp_secret(
+    conn: &Connection,
+    id: i64,
+    old: &str,
+    new: &str,
+) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "UPDATE users SET totp_secret = ?3 WHERE id = ?1 AND totp_secret = ?2",
+        params![id, old, new],
+    )?;
+    Ok(n == 1)
+}
+
+/// Stores a fresh, not-yet-confirmed secret, in the form the caller wants it
+/// kept (the pages seal it first). No-op when 2FA is already on.
 pub fn set_pending_totp_secret(conn: &Connection, id: i64, secret: &str) -> rusqlite::Result<bool> {
     let n = conn.execute(
         "UPDATE users SET totp_secret = ?2, totp_last_step = NULL WHERE id = ?1 AND totp_enabled = 0",

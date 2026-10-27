@@ -262,6 +262,10 @@ pk_unsupported = "이 브라우저는 패스키를 지원하지 않아요."
 pk_no_support = "이 브라우저는 패스키를 지원하지 않아요. 다른 브라우저를 사용하거나 비밀번호로 로그인하세요."
 pk_exists = "이 패스키는 이미 계정에 저장되어 있어요."
 pk_failed = "패스키를 저장할 수 없었어요. 다시 시도하세요."
+reauth_needed = "이 변경을 확인하려면 비밀번호를 입력하세요."
+your_password = "내 비밀번호"
+revoke_tokens = "내 API 토큰도 폐기"
+revoke_tokens_help = "토큰을 쓰는 스크립트는 새로 만들 때까지 동작하지 않아요."
 
 [users]
 sub = "로그인할 수 있는 사람과 변경할 수 있는 항목이에요."
@@ -321,6 +325,8 @@ reset_pk = "패스키 제거"
 reset_pk_q = "{name}의 패스키를 모두 제거할까요?"
 reset_pk_msg = "모든 곳에서 로그아웃되며 패스키를 다시 추가할 때까지 비밀번호로 로그인해요."
 pk_reset = "{name}의 패스키를 제거했어요. 모든 곳에서 로그아웃되었어요."
+revoke_tokens = "이 사용자의 API 토큰도 폐기"
+admin_password_help = "관리자 추가를 확인하기 위한 내 비밀번호예요."
 
 [tokens]
 new = "새 토큰"
@@ -357,6 +363,7 @@ err_expiry = "토큰 만료 시점을 고르세요."
 err_limit = "이미 토큰이 50개예요. 사용하지 않는 토큰을 폐기하세요."
 created = "토큰 생성됨"
 revoked = "토큰 폐기됨"
+password_help = "읽기·쓰기 권한과 만료되지 않는 토큰에 필요해요. 만료되는 읽기 전용 토큰에는 필요 없어요."
 
 [auth]
 welcome = "환영해요"

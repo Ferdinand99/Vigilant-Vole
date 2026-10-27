@@ -272,6 +272,10 @@ pk_unsupported = "Denne nettleseren støtter ikke passnøkler."
 pk_no_support = "Denne nettleseren støtter ikke passnøkler. Prøv en annen nettleser, eller logg inn med passordet."
 pk_exists = "Denne passnøkkelen er allerede lagret på kontoen din."
 pk_failed = "Passnøkkelen kunne ikke lagres. Prøv igjen."
+reauth_needed = "Skriv inn passordet ditt for å bekrefte endringen."
+your_password = "Passordet ditt"
+revoke_tokens = "Trekk tilbake API-tokenene mine også"
+revoke_tokens_help = "Skript som bruker dem slutter å virke til du lager nye."
 
 [users]
 sub = "Hvem som kan logge inn, og hva de kan endre."
@@ -331,6 +335,8 @@ reset_pk = "Fjern passnøkler"
 reset_pk_q = "Vil du fjerne alle passnøklene til {name}?"
 reset_pk_msg = "Brukeren logges ut overalt og logger inn med passord til en ny passnøkkel er lagt til."
 pk_reset = "Passnøklene til {name} er fjernet. Brukeren er logget ut overalt."
+revoke_tokens = "Trekk tilbake API-tokenene deres også"
+admin_password_help = "Ditt eget passord, for å bekrefte at du legger til en administrator."
 
 [tokens]
 new = "Nytt token"
@@ -367,6 +373,7 @@ err_expiry = "Velg når tokenet skal utløpe."
 err_limit = "Du har allerede 50 tokener. Trekk tilbake noen du ikke bruker lenger."
 created = "Tokenet er opprettet"
 revoked = "Tokenet er trukket tilbake"
+password_help = "Trengs for lese- og skrivetilgang og for tokener som aldri utløper. Trengs ikke for et skrivebeskyttet token som utløper."
 
 [auth]
 welcome = "Velkommen"

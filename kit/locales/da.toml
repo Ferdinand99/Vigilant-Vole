@@ -272,6 +272,10 @@ pk_unsupported = "Denne browser understøtter ikke adgangsnøgler."
 pk_no_support = "Denne browser understøtter ikke adgangsnøgler. Prøv en anden browser, eller log ind med din adgangskode."
 pk_exists = "Denne adgangsnøgle er allerede gemt på din konto."
 pk_failed = "Adgangsnøglen kunne ikke gemmes. Prøv igen."
+reauth_needed = "Indtast din adgangskode for at bekræfte ændringen."
+your_password = "Din adgangskode"
+revoke_tokens = "Tilbagekald også mine API-tokens"
+revoke_tokens_help = "Scripts, der bruger dem, holder op med at virke, indtil du opretter nye."
 
 [users]
 sub = "Hvem der kan logge ind, og hvad de kan ændre."
@@ -331,6 +335,8 @@ reset_pk = "Fjern adgangsnøgler"
 reset_pk_q = "Fjerne alle adgangsnøgler for {name}?"
 reset_pk_msg = "Brugeren bliver logget ud alle steder og logger ind med sin adgangskode, til der tilføjes en adgangsnøgle igen."
 pk_reset = "Adgangsnøgler fjernet for {name}. Brugeren er logget ud alle steder."
+revoke_tokens = "Tilbagekald også deres API-tokens"
+admin_password_help = "Din egen adgangskode, for at bekræfte tilføjelsen af en admin."
 
 [tokens]
 new = "Nyt token"
@@ -367,6 +373,7 @@ err_expiry = "Vælg, hvornår tokenet udløber."
 err_limit = "Du har allerede 50 tokens. Tilbagekald nogle, du ikke bruger længere."
 created = "Token oprettet"
 revoked = "Token tilbagekaldt"
+password_help = "Kræves til læse- og skriveadgang og til tokens, der aldrig udløber. Kræves ikke til et skrivebeskyttet token, der udløber."
 
 [auth]
 welcome = "Velkommen"

@@ -340,6 +340,91 @@ mod tests {
         std::fs::remove_dir_all(db.parent().unwrap()).unwrap();
     }
 
+    /// Upgrading to the release that seals two-factor secrets: the copy taken
+    /// first holds them in plaintext and is marked; a later start that finds
+    /// them sealed deletes it.
+    #[tokio::test]
+    async fn the_copy_before_sealing_two_factor_secrets_is_deleted_by_a_later_start() {
+        /// The kit before this release: no record for two-factor secrets yet.
+        static BEFORE: MigrationSet = MigrationSet {
+            core: &[
+                migrate::CORE_TABLES,
+                migrate::TOKEN_SCOPES,
+                migrate::PASSKEYS,
+                migrate::SEALED_SECRETS,
+            ],
+            adopt_core: None,
+            migrations: Vec::new,
+            fk_off_marker: "-- fk=off",
+            baseline: None,
+            after: no_fixups,
+        };
+        static AFTER: MigrationSet = MigrationSet {
+            core: migrate::CORE,
+            adopt_core: None,
+            migrations: Vec::new,
+            fk_off_marker: "-- fk=off",
+            baseline: None,
+            after: no_fixups,
+        };
+        let db = temp_db();
+        let backups = db.parent().unwrap().join("backups");
+        let options = MigrateOptions {
+            backup: Some(&backups),
+            backup_prefix: Some("app-before-"),
+        };
+        let pool = build_pool(&db);
+        migrate_with(&pool, &BEFORE, options).await.unwrap();
+        // A user with two-factor on, secret in plaintext (the old release).
+        interact(&pool, |c| {
+            let id = users::insert_user(c, "ada", "h", crate::auth::Role::Admin)?;
+            users::set_pending_totp_secret(c, id, "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")?;
+            users::enable_totp(c, id, 0, &[])
+        })
+        .await
+        .unwrap();
+
+        // The upgrade: a copy named after the new migration, marked.
+        let report = migrate_with(&pool, &AFTER, options).await.unwrap();
+        assert_eq!(report.applied, ["kit/0005_sealed_totp.sql"]);
+        let copy = report.backup.expect("a copy before the upgrade");
+        let name = copy.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            name.starts_with("app-before-kit-0005_sealed_totp-"),
+            "{name}"
+        );
+        assert!(Path::new(&format!("{}{}", copy.display(), ".plaintext-secrets")).exists());
+
+        // This start sealed them (as `Core::new` does) ...
+        let key = axum_extra::extract::cookie::Key::generate();
+        let k = key.clone();
+        let sealed = interact(&pool, move |c| crate::auth::totp::seal_stored(c, &k))
+            .await
+            .unwrap();
+        assert_eq!(sealed, 1);
+        // ... but the copy it took itself stays,
+        let none = migrate::prune_plaintext_backups(
+            &backups,
+            "app-before-",
+            Some(&copy),
+            true,
+            migrate::PLAINTEXT_BACKUP_MAX_AGE,
+        );
+        assert_eq!(none, 0);
+        assert!(copy.exists());
+        // while the next start deletes it, and its marker.
+        let gone = migrate::prune_plaintext_backups(
+            &backups,
+            "app-before-",
+            None,
+            true,
+            migrate::PLAINTEXT_BACKUP_MAX_AGE,
+        );
+        assert_eq!(gone, 1);
+        assert!(std::fs::read_dir(&backups).unwrap().next().is_none());
+        close(&pool).await;
+        std::fs::remove_dir_all(db.parent().unwrap()).unwrap();
+    }
     #[test]
     fn new_database_pragmas_only_run_on_an_empty_file() {
         let conn = Connection::open_in_memory().unwrap();

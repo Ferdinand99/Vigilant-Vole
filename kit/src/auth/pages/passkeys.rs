@@ -560,13 +560,26 @@ pub(super) async fn rename(
     Ok(back(jar, "success", crate::i18n::t("sec.pk_renamed")))
 }
 
+#[derive(Deserialize)]
+pub struct DeleteForm {
+    #[serde(default)]
+    current_password: String,
+}
+
 pub(super) async fn delete(
     State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
     headers: HeaderMap,
     Path(id): Path<i64>,
+    Form(form): Form<DeleteForm>,
 ) -> ApiResult<Response> {
+    // Removing a passkey changes how the account can be reached: a fresh
+    // confirmation, as for adding one.
+    if let Err(msg) = super::security::require_password(&core, &user, form.current_password).await?
+    {
+        return Ok(back(jar, "error", &msg));
+    }
     let user_id = user.id;
     let deleted = core
         .with_conn(move |c| db_passkeys::delete(c, user_id, id))

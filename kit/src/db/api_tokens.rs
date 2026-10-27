@@ -158,6 +158,15 @@ pub fn delete(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
     Ok(conn.execute("DELETE FROM api_tokens WHERE id = ?1", params![id])? == 1)
 }
 
+/// Revokes every token of a user (their scopes go with them). Returns how
+/// many there were.
+pub fn delete_all_for_user(conn: &Connection, user_id: i64) -> rusqlite::Result<usize> {
+    conn.execute(
+        "DELETE FROM api_tokens WHERE user_id = ?1",
+        params![user_id],
+    )
+}
+
 /// Resolves a token hash to an unexpired token of an active user.
 /// `needs_touch` is set when `last_used_at` is older than a minute (throttles writes).
 pub fn find_valid_by_hash(

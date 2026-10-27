@@ -51,6 +51,14 @@ pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
     {
         tracing::warn!(%err, "couldn't seal the secrets of notification channels");
     }
+    // The same for two-factor secrets. (The state builds its `Core` per
+    // request, so the kit's own sealing in `Core::new` doesn't run here.)
+    let key = session_key.clone();
+    if let Err(err) =
+        db::interact(&pool, move |c| crate::kit::auth::totp::seal_stored(c, &key)).await
+    {
+        tracing::warn!(%err, "couldn't seal the two-factor secrets");
+    }
     let engine_pool = db::build_engine_pool(&config.db_path());
     let scheduler = Scheduler::new(
         engine_pool,

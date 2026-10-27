@@ -271,6 +271,10 @@ pk_unsupported = "Den här webbläsaren har inte stöd för lösennycklar."
 pk_no_support = "Den här webbläsaren har inte stöd för lösennycklar. Prova en annan webbläsare eller logga in med ditt lösenord."
 pk_exists = "Den här lösennyckeln är redan sparad för ditt konto."
 pk_failed = "Lösennyckeln kunde inte sparas. Försök igen."
+reauth_needed = "Ange ditt lösenord för att bekräfta ändringen."
+your_password = "Ditt lösenord"
+revoke_tokens = "Återkalla även mina API-token"
+revoke_tokens_help = "Skript som använder dem slutar fungera tills du skapar nya."
 
 [users]
 sub = "Vem som kan logga in och vad de kan ändra."
@@ -330,6 +334,8 @@ reset_pk = "Ta bort lösennycklar"
 reset_pk_q = "Ta bort alla lösennycklar för {name}?"
 reset_pk_msg = "De loggas ut överallt och loggar in med sitt lösenord tills de lägger till en lösennyckel igen."
 pk_reset = "Lösennycklar borttagna för {name}. De har loggats ut överallt."
+revoke_tokens = "Återkalla även deras API-token"
+admin_password_help = "Ditt eget lösenord, för att bekräfta att du lägger till en admin."
 
 [tokens]
 new = "Ny token"
@@ -366,6 +372,7 @@ err_expiry = "Välj när tokenen ska gå ut."
 err_limit = "Du har redan 50 token. Återkalla några du inte längre använder."
 created = "Token skapad"
 revoked = "Token återkallad"
+password_help = "Krävs för läs- och skrivåtkomst och för token som aldrig går ut. Krävs inte för en skrivskyddad token som går ut."
 
 [auth]
 welcome = "Välkommen"

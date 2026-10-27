@@ -188,6 +188,11 @@ content-type: text/html; charset=utf-8
           <option value="never">أبدًا</option>
         </select>
       </div>
+      <div class="field">
+        <label class="label" for="nt-password">كلمة المرور الخاصة بك</label>
+        <input id="nt-password" name="current_password" type="password" maxlength="1024" autocomplete="current-password" aria-describedby="nt-password-help">
+        <p class="help" id="nt-password-help">مطلوبة للوصول بالقراءة والكتابة وللرموز التي لا تنتهي صلاحيتها. غير مطلوبة لرمز للقراءة فقط تنتهي صلاحيته.</p>
+      </div>
     </form>
   </div>
   <footer class="sheet-foot">

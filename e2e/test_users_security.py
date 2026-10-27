@@ -8,7 +8,7 @@ import time
 import pyotp
 from playwright.sync_api import APIRequestContext, Page, expect
 
-from conftest import App, ConsoleWatch, ContextFactory
+from conftest import ADMIN_PASSWORD, App, ConsoleWatch, ContextFactory
 from fixture_servers import HttpTarget
 from helpers import check_now, create_monitor_http, create_user_http, ui_login, ui_logout
 
@@ -115,6 +115,8 @@ def create_token_ui(page: Page, name: str, scope_label: str, *, reload: bool = T
     expect(sheet).to_be_visible()
     sheet.get_by_label("Name").fill(name)
     sheet.locator("label.choice").filter(has_text=scope_label).click()
+    # Write access asks for the password again.
+    sheet.get_by_label("Your password").fill(ADMIN_PASSWORD)
     sheet.get_by_role("button", name="Create token").click()
     expect(page.locator(".toast")).to_contain_text("Token created")
     token = page.locator(".copy-value").first.inner_text().strip()

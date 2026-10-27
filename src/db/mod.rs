@@ -64,11 +64,13 @@ pub static MIGRATIONS: MigrationSet = MigrationSet {
     // no product token scopes, so the kit's token scope table
     // (`migrate::TOKEN_SCOPES`) isn't part of our set. Passkeys
     // (`migrate::PASSKEYS`) are: every product on the kit has them. So is
-    // the record that channel secrets are sealed (`migrate::SEALED_SECRETS`).
+    // the records that channel and two-factor secrets are sealed
+    // (`migrate::SEALED_SECRETS`, `migrate::SEALED_TOTP`).
     core: &[
         crate::kit::db::migrate::CORE_TABLES,
         crate::kit::db::migrate::PASSKEYS,
         crate::kit::db::migrate::SEALED_SECRETS,
+        crate::kit::db::migrate::SEALED_TOTP,
     ],
     adopt_core: Some("0104_adopt_kit_core.sql"),
     migrations: migration_files,

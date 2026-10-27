@@ -212,12 +212,14 @@ async fn download_database(
         .with_conn(move |c| c.execute("VACUUM INTO ?1", [&target]).map(|_| ()))
         .await?;
     let guard = TempFile(path.clone());
-    // The copy holds the channel secrets opened, so it restores on any
-    // instance (another `session.key`); the restore seals them again.
+    // The copy holds the channel and two-factor secrets opened, so it
+    // restores on any instance (another `session.key`); the restore seals
+    // them again.
     let key = state.session_key.clone();
     let snapshot = path.clone();
     tokio::task::spawn_blocking(move || {
         let conn = rusqlite::Connection::open(&snapshot)?;
+        crate::kit::auth::totp::open_stored(&conn, &key)?;
         crate::notification::sealed::open_stored(&conn, &key)
     })
     .await

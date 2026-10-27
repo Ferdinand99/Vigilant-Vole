@@ -47,6 +47,11 @@
         <input id="nu-password" name="password" type="text" required minlength="10" maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" class="mono" aria-describedby="nu-password-help">
         <p class="help" id="nu-password-help">{{ tr("users.temp_password_help") }}</p>
       </div>
+      <div class="field" data-show-when="role=admin">
+        <label class="label" for="nu-current-password">{{ tr("sec.your_password") }}</label>
+        <input id="nu-current-password" name="current_password" type="password" maxlength="1024" autocomplete="current-password" aria-describedby="nu-current-password-help">
+        <p class="help" id="nu-current-password-help">{{ tr("users.admin_password_help") }}</p>
+      </div>
     </form>
   </div>
   <footer class="sheet-foot">

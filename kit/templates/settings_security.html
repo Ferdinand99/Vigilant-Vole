@@ -61,6 +61,7 @@
         <input id="f-confirm_password" name="confirm_password" type="password" required minlength="10" maxlength="1024" autocomplete="new-password">
       </div>
     </div>
+    {{ m::checkbox("revoke_tokens", tr("sec.revoke_tokens"), true, tr("sec.revoke_tokens_help")) }}
     <div class="cluster cluster-between">
       <span></span>
       {{ m::button(tr("sec.change_password"), "secondary") }}
@@ -163,9 +164,7 @@
       </span>
       <span class="list-actions cluster">
         <button type="button" class="btn btn-secondary btn-sm" data-sheet-open="#rename-passkey-{{ p.id }}" commandfor="rename-passkey-{{ p.id }}" command="show-modal">{{ tr("sec.pk_rename") }}</button>
-        <form method="post" action="/settings/security/passkeys/{{ p.id }}/delete" data-confirm="{{ tr1("sec.pk_delete_q", "name", p.name) }}" data-confirm-message="{{ tr("sec.pk_delete_msg") }}" data-confirm-label="{{ tr("common.delete") }}">
-          {{ m::button(tr("common.delete"), "danger", "", "submit", "sm") }}
-        </form>
+        <button type="button" class="btn btn-danger btn-sm" data-sheet-open="#delete-passkey-{{ p.id }}" commandfor="delete-passkey-{{ p.id }}" command="show-modal">{{ tr("common.delete") }}</button>
       </span>
     </li>
     {%- endfor %}
@@ -285,6 +284,27 @@
   <footer class="sheet-foot">
     <button type="button" class="btn btn-secondary" data-sheet-close commandfor="rename-passkey-{{ p.id }}" command="close">{{ tr("common.cancel") }}</button>
     <button type="submit" class="btn btn-primary" form="rename-passkey-{{ p.id }}-form">{{ tr("sec.pk_rename") }}</button>
+  </footer>
+</dialog>
+
+<dialog class="sheet" id="delete-passkey-{{ p.id }}" aria-labelledby="delete-passkey-{{ p.id }}-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="delete-passkey-{{ p.id }}-title">{{ tr1("sec.pk_delete_q", "name", p.name) }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="delete-passkey-{{ p.id }}" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="delete-passkey-{{ p.id }}-form" class="form" method="post" action="/settings/security/passkeys/{{ p.id }}/delete">
+      <p class="help">{{ tr("sec.pk_delete_msg") }}</p>
+      <div class="field">
+        <label class="label" for="f-passkey-{{ p.id }}-password">{{ tr("sec.current_password") }}</label>
+        <input id="f-passkey-{{ p.id }}-password" name="current_password" type="password" required maxlength="1024" autocomplete="current-password">
+      </div>
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="delete-passkey-{{ p.id }}" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-danger" form="delete-passkey-{{ p.id }}-form">{{ tr("common.delete") }}</button>
   </footer>
 </dialog>
 {%- endfor %}

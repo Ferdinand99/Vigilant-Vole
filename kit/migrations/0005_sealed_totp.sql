@@ -1,0 +1,8 @@
+-- vole-kit: two-factor (TOTP) secrets are sealed at rest.
+--
+-- Changes no table. Once the migrations have run, `Core::new` seals the
+-- plaintext `users.totp_secret` values in place (`auth::totp::seal_stored`),
+-- which SQL can't do. This record makes that a schema change: the runner
+-- takes its pre-migration copy first (the secrets still in plaintext, for a
+-- rollback), and an older version, which would read the sealed text as a
+-- base32 secret and fail every code, refuses the database instead.

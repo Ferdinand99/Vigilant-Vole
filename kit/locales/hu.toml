@@ -271,6 +271,10 @@ pk_unsupported = "Ez a böngésző nem támogatja az azonosítókulcsokat."
 pk_no_support = "Ez a böngésző nem támogatja az azonosítókulcsokat. Próbáljon ki egy másik böngészőt, vagy jelentkezzen be jelszóval."
 pk_exists = "Ez az azonosítókulcs már el van mentve a fiókjához."
 pk_failed = "Az azonosítókulcsot nem sikerült menteni. Próbálja újra."
+reauth_needed = "A módosítás megerősítéséhez adja meg a jelszavát."
+your_password = "Az Ön jelszava"
+revoke_tokens = "A saját API-tokenek visszavonása is"
+revoke_tokens_help = "Az ezeket használó szkriptek leállnak, amíg újakat nem hoz létre."
 
 [users]
 sub = "Ki jelentkezhet be, és mit módosíthat."
@@ -330,6 +334,8 @@ reset_pk = "Azonosítókulcsok eltávolítása"
 reset_pk_q = "Eltávolítja az összes azonosítókulcsot ennél: {name}?"
 reset_pk_msg = "Mindenhol kijelentkeztetjük, és jelszóval jelentkezhet be, amíg újra nem ad hozzá azonosítókulcsot."
 pk_reset = "Azonosítókulcsok eltávolítva: {name}. Mindenhol kijelentkeztettük."
+revoke_tokens = "Az ő API-tokenjeinek visszavonása is"
+admin_password_help = "A saját jelszava, egy adminisztrátor hozzáadásának megerősítéséhez."
 
 [tokens]
 new = "Új token"
@@ -366,6 +372,7 @@ err_expiry = "Válassza ki, mikor járjon le a token."
 err_limit = "Már 50 tokenje van. Vonjon vissza néhányat, amelyet már nem használ."
 created = "Token létrehozva"
 revoked = "Token visszavonva"
+password_help = "Az olvasási és írási hozzáféréshez, valamint a soha le nem járó tokenekhez szükséges. A lejáró, csak olvasható tokenhez nem kell."
 
 [auth]
 welcome = "Üdvözöljük"

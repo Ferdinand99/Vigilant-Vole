@@ -53,10 +53,28 @@ pub const SEALED_SECRETS: (&str, &str) = (
     include_str!("../../migrations/0004_sealed_secrets.sql"),
 );
 
+/// Changes no table: records that two-factor (TOTP) secrets are sealed
+/// ([`crate::auth::totp`]). Running it gives the database its pre-migration
+/// copy (plaintext secrets, for a rollback) before [`Core::new`] seals them,
+/// and makes older versions, which would read the sealed text as a base32
+/// secret and reject every code, refuse the database. Every product runs it.
+///
+/// [`Core::new`]: crate::state::Core::new
+pub const SEALED_TOTP: (&str, &str) = (
+    "kit/0005_sealed_totp.sql",
+    include_str!("../../migrations/0005_sealed_totp.sql"),
+);
+
 /// The kit's core migrations, `(name, sql)` in order: every product's
 /// default for [`MigrationSet::core`]. The names start with `kit/` so they
 /// never collide with a product's file names.
-pub const CORE: &[(&str, &str)] = &[CORE_TABLES, TOKEN_SCOPES, PASSKEYS, SEALED_SECRETS];
+pub const CORE: &[(&str, &str)] = &[
+    CORE_TABLES,
+    TOKEN_SCOPES,
+    PASSKEYS,
+    SEALED_SECRETS,
+    SEALED_TOTP,
+];
 
 /// What a product tells the runner about its migrations.
 pub struct MigrationSet {
@@ -222,11 +240,40 @@ pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, 
         },
     )
     .await?;
+    prune_sealing_backups(pool, backup_dir, report.backup.as_deref()).await;
     crate::auth::session::announce_setup_token(pool).await;
     if let Ok(url) = crate::db::interact(pool, |c| crate::db::settings::base_url(c)).await {
         crate::auth::session::note_base_url(url.as_deref());
     }
     Ok(report)
+}
+
+/// The start-up end of [`prune_plaintext_backups`]: a start that finds no
+/// plaintext secret left in the database (an earlier start sealed them)
+/// deletes the pre-migration copies taken before sealing, except the one this
+/// start took itself. Never fails the start.
+async fn prune_sealing_backups(pool: &Pool, backup_dir: &Path, taken_now: Option<&Path>) {
+    let sealed = crate::db::interact(pool, |c| {
+        Ok(!crate::auth::totp::has_plaintext_stored(c)?
+            && !crate::notify::sealed::has_plaintext_stored(c)?)
+    })
+    .await
+    .unwrap_or(false);
+    let (dir, prefix) = (
+        backup_dir.to_path_buf(),
+        crate::config::get().backup_prefix.to_string(),
+    );
+    let taken_now = taken_now.map(Path::to_path_buf);
+    let _ = tokio::task::spawn_blocking(move || {
+        prune_plaintext_backups(
+            &dir,
+            &prefix,
+            taken_now.as_deref(),
+            sealed,
+            PLAINTEXT_BACKUP_MAX_AGE,
+        )
+    })
+    .await;
 }
 
 /// How [`migrate_with`] treats a database.
@@ -280,7 +327,16 @@ pub async fn migrate_with(
                     .first()
                     .map(|(name, _)| name.trim_end_matches(".sql"))
                     .unwrap_or("");
-                report.backup = Some(backup_with_prefix(conn, dir, &prefix, first)?);
+                let copy = backup_with_prefix(conn, dir, &prefix, first)?;
+                if pending
+                    .iter()
+                    .any(|(name, _)| SEALING_MIGRATIONS.contains(&name.as_str()))
+                {
+                    // Its secrets are still in plaintext: marked, so the copy
+                    // is deleted later ([`prune_plaintext_backups`]).
+                    mark_plaintext_backup(&copy);
+                }
+                report.backup = Some(copy);
             }
             Ok(())
         })();
@@ -388,6 +444,129 @@ fn backup_with_prefix(
         .map_err(|e| MigrationError::Backup(e.to_string()))?;
     tracing::info!(path = %path.display(), "backed up database before migrating");
     Ok(path)
+}
+
+// ---------------------------------------------------------------------------
+// Pre-migration copies that hold secrets in plaintext
+// ---------------------------------------------------------------------------
+
+/// The migrations that seal secrets: a copy taken before one of them
+/// (`SEALED_SECRETS`, `SEALED_TOTP`) still has those secrets in plaintext.
+const SEALING_MIGRATIONS: [&str; 2] = [SEALED_SECRETS.0, SEALED_TOTP.0];
+
+/// Appended to a copy's file name for its marker file (see
+/// [`prune_plaintext_backups`]).
+const PLAINTEXT_MARKER: &str = ".plaintext-secrets";
+
+/// How long such a copy is kept at most.
+pub const PLAINTEXT_BACKUP_MAX_AGE: std::time::Duration =
+    std::time::Duration::from_secs(7 * 24 * 60 * 60);
+
+/// Notes next to `backup` that it was taken before secrets were sealed, so
+/// [`prune_plaintext_backups`] can find it whatever migration its name carries.
+/// Best effort: a copy without a marker is only found by its name.
+fn mark_plaintext_backup(backup: &Path) {
+    let mut marker = backup.as_os_str().to_owned();
+    marker.push(PLAINTEXT_MARKER);
+    let note = "This database copy was taken before the secrets in it were sealed, \
+                so it still holds them in plaintext. vole-kit deletes it once a later start has \
+                run with sealed secrets, or after 7 days.\n";
+    if let Err(err) = std::fs::write(&marker, note) {
+        tracing::warn!(%err, backup = %backup.display(), "couldn't mark the backup as holding plaintext secrets");
+    }
+}
+
+/// Whether `name` is a copy [`backup_with_prefix`] named after one of the
+/// sealing migrations: `{prefix}kit-0004_sealed_secrets-{stamp}[-{n}].db`.
+fn is_sealing_backup_name(name: &str, prefix: &str) -> bool {
+    SEALING_MIGRATIONS.iter().any(|migration| {
+        let label = migration.trim_end_matches(".sql").replace('/', "-");
+        name.strip_prefix(prefix)
+            .and_then(|rest| rest.strip_prefix(&format!("{label}-")))
+            .and_then(|rest| rest.strip_suffix(".db"))
+            .is_some_and(|stamp| {
+                !stamp.is_empty() && stamp.bytes().all(|b| b.is_ascii_digit() || b == b'-')
+            })
+    })
+}
+
+/// Deletes the pre-migration copies in `dir` that hold secrets in plaintext
+/// (the sealing migrations, see [`SEALED_SECRETS`] and [`SEALED_TOTP`]) once
+/// they are no use any more, and returns how many it deleted. A copy goes
+/// when
+///
+/// * `sealed` (the live database holds no plaintext secret: a start after
+///   the one that took the copy has sealed them) and the copy is not `keep`
+///   (the one taken by the start that is running), or
+/// * it is older than `max_age`.
+///
+/// Only these copies are touched: regular files named
+/// `{prefix}kit-0004_sealed_secrets-…db` or `{prefix}kit-0005_sealed_totp-…db`,
+/// or any `….db` that has a `….db.plaintext-secrets` marker next to it (written
+/// when the copy was taken, whatever migration its name carries), and the
+/// markers themselves. Everything else in `dir` stays.
+pub fn prune_plaintext_backups(
+    dir: &Path,
+    prefix: &str,
+    keep: Option<&Path>,
+    sealed: bool,
+    max_age: std::time::Duration,
+) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let now = std::time::SystemTime::now();
+    let regular = |path: &Path| {
+        std::fs::symlink_metadata(path)
+            .map(|m| m.file_type().is_file())
+            .unwrap_or(false)
+    };
+    let mut deleted = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        if let Some(copy) = name.strip_suffix(PLAINTEXT_MARKER) {
+            // A marker whose copy is gone has nothing left to say.
+            if regular(&path) && copy.ends_with(".db") && !dir.join(copy).exists() {
+                let _ = std::fs::remove_file(&path);
+            }
+            continue;
+        }
+        let mut marker = path.as_os_str().to_owned();
+        marker.push(PLAINTEXT_MARKER);
+        let marker = PathBuf::from(marker);
+        let ours = name.ends_with(".db")
+            && regular(&path)
+            && (is_sealing_backup_name(&name, prefix) || regular(&marker));
+        if !ours {
+            continue;
+        }
+        let old = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|at| now.duration_since(at).ok())
+            .is_some_and(|age| age >= max_age);
+        let current = keep.is_some_and(|keep| keep.file_name() == path.file_name());
+        if (sealed && !current) || old {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(&marker);
+                    tracing::info!(backup = %path.display(), "deleted a pre-migration copy that held secrets in plaintext");
+                    deleted += 1;
+                }
+                Err(err) => {
+                    tracing::warn!(%err, backup = %path.display(), "couldn't delete a pre-migration copy that holds secrets in plaintext");
+                }
+            }
+        }
+    }
+    deleted
 }
 
 /// Every migration of the product, sorted by file name.
@@ -702,6 +881,7 @@ mod tests {
                 "kit/0002_token_scopes.sql",
                 "kit/0003_passkeys.sql",
                 "kit/0004_sealed_secrets.sql",
+                "kit/0005_sealed_totp.sql",
                 "0001_things.sql"
             ]
         );
@@ -781,7 +961,7 @@ mod tests {
     #[test]
     fn the_token_scope_table_can_be_added_later() {
         static WITHOUT: MigrationSet = MigrationSet {
-            core: &[CORE_TABLES, PASSKEYS, SEALED_SECRETS],
+            core: &[CORE_TABLES, PASSKEYS, SEALED_SECRETS, SEALED_TOTP],
             adopt_core: None,
             migrations: NEW_PRODUCT.migrations,
             fk_off_marker: "-- fk=off",
@@ -851,5 +1031,147 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(parent, Some(dir));
         assert!(name.contains("kit-0002_more-"), "{name}");
+    }
+
+    // -- Copies that hold plaintext secrets ---------------------------------
+
+    const PREFIX: &str = "app-before-";
+
+    /// A fresh folder with the files `names` (each holding its own name).
+    fn backups_with(names: &[&str]) -> PathBuf {
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "vole-kit-prune-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in names {
+            std::fs::write(dir.join(name), name).unwrap();
+        }
+        dir
+    }
+
+    fn left(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    const DAY: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+    #[test]
+    fn only_copies_from_the_sealing_migrations_are_recognised() {
+        for name in [
+            "app-before-kit-0004_sealed_secrets-1760000000.db",
+            "app-before-kit-0004_sealed_secrets-1760000000-2.db",
+            "app-before-kit-0005_sealed_totp-1760000000.db",
+        ] {
+            assert!(is_sealing_backup_name(name, PREFIX), "{name}");
+        }
+        for name in [
+            // Other migrations, other prefixes, other files.
+            "app-before-kit-0003_passkeys-1760000000.db",
+            "app-before-0106_agent_checked_monitors-1760000000.db",
+            "other-before-kit-0005_sealed_totp-1760000000.db",
+            "app-before-kit-0005_sealed_totp-1760000000.db.bak",
+            "app-before-kit-0005_sealed_totp-.db",
+            "app-before-kit-0005_sealed_totp-final.db",
+            "kit-0005_sealed_totp-1760000000.db",
+            "app-before-kit-0005_sealed_totp-1760000000.db.plaintext-secrets",
+        ] {
+            assert!(!is_sealing_backup_name(name, PREFIX), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_later_start_with_sealed_data_deletes_the_older_copies_only() {
+        let old = "app-before-kit-0004_sealed_secrets-1760000000.db";
+        let now = "app-before-kit-0005_sealed_totp-1760000500.db";
+        let marked = "app-before-0107_something-1760000100.db";
+        let dir = backups_with(&[
+            old,
+            now,
+            marked,
+            &format!("{marked}{PLAINTEXT_MARKER}"),
+            // Not ours: another migration's copy without a marker, a manual
+            // copy, a restore's leftover, a note.
+            "app-before-0106_agent_checked_monitors-1760000200.db",
+            "my-own-copy.db",
+            "pending-restore.db",
+            "notes.txt",
+        ]);
+
+        // This start sealed nothing yet (plaintext remains): nothing goes.
+        let none = prune_plaintext_backups(&dir, PREFIX, Some(&dir.join(now)), false, 7 * DAY);
+        assert_eq!(none, 0);
+        assert_eq!(left(&dir).len(), 8);
+
+        // A later start finds everything sealed: the older copies and the
+        // marker of the marked one go, the copy this start took stays.
+        let gone = prune_plaintext_backups(&dir, PREFIX, Some(&dir.join(now)), true, 7 * DAY);
+        assert_eq!(gone, 2);
+        assert_eq!(
+            left(&dir),
+            [
+                "app-before-0106_agent_checked_monitors-1760000200.db",
+                now,
+                "my-own-copy.db",
+                "notes.txt",
+                "pending-restore.db",
+            ]
+        );
+
+        // Again: nothing more.
+        assert_eq!(
+            prune_plaintext_backups(&dir, PREFIX, Some(&dir.join(now)), true, 7 * DAY),
+            0
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_old_copy_goes_even_when_nothing_is_sealed_and_a_young_one_stays() {
+        let copy = "app-before-kit-0005_sealed_totp-1760000000.db";
+        let dir = backups_with(&[copy, "unrelated.db"]);
+        // Younger than the limit and not sealed yet: kept.
+        assert_eq!(prune_plaintext_backups(&dir, PREFIX, None, false, DAY), 0);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        // Past the limit (a zero limit: older than now): deleted, also the copy this start took.
+        assert_eq!(
+            prune_plaintext_backups(
+                &dir,
+                PREFIX,
+                Some(&dir.join(copy)),
+                false,
+                std::time::Duration::ZERO
+            ),
+            1
+        );
+        assert_eq!(left(&dir), ["unrelated.db"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_marker_without_its_copy_is_cleaned_up_and_a_missing_folder_is_fine() {
+        let dir = backups_with(&[
+            &format!("app-before-0107_x-1.db{PLAINTEXT_MARKER}"),
+            &format!("README{PLAINTEXT_MARKER}"),
+        ]);
+        assert_eq!(
+            prune_plaintext_backups(&dir, PREFIX, None, true, 7 * DAY),
+            0
+        );
+        // Only the marker of a `.db` copy is ours.
+        assert_eq!(left(&dir), [format!("README{PLAINTEXT_MARKER}")]);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(
+            prune_plaintext_backups(&dir.join("gone"), PREFIX, None, true, DAY),
+            0
+        );
     }
 }

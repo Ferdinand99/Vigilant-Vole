@@ -1773,6 +1773,9 @@ sec.pk_where
 sec.profile
 sec.profile_saved
 sec.qr_alt
+sec.reauth_needed
+sec.revoke_tokens
+sec.revoke_tokens_help
 sec.save_profile
 sec.scan_help
 sec.sessions
@@ -1808,6 +1811,7 @@ sec.turn_on
 sec.unknown_lc
 sec.wrong_password
 sec.your_codes
+sec.your_password
 setup.confirm
 setup.password
 setup.password_help
@@ -2198,6 +2202,7 @@ tokens.new
 tokens.others
 tokens.others_sub
 tokens.owner
+tokens.password_help
 tokens.prom_1
 tokens.prom_2
 tokens.revoke
@@ -2215,6 +2220,7 @@ tokens.yours
 users.actions_for
 users.add
 users.added
+users.admin_password_help
 users.delete_msg
 users.delete_q
 users.deleted
@@ -2259,6 +2265,7 @@ users.reset_pk_q
 users.reset_tfa
 users.reset_tfa_msg
 users.reset_tfa_q
+users.revoke_tokens
 users.role
 users.roles_help
 users.save

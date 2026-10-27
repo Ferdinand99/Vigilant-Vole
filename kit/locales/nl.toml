@@ -271,6 +271,10 @@ pk_unsupported = "Deze browser ondersteunt geen toegangssleutels."
 pk_no_support = "Deze browser ondersteunt geen toegangssleutels. Probeer een andere browser of log in met je wachtwoord."
 pk_exists = "Deze toegangssleutel is al opgeslagen voor je account."
 pk_failed = "De toegangssleutel kon niet worden opgeslagen. Probeer het opnieuw."
+reauth_needed = "Voer je wachtwoord in om deze wijziging te bevestigen."
+your_password = "Je wachtwoord"
+revoke_tokens = "Trek ook mijn API-tokens in"
+revoke_tokens_help = "Scripts die ze gebruiken werken niet meer totdat je nieuwe maakt."
 
 [users]
 sub = "Wie kan inloggen en wat diegene mag wijzigen."
@@ -330,6 +334,8 @@ reset_pk = "Toegangssleutels verwijderen"
 reset_pk_q = "Alle toegangssleutels van {name} verwijderen?"
 reset_pk_msg = "De gebruiker wordt overal uitgelogd en logt in met het wachtwoord tot er weer een toegangssleutel is toegevoegd."
 pk_reset = "Toegangssleutels van {name} verwijderd. De gebruiker is overal uitgelogd."
+revoke_tokens = "Trek ook hun API-tokens in"
+admin_password_help = "Je eigen wachtwoord, om het toevoegen van een beheerder te bevestigen."
 
 [tokens]
 new = "Nieuw token"
@@ -366,6 +372,7 @@ err_expiry = "Kies wanneer het token verloopt."
 err_limit = "Je hebt al 50 tokens. Trek er een aantal in die je niet meer gebruikt."
 created = "Token gemaakt"
 revoked = "Token ingetrokken"
+password_help = "Nodig voor lees- en schrijftoegang en voor tokens die nooit verlopen. Niet nodig voor een alleen-lezen token dat verloopt."
 
 [auth]
 welcome = "Welkom"
