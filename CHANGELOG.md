@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.13.1...v0.14.0) (2026-10-27)
+
+
+### Features
+
+* **kit:** re-authentication for sensitive actions and sealed TOTP secrets ([#65](https://github.com/Ferdinand99/Vigilant-Vole/issues/65)) ([35f8262](https://github.com/Ferdinand99/Vigilant-Vole/commit/35f8262fb1aca6bb66c1437826fb8972ed100196))
+
+
+### Bug Fixes
+
+* security hardening from the October review ([#68](https://github.com/Ferdinand99/Vigilant-Vole/issues/68)) ([9d3003d](https://github.com/Ferdinand99/Vigilant-Vole/commit/9d3003d8b6128fb5cdf53e4da898a9b47b5f32c4))
+
 ## [0.13.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.13.0...v0.13.1) (2026-10-27)
 
 
