@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.5.1...vole-kit-v0.6.0) (2026-10-27)
+
+
+### Features
+
+* **kit:** re-authentication for sensitive actions and sealed TOTP secrets ([#65](https://github.com/Ferdinand99/Vigilant-Vole/issues/65)) ([35f8262](https://github.com/Ferdinand99/Vigilant-Vole/commit/35f8262fb1aca6bb66c1437826fb8972ed100196))
+
 ## [0.5.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.5.0...vole-kit-v0.5.1) (2026-10-27)
 
 
