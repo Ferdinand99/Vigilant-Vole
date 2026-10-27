@@ -8,7 +8,7 @@
 **A lightweight, self-hosted uptime monitor built in Rust.**
 Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](https://github.com/louislam/uptime-kuma), built for a smaller footprint — and a few things Kuma doesn't do.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.99%2B-orange.svg)](https://www.rust-lang.org/)
 [![Docker Image](https://img.shields.io/badge/docker%20image-~20MB-success.svg)](#-quick-start)
 [![Unraid Friendly](https://img.shields.io/badge/unraid-friendly-blueviolet.svg)](#-unraid)
@@ -582,4 +582,4 @@ Ideas, not promises:
 
 ## 📄 License
 
-[MIT](LICENSE) © [Ferdinand99](https://github.com/Ferdinand99)
+[GNU AGPL-3.0-only](LICENSE) © [Ferdinand99](https://github.com/Ferdinand99)
