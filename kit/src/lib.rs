@@ -19,6 +19,7 @@ pub mod docs;
 pub mod http;
 pub mod i18n;
 pub mod mcp;
+pub mod net;
 pub mod notify;
 pub mod page;
 pub mod settings;

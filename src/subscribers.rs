@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -581,63 +581,10 @@ fn announcement_json(page: &StatusPage, links: &Links, a: &Announcement) -> Valu
 // Webhook delivery (SSRF-safe)
 // ---------------------------------------------------------------------------
 
-fn is_public_v4(v4: Ipv4Addr) -> bool {
-    let o = v4.octets();
-    !(v4.is_unspecified()
-        || v4.is_loopback()
-        || v4.is_private()
-        || v4.is_link_local()
-        || v4.is_broadcast()
-        || v4.is_multicast()
-        || v4.is_documentation()
-        || o[0] == 0
-        || (o[0] == 100 && (64..128).contains(&o[1])) // CGNAT
-        || (o[0] == 192 && o[1] == 0 && o[2] == 0) // IETF protocol assignments
-        || (o[0] == 192 && o[1] == 88 && o[2] == 99) // 6to4 relay anycast
-        || (o[0] == 198 && (18..20).contains(&o[1])) // benchmarking
-        || o[0] >= 240)
-}
-
-/// The IPv4 address a translated or tunnelled IPv6 address leads to.
-fn embedded_v4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
-    let seg = v6.segments();
-    let o = v6.octets();
-    if let Some(v4) = v6.to_ipv4_mapped() {
-        return Some(v4);
-    }
-    // NAT64, well-known prefix 64:ff9b::/96.
-    if seg[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
-        return Some(Ipv4Addr::new(o[12], o[13], o[14], o[15]));
-    }
-    // 6to4, 2002::/16: the IPv4 address follows the prefix.
-    if seg[0] == 0x2002 {
-        return Some(Ipv4Addr::new(o[2], o[3], o[4], o[5]));
-    }
-    None
-}
-
-/// Whether `ip` is a globally routable unicast address.
-pub fn is_public(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => is_public_v4(v4),
-        IpAddr::V6(v6) => {
-            if let Some(v4) = embedded_v4(v6) {
-                return is_public_v4(v4);
-            }
-            let seg = v6.segments();
-            !(v6.is_unspecified()
-                || v6.is_loopback()
-                || v6.is_multicast()
-                || seg[..6] == [0; 6] // IPv4-compatible ::a.b.c.d (deprecated)
-                || (seg[0] == 0x64 && seg[1] == 0xff9b) // local-use NAT64 64:ff9b:1::/48
-                || (seg[0] == 0x2001 && seg[1] == 0) // Teredo 2001::/32
-                || (seg[0] & 0xfe00) == 0xfc00 // unique local
-                || (seg[0] & 0xffc0) == 0xfe80 // link local
-                || (seg[0] & 0xffc0) == 0xfec0 // site local (deprecated)
-                || (seg[0] == 0x2001 && seg[1] == 0x0db8)) // documentation
-        }
-    }
-}
+// The address rule lives in the kit: it is the same classifier the notification
+// client uses (there it only refuses the dangerous ranges; here, every
+// non-public one).
+pub use crate::kit::net::is_public;
 
 /// Ports a webhook may use: the web's own, or any unprivileged one (never
 /// SSH, SMTP, databases and the like on low ports).

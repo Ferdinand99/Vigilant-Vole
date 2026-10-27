@@ -1470,9 +1470,17 @@ async fn passkeys_register_and_sign_in_without_password_or_code() {
             },
         },
     });
+    // Another device that is signed in as the admin right now.
+    let other_device = app.cookies.clone();
     let res = app.post_json("/settings/security/passkeys", &body).await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.body);
     assert_eq!(res.body, r##"{"redirect":"/settings/security#passkeys"}"##);
+    // Adding a passkey signs the other devices out; this one stays signed in.
+    let here = std::mem::replace(&mut app.cookies, other_device);
+    let res = app.get("/settings/security").await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    assert!(res.location().starts_with("/login"), "{}", res.location());
+    app.cookies = here;
     // The same response again: its challenge is used up.
     let res = app.post_json("/settings/security/passkeys", &body).await;
     assert_eq!(res.status, StatusCode::BAD_REQUEST);
@@ -1582,6 +1590,11 @@ async fn passkeys_register_and_sign_in_without_password_or_code() {
 async fn admins_remove_a_users_passkeys() {
     let mut app = App::set_up().await;
     let bob = app.user("bob", Role::Editor).await;
+    let before: i64 = app
+        .core
+        .with_conn(move |c| Ok(db::users::get_user(c, bob)?.unwrap().session_version))
+        .await
+        .unwrap();
     app.core
         .with_conn(move |c| {
             db::passkeys::insert(
@@ -1625,5 +1638,5 @@ async fn admins_remove_a_users_passkeys() {
         .with_conn(move |c| Ok(db::users::get_user(c, bob)?.unwrap().session_version))
         .await
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, before + 1);
 }

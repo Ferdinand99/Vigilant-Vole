@@ -156,32 +156,53 @@ fn back_to_security(jar: SignedCookieJar, kind: &str, message: &str) -> Response
 }
 
 /// Re-authentication for sensitive changes, throttled per user so a hijacked
-/// session can't be used to brute-force the password.
+/// session can't be used to brute-force the password. The attempt is counted
+/// before the (slow) check, as at sign-in, so a burst of parallel guesses
+/// can't all get past the throttle before the first failure is recorded.
 pub(super) async fn confirm_password(
     core: &Core,
     user: &CurrentUser,
     password: String,
 ) -> ApiResult<Result<(), String>> {
     let key = format!("reauth:{}", user.id);
-    let now = Instant::now();
-    if let Some(wait) = core.limits.account.retry_after(&key, now) {
+    if let Err(wait) = core.limits.account.reserve(&key, Instant::now()) {
         let secs = wait.as_secs().max(1).to_string();
         return Ok(Err(crate::i18n::tf("sec.too_many_secs", &[("n", &secs)])));
     }
     let id = user.id;
-    let record = core
-        .with_conn(move |c| db_users::get_user(c, id))
-        .await?
-        .ok_or(ApiError::Unauthorized)?;
+    let record = match core.with_conn(move |c| db_users::get_user(c, id)).await {
+        Ok(Some(record)) => record,
+        other => {
+            // Not a guess: don't count it.
+            core.limits.account.release(&key);
+            return Err(other.err().unwrap_or(ApiError::Unauthorized));
+        }
+    };
     if password.len() <= auth::MAX_PASSWORD_LEN
         && auth::verify_password_async(record.password_hash, password).await?
     {
         core.limits.account.clear(&key);
         Ok(Ok(()))
     } else {
-        core.limits.account.record_failure(&key, now);
+        // Already counted by `reserve`.
         Ok(Err(crate::i18n::t("sec.wrong_password").into()))
     }
+}
+
+/// After a change to how the user signs in (two-factor on or off, a passkey
+/// added or removed): signs their other devices out, so a stolen session
+/// can't outlive the change, and keeps this one signed in.
+pub(super) async fn sign_out_others_keep_this(
+    core: &Core,
+    user: &CurrentUser,
+    jar: SignedCookieJar,
+    headers: &HeaderMap,
+) -> ApiResult<SignedCookieJar> {
+    let id = user.id;
+    let version = core
+        .with_conn(move |c| db_users::bump_session_version(c, id))
+        .await?;
+    Ok(login_jar(jar, id, version, secure_cookies(headers)))
 }
 
 #[derive(Deserialize)]
@@ -350,6 +371,7 @@ pub(super) async fn totp_enable(
     State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
+    headers: HeaderMap,
     Form(form): Form<CodeForm>,
 ) -> ApiResult<Response> {
     let id = user.id;
@@ -365,8 +387,8 @@ pub(super) async fn totp_enable(
         ));
     };
     let key = format!("2fa-setup:{id}");
-    let now = Instant::now();
-    if core.limits.account.retry_after(&key, now).is_some() {
+    // Counted up front, like the password step; a right code clears it.
+    if core.limits.account.reserve(&key, Instant::now()).is_err() {
         return Ok(back_to_security(
             jar,
             "error",
@@ -377,7 +399,6 @@ pub(super) async fn totp_enable(
     let t = totp::build(&secret, &user.username, &issuer)?;
     let now_unix = u64::try_from(crate::auth::session::now_unix()).unwrap_or(0);
     let Some(step) = totp::match_step(&t, &form.code, now_unix, None) else {
-        core.limits.account.record_failure(&key, now);
         return Ok(back_to_security(
             jar,
             "error",
@@ -402,7 +423,8 @@ pub(super) async fn totp_enable(
             crate::i18n::t("sec.tfa_changed"),
         ));
     }
-    tracing::info!(user = %user.username, "two-factor authentication enabled");
+    tracing::info!(user = %user.username, "two-factor authentication enabled; other sessions signed out");
+    let jar = sign_out_others_keep_this(&core, &user, jar, &headers).await?;
     let jar = flash(jar, "success", crate::i18n::t("sec.tfa_on"));
     render_security(&core, &user, jar, codes).await
 }
@@ -419,14 +441,15 @@ pub(super) async fn totp_disable(
     State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
+    headers: HeaderMap,
     Form(form): Form<DisableForm>,
 ) -> ApiResult<Response> {
     if let Err(msg) = confirm_password(&core, &user, form.password).await? {
         return Ok(back_to_security(jar, "error", &msg));
     }
     let key = format!("2fa:{}", user.id);
-    let now = Instant::now();
-    if core.limits.account.retry_after(&key, now).is_some() {
+    // Counted up front, like the second factor at sign-in.
+    if core.limits.account.reserve(&key, Instant::now()).is_err() {
         return Ok(back_to_security(
             jar,
             "error",
@@ -436,7 +459,6 @@ pub(super) async fn totp_disable(
     if !super::sign_in::verify_second_factor(&core, user.id, &user.username, form.code.trim())
         .await?
     {
-        core.limits.account.record_failure(&key, now);
         return Ok(back_to_security(
             jar,
             "error",
@@ -447,7 +469,8 @@ pub(super) async fn totp_disable(
     let id = user.id;
     core.with_conn(move |c| db_users::disable_totp(c, id))
         .await?;
-    tracing::info!(user = %user.username, "two-factor authentication disabled");
+    tracing::info!(user = %user.username, "two-factor authentication disabled; other sessions signed out");
+    let jar = sign_out_others_keep_this(&core, &user, jar, &headers).await?;
     Ok(back_to_security(
         jar,
         "success",

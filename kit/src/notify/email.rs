@@ -203,7 +203,19 @@ pub async fn deliver(config: &Value, message: Message) -> Result<(), String> {
             "none" => 25,
             _ => 587,
         });
-    let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host)
+    // The same address rule as the HTTP channels. The connection then goes to
+    // the address that was checked (IPv4 first), not to a second lookup of
+    // the name; TLS still verifies the name below.
+    let addrs = crate::net::resolve_allowed(host, port)
+        .await
+        .map_err(|e| format!("SMTP host: {e}"))?;
+    let ip = addrs
+        .iter()
+        .find(|a| a.is_ipv4())
+        .or(addrs.first())
+        .map(|a| a.ip())
+        .ok_or("SMTP host: the host name has no address")?;
+    let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(ip.to_string())
         .port(port)
         .timeout(Some(Duration::from_secs(10)));
     if security != "none" {
@@ -280,6 +292,17 @@ mod tests {
         assert!(!html.contains("<script>"));
         assert!(html.contains("href=\"https://vv.example/monitors/7\""));
         assert!(html.contains("Payments API is down"));
+    }
+
+    #[tokio::test]
+    async fn smtp_hosts_follow_the_same_address_rule() {
+        let e = alert(AlertKind::Problem, None, None);
+        for host in ["169.254.169.254", "fe80::1", "0.0.0.0", "224.0.0.1"] {
+            let mut config = config();
+            config["host"] = json!(host);
+            let err = send(&config, &e).await.unwrap_err();
+            assert!(err.contains("not allowed"), "{host}: {err}");
+        }
     }
 
     #[test]

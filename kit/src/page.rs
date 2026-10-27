@@ -271,6 +271,8 @@ pub fn flash(jar: SignedCookieJar, kind: &str, message: impl Into<String>) -> Si
     cookie.set_path("/");
     cookie.set_http_only(true);
     cookie.set_same_site(SameSite::Lax);
+    // No request at hand here: `Secure` follows the configured public URL.
+    cookie.set_secure(crate::auth::session::base_url_is_https());
     jar.add(cookie)
 }
 

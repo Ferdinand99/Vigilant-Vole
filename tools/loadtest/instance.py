@@ -136,6 +136,8 @@ class DockerInstance(Instance):
         ]  # fmt: skip
         for key, value in self.env.items():
             cmd += ["-e", f"{key}={value}"]
+        # The harness posts to /setup right away: no setup token.
+        cmd += ["-e", "VV_SETUP_OPEN=1"]
         run(cmd + [self.image])
         wait_healthy(self.base_url, alive=self._running)
         hosts = run(["docker", "exec", self.name, "cat", "/etc/hosts"])
@@ -220,6 +222,8 @@ class LocalInstance(Instance):
         self.env = {**os.environ, **env, "DATA_DIR": str(self.data_dir), "PORT": str(self.port)}
         for key in ("VV_SETUP_TOKEN", "VV_CONFIG_FILE", "VV_TRUST_PROXY"):
             self.env.pop(key, None)
+        # The harness posts to /setup right away: no setup token.
+        self.env["VV_SETUP_OPEN"] = "1"
         self.proc: subprocess.Popen[bytes] | None = None
         self.log_path = self.data_dir / "server.log"
 

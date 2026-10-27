@@ -206,8 +206,14 @@ pub async fn run_migrations(pool: &Pool, backup_dir: &Path) {
 /// This is [`migrate_with`] for the installed product's set
 /// ([`KitConfig::migrations`](crate::config::KitConfig::migrations)) with a
 /// copy in `backup_dir`.
+///
+/// Being the product's start-up step for its main database, it also makes
+/// the first-run setup token when there are no users yet and logs it
+/// ([`announce_setup_token`](crate::auth::session::announce_setup_token)),
+/// and reads the public URL once ([`Core::base_url`](crate::state::Core::base_url)
+/// does so afterwards) to warn about https without a trusted proxy.
 pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, UpgradeError> {
-    migrate_with(
+    let report = migrate_with(
         pool,
         set(),
         MigrateOptions {
@@ -215,7 +221,12 @@ pub async fn migrate(pool: &Pool, backup_dir: &Path) -> Result<MigrationReport, 
             ..MigrateOptions::default()
         },
     )
-    .await
+    .await?;
+    crate::auth::session::announce_setup_token(pool).await;
+    if let Ok(url) = crate::db::interact(pool, |c| crate::db::settings::base_url(c)).await {
+        crate::auth::session::note_base_url(url.as_deref());
+    }
+    Ok(report)
 }
 
 /// How [`migrate_with`] treats a database.

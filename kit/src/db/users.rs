@@ -101,6 +101,14 @@ pub fn insert_user(
     insert_user_full(conn, username, password_hash, role, "")
 }
 
+/// A random starting `session_version` (1 to 2^32) for a new user. SQLite
+/// hands a deleted user's id to the next one created; with every user
+/// starting at 1, the old user's cookie would then sign in as the new one.
+/// A random start makes a cookie match only the user it was issued for.
+fn new_session_version() -> i64 {
+    i64::from(rand::random::<u32>()) + 1
+}
+
 pub fn insert_user_full(
     conn: &Connection,
     username: &str,
@@ -109,8 +117,15 @@ pub fn insert_user_full(
     display_name: &str,
 ) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO users (username, password_hash, role, display_name) VALUES (?1, ?2, ?3, ?4)",
-        params![username, password_hash, role.as_str(), display_name],
+        "INSERT INTO users (username, password_hash, role, display_name, session_version)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            username,
+            password_hash,
+            role.as_str(),
+            display_name,
+            new_session_version()
+        ],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -124,9 +139,9 @@ pub fn insert_first_admin(
     display_name: &str,
 ) -> rusqlite::Result<Option<i64>> {
     let inserted = conn.execute(
-        "INSERT INTO users (username, password_hash, role, display_name)
-         SELECT ?1, ?2, 'admin', ?3 WHERE NOT EXISTS (SELECT 1 FROM users)",
-        params![username, password_hash, display_name],
+        "INSERT INTO users (username, password_hash, role, display_name, session_version)
+         SELECT ?1, ?2, 'admin', ?3, ?4 WHERE NOT EXISTS (SELECT 1 FROM users)",
+        params![username, password_hash, display_name, new_session_version()],
     )?;
     Ok((inserted == 1).then(|| conn.last_insert_rowid()))
 }
@@ -405,6 +420,23 @@ mod tests {
         assert!(insert_first_admin(&conn, "a", "h", "").unwrap().is_some());
         assert!(insert_first_admin(&conn, "b", "h", "").unwrap().is_none());
         assert_eq!(count_users(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn new_users_start_at_a_random_positive_session_version() {
+        let conn = test_conn();
+        let versions: Vec<i64> = (0..8)
+            .map(|i| {
+                let id = add(&conn, &format!("u{i}"), Role::Viewer);
+                get_user(&conn, id).unwrap().unwrap().session_version
+            })
+            .collect();
+        assert!(versions.iter().all(|v| (1..=1 << 32).contains(v)));
+        assert!(versions.windows(2).any(|w| w[0] != w[1]), "{versions:?}");
+        let first = test_conn();
+        let id = insert_first_admin(&first, "a", "h", "").unwrap().unwrap();
+        let v = get_user(&first, id).unwrap().unwrap().session_version;
+        assert!((1..=1 << 32).contains(&v));
     }
 
     #[test]

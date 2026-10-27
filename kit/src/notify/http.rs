@@ -2,6 +2,7 @@
 //! config-reading helpers. Providers build [`OutRequest`]s with pure
 //! functions (unit-testable without a network); [`execute`] sends them.
 
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use reqwest::Method;
@@ -77,14 +78,62 @@ impl OutRequest {
     }
 }
 
+/// Redirects followed on one request, and only to the same host.
+const MAX_REDIRECTS: usize = 5;
+
+/// The client every notification goes through, whatever client the product
+/// passes: it refuses forbidden destination addresses at connect time
+/// ([`crate::net`]), ignores proxies from the environment and follows
+/// redirects only within the same host.
+fn client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            crate::tls_roots::http_client()
+                .user_agent(crate::config::get().user_agent)
+                .no_proxy()
+                .dns_resolver(Arc::new(crate::net::GuardedResolver))
+                .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                    let same_host = attempt
+                        .previous()
+                        .first()
+                        .is_some_and(|first| first.host_str() == attempt.url().host_str());
+                    if attempt.previous().len() >= MAX_REDIRECTS {
+                        attempt.error("too many redirects")
+                    } else if same_host {
+                        attempt.follow()
+                    } else {
+                        attempt.stop()
+                    }
+                }))
+                .connect_timeout(TIMEOUT)
+                .build()
+                .map_err(|e| format!("could not build the HTTP client: {e}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
 /// Sends one request; non-2xx is an error carrying a short, scrubbed snippet
 /// of the response body. Error strings never contain the URL or any of
 /// `secrets` (they end up in logs).
+///
+/// `http` is the product's client and no longer used: the request goes
+/// through the kit's own guarded client (see [`client`]).
 pub async fn execute(
-    http: &reqwest::Client,
+    _http: &reqwest::Client,
     req: &OutRequest,
     secrets: &[String],
 ) -> Result<(), String> {
+    let http = client()?;
+    // An IP in the URL never reaches the guarded resolver.
+    if let Some(host) = url::Url::parse(&req.url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        && let Err(err) = crate::net::check_host(&host)
+    {
+        return Err(err.to_string());
+    }
     let mut builder = http.request(req.method.clone(), &req.url).timeout(TIMEOUT);
     for (name, value) in &req.headers {
         builder = builder.header(name.as_str(), value.as_str());
@@ -104,6 +153,12 @@ pub async fn execute(
     let status = resp.status();
     if status.is_success() {
         return Ok(());
+    }
+    if status.is_redirection() {
+        return Err(scrub(
+            &format!("HTTP {status} (redirects to another host are not followed)"),
+            secrets,
+        ));
     }
     let body = read_capped(resp, ERROR_BODY_MAX).await;
     let snippet = snippet(&String::from_utf8_lossy(&body));
@@ -172,10 +227,15 @@ fn describe_reqwest(err: reqwest::Error) -> String {
     msg
 }
 
-/// First ~200 characters of a response body on one line.
+/// How much of a failed response shows in the error: what the target
+/// answered is not for the user to read (it would turn a channel into a
+/// port scanner and page reader).
+const SNIPPET_CHARS: usize = 80;
+
+/// First [`SNIPPET_CHARS`] characters of a response body on one line.
 fn snippet(body: &str) -> String {
     let flat: String = body.split_whitespace().collect::<Vec<_>>().join(" ");
-    match flat.char_indices().nth(200) {
+    match flat.char_indices().nth(SNIPPET_CHARS) {
         Some((i, _)) => format!("{}…", &flat[..i]),
         None => flat,
     }
@@ -337,6 +397,110 @@ mod tests {
         assert!(err.starts_with("HTTP 500") && err.len() < 400, "{err}");
     }
 
+    /// A local server running `app`; its address.
+    async fn serve(app: axum::Router) -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        addr
+    }
+
+    async fn run(url: String) -> Result<(), String> {
+        let req = OutRequest::post_json(url, serde_json::json!({}));
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            execute(&reqwest::Client::new(), &req, &[]),
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn forbidden_literal_addresses_are_refused_before_connecting() {
+        for url in [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[fe80::1]:8080/x",
+            "http://[::ffff:169.254.169.254]/",
+            "http://0.0.0.0:9/",
+            "http://224.0.0.1/",
+            "http://[fd00:ec2::254]/",
+        ] {
+            let err = run(url.into()).await.unwrap_err();
+            assert!(err.contains("not allowed"), "{url}: {err}");
+        }
+    }
+
+    #[tokio::test]
+    async fn private_and_loopback_destinations_still_work() {
+        let addr = serve(axum::Router::new().fallback(|| async { "ok" })).await;
+        run(format!("http://{addr}/")).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn redirects_stay_on_the_same_host() {
+        use axum::http::header::LOCATION;
+        use axum::response::Redirect;
+        let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let elsewhere = {
+            let hits = hits.clone();
+            serve(axum::Router::new().fallback(move || {
+                let hits = hits.clone();
+                async move {
+                    hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    "reached"
+                }
+            }))
+            .await
+        };
+        let app = axum::Router::new()
+            .route(
+                "/same",
+                axum::routing::post(|| async { Redirect::temporary("/landed") }),
+            )
+            .route("/landed", axum::routing::post(|| async { "ok" }))
+            .route(
+                "/away",
+                axum::routing::post(move || async move {
+                    // Another host name for the same machine.
+                    (
+                        axum::http::StatusCode::TEMPORARY_REDIRECT,
+                        [(LOCATION, format!("http://localhost:{}/", elsewhere.port()))],
+                    )
+                }),
+            )
+            .route(
+                "/loop",
+                axum::routing::post(|| async { Redirect::temporary("/loop") }),
+            );
+        let addr = serve(app).await;
+        run(format!("http://{addr}/same")).await.unwrap();
+        let err = run(format!("http://{addr}/away")).await.unwrap_err();
+        assert!(
+            err.starts_with("HTTP 307") && err.contains("not followed"),
+            "{err}"
+        );
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let err = run(format!("http://{addr}/loop")).await.unwrap_err();
+        assert!(err.contains("redirect"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn error_text_shows_the_status_and_a_short_start_of_the_body() {
+        let app = axum::Router::new().fallback(|| async {
+            (
+                axum::http::StatusCode::BAD_GATEWAY,
+                "secret page ".repeat(30),
+            )
+        });
+        let addr = serve(app).await;
+        let err = run(format!("http://{addr}/")).await.unwrap_err();
+        let (status, body) = err.split_once(": ").unwrap();
+        assert_eq!(status, "HTTP 502 Bad Gateway");
+        assert_eq!(body.chars().count(), SNIPPET_CHARS + 1, "{err}");
+    }
+
     #[test]
     fn hmac_matches_rfc4231_case_2() {
         let mac = hmac_sha256(b"Jefe", b"what do ya want for nothing?");
@@ -358,7 +522,7 @@ mod tests {
     #[test]
     fn snippet_is_single_line_and_bounded() {
         assert_eq!(snippet("  a\n b  "), "a b");
-        assert_eq!(snippet(&"x".repeat(300)).chars().count(), 201);
+        assert_eq!(snippet(&"x".repeat(300)).chars().count(), SNIPPET_CHARS + 1);
     }
 
     #[test]

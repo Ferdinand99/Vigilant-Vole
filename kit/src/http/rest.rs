@@ -42,35 +42,49 @@ pub fn is_simple_content_type(headers: &HeaderMap) -> bool {
     )
 }
 
+/// May a request that authenticated with the session cookie (not a token)
+/// write? Only if it proves it comes from our own pages: PUT, PATCH, DELETE
+/// or a non-simple content type (a cross-site page can't send those without
+/// a preflight nobody approves), or the same-origin proof of the HTML side
+/// (`HX-Request`, `Origin`, `Referer`), checked against a non-exempt path.
+/// `base_url` is the configured public URL, for a proxy that rewrites `Host`.
+pub fn session_write_allowed(method: &Method, headers: &HeaderMap, base_url: Option<&str>) -> bool {
+    if matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
+        return true;
+    }
+    let preflighted = matches!(*method, Method::PUT | Method::PATCH | Method::DELETE)
+        || !is_simple_content_type(headers);
+    preflighted
+        || crate::auth::csrf::is_allowed(
+            method,
+            "/api-v1-session",
+            headers,
+            crate::auth::session::trust_proxy(),
+            base_url,
+        )
+}
+
+/// The refusal for a cross-site cookie-authenticated write.
+pub fn session_write_refused() -> V1Error {
+    V1Error::forbidden_msg("Cross-site request refused. Use an API token or send JSON.")
+}
+
 /// Cookie-authenticated writes to `/api/v1` (exempt from the global CSRF
 /// guard because tokens don't need it) must still prove they're ours.
+///
+/// [`require_auth`](crate::auth::guard::require_auth) now makes the same
+/// check for every exempt path, so mounting this is redundant; it stays for
+/// products that did.
 pub async fn session_write_guard(request: Request, next: Next) -> Response {
     let is_session = matches!(
         request.extensions().get::<AuthMethod>(),
         Some(AuthMethod::Session)
     );
-    let method = request.method().clone();
-    let safe = matches!(method, Method::GET | Method::HEAD | Method::OPTIONS);
-    if !is_session || safe {
+    if !is_session || session_write_allowed(request.method(), request.headers(), None) {
         return next.run(request).await;
     }
-    let headers = request.headers();
-    let preflighted = matches!(method, Method::PUT | Method::PATCH | Method::DELETE)
-        || !is_simple_content_type(headers);
-    // Same check as the HTML side, against a non-exempt path.
-    let same_origin = crate::auth::csrf::is_allowed(
-        &method,
-        "/api-v1-session",
-        headers,
-        crate::auth::session::trust_proxy(),
-        None,
-    );
-    if preflighted || same_origin {
-        return next.run(request).await;
-    }
-    tracing::warn!(method = %method, path = %request.uri().path(), "blocked cross-site API write");
-    V1Error::forbidden_msg("Cross-site request refused. Use an API token or send JSON.")
-        .into_response()
+    tracing::warn!(method = %request.method(), path = %request.uri().path(), "blocked cross-site API write");
+    session_write_refused().into_response()
 }
 
 // ---------------------------------------------------------------------------

@@ -61,7 +61,7 @@ struct SetupTemplate {
     password_error: String,
     confirm_error: String,
     site_name_error: String,
-    /// The `<PREFIX>_SETUP_TOKEN` the visitor came with (carried in a hidden field).
+    /// The setup token the visitor came with (carried in a hidden field).
     token: String,
     /// A setup token is required and missing/wrong: no form.
     locked: bool,
@@ -117,30 +117,72 @@ pub struct SetupQuery {
     token: Option<String>,
 }
 
-/// The page shown instead of the form when `<PREFIX>_SETUP_TOKEN` doesn't match.
-fn setup_locked() -> Response {
+/// The page shown instead of the form when the setup token is missing or
+/// wrong, with a field to enter it (`429` when guesses come too fast).
+fn setup_locked(throttled: Option<std::time::Duration>) -> Response {
+    let (status, error) = match throttled {
+        Some(wait) => (StatusCode::TOO_MANY_REQUESTS, wait_message(wait)),
+        None => (
+            StatusCode::FORBIDDEN,
+            crate::i18n::t("auth.setup_token_required").into(),
+        ),
+    };
     let page = SetupTemplate {
-        error: Some(crate::i18n::t("auth.setup_token_required").into()),
+        error: Some(error),
         locked: true,
         ..SetupTemplate::blank()
     };
-    (StatusCode::FORBIDDEN, HtmlTemplate(page)).into_response()
+    (status, HtmlTemplate(page)).into_response()
 }
 
-fn setup_unlocked(token: Option<&str>) -> bool {
-    session::setup_token_matches(session::SETUP_TOKEN.as_deref(), token)
+/// Checks the visitor's setup token. `Ok` when none is required
+/// ([`session::required_setup_token`]) or `given` matches; otherwise the
+/// locked page. A token that is tried and wrong counts against the client
+/// address in the sign-in IP limiter (key `setup:<ip>`), so it can't be
+/// guessed online; showing the page without a token does not.
+fn check_setup_token(
+    core: &Core,
+    headers: &HeaderMap,
+    peer: Option<std::net::SocketAddr>,
+    given: Option<&str>,
+) -> Result<(), Box<Response>> {
+    let Some(expected) = session::required_setup_token() else {
+        return Ok(());
+    };
+    let given = given.map(str::trim).filter(|g| !g.is_empty());
+    let Some(given) = given else {
+        tracing::warn!("setup page opened without the setup token");
+        return Err(Box::new(setup_locked(None)));
+    };
+    let key =
+        session::client_ip(headers, peer, session::trust_proxy()).map(|ip| format!("setup:{ip}"));
+    if let Some(key) = &key
+        && let Err(wait) = core.limits.ip.reserve(key, Instant::now())
+    {
+        tracing::warn!(ip = ?key, "setup token attempts throttled");
+        return Err(Box::new(setup_locked(Some(wait))));
+    }
+    if !session::setup_token_matches(Some(&expected), Some(given)) {
+        tracing::warn!(ip = ?key, "setup attempted with a wrong setup token");
+        return Err(Box::new(setup_locked(None)));
+    }
+    if let Some(key) = &key {
+        core.limits.ip.clear(key);
+    }
+    Ok(())
 }
 
 pub(super) async fn setup_form(
     State(core): State<Core>,
+    headers: HeaderMap,
+    PeerAddr(peer): PeerAddr,
     Query(query): Query<SetupQuery>,
 ) -> ApiResult<Response> {
     if guard::has_users(&core).await? {
         return Ok(Redirect::to("/login").into_response());
     }
-    if !setup_unlocked(query.token.as_deref()) {
-        tracing::warn!("setup page opened without the setup token");
-        return Ok(setup_locked());
+    if let Err(locked) = check_setup_token(&core, &headers, peer, query.token.as_deref()) {
+        return Ok(*locked);
     }
     let page = SetupTemplate {
         token: query.token.unwrap_or_default().trim().to_string(),
@@ -153,14 +195,26 @@ pub(super) async fn setup_submit(
     State(core): State<Core>,
     jar: SignedCookieJar,
     headers: HeaderMap,
+    PeerAddr(peer): PeerAddr,
     axum::Form(form): axum::Form<SetupForm>,
 ) -> ApiResult<Response> {
     if guard::has_users(&core).await? {
         return Ok(Redirect::to("/login").into_response());
     }
-    if !setup_unlocked(Some(&form.token)) {
-        tracing::warn!("setup attempted without the setup token");
-        return Ok(setup_locked());
+    if let Err(locked) = check_setup_token(&core, &headers, peer, Some(&form.token)) {
+        return Ok(*locked);
+    }
+    // Only the token (the locked page's field): on to the form itself.
+    if session::required_setup_token().is_some()
+        && form.username.is_empty()
+        && form.password.is_empty()
+        && form.confirm.is_empty()
+    {
+        let page = SetupTemplate {
+            token: form.token.trim().to_string(),
+            ..SetupTemplate::blank()
+        };
+        return Ok(HtmlTemplate(page).into_response());
     }
 
     let username = form.username.trim().to_string();

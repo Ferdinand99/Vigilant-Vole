@@ -50,7 +50,9 @@ pub fn build(config: &Value, event: &Alert) -> Result<Vec<OutRequest>, String> {
         url.push(if url.contains('?') { '&' } else { '?' });
         url.push_str(&format!("thread_id={}", super::http::urlencode(thread)));
     }
-    let mut body = json!({ "embeds": [embed(event)] });
+    // Names and messages come from users and from outside: no @everyone,
+    // role or user pings.
+    let mut body = json!({ "embeds": [embed(event)], "allowed_mentions": { "parse": [] } });
     if let Some(name) = opt(config, "username") {
         body["username"] = json!(name);
     }
@@ -110,6 +112,7 @@ mod tests {
         let body = reqs[0].json().unwrap();
         assert_eq!(body["username"], "Vole");
         assert_eq!(body["avatar_url"], "https://a/x.png");
+        assert_eq!(body["allowed_mentions"], json!({"parse": []}));
         let embed = &body["embeds"][0];
         assert_eq!(embed["title"], "\u{1f534} Payments API is down");
         assert_eq!(embed["description"], "HTTP 503");

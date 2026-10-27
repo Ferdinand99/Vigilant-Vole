@@ -149,6 +149,8 @@ def start_app(binary: Path, pw: Playwright) -> App:
     }
     for key in ("VV_SETUP_TOKEN", "VV_CONFIG_FILE", "VV_TRUST_PROXY"):
         env.pop(key, None)
+    # The tests post to /setup right away: no setup token (the app makes one up otherwise).
+    env["VV_SETUP_OPEN"] = "1"
     log = open(log_path, "wb")  # noqa: SIM115 - closed with the process
     proc = subprocess.Popen([str(binary)], cwd=data_dir, env=env, stdout=log, stderr=subprocess.STDOUT)
     app = App(base_url=f"http://127.0.0.1:{port}", port=port, data_dir=data_dir, log_path=log_path, proc=proc, pw=pw)
