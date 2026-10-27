@@ -39,6 +39,13 @@
 
   <button type="submit" class="btn btn-primary btn-lg btn-block">{{ tr("setup.submit") }}</button>
 </form>
+{%- else %}
+<form class="form" method="post" action="/setup" novalidate>
+  <div class="field">
+    <input name="token" type="password" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="token" aria-label="token">
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg btn-block">{{ tr("common.confirm") }}</button>
+</form>
 {%- endif %}
 {% endblock %}
 

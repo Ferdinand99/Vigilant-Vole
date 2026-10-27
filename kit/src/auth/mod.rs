@@ -21,6 +21,8 @@ use axum::http::request::Parts;
 use axum_extra::extract::cookie::Key;
 
 pub mod csrf;
+#[cfg(test)]
+mod flow_tests;
 pub mod guard;
 pub mod pages;
 pub mod rate_limit;
@@ -158,6 +160,8 @@ impl CurrentUser {
 
     /// Whether `path` is under one of the [`paths`](crate::config::ExtraScope::paths)
     /// of the token's scopes (false for sessions and tokens without scopes).
+    /// Whole segments, like the CSRF exemptions: `/api/push` covers
+    /// `/api/push` and `/api/push/x`, never `/api/pushover`.
     pub fn scope_allows_path(&self, path: &str) -> bool {
         let Scopes::Only(given) = &self.scopes else {
             return false;
@@ -165,8 +169,18 @@ impl CurrentUser {
         given.iter().any(|name| {
             crate::config::get()
                 .token_scope(name)
-                .is_some_and(|s| s.paths.iter().any(|p| path.starts_with(p)))
+                .is_some_and(|s| s.paths.iter().any(|p| path_under(p, path)))
         })
+    }
+}
+
+/// Whether `path` is `prefix` or below it, in whole segments (a prefix
+/// that ends in `/` already says where its segment ends).
+fn path_under(prefix: &str, path: &str) -> bool {
+    if prefix.ends_with('/') {
+        path.starts_with(prefix)
+    } else {
+        csrf::prefix_matches(prefix, path)
     }
 }
 
@@ -345,31 +359,82 @@ pub fn username_problem(username: &str) -> Option<&'static str> {
     None
 }
 
-/// Loads the signed-cookie session key from `<data_dir>/session.key`, generating
-/// and persisting a new one on first run so sessions survive container restarts.
+/// Loads the signed-cookie session key from `<data_dir>/session.key`, creating
+/// and persisting a new one on first run so sessions survive container
+/// restarts. Panics with a message that says what to do when the key can't
+/// be loaded or created; see [`try_load_or_create_key`].
 pub fn load_or_create_key(data_dir: &Path) -> Key {
-    let key_path = data_dir.join("session.key");
-    if let Ok(bytes) = std::fs::read(&key_path)
-        && bytes.len() >= 64
+    match try_load_or_create_key(data_dir) {
+        Ok(key) => key,
+        Err(message) => panic!("{message}"),
+    }
+}
+
+/// Bytes of the key file: the cookie crate's master key.
+const KEY_LEN: usize = 64;
+
+/// [`load_or_create_key`] with the failure as a message.
+///
+/// A file that exists is never replaced: one that can't be read or is
+/// shorter than 64 bytes is an error, because a silently made new key would
+/// sign everyone out and make every sealed secret (notification channels)
+/// unreadable. A missing file is created exclusively, with mode 0600 from
+/// the start on Unix, and written once.
+pub fn try_load_or_create_key(data_dir: &Path) -> Result<Key, String> {
+    let path = data_dir.join("session.key");
+    let unusable = |why: String| {
+        format!(
+            "the session key {} {why}. Restore it from a backup; delete the file only if you accept              that everyone is signed out and saved channel secrets must be entered again",
+            path.display()
+        )
+    };
+    for _ in 0..2 {
+        match std::fs::read(&path) {
+            Ok(bytes) if bytes.len() >= KEY_LEN => return Ok(Key::from(&bytes)),
+            Ok(bytes) => {
+                return Err(unusable(format!(
+                    "is only {} bytes long (it needs {KEY_LEN})",
+                    bytes.len()
+                )));
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(unusable(format!("can't be read ({err})"))),
+        }
+        let key = Key::generate();
+        match write_new_key_file(&path, key.master()) {
+            Ok(()) => return Ok(key),
+            // Another process made it between our read and our create: read theirs.
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(format!(
+                    "could not create the session key {}: {err}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Err(unusable("keeps changing while it is being read".into()))
+}
+
+/// Creates `path` (which must not exist) with only the owner allowed to
+/// read it, and writes `bytes`. A failed write leaves no half-written file.
+fn write_new_key_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
     {
-        return Key::from(&bytes);
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
     }
-    let key = Key::generate();
-    std::fs::write(&key_path, key.master()).expect("failed to persist session key");
-    restrict_permissions(&key_path);
-    key
-}
-
-#[cfg(unix)]
-fn restrict_permissions(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    if let Err(err) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
-        tracing::warn!(%err, "could not restrict session key permissions");
+    let mut file = options.open(path)?;
+    let written = file.write_all(bytes).and_then(|()| file.sync_all());
+    if written.is_err() {
+        drop(file);
+        let _ = std::fs::remove_file(path);
     }
+    written
 }
-
-#[cfg(not(unix))]
-fn restrict_permissions(_path: &Path) {}
 
 #[cfg(test)]
 mod tests {
@@ -457,6 +522,66 @@ mod tests {
         };
         assert!(read_only.can_read());
         assert!(!read_only.scope_allows_path("/api/push/x"));
+    }
+
+    #[test]
+    fn scope_paths_match_whole_segments() {
+        assert!(path_under("/api/push", "/api/push"));
+        assert!(path_under("/api/push", "/api/push/x"));
+        assert!(!path_under("/api/push", "/api/pushover"));
+        assert!(!path_under("/api/push", "/api/pus"));
+        assert!(path_under("/api/push/", "/api/push/x"));
+        assert!(!path_under("/api/push/", "/api/pushover"));
+        assert!(!path_under("/api/push/", "/api/push"));
+    }
+
+    fn key_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("vole-kit-key-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_session_key_is_created_once_and_then_kept() {
+        let dir = key_dir("create");
+        let first = try_load_or_create_key(&dir).unwrap();
+        let bytes = std::fs::read(dir.join("session.key")).unwrap();
+        assert_eq!(bytes.len(), KEY_LEN);
+        assert_eq!(bytes, first.master());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(dir.join("session.key"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let again = try_load_or_create_key(&dir).unwrap();
+        assert_eq!(again.master(), first.master());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_damaged_session_key_stops_startup_and_is_left_alone() {
+        let dir = key_dir("short");
+        let path = dir.join("session.key");
+        for content in [&b""[..], &[7u8; 63][..]] {
+            std::fs::write(&path, content).unwrap();
+            let err = try_load_or_create_key(&dir).unwrap_err();
+            assert!(
+                err.contains("session key") && err.contains("backup"),
+                "{err}"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), content, "never overwritten");
+        }
+        // Something that can't be read as a file at all.
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        let err = try_load_or_create_key(&dir).unwrap_err();
+        assert!(err.contains("can't be read"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

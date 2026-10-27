@@ -592,11 +592,15 @@ pub fn provider_name(aaguid: &[u8; 16]) -> Option<&'static str> {
         .map(|(_, name)| *name)
 }
 
+#[cfg(any(test, feature = "test-support"))]
 pub mod soft {
     //! A software authenticator for tests: it makes ES256, EdDSA or RS256
     //! credentials and answers challenges the way a browser and a platform
     //! authenticator would, producing real attestation objects and
-    //! assertions. Products can use it to test their sign-in.
+    //! assertions. Products can use it to test their sign-in; it is only
+    //! built for the kit's own tests and with the `test-support` feature
+    //! (`vole-kit = { …, features = ["test-support"] }` under
+    //! `[dev-dependencies]`).
 
     use aws_lc_rs::rand::SystemRandom;
     use aws_lc_rs::rsa::KeySize;

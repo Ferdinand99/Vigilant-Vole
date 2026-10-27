@@ -150,7 +150,7 @@ cd Vigilant-Vole
 docker compose up -d
 ```
 
-Open **http://localhost:3001** — you'll land on a one-time setup wizard to create the admin account, then the dashboard.
+Open **http://localhost:3001** — you'll land on a one-time setup wizard to create the admin account, then the dashboard. On a fresh instance the wizard asks for a setup token: the app logs it at start (`docker logs vigilant-vole`, a line with `/setup?token=…`), or set `VV_SETUP_TOKEN` yourself.
 
 `docker-compose.yml` (abridged — the file in the repo has commented extras: Docker socket, config file, a remote agent):
 
@@ -243,7 +243,8 @@ Process settings come from environment variables; everything else (monitors, cha
 | `PORT` | `3001` | HTTP port (listens on `0.0.0.0`) |
 | `PUID` / `PGID` | `1000` / `1000` | Docker image only: user and group id the app runs as (the container starts as root only to set these and fix `/data` ownership). Unraid: `99` / `100` |
 | `VV_TRUST_PROXY` | off | `1`/`true`: trust `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For` / `X-Real-IP` from a reverse proxy (secure cookies, client IPs for login rate limiting, generated URLs). Only enable when the proxy is the only way in. |
-| `VV_SETUP_TOKEN` | – | When set, the first-run setup page only opens as `/setup?token=<value>`, so nobody else can claim a fresh instance. Ignored once an admin exists |
+| `VV_SETUP_TOKEN` | made up at start | The first-run setup page only opens as `/setup?token=<value>`, so nobody else can claim a fresh instance. Without this variable the app makes up a random token and logs it once at start (`docker logs vigilant-vole`, look for "setup token"); set it to choose your own. Ignored once an admin exists |
+| `VV_SETUP_OPEN` | off | `1`: no setup token at all, the first visitor creates the admin (scripted installs, CI) |
 | `VV_CONFIG_FILE` | – | Path to a YAML/JSON [config document](docs/config-as-code.md) merged into the database on every start |
 | `VV_MAX_CONCURRENT_CHECKS` | `64` | Checks allowed to run at the same time |
 | `DOCKER_HOST` | local socket | Docker endpoint used when a Docker monitor or discovery leaves the host empty |
@@ -478,7 +479,9 @@ Upgrading (Docker, Linux installer, Proxmox, Unraid), where the automatic backup
 - Live dashboard streams re-check the account before every update and end after an hour, so signing out everywhere, disabling a user or changing their role takes effect on open tabs too.
 - Saved monitor passwords (HTTP basic auth) are never sent back to the browser; they're kept on save only while the target host and proxy stay the same.
 - **Notification channel secrets** (tokens, passwords, webhook URLs with a key in them) are sealed in the database with AES-256-GCM, under a key derived from the instance's `session.key` (in the data directory); the rest of a channel's settings stays readable. A copy of `vigilant-vole.db` alone doesn't give them away, but `vigilant-vole.db` together with `session.key` does: keep the data directory private. If `session.key` is lost or replaced, those secrets can't be read any more: the channel's edit page asks for them again and its alerts fail (logged) until you do. The database backup download holds them opened (see Backup and restore), as do config exports with secrets.
-- **Complete the setup wizard right after first start** — until the first admin exists, anyone who can reach the page can create it. Set `VV_SETUP_TOKEN` to require a secret in the setup URL (`/setup?token=…`) when the instance is reachable by others before you get to it.
+- **Complete the setup wizard right after first start** — until the first admin exists, the wizard needs a setup token (logged once at start, or your own `VV_SETUP_TOKEN`), so a stranger who reaches the page first can't claim the instance. `VV_SETUP_OPEN=1` removes that check; don't use it on a reachable instance.
+- **Behind a TLS proxy, set `VV_TRUST_PROXY=1` and the public URL** (Settings → General): cookies are then `Secure`, HSTS is sent, and login throttling sees real client addresses. The app warns in its log when it sees proxy headers without `VV_TRUST_PROXY`.
+- **Notification destinations**: link-local, cloud metadata, unspecified and multicast addresses are refused, proxy variables from the environment are ignored for notifications, and redirects are followed only within the same host. LAN addresses (ntfy, Gotify, Home Assistant) are allowed.
 - Mounting `docker.sock` gives the container control over Docker; prefer a read-only socket proxy ([docs](docs/docker-discovery.md#permissions)).
 - A mounted `tailscaled.sock` (Tailscale ping monitors) gives the unprivileged app read access to the tailnet's status; running the container as root, or as Tailscale's operator, would give it control of Tailscale ([docs](docs/tailscale-ping.md#security)).
 - Agent tokens can read the configuration (including credentials) of monitors that run on agents; rotate them if a host is compromised.

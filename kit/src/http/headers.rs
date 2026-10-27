@@ -98,7 +98,19 @@ pub const MACHINE_CSP: &str = "default-src 'none'; frame-ancestors 'none'";
 /// and responses marked [`Embeddable`] stay frameable, everything else (the
 /// admin UI) cannot be. A [`HeaderPolicy`] on the response chooses another
 /// set.
+///
+/// A request known to be HTTPS (`X-Forwarded-Proto` behind a trusted proxy,
+/// see [`crate::auth::session::is_https`]) also gets
+/// `Strict-Transport-Security: max-age=31536000`.
 pub async fn security_headers(req: Request, next: Next) -> Response {
+    security_headers_for(req, next, crate::auth::session::trust_proxy()).await
+}
+
+/// One year; no `includeSubDomains` or `preload`, which are the operator's call.
+const HSTS: &str = "max-age=31536000";
+
+async fn security_headers_for(req: Request, next: Next, trust_proxy: bool) -> Response {
+    let https = crate::auth::session::is_https(req.headers(), trust_proxy);
     let path = req.uri().path();
     let by_path = crate::config::get()
         .embeddable_prefixes
@@ -122,6 +134,11 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
         header::REFERRER_POLICY,
         HeaderValue::from_static("same-origin"),
     );
+    if https {
+        headers
+            .entry(header::STRICT_TRANSPORT_SECURITY)
+            .or_insert(HeaderValue::from_static(HSTS));
+    }
     if policy == HeaderPolicy::App {
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
@@ -207,6 +224,30 @@ mod tests {
         assert_eq!(value(&h, "x-content-type-options"), Some("nosniff"));
         assert_eq!(value(&h, "referrer-policy"), Some("same-origin"));
         assert_eq!(value(&h, "cross-origin-resource-policy"), None);
+    }
+
+    #[tokio::test]
+    async fn hsts_only_for_requests_known_to_be_https() {
+        let get = |trust: bool, proto: Option<&'static str>| async move {
+            let app = Router::new()
+                .route("/page", get(|| async { "page" }))
+                .layer(from_fn(move |req, next| {
+                    security_headers_for(req, next, trust)
+                }));
+            let mut req = Request::get("/page").body(Body::empty()).unwrap();
+            if let Some(proto) = proto {
+                req.headers_mut()
+                    .insert("x-forwarded-proto", HeaderValue::from_static(proto));
+            }
+            app.oneshot(req).await.unwrap().headers().clone()
+        };
+        let h = get(true, Some("https")).await;
+        assert_eq!(value(&h, "strict-transport-security"), Some(HSTS));
+        // Plain http, no header, or a proxy we don't trust: nothing.
+        for (trust, proto) in [(true, Some("http")), (true, None), (false, Some("https"))] {
+            let h = get(trust, proto).await;
+            assert_eq!(value(&h, "strict-transport-security"), None);
+        }
     }
 
     #[tokio::test]

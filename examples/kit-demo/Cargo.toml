@@ -27,4 +27,6 @@ url = { workspace = true }
 vole-kit-build = { path = "../../kit/kit-build" }
 
 [dev-dependencies]
+# The software passkey authenticator, and /setup open without a token.
+vole-kit = { path = "../../kit", features = ["test-support"] }
 tower = { workspace = true }

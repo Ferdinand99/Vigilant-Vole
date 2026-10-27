@@ -61,10 +61,13 @@ impl Core {
 
     /// The configured public URL (settings), if any.
     pub async fn base_url(&self) -> Option<String> {
-        self.with_conn(|c| super::db::settings::base_url(c))
+        let read = self
+            .with_conn(|c| super::db::settings::base_url(c))
             .await
-            .ok()
-            .flatten()
+            .ok()?;
+        // Cookies are `Secure` when the public URL is https.
+        super::auth::session::note_base_url(read.as_deref());
+        read
     }
 }
 

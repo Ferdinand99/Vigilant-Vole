@@ -100,7 +100,7 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `migrate_with` + `MigrateOptions`) |
 | `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
-| `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, session-write CSRF guard); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
+| `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, `session_write_allowed`/`session_write_guard`); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
 | `page` | `PageCtx`, `UserView`, flash messages, `Ui` (`NavItem`, `SettingsTab`, `TabAccess`) |
 | `docs` | `RouteDoc`, `DocsSpec`, the OpenAPI 3.1 document, the Markdown reference; `page`: `/api-docs` and friends |
 | `mcp` | MCP protocol: origin check, Bearer auth, rate limit, JSON-RPC, the `Handler` trait |
@@ -157,7 +157,7 @@ No test can forget it.
 | `releases_url` | where the footer's version links: the release notes, with `{version}` filled in; `None` shows the version as plain text | `Some("https://github.com/Ferdinand99/Vigilant-Vole/releases/tag/v{version}")` |
 | `user_agent` | outbound `User-Agent` (the product's clients) | `VigilantVole/<version>` |
 | `backup_prefix` | name of the copy taken before a migration | `vigilant-vole-before-` |
-| `env_prefix` | `<PREFIX>_TRUST_PROXY`, `<PREFIX>_SETUP_TOKEN`, `$<PREFIX>_URL` in examples, id prefixes sent to providers (`vv-monitor-7`) | `VV` |
+| `env_prefix` | `<PREFIX>_TRUST_PROXY`, `<PREFIX>_SETUP_TOKEN`, `<PREFIX>_SETUP_OPEN`, `$<PREFIX>_URL` in examples, id prefixes sent to providers (`vv-monitor-7`) | `VV` |
 | `csrf_exempt_prefixes`, `csrf_exempt_path` | token endpoints and the one-click unsubscribe link. Prefixes match whole segments; a `*` segment matches any one segment (see "CSRF exemptions") | `/api/push`, `/api/agent`, `/api/v1`, `/api/badge`, `/metrics`, `/mcp`; the unsubscribe path |
 | `extra_common_passwords` | refused passwords besides the kit's list | `uptimekuma`, `vigilantvole` |
 | `migrations` | `MigrationSet` | `crate::db::MIGRATIONS` |
@@ -323,6 +323,104 @@ the contract between the layout and the design system's own scripts:
 `app.js` and `theme.js` look for exactly these names. Renaming them means
 changing those files together with the layouts (see "Not done").
 
+## Security hardening (0.6)
+
+The October 2026 review (findings VK-01 to VK-15) changed these defaults.
+All are additive for a product's code; the behaviour changes are listed.
+
+* **Session writes to exempt paths** (VK-01). `require_auth` refuses a
+  request that authenticated with the **session cookie**, uses an unsafe
+  method (anything but GET, HEAD, OPTIONS) and goes to a CSRF-exempt path
+  (`csrf_exempt_prefixes`, `csrf_exempt_path`), unless it proves it is ours
+  as `http::rest::session_write_allowed` says: PUT, PATCH, DELETE or a
+  content type a cross-site form can't send (they need a preflight nobody
+  approves), or `HX-Request`, or an `Origin`/`Referer` of this site
+  (`Host`, the trusted `X-Forwarded-Host`, or the public URL). Tokens are
+  unaffected, and a cookie sent along with an `Authorization` header is
+  ignored. The refusal is `403` (the v1 error envelope under `/api/`).
+  `rest::session_write_guard` stays and is redundant now.
+* **First-run setup token** (VK-05). With no `<PREFIX>_SETUP_TOKEN` and no
+  user yet, the kit makes up a random token when it starts (`migrate()`
+  does it), logs it once at WARN with the whole `/setup?token=…` path and
+  requires it. The locked page has a field for it, so it can be typed
+  instead of put in the query; the form carries it in a hidden field.
+  Wrong tokens count against the client address in `SignInLimits::ip`
+  (key `setup:<ip>`, the login backoff). `<PREFIX>_SETUP_OPEN=1` keeps the
+  old open page, for scripted installs. Tests: the `test-support` feature
+  opens setup by default, and `auth::session::set_setup_open_for_tests`
+  switches it per thread.
+* **Random session version** (VK-04). New users (`insert_user_full`,
+  `insert_first_admin`) start with a random `session_version` from 1 to
+  2^32 instead of 1. SQLite reuses the id of a deleted user, and a cookie
+  carries id and version only: with every user at 1, the deleted user's
+  cookie would sign in as the next one. Existing users keep their values.
+* **Other devices are signed out on security changes** (VK-06, part).
+  Turning two-factor on or off, adding a passkey and deleting a passkey
+  bump `session_version` and re-issue the cookie of the device that did it
+  (`pages::security::sign_out_others_keep_this`). The user's other
+  browsers have to sign in again. Server-side sessions with a list and
+  logout everywhere are not done.
+* **Secure cookies and HSTS** (VK-07, part). The session and pending-2FA
+  cookies are `Secure` when the request is HTTPS (trusted proxy) **or**
+  the configured public URL is `https://`; the flash cookie follows the
+  public URL. The kit reads the public URL every 30 seconds at most (in
+  `csrf_guard`) and whenever `Core::base_url` is called, and logs one WARN
+  when it is https while `<PREFIX>_TRUST_PROXY` is off. `security_headers`
+  adds `Strict-Transport-Security: max-age=31536000` to requests known to
+  be HTTPS (the proxy header, trusted). No `__Host-` rename.
+* **`session.key`** (VK-11, part). `auth::try_load_or_create_key` creates
+  the file with `create_new` (and mode 0600 from the start on Unix) and
+  writes it once. A file that exists but is shorter than 64 bytes or can't
+  be read stops the start with a message (`load_or_create_key` panics with
+  it) instead of silently making a new key, which would sign everyone out
+  and make every sealed channel secret unreadable.
+* **Notification destinations** (VK-02). Every HTTP notification goes
+  through the kit's own client (the `http` argument of `notify::send*` is
+  kept but no longer used): connections to link-local addresses
+  (169.254.0.0/16, fe80::/10), the cloud metadata addresses (also
+  `fd00:ec2::254`, `100.100.100.200`, `168.63.129.16`), unspecified and
+  multicast addresses are refused when they are made (`net::GuardedResolver`),
+  so a redirect or a DNS answer that changes can't reach them, and an IP
+  written in the URL is refused before connecting. The same rule is
+  applied to the SMTP host, which is also connected by the address that was
+  checked. Private and loopback addresses stay allowed (a homelab's ntfy
+  or Gotify). Proxies from the environment are ignored. Redirects are
+  followed only within the same host, five at most; a redirect to another
+  host is an error. A non-2xx answer shows its status and at most the first
+  80 characters of the body. `net::is_public` (the stricter rule for
+  strangers' webhooks) moved here from Vigilant Vole's `subscribers`.
+* **Discord** (VK-14, part) sends `allowed_mentions: {"parse": []}`, so a
+  name like `@everyone` pings nobody.
+* **Small ones** (VK-15, part). `CurrentUser::scope_allows_path` matches
+  whole path segments like the CSRF exemptions. The software passkey
+  authenticator `auth::webauthn::soft` is only built for the kit's tests
+  and with the `test-support` feature (enable it under
+  `[dev-dependencies]` only).
+
+### Upgrading from 0.5 to 0.6
+
+No code change is needed. What users and operators notice:
+
+* A fresh instance without a setup token shows a locked `/setup` and logs
+  the token (`<PREFIX>_SETUP_OPEN=1` for the old behaviour). Instances
+  that have users, or a configured token, are unchanged. Scripted setups
+  and end-to-end tests set `<PREFIX>_SETUP_OPEN=1`.
+* A product's own tests that post to `/setup` add
+  `features = ["test-support"]` to `vole-kit` under `[dev-dependencies]`
+  (also what the software authenticator needs).
+* Notification webhooks that relied on a redirect to another host stop
+  working: use the final URL. Redirects within the host (http to https,
+  a trailing slash) still work. Channels pointing at link-local, metadata
+  or multicast addresses fail.
+* Cookies become `Secure` when the public URL is https. Over plain http to
+  an https public URL (a LAN address) a browser won't keep them: use the
+  public URL.
+* After turning two-factor on or off, or adding or deleting a passkey, the
+  user's other devices have to sign in again.
+* A damaged `session.key` stops the start (restore it from a backup).
+* Everybody who signed up before keeps their session version, so no one is
+  signed out by the upgrade.
+
 ## Pages
 
 `vole_kit::auth::pages` serves the pages every product needs, generic over
@@ -424,6 +522,25 @@ instance per process) behaves exactly as it did. Two test servers in one
 process no longer share counters, so tests that sign in in parallel don't
 get each other's 429s. `SignInLimits::with_policies` builds throttles with
 other policies (tests of the throttling itself).
+
+`SignInLimits::passkey` (policy `PASSKEY_POLICY`: 100 free failures, then
+1 s doubling to 5 minutes) counts failed passkey sign-ins per address, apart
+from the password step's `ip` bucket. A failed passkey attempt guesses
+nothing, so the bucket only bounds load. The `ip` limiter also holds
+`setup:<address>` keys for wrong setup tokens.
+
+The re-authentication checks inside a session (`reauth:<id>` for every
+password confirmation, `2fa-setup:<id>`, `2fa:<id>` on the Security page,
+`passkey-setup:<id>`) count the attempt before the slow check with
+`reserve`, like the sign-in does, and `clear` it on success. A burst of
+parallel guesses therefore can't all pass the throttle before the first
+failure is recorded.
+
+When a request carries `X-Forwarded-For` or `X-Forwarded-Proto` while
+`<PREFIX>_TRUST_PROXY` is off, `csrf_guard` logs one WARN (the instance is
+probably behind a proxy, so every client shares the proxy's address and
+throttle). The throttle redesign (per account and client) is still open, see
+"Not done".
 
 ## General settings
 
@@ -562,8 +679,10 @@ fallback.
 * **Throttling.** Starting a sign-in is a request budget per client
   address (30 a minute: the page asks for a challenge on every visit for
   the autofill) and refused while the address is in sign-in backoff; a
-  failed sign-in counts against the address like a failed password
-  (`SignInLimits::ip`), a success undoes it. Failed registrations back off
+  failed sign-in counts against the address (`SignInLimits::passkey`, its
+  own and far more generous bucket, so password failures from the same
+  address, or from everybody behind one proxy, don't keep passkeys out and
+  the other way round), a success undoes it. Failed registrations back off
   per user (`passkey-setup:<id>`).
 * **Front end.** `static/passkeys.js` (a kit file, no inline script),
   loaded only by the two pages when the public URL allows passkeys. Its
@@ -1457,6 +1576,18 @@ value with the old code and seal it again (a one-time startup step like
   themselves; the channel list, toggles and storage differ between them.
 * **`src/mcp_bridge.rs`** (the stdio bridge) is generic and could join
   `vole_kit::mcp`.
+* **Server-side sessions** (VK-06). Sessions are signed cookies; logout
+  only deletes the browser's copy, and there is no list of devices.
+  Bumping the version signs out all devices, which the security changes
+  above now do.
+* **Re-authentication for persistence-grade actions** (VK-10): write
+  tokens without expiry, admin user creation and resets, passkey deletion.
+* **Sealed secrets** (VK-11, rest): binding the AAD to the row and field,
+  a key id and rotation. TOTP secrets and old pre-migration backups are
+  still plaintext (VK-12).
+* **CSRF origin scheme** (VK-13), **SSE re-authorisation** (VK-08) and the
+  **per-account sign-in throttle** (VK-03: a stranger's failures can still
+  put a known account in backoff).
 * **Product settings pages.** `/settings` (the redirect) stays each
   product's; a product adds its own tabs to `Ui::settings_tabs`. The kit's
   General page has no free-form product markup (only the declared field

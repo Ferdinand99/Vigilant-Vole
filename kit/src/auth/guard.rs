@@ -43,9 +43,11 @@ impl<S: Send + Sync> FromRequestParts<S> for PeerAddr {
     }
 }
 
-/// Should cookies set in response to this request carry `Secure`?
+/// Should cookies set in response to this request carry `Secure`? Yes when
+/// the request came in over HTTPS (behind a trusted proxy) or when the
+/// configured public URL is https, however the request got here.
 pub fn secure_cookies(headers: &HeaderMap) -> bool {
-    session::is_https(headers, session::trust_proxy())
+    session::is_https(headers, session::trust_proxy()) || session::base_url_is_https()
 }
 
 pub fn current_user_from(user: &User) -> CurrentUser {
@@ -236,6 +238,19 @@ fn sets_session_cookie(response: &Response) -> bool {
         .any(|v| v.starts_with(&format!("{}=", session_cookie())))
 }
 
+/// Whether a cookie-authenticated request to a CSRF-exempt path may go
+/// ahead: reads always, writes only with the proof of
+/// [`session_write_allowed`](crate::http::rest::session_write_allowed).
+async fn same_origin_write(core: &Core, method: &Method, headers: &HeaderMap) -> bool {
+    use crate::http::rest::session_write_allowed;
+    if session_write_allowed(method, headers, None) {
+        return true;
+    }
+    // Second chance, as in `csrf_guard`: the configured public URL.
+    let has_source = headers.contains_key(header::ORIGIN) || headers.contains_key(header::REFERER);
+    has_source && session_write_allowed(method, headers, core.base_url().await.as_deref())
+}
+
 /// Gate for every protected route. Inserts [`CurrentUser`] and [`AuthMethod`]
 /// into the request extensions.
 ///
@@ -244,6 +259,9 @@ fn sets_session_cookie(response: &Response) -> bool {
 ///   token that can't read (its product scopes leave reading out) is
 ///   refused with 403 outside its scopes' paths.
 /// - Otherwise the session cookie; its idle timer slides forward hourly.
+///   On a CSRF-exempt path (`KitConfig::csrf_exempt_prefixes`, where tokens
+///   are the norm) a cookie-authenticated write must also prove it comes
+///   from our own pages, like `http::rest::session_write_guard`.
 /// - A brand new install (no users) bootstraps to `/setup`.
 pub async fn require_auth(
     State(core): State<Core>,
@@ -277,6 +295,22 @@ pub async fn require_auth(
 
     match resolve_session_lang(&core, &jar).await {
         Ok(Some((user, claims, lang))) => {
+            // Token endpoints are exempt from the CSRF guard, but this
+            // request carries the browser's cookie: it must prove it is ours.
+            if csrf::is_exempt_path(request.uri().path())
+                && !same_origin_write(&core, request.method(), request.headers()).await
+            {
+                tracing::warn!(
+                    method = %request.method(),
+                    path = %request.uri().path(),
+                    "blocked cross-site write with a session cookie"
+                );
+                return if is_api {
+                    crate::http::rest::session_write_refused().into_response()
+                } else {
+                    ApiError::Forbidden.into_response()
+                };
+            }
             request.extensions_mut().insert(user);
             request.extensions_mut().insert(AuthMethod::Session);
             let secure = secure_cookies(request.headers());
@@ -324,6 +358,12 @@ pub async fn csrf_guard(State(core): State<Core>, mut request: Request, next: Ne
     // This layer wraps every route, so it is also where duplicate session cookies are
     // collapsed before any extractor reads them.
     dedupe_session_cookie(request.headers_mut(), &core.session_key);
+    session::warn_if_proxied_without_trust(request.headers());
+    // Every few seconds at most: whether the public URL is https decides
+    // if cookies are `Secure` (read through `Core::base_url`).
+    if session::base_url_stale() {
+        core.base_url().await;
+    }
     let trust = session::trust_proxy();
     let (method, path, headers) = (request.method(), request.uri().path(), request.headers());
     if csrf::is_allowed(method, path, headers, trust, None) {

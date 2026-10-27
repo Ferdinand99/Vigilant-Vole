@@ -13,6 +13,9 @@ provider: discord (Discord)
 POST https://discord.com/api/webhooks/
 (json)
 {
+  "allowed_mentions": {
+    "parse": []
+  },
   "embeds": [
     {
       "color": 16726832,
@@ -43,6 +46,9 @@ POST https://discord.com/api/webhooks/
 POST https://discord.com/api/webhooks/
 (json)
 {
+  "allowed_mentions": {
+    "parse": []
+  },
   "embeds": [
     {
       "color": 3458905,
@@ -86,6 +92,9 @@ POST https://discord.com/api/webhooks/
 POST https://discord.com/api/webhooks/?thread_id=123456789012345678
 (json)
 {
+  "allowed_mentions": {
+    "parse": []
+  },
   "avatar_url": "https://example.com/avatar.png",
   "embeds": [
     {
@@ -118,6 +127,9 @@ POST https://discord.com/api/webhooks/?thread_id=123456789012345678
 POST https://discord.com/api/webhooks/?thread_id=123456789012345678
 (json)
 {
+  "allowed_mentions": {
+    "parse": []
+  },
   "avatar_url": "https://example.com/avatar.png",
   "embeds": [
     {

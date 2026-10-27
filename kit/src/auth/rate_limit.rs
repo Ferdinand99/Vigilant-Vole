@@ -1,6 +1,6 @@
 //! In-memory login throttling with exponential backoff.
 //!
-//! Each key (`ip:…`, `user:…`, `2fa:…`) gets a number of free failures; after
+//! Each key (`ip:…`, `user:…`, `2fa:…`, …) gets a number of free failures; after
 //! that every further failure doubles the wait before the next attempt is
 //! even checked, up to a cap. Failures are forgotten after a quiet period.
 //! Backoff (instead of a hard lock) limits guessing without letting an
@@ -171,8 +171,21 @@ pub const IP_POLICY: Policy = Policy {
     forget_after: Duration::from_secs(60 * 60),
 };
 
+/// Per client IP for failed passkey sign-ins: far more generous than
+/// [`IP_POLICY`]. A failed passkey attempt guesses nothing (the attacker
+/// can't forge a signature), so this only bounds the load, and a flood of
+/// bad passkey requests (or one shared proxy address) must not lock people
+/// out of password sign-in, nor the other way round.
+pub const PASSKEY_POLICY: Policy = Policy {
+    free_failures: 100,
+    base_delay: Duration::from_secs(1),
+    max_delay: Duration::from_secs(5 * 60),
+    forget_after: Duration::from_secs(60 * 60),
+};
+
 /// The sign-in throttles of one running instance: per account
-/// ([`ACCOUNT_POLICY`]) and per client IP ([`IP_POLICY`]). It lives in
+/// ([`ACCOUNT_POLICY`]), per client IP ([`IP_POLICY`]) and per client IP for
+/// passkeys ([`PASSKEY_POLICY`]). It lives in
 /// [`Core`](crate::state::Core), so two servers in one process (tests) keep
 /// separate counters; clones share them.
 #[derive(Debug, Clone)]
@@ -180,8 +193,11 @@ pub struct SignInLimits {
     /// Keys `user:<name>` (password step), `2fa:<id>` (second factor, also
     /// on the Security page), `reauth:<id>` and `2fa-setup:<id>`.
     pub account: Arc<RateLimiter>,
-    /// Keys `ip:<address>`.
+    /// Keys `ip:<address>` (password step) and `setup:<address>` (wrong
+    /// setup tokens).
     pub ip: Arc<RateLimiter>,
+    /// Keys `ip:<address>`: failed passkey sign-ins, apart from `ip`.
+    pub passkey: Arc<RateLimiter>,
 }
 
 impl SignInLimits {
@@ -195,6 +211,7 @@ impl SignInLimits {
         Self {
             account: Arc::new(RateLimiter::new(account)),
             ip: Arc::new(RateLimiter::new(ip)),
+            passkey: Arc::new(RateLimiter::new(PASSKEY_POLICY)),
         }
     }
 }

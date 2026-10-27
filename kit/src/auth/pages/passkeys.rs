@@ -150,8 +150,10 @@ pub(super) async fn sign_in_options(
     };
     let ip = client_ip(&headers, peer);
     let now = Instant::now();
+    // The passkeys' own bucket: password failures from this address (or
+    // from everybody behind one proxy) don't keep passkeys out.
     if let Some(key) = ip.map(|ip| format!("ip:{ip}"))
-        && let Some(wait) = core.limits.ip.retry_after(&key, now)
+        && let Some(wait) = core.limits.passkey.retry_after(&key, now)
     {
         return Ok(too_many(wait));
     }
@@ -196,9 +198,10 @@ pub(super) async fn sign_in(
     };
     let ip = client_ip(&headers, peer);
     let ip_key = ip.map(|ip| format!("ip:{ip}"));
-    // Counted up front like a password attempt; success undoes it.
+    // Counted up front like a password attempt; success undoes it. A
+    // bucket of its own, far more generous than the password one.
     if let Some(key) = &ip_key
-        && let Err(wait) = core.limits.ip.reserve(key, Instant::now())
+        && let Err(wait) = core.limits.passkey.reserve(key, Instant::now())
     {
         tracing::warn!(ip = ?ip, "passkey sign-in throttled");
         return Ok(too_many(wait));
@@ -218,7 +221,7 @@ pub(super) async fn sign_in(
         }
     };
     if let Some(key) = &ip_key {
-        core.limits.ip.release(key);
+        core.limits.passkey.release(key);
     }
     let id = user.id;
     core.with_conn(move |c| db_users::touch_last_login(c, id))
@@ -401,29 +404,25 @@ pub(super) async fn register(
     State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
+    headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult<Response> {
     let Some(rp) = relying_party(&core).await else {
         return Ok(unavailable());
     };
     let key = format!("passkey-setup:{}", user.id);
-    let now = Instant::now();
-    if let Some(wait) = core.limits.account.retry_after(&key, now) {
+    // Counted up front like a password attempt; a verified passkey clears it.
+    if let Err(wait) = core.limits.account.reserve(&key, Instant::now()) {
         return Ok(too_many(wait));
     }
     let body = match serde_json::from_slice::<RegisterBody>(&body) {
         Ok(body) => body,
-        Err(_) => {
-            return Ok(failed(
-                &core,
-                &key,
-                &user,
-                webauthn::Error::Malformed("request"),
-            ));
-        }
+        Err(_) => return Ok(failed(&user, webauthn::Error::Malformed("request"))),
     };
     let name = body.name.trim().to_string();
     if name.chars().count() > MAX_NAME_CHARS {
+        // Not a failed ceremony: don't count it.
+        core.limits.account.release(&key);
         return Ok(json_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             crate::i18n::t("sec.pk_name_bad"),
@@ -439,7 +438,7 @@ pub(super) async fn register(
     })();
     let (raw_id, client_data, attestation, challenge) = match parsed {
         Ok(parts) => parts,
-        Err(err) => return Ok(failed(&core, &key, &user, err)),
+        Err(err) => return Ok(failed(&user, err)),
     };
     let (id, at, issued) = (user.id, session::now_unix(), challenge.clone());
     let handle = core
@@ -449,20 +448,15 @@ pub(super) async fn register(
         .await?
         .flatten();
     let Some(handle) = handle else {
-        return Ok(failed(&core, &key, &user, webauthn::Error::Challenge));
+        return Ok(failed(&user, webauthn::Error::Challenge));
     };
     let challenge = unb64(&challenge, "challenge").map_err(ApiError::internal)?;
     let reg = match webauthn::verify_registration(&rp, &challenge, &client_data, &attestation) {
         Ok(reg) if reg.credential_id == raw_id => reg,
         Ok(_) => {
-            return Ok(failed(
-                &core,
-                &key,
-                &user,
-                webauthn::Error::Malformed("credential id"),
-            ));
+            return Ok(failed(&user, webauthn::Error::Malformed("credential id")));
         }
-        Err(err) => return Ok(failed(&core, &key, &user, err)),
+        Err(err) => return Ok(failed(&user, err)),
     };
     core.limits.account.clear(&key);
 
@@ -511,7 +505,8 @@ pub(super) async fn register(
             crate::i18n::t("sec.pk_exists"),
         ));
     }
-    tracing::info!(user = %user.username, "passkey added");
+    tracing::info!(user = %user.username, "passkey added; other sessions signed out");
+    let jar = super::security::sign_out_others_keep_this(&core, &user, jar, &headers).await?;
     let jar = flash(jar, "success", crate::i18n::t("sec.pk_added"));
     Ok((
         jar,
@@ -520,9 +515,8 @@ pub(super) async fn register(
         .into_response())
 }
 
-/// A refused registration: counted against the user, logged, one text.
-fn failed(core: &Core, key: &str, user: &CurrentUser, err: webauthn::Error) -> Response {
-    core.limits.account.record_failure(key, Instant::now());
+/// A refused registration (already counted against the user): logged, one text.
+fn failed(user: &CurrentUser, err: webauthn::Error) -> Response {
     tracing::info!(user = %user.username, error = %err, "passkey registration refused");
     json_error(StatusCode::BAD_REQUEST, crate::i18n::t("sec.pk_failed"))
 }
@@ -570,6 +564,7 @@ pub(super) async fn delete(
     State(core): State<Core>,
     user: CurrentUser,
     jar: SignedCookieJar,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> ApiResult<Response> {
     let user_id = user.id;
@@ -579,6 +574,7 @@ pub(super) async fn delete(
     if !deleted {
         return Ok(back(jar, "error", crate::i18n::t("sec.pk_gone")));
     }
-    tracing::info!(user = %user.username, "passkey deleted");
+    tracing::info!(user = %user.username, "passkey deleted; other sessions signed out");
+    let jar = super::security::sign_out_others_keep_this(&core, &user, jar, &headers).await?;
     Ok(back(jar, "success", crate::i18n::t("sec.pk_deleted")))
 }

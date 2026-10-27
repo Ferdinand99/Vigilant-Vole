@@ -15,6 +15,8 @@ services:
       - DATA_DIR=/data
       # - TZ=Europe/Oslo                 # log timestamps; display time zone is set in Settings → General
       # - VV_TRUST_PROXY=1               # behind a reverse proxy (Caddy/Traefik/nginx) that sets X-Forwarded-*
+      # - VV_SETUP_TOKEN=change-me       # first run: /setup?token=change-me (unset: a random one is logged at start)
+      # - VV_SETUP_OPEN=1                # first run without any token (anyone who reaches the page first creates the admin)
       # - VV_CONFIG_FILE=/config/vigilant.yml  # GitOps: merge this file into the database on every start
       # - VV_MAX_CONCURRENT_CHECKS=64    # checks allowed to run at the same time
       # - RUST_LOG=info,vigilant_vole=debug

@@ -8,6 +8,13 @@ publish = false
 # Products read DEP_VOLE_KIT_TEMPLATES (build.rs) to compile the kit's templates.
 links = "vole-kit"
 
+[features]
+# What a product's own tests may need: the software passkey authenticator
+# (`auth::webauthn::soft`), and `/setup` open without a token by default
+# (`auth::session::set_setup_open_for_tests`). Enable it under
+# `[dev-dependencies]` only.
+test-support = []
+
 [dependencies]
 argon2 = { workspace = true }
 askama = { workspace = true }

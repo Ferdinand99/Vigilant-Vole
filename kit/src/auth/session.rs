@@ -17,7 +17,8 @@
 //! - Bumping `users.session_version` invalidates every cookie issued before.
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::{LazyLock, OnceLock};
 
 use axum::http::HeaderMap;
 use axum_extra::extract::cookie::{Cookie, SameSite};
@@ -52,13 +53,94 @@ pub fn trust_proxy() -> bool {
 
 /// `<PREFIX>_SETUP_TOKEN`: when set (non-empty), the first-run `/setup` page only
 /// opens with `?token=<value>`, so whoever reaches a fresh instance first
-/// can't claim it.
+/// can't claim it. Without it the kit makes up a token of its own, see
+/// [`required_setup_token`].
 pub static SETUP_TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
     std::env::var(format!("{}_SETUP_TOKEN", crate::config::get().env_prefix))
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
 });
+
+/// `<PREFIX>_SETUP_OPEN=1` (or true/yes/on): the first-run `/setup` page
+/// needs no token even when none is configured, as before the kit made one
+/// up. For scripted installs and CI that post to `/setup` right away.
+pub static SETUP_OPEN: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var(format!("{}_SETUP_OPEN", crate::config::get().env_prefix))
+        .map(|v| crate::db::settings::parse_bool(&v))
+        .unwrap_or(false)
+});
+
+/// The token made up for this run when none is configured.
+static GENERATED_SETUP_TOKEN: OnceLock<String> = OnceLock::new();
+
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    static SETUP_OPEN_OVERRIDE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Tests: decides, for the calling thread, whether `/setup` is open
+/// (`Some(true)`) or needs a token (`Some(false)`), whatever the environment
+/// says; `None` goes back to the default. That default is "needs a token",
+/// except with the `test-support` feature, where test servers that post to
+/// `/setup` right away get it open. A test that runs its requests on its own
+/// thread (`#[tokio::test]` does) sets this first.
+#[cfg(any(test, feature = "test-support"))]
+pub fn set_setup_open_for_tests(open: Option<bool>) {
+    SETUP_OPEN_OVERRIDE.with(|o| o.set(open));
+}
+
+fn setup_open() -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    if let Some(open) = SETUP_OPEN_OVERRIDE.with(std::cell::Cell::get) {
+        return open;
+    }
+    #[cfg(feature = "test-support")]
+    return true;
+    #[cfg(not(feature = "test-support"))]
+    *SETUP_OPEN
+}
+
+/// The token `/setup` needs, or `None` when it is open (`<PREFIX>_SETUP_OPEN`).
+/// That is the configured `<PREFIX>_SETUP_TOKEN` or, when there is none, a
+/// random one made the first time it is asked for and logged once at WARN
+/// with the full `/setup?token=…` path. The kit asks at start-up when the
+/// user table is empty ([`announce_setup_token`]).
+pub fn required_setup_token() -> Option<String> {
+    if let Some(token) = SETUP_TOKEN.as_deref() {
+        return Some(token.to_string());
+    }
+    if setup_open() {
+        return None;
+    }
+    Some(
+        GENERATED_SETUP_TOKEN
+            .get_or_init(|| {
+                let mut bytes = [0u8; 16];
+                rand::fill(&mut bytes);
+                let token = hex::encode(bytes);
+                tracing::warn!(
+                    "no {prefix}_SETUP_TOKEN is set, so this instance made up a setup token for the first-run page. \
+                     Open /setup?token={token} to create the first account (set {prefix}_SETUP_OPEN=1 to skip the token)",
+                    prefix = crate::config::get().env_prefix
+                );
+                token
+            })
+            .clone(),
+    )
+}
+
+/// Start-up: when the user table is empty, makes up the setup token (if
+/// none is configured) and logs it, so it is in the log before anyone
+/// visits. [`migrate`](crate::db::migrate::migrate) calls it.
+pub async fn announce_setup_token(pool: &deadpool_sqlite::Pool) {
+    let empty = crate::db::interact(pool, |c| crate::db::users::count_users(c))
+        .await
+        .is_ok_and(|n| n == 0);
+    if empty {
+        required_setup_token();
+    }
+}
 
 /// Whether `given` unlocks setup when `expected` is the configured token
 /// (`None` = no token required). Compares in constant time.
@@ -69,6 +151,70 @@ pub fn setup_token_matches(expected: Option<&str>, given: Option<&str>) -> bool 
     let given = given.map(str::trim).unwrap_or("");
     let (a, b) = (expected.as_bytes(), given.as_bytes());
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+// ---------------------------------------------------------------------------
+// HTTPS awareness
+// ---------------------------------------------------------------------------
+
+/// Whether the configured public URL is `https://` (as last seen by
+/// [`note_base_url`]).
+static BASE_URL_HTTPS: AtomicBool = AtomicBool::new(false);
+/// Unix seconds when the public URL was last read from the database.
+static BASE_URL_SEEN: AtomicI64 = AtomicI64::new(0);
+/// How long a reading of the public URL is good for.
+const BASE_URL_TTL_SECS: i64 = 30;
+
+/// Whether the configured public URL is `https://`: cookies are `Secure`
+/// then, whatever the proxy headers say.
+pub fn base_url_is_https() -> bool {
+    BASE_URL_HTTPS.load(Ordering::Relaxed)
+}
+
+/// Records the configured public URL (what `Core::base_url` just read).
+/// Warns once when it is `https://` while `<PREFIX>_TRUST_PROXY` is off: the
+/// kit then can't tell that a request came in over HTTPS (HSTS and client
+/// addresses behind the proxy depend on it).
+pub fn note_base_url(url: Option<&str>) {
+    let https = url.is_some_and(|u| u.trim().to_ascii_lowercase().starts_with("https://"));
+    BASE_URL_HTTPS.store(https, Ordering::Relaxed);
+    BASE_URL_SEEN.store(now_unix(), Ordering::Relaxed);
+    if https && !trust_proxy() {
+        static WARNED: AtomicBool = AtomicBool::new(false);
+        if !WARNED.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                "the public URL is https:// but {prefix}_TRUST_PROXY is off: behind a TLS-terminating \
+                 reverse proxy, set {prefix}_TRUST_PROXY=1 so the app sees HTTPS requests and real client addresses",
+                prefix = crate::config::get().env_prefix
+            );
+        }
+    }
+}
+
+/// Whether the public URL should be read again ([`note_base_url`]).
+pub fn base_url_stale() -> bool {
+    now_unix() - BASE_URL_SEEN.load(Ordering::Relaxed) >= BASE_URL_TTL_SECS
+}
+
+/// Warns once when a request carries forwarding headers while
+/// `<PREFIX>_TRUST_PROXY` is off: the instance is probably behind a reverse
+/// proxy, and every client then looks like the proxy (one shared sign-in
+/// throttle, no HTTPS detection).
+pub fn warn_if_proxied_without_trust(headers: &HeaderMap) {
+    static WARNED: AtomicBool = AtomicBool::new(false);
+    if trust_proxy() || WARNED.load(Ordering::Relaxed) {
+        return;
+    }
+    if (headers.contains_key("x-forwarded-for") || headers.contains_key("x-forwarded-proto"))
+        && !WARNED.swap(true, Ordering::Relaxed)
+    {
+        tracing::warn!(
+            "a request carried X-Forwarded-For/X-Forwarded-Proto but {prefix}_TRUST_PROXY is off: if this \
+             instance is behind a reverse proxy, set {prefix}_TRUST_PROXY=1, otherwise every client shares \
+             the proxy's address (and its sign-in throttle) and HTTPS is not detected",
+            prefix = crate::config::get().env_prefix
+        );
+    }
 }
 
 pub fn now_unix() -> i64 {
