@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.6.0...vole-kit-v0.7.0) (2026-10-28)
+
+
+### Features
+
+* push to the Hedgerow app through Postal Pigeon ([#70](https://github.com/Ferdinand99/Vigilant-Vole/issues/70)) ([64f8fca](https://github.com/Ferdinand99/Vigilant-Vole/commit/64f8fcad6596f56efd7da1f8c255150b53a0c0d3))
+
 ## [0.6.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.5.1...vole-kit-v0.6.0) (2026-10-27)
 
 
