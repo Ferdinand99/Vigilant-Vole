@@ -9,7 +9,7 @@ products (first of them Keen Kestrel). It holds:
 * the i18n engine and the core translations;
 * the database plumbing, the migration runner and the core tables;
 * HTTP conventions, the API reference generator and the MCP protocol layer;
-* the 40 notification providers;
+* the 41 notification providers;
 * the design system: static files, layouts and component macros.
 
 It lives in this repository as a Cargo workspace member, `kit/`. Vigilant
@@ -106,7 +106,7 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `push` | push from the servers through the Hedgerow push relay: `install`, the device register (`devices`), the stored push texts (`events`), the relay client (`relay`) and the three routes (`api::router`, `api::ROUTE_DOCS`); see "Push (0.7)" |
 | `docs` | `RouteDoc`, `DocsSpec`, the OpenAPI 3.1 document, the Markdown reference; `page`: `/api-docs` and friends |
 | `mcp` | MCP protocol: origin check, Bearer auth, rate limit, JSON-RPC, the `Handler` trait |
-| `notify` | `Alert` (with `Alert::test`), `AlertKind`, `Level`, the 40 providers, schemas, HTTP/SMTP transports, the message layout, `send_in`/`send_config_in` (a channel's language); `form`: the provider form's view-model; `sealed`: channel secrets sealed at rest; `webhook::Wording` |
+| `notify` | `Alert` (with `Alert::test`), `AlertKind`, `Level`, the 41 providers, schemas, HTTP/SMTP transports, the message layout, `send_in`/`send_config_in` (a channel's language); `form`: the provider form's view-model; `sealed`: channel secrets sealed at rest; `webhook::Wording` |
 | `components` | view-models of the design system's data components: `BarRow`, `LineChart`, `CodeLine` |
 | `tls_roots` | system CA store with the bundled fallback |
 | `tz` | time zones for pickers and validation |
@@ -972,7 +972,7 @@ How it works:
 
 | Route | Answer |
 |---|---|
-| `POST /api/v1/push/devices` `{"handle": "hrh_…"}` | `201 {"id": 3}` with `Location`; the same handle again `200` with the same id; `409 push_disabled` while no active `hedgerow` channel exists; `409 too_many_devices` at 16 devices per user (256 per server); `409 too_many_pending` while 4 of the user's devices have not received a push yet; `429 rate_limited` after 4 new handles in an hour (deleting a device does not give the registration back); `422 validation_failed` for something that isn't a handle |
+| `POST /api/v1/push/devices` `{"handle": "hrh_…"}` | `201 {"id": 3}` with `Location`; the same handle again `200` with the same id; `409 push_disabled` while no active `hedgerow` channel exists; `409 too_many_devices` at 16 devices per user (256 per server); `409 too_many_pending` while 4 of the user's devices, or 20 on the whole server, have not received a push yet; `429 rate_limited` after 4 new handles in an hour (deleting a device does not give the registration back); `422 validation_failed` for something that isn't a handle |
 | `DELETE /api/v1/push/devices/{id}` | `204`; `404` for an unknown id or someone else's device |
 | `GET /api/v1/push/events/{ref}` | `{"title", "body", "kind", "level", "occurred_at"}` (plain text; no link: the alert's deep link is not stored, the monitored target stays as a fact line) (`kind` is `problem`, `recovered`, `reminder`, `escalation`, `expiring`, `unstable`, `maintenance_started`, `maintenance_ended` or `test`; `level` `critical`, `warning`, `ok` or `info`; `occurred_at` RFC 3339 UTC), `Cache-Control: no-store`; `404` when unknown or older than 24 hours |
 
@@ -1021,14 +1021,17 @@ be `https`, or `http` on the local network (a relay you run yourself).
   proven requests, which were sent first; the first failed unproven request
   ends the attempt for the rest. With no proven handle at all, the unproven
   ones count like any other. The counts of both are logged. To keep junk
-  out, a user can have 4 devices no push has reached and register 4 new
-  handles an hour (`push_registrations` keeps the count).
+  out, a user can have 4 devices no push has reached (20 on the whole
+  server) and register 4 new handles an hour (`push_registrations` keeps
+  the count).
 * **Two `hedgerow` channels fire an alert once.** The kit can't reject a
   second channel when it is saved (a channel is a row in the product's table
   and the provider's check sees one config), so `hedgerow::send` shares one
   delivery per alert (kind, event, subject, time) between its callers and
   remembers a success for two minutes. A failure is shared by the callers
-  that were waiting, and is not remembered.
+  that were waiting, and is not remembered. Whatever its state, an entry is
+  dropped after five minutes (one whose callers were all cancelled never
+  finishes).
 * `gone` deletes the handle (`push_devices` rows with that hash); `accepted`
   sets `last_used_at`; `duplicate` and `unsupported_kind` need nothing;
   `limited`, `unavailable` and anything unknown are logged and given up.
