@@ -1,0 +1,23 @@
+---
+source: tests/golden/notifications.rs
+expression: "norm::text(&out)"
+---
+provider: hedgerow (Hedgerow app)
+
+## minimal config
+{}
+
+### down
+(delivered by the push relay)
+
+### up
+(delivered by the push relay)
+
+## full config
+{}
+
+### down
+(delivered by the push relay)
+
+### up
+(delivered by the push relay)

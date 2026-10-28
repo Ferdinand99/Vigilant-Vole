@@ -44,6 +44,8 @@ pub enum Transport {
     /// Builds the HTTP requests for one event.
     Http(fn(&Value, &NotificationEvent) -> Result<Vec<OutRequest>, String>),
     Smtp,
+    /// Delivered by the kit's push relay client (the `hedgerow` channel).
+    Relay,
 }
 
 /// The kit's provider number `I`, building from a [`NotificationEvent`].
@@ -54,6 +56,7 @@ fn build_via<const I: usize>(
     match kit::PROVIDERS[I].transport {
         kit::Transport::Http(build) => build(config, &message::alert(event)),
         kit::Transport::Smtp => Err("this provider sends email over SMTP".into()),
+        kit::Transport::Relay => Err("this provider sends through the push relay".into()),
     }
 }
 
@@ -61,6 +64,7 @@ const fn transport<const I: usize>() -> Transport {
     match kit::PROVIDERS[I].transport {
         kit::Transport::Http(_) => Transport::Http(build_via::<I>),
         kit::Transport::Smtp => Transport::Smtp,
+        kit::Transport::Relay => Transport::Relay,
     }
 }
 
@@ -73,7 +77,7 @@ macro_rules! providers {
 /// Every provider, in the kit's order.
 pub const PROVIDERS: &[&ProviderSchema] = providers!(
     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
-    20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39
+    20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
 );
 const _: () = assert!(
     PROVIDERS.len() == kit::PROVIDERS.len(),
