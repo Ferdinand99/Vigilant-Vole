@@ -381,6 +381,7 @@ impl World {
             per_user: i64::MAX,
             total: i64::MAX,
             pending_per_user: i64::MAX,
+            pending_total: i64::MAX,
             new_per_hour: i64::MAX,
         };
         self.core
@@ -971,6 +972,7 @@ async fn the_register_is_per_user_and_limited() {
             // Only the per-user cap is under test here.
             let limits = devices::Limits {
                 pending_per_user: i64::MAX,
+                pending_total: i64::MAX,
                 new_per_hour: i64::MAX,
                 ..Default::default()
             };
@@ -1721,6 +1723,7 @@ async fn new_handles_are_limited_per_hour_and_deleting_does_not_reset_it() {
             // Only the hourly limit is under test: devices count as proven.
             let limits = devices::Limits {
                 pending_per_user: i64::MAX,
+                pending_total: i64::MAX,
                 ..Default::default()
             };
             let reg = |c: &mut rusqlite::Connection, u: i64, n: usize| {
@@ -1789,6 +1792,53 @@ async fn devices_no_push_has_reached_are_capped_per_user() {
         .unwrap();
     assert_eq!(out.0, Err(devices::LimitReached::Pending));
     assert!(out.1 && out.2);
+}
+
+#[tokio::test]
+async fn devices_no_push_has_reached_are_capped_on_the_server_too() {
+    let w = World::new().await;
+    let sealer = Sealer::new(&w.core.session_key, devices::PURPOSE);
+    let user = w.user;
+    // Twenty devices nobody has confirmed, spread over the server.
+    w.add_unproven(0, devices::MAX_PENDING_TOTAL as usize).await;
+    let out = w
+        .core
+        .with_conn(move |c| {
+            let bob = users::insert_user(c, "bob", "x", Role::Viewer)?;
+            let limits = devices::Limits {
+                per_user: i64::MAX,
+                new_per_hour: i64::MAX,
+                ..Default::default()
+            };
+            let refused = devices::register_with(c, &sealer, bob, None, &handle(500), &limits)?;
+            // A handle that is registered already is still a plain success.
+            let again = devices::register_with(c, &sealer, user, None, &handle(3), &limits)?;
+            // Once a push reached one, there is room for one more.
+            c.execute(
+                "UPDATE push_devices SET last_used_at = datetime('now') WHERE handle_hash = ?1",
+                [devices::hash(&handle(3))],
+            )?;
+            let room = devices::register_with(c, &sealer, bob, None, &handle(501), &limits)?;
+            let more = devices::register_with(c, &sealer, bob, None, &handle(502), &limits)?;
+            Ok((refused, again.is_ok(), room.is_ok(), more))
+        })
+        .await
+        .unwrap();
+    assert_eq!(out.0, Err(devices::LimitReached::PendingServer));
+    assert!(out.1 && out.2);
+    assert_eq!(out.3, Err(devices::LimitReached::PendingServer));
+}
+
+#[tokio::test]
+async fn the_api_answers_the_server_wide_pending_cap_with_too_many_pending() {
+    let api = Api::new().await;
+    api.world.add_channel("hedgerow", true).await;
+    api.world
+        .add_unproven(100, devices::MAX_PENDING_TOTAL as usize)
+        .await;
+    let (status, _, body) = api.register(&api.viewer_read, &handle(7)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"]["code"], "too_many_pending");
 }
 
 #[tokio::test]
@@ -1971,6 +2021,33 @@ async fn an_alert_two_hedgerow_channels_fire_is_pushed_once() {
         4,
         "the failed attempt was recorded by the relay too"
     );
+}
+
+#[tokio::test]
+async fn deliveries_nobody_waits_for_are_forgotten_after_five_minutes() {
+    let w = World::new().await;
+    w.add_devices(1).await;
+    let minutes = |n: u64| std::time::Duration::from_secs(n * 60);
+    // One whose callers were all cancelled long ago (it never finishes),
+    // one that started a minute ago, and one that finished four minutes ago
+    // (past the two minutes a success is remembered, short of five).
+    w.ctx.plant_delivery("cancelled", minutes(6), false);
+    w.ctx.plant_delivery("running", minutes(1), false);
+    w.ctx.plant_delivery("old success", minutes(4), true);
+    w.ctx.plant_delivery("older success", minutes(6), true);
+    assert_eq!(w.ctx.delivery_keys().len(), 4);
+
+    relay::deliver_once(&w.ctx, &event(AlertKind::Problem))
+        .await
+        .unwrap();
+    let keys = w.ctx.delivery_keys();
+    assert!(!keys.contains(&"cancelled".to_string()), "{keys:?}");
+    assert!(!keys.contains(&"old success".to_string()), "{keys:?}");
+    assert!(!keys.contains(&"older success".to_string()), "{keys:?}");
+    assert!(keys.contains(&"running".to_string()), "{keys:?}");
+    // The delivery just made is remembered too.
+    assert_eq!(keys.len(), 2, "{keys:?}");
+    assert_eq!(w.relay.pushes().len(), 1);
 }
 
 #[test]

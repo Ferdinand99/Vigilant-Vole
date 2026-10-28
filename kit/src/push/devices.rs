@@ -25,6 +25,10 @@ pub const MAX_TOTAL: i64 = 256;
 /// doesn't exist makes the relay count an "unknown handle" against the whole
 /// server (20 an hour), so handles nobody has confirmed are few.
 pub const MAX_PENDING_PER_USER: i64 = 4;
+/// Most devices on the whole server that no push has reached yet. The
+/// per-user cap alone leaves room for many users to burn the relay's
+/// unknown-handle allowance together (a read-only token may register).
+pub const MAX_PENDING_TOTAL: i64 = 20;
 /// Most new handles one user can register in an hour.
 pub const MAX_NEW_PER_HOUR: i64 = 4;
 
@@ -34,6 +38,7 @@ pub struct Limits {
     pub per_user: i64,
     pub total: i64,
     pub pending_per_user: i64,
+    pub pending_total: i64,
     pub new_per_hour: i64,
 }
 
@@ -43,6 +48,7 @@ impl Default for Limits {
             per_user: MAX_PER_USER,
             total: MAX_TOTAL,
             pending_per_user: MAX_PENDING_PER_USER,
+            pending_total: MAX_PENDING_TOTAL,
             new_per_hour: MAX_NEW_PER_HOUR,
         }
     }
@@ -74,6 +80,8 @@ pub enum LimitReached {
     Server,
     /// The user has [`MAX_PENDING_PER_USER`] devices no push has reached.
     Pending,
+    /// The server has [`MAX_PENDING_TOTAL`] devices no push has reached.
+    PendingServer,
     /// The user registered [`MAX_NEW_PER_HOUR`] new handles in the last hour.
     Rate,
 }
@@ -154,6 +162,14 @@ pub fn register_with(
     )?;
     if pending >= limits.pending_per_user {
         return Ok(Err(LimitReached::Pending));
+    }
+    let pending_all: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM push_devices WHERE last_used_at IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    if pending_all >= limits.pending_total {
+        return Ok(Err(LimitReached::PendingServer));
     }
     // Counted in a table of its own, so that deleting a device and adding it
     // again doesn't reset the count.

@@ -139,6 +139,8 @@ pub struct Context {
 /// One alert's delivery, shared by every caller with the same alert.
 struct Delivery {
     result: Shared<BoxFuture<'static, Result<(), String>>>,
+    /// When it started.
+    started: Instant,
     /// When it succeeded; `None` while it runs.
     done: Option<Instant>,
 }
@@ -146,6 +148,40 @@ struct Delivery {
 /// How long a successful delivery is remembered, to recognise the same alert
 /// arriving through a second channel.
 const REMEMBER_DELIVERED: Duration = Duration::from_secs(120);
+
+/// How long any delivery stays in the table, finished or not. A delivery
+/// whose callers were all cancelled never finishes, and nobody would remove
+/// it; a real one is over after the delivery deadline, long before this.
+const FORGET_DELIVERY_AFTER: Duration = Duration::from_secs(300);
+
+#[cfg(test)]
+impl Context {
+    /// Puts a delivery that started `age` ago into the table (finished, or
+    /// still running with a future that never completes).
+    pub(super) fn plant_delivery(&self, key: &str, age: Duration, finished: bool) {
+        let started = Instant::now()
+            .checked_sub(age)
+            .expect("a long-running test host");
+        let result = futures_util::future::pending::<Result<(), String>>()
+            .boxed()
+            .shared();
+        lock(&self.deliveries).insert(
+            key.to_string(),
+            Delivery {
+                result,
+                started,
+                done: finished.then_some(started),
+            },
+        );
+    }
+
+    /// The keys of the deliveries in the table.
+    pub(super) fn delivery_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = lock(&self.deliveries).keys().cloned().collect();
+        keys.sort();
+        keys
+    }
+}
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -777,7 +813,10 @@ pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<(), Strin
     );
     let shared = {
         let mut deliveries = lock(&ctx.deliveries);
-        deliveries.retain(|_, d| d.done.is_none_or(|at| at.elapsed() < REMEMBER_DELIVERED));
+        deliveries.retain(|_, d| {
+            d.started.elapsed() < FORGET_DELIVERY_AFTER
+                && d.done.is_none_or(|at| at.elapsed() < REMEMBER_DELIVERED)
+        });
         match deliveries.get(&key) {
             Some(d) => d.result.clone(),
             None => {
@@ -787,6 +826,7 @@ pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<(), Strin
                     key.clone(),
                     Delivery {
                         result: result.clone(),
+                        started: Instant::now(),
                         done: None,
                     },
                 );
