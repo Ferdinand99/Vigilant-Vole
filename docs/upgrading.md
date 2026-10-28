@@ -169,6 +169,10 @@ Running an older version on a database a newer version has migrated is **not sup
   before this release named after another migration stays until you delete it. Copy the file elsewhere
   if you need to keep a rollback longer than that. A **Database backup** download opens the two-factor
   secrets like the channel secrets, so it restores on any instance.
+- **The release that adds the Hedgerow app channel** records `kit/0006_push.sql`: three new tables
+  (`push_devices`, `push_events`, `push_registrations`), empty, and nothing is pushed until an admin adds
+  the Hedgerow app channel. The upgrade takes the usual copy first. The release before it refuses a
+  database this one has started on. To go back, restore that copy.
 - **0.5.0 and older** don't check. They start, and in a test of 0.4.0 on a 0.5.0 database the dashboard,
   status pages and API writes worked, but anything the newer version stores (incident updates,
   subscribers, new maintenance options) is ignored and can end up inconsistent. Don't rely on it:

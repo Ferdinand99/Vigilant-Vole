@@ -62,7 +62,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **MCP server** — connect your own Claude Code, Claude Desktop or any MCP client (`POST /mcp`, Streamable HTTP, or the `vigilant-vole mcp` stdio bridge) with an API token: a read token to ask what's down and why, a write token to pause monitors, post incident updates or start maintenance. Vigilant Vole never calls an AI itself; secrets are masked and nothing can delete data — see [docs/mcp.md](docs/mcp.md)
 
 **Alerting**
-- **40 notification providers**, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
+- **41 notification providers**, including push to the Hedgerow app, plus **Apprise** for 90+ more services — see [Notifications](#-notifications)
 - **Smart alerting** — retries with a separate retry interval, upside-down mode, reminders every N down checks, **escalation** channels after N minutes down, **flap detection**, and recovery messages that say **how long it was down**
 - **Multi-location remote agents** — run checks from other networks and **only alert when agents confirm the outage**
 
@@ -116,7 +116,7 @@ Uptime Kuma is an excellent, mature project with a big community — Vigilant Vo
 | Game servers | ✅ a curated set: Valve/Source games (A2S, Steam type), Minecraft Java and Bedrock, Satisfactory, FiveM/RedM, Mumble | ✅ ~360 games via GameDig |
 | Real-browser (headless Chrome) monitor | ✅ via a remote browser (CDP) | ✅ (built-in Chromium or a remote browser) |
 | HTTP auth | Basic, OAuth2 client credentials, mTLS ✅ | Basic, NTLM, mTLS, OAuth2 client credentials ✅ |
-| Notification providers | 40 native + Apprise (90+ services) | **90+ native** ✅ |
+| Notification providers | 41 native + Apprise (90+ services) | **90+ native** ✅ |
 | Reminders (resend while down) | ✅ | ✅ |
 | Escalation channels after N minutes | ✅ | ❌ |
 | Flap detection | ✅ | ❌ |
@@ -311,10 +311,21 @@ Under **Settings → Notifications**, add channels and click **Send test**. Mark
 |---|---|
 | Chat | Discord (rich embeds), Slack (Block Kit), Microsoft Teams (Adaptive Cards), Google Chat, Mattermost, Rocket.Chat, Matrix, Webex, Feishu/Lark, DingTalk, Zulip, Nextcloud Talk |
 | Messaging | Telegram, Signal (signal-cli REST API), Threema Gateway, WhatsApp (WAHA, Evolution API), SMS via Twilio, ClickSend or 46elks |
-| Push | ntfy, Pushover, Gotify, Pushbullet, Bark, Gorush |
+| Push | **Hedgerow app** (iPhone), ntfy, Pushover, Gotify, Pushbullet, Bark, Gorush |
 | Email | SMTP (STARTTLS / TLS / none, HTML + text), SendGrid, Brevo |
 | Incident management | PagerDuty and Opsgenie (open and close), SIGNL4, Squadcast, Grafana OnCall, GoAlert, Splunk On-Call, Keep |
 | Anything else | Webhook (custom method, headers and `{{placeholder}}` body template), **Apprise** (90+ services through an [Apprise API](https://github.com/caronc/apprise-api) server), Home Assistant (any notify service) |
+
+### Notifications in the Hedgerow app
+
+The Hedgerow app on your iPhone can show Vigilant Vole's alerts as push notifications, with no account and no other service to run.
+
+1. Under **Settings → Notifications**, add a channel of the kind **Hedgerow app**. It has no settings. Link it to monitors, mark it *default* or use it for escalation like any other channel; maintenance notices go to it as well. Only one Hedgerow app channel can be active at a time.
+2. In the Hedgerow app, open the connection to your server and turn on **Varsler** (notifications). The app registers itself with your server, and nothing is pushed to it before that.
+
+Push is off until an admin adds the channel: with no active Hedgerow app channel the server refuses to register devices. A read-only API token is enough for the app. **Send test** on the channel shows an error until at least one device has registered.
+
+What leaves your server is only a random reference. Vigilant Vole keeps the text of each alert (“Payments API is down”) for 24 hours and sends the Hedgerow push relay (`pigeon.hedgerow.tools`, or the one in `KIT_PUSH_RELAY_URL` / the `push_relay_url` setting if you run your own) a push that carries that reference and the app's device handles, nothing else. The relay and Apple therefore never see monitor names, targets or messages. When the push arrives, the app fetches the text from your own server (`GET /api/v1/push/events/{ref}`) with its token and shows it. The server registers itself with the relay the first time the channel fires. Your server needs outbound HTTPS to the relay for that.
 
 Events: down, up (with downtime), reminder, escalation, certificate expiring, domain expiring, maintenance start/end, flapping. Alerts fire on settled transitions only — a monitor in its retry grace period stays *pending* and quiet. Secrets are never sent back to the browser in full.
 
@@ -541,7 +552,7 @@ src/
 ├── db/                  # SQLite (rusqlite + deadpool), migrations, queries, daily rollups
 ├── monitor/             # scheduler, pure alerting state machine, retention, engine metrics
 │   └── checkers/        # http, tcp, ping, tailscale, dns, docker, websocket, domain (RDAP), ntp, steam, game_server, tls, smtp, redis, postgres, mysql, mqtt, kafka, rabbitmq, grpc, grpc_keyword, radius, snmp, sqlserver, mongodb, real_browser (CDP)
-├── notification/        # 40 providers behind one schema-driven registry
+├── notification/        # 41 providers behind one schema-driven registry
 ├── agent/               # remote probe agent + its wire protocol
 ├── discovery.rs         # Docker label discovery
 ├── maintenance.rs       # maintenance window evaluation
@@ -568,7 +579,7 @@ Done:
 - [x] Multi-user, roles, 2FA, API tokens
 - [x] Tags and monitor groups
 - [x] Monitor pause/resume, clone, bulk actions
-- [x] 30 monitor types, 40 notification providers + Apprise
+- [x] 30 monitor types, 41 notification providers + Apprise
 - [x] Real-browser monitors with failure screenshots (external headless Chromium)
 - [x] Escalation, reminders, flap detection
 - [x] Remote agents with outage confirmation

@@ -85,7 +85,7 @@ const MAX_REDIRECTS: usize = 5;
 /// passes: it refuses forbidden destination addresses at connect time
 /// ([`crate::net`]), ignores proxies from the environment and follows
 /// redirects only within the same host.
-fn client() -> Result<&'static reqwest::Client, String> {
+pub(crate) fn client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
@@ -175,7 +175,7 @@ pub async fn execute(
 const ERROR_BODY_MAX: usize = 8 * 1024;
 
 /// Reads at most `cap` bytes of the body (read errors end it early).
-async fn read_capped(mut resp: reqwest::Response, cap: usize) -> Vec<u8> {
+pub(crate) async fn read_capped(mut resp: reqwest::Response, cap: usize) -> Vec<u8> {
     let mut buf = Vec::new();
     while let Ok(Some(chunk)) = resp.chunk().await {
         let room = cap.saturating_sub(buf.len());
@@ -199,7 +199,7 @@ pub async fn execute_all(
     Ok(())
 }
 
-fn describe_reqwest(err: reqwest::Error) -> String {
+pub(crate) fn describe_reqwest(err: reqwest::Error) -> String {
     if err.is_timeout() {
         return format!("timed out after {}s", TIMEOUT.as_secs());
     }

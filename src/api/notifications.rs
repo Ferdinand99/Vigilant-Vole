@@ -220,6 +220,11 @@ fn blank_form(schema: &'static ProviderSchema) -> ChannelForm {
     }
 }
 
+/// What the page says when a second Hedgerow app channel would be active.
+fn hedgerow_second(other: &str) -> String {
+    crate::i18n::tf("notif.hedgerow_second", &[("name", other)])
+}
+
 fn validate_name(name: &str) -> Option<String> {
     if name.is_empty() {
         Some(crate::i18n::t("notif.err_name").into())
@@ -352,15 +357,40 @@ async fn create(
     let config = notification::seal_config(&state.session_key, schema.kind, &parsed.config);
     let kind = schema.kind;
     let saved_name = name.clone();
-    state
+    let created = state
         .with_conn(move |c| {
-            let id = db_notifications::insert_channel(c, &saved_name, kind, &config, is_default)?;
-            if apply_existing && !is_default {
-                db_notifications::apply_to_all(c, id)?;
+            let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            if kind == db_notifications::HEDGEROW
+                && let Some(other) = db_notifications::other_active_hedgerow(&tx, None)?
+            {
+                return Ok(Err(other));
             }
-            Ok(id)
+            let id = db_notifications::insert_channel(&tx, &saved_name, kind, &config, is_default)?;
+            if apply_existing && !is_default {
+                db_notifications::apply_to_all(&tx, id)?;
+            }
+            tx.commit()?;
+            Ok(Ok(id))
         })
         .await?;
+    if let Err(other) = created {
+        // Only one Hedgerow app channel can be active.
+        let message = hedgerow_second(&other);
+        if !is_htmx(&headers) {
+            return Ok((
+                flash(jar, "error", message),
+                Redirect::to("/settings/notifications"),
+            )
+                .into_response());
+        }
+        let mut form = blank_form(schema);
+        form.name = name;
+        form.name_error = message;
+        form.is_default = is_default;
+        form.apply_existing = apply_existing;
+        form.fields = field_views(schema, &parsed.config, &Value::Null, &[], false);
+        return Ok(HtmlTemplate(FormPartial { form }).into_response());
+    }
     tracing::info!(user = %user.username, kind, "notification channel created");
 
     let message = crate::i18n::tf("notif.added", &[("name", &name)]);
@@ -516,17 +546,39 @@ async fn update(
 
     let config = notification::seal_config(&state.session_key, schema.kind, &config);
     let saved_name = name.clone();
-    state
+    let kind = schema.kind;
+    let saved = state
         .with_conn(move |c| {
-            let tx = c.transaction()?;
+            let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            if kind == db_notifications::HEDGEROW
+                && active
+                && let Some(other) = db_notifications::other_active_hedgerow(&tx, Some(id))?
+            {
+                return Ok(Err(other));
+            }
             db_notifications::update_channel(&tx, id, &saved_name, &config, is_default)?;
             db_notifications::set_active(&tx, id, active)?;
             if apply_existing {
                 db_notifications::apply_to_all(&tx, id)?;
             }
-            tx.commit()
+            tx.commit()?;
+            Ok(Ok(()))
         })
         .await?;
+    if let Err(other) = saved {
+        let links = state
+            .with_conn(move |c| db_notifications::count_links(c, id))
+            .await?;
+        let mut form = edit_form(&state, &channel, schema, links);
+        form.name = name;
+        form.name_error = hedgerow_second(&other);
+        form.active = active;
+        form.is_default = is_default;
+        form.apply_existing = apply_existing;
+        form.fields = field_views(schema, &parsed.config, &stored, &[], false);
+        let (jar, page) = render_edit(&state, &user, &jar, form).await;
+        return Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, page).into_response());
+    }
     tracing::info!(user = %user.username, channel_id = id, "notification channel updated");
     let jar = flash(
         jar,
@@ -577,9 +629,44 @@ async fn toggle_active(
     user.require(Role::Editor)?;
     let active = pair_flag(&parse_pairs(&body), "active");
     let channel = load_channel(&state, id).await?;
-    state
-        .with_conn(move |c| db_notifications::set_active(c, id, active))
+    let hedgerow = channel.kind == db_notifications::HEDGEROW;
+    let refused = state
+        .with_conn(move |c| {
+            let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            if active
+                && hedgerow
+                && let Some(other) = db_notifications::other_active_hedgerow(&tx, Some(id))?
+            {
+                return Ok(Some(other));
+            }
+            db_notifications::set_active(&tx, id, active)?;
+            tx.commit()?;
+            Ok(None)
+        })
         .await?;
+    if let Some(other) = refused {
+        // Show the list again, so the switch goes back to what is stored.
+        let rows = list_rows(&state).await?;
+        let headers = [
+            (
+                HeaderName::from_static("hx-retarget"),
+                HeaderValue::from_static("#channels"),
+            ),
+            (
+                HeaderName::from_static("hx-reswap"),
+                HeaderValue::from_static("outerHTML"),
+            ),
+            toast(&hedgerow_second(&other), "error"),
+        ];
+        return Ok((
+            headers,
+            HtmlTemplate(ListPartial {
+                rows,
+                can_edit: true,
+            }),
+        )
+            .into_response());
+    }
     let message = if active {
         crate::i18n::tf("notif.resumed", &[("name", &channel.name)])
     } else {
@@ -836,5 +923,271 @@ mod tests {
         assert!(validate_name("").is_some());
         assert!(validate_name(&"x".repeat(101)).is_some());
         assert!(validate_name("Ops").is_none());
+    }
+
+    // -- the Hedgerow app channel through the real routes -------------------
+
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::header;
+    use axum::middleware::{self, Next};
+    use axum_extra::extract::cookie::Key;
+    use tower::ServiceExt as _;
+
+    static NEXT_DB: AtomicU32 = AtomicU32::new(0);
+
+    struct App {
+        state: AppState,
+        router: Router,
+        path: PathBuf,
+    }
+
+    impl Drop for App {
+        fn drop(&mut self) {
+            for suffix in ["", "-wal", "-shm"] {
+                let mut p = self.path.clone().into_os_string();
+                p.push(suffix);
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+
+    async fn app() -> App {
+        let path = std::env::temp_dir().join(format!(
+            "vv-notif-test-{}-{}.db",
+            std::process::id(),
+            NEXT_DB.fetch_add(1, Ordering::Relaxed)
+        ));
+        let pool = crate::db::build_pool(&path);
+        crate::db::run_migrations(&pool, &std::env::temp_dir()).await;
+        let (tx, _) = tokio::sync::broadcast::channel(16);
+        let http = reqwest::Client::new();
+        let key = Key::generate();
+        let state = AppState {
+            scheduler: crate::monitor::Scheduler::new(
+                pool.clone(),
+                tx.clone(),
+                http.clone(),
+                key.clone(),
+            ),
+            db: pool,
+            session_key: key,
+            update_tx: tx,
+            http,
+            sign_in_limits: Default::default(),
+            config: Arc::new(crate::config::Config {
+                data_dir: std::env::temp_dir(),
+                bind_addr: "127.0.0.1:0".into(),
+            }),
+        };
+        let user = CurrentUser {
+            id: 1,
+            username: "ada".into(),
+            display_name: "Ada".into(),
+            role: Role::Admin,
+            account_role: Role::Admin,
+            scopes: Default::default(),
+        };
+        let router = Router::new()
+            .merge(super::router())
+            .layer(middleware::from_fn(move |mut req: Request, next: Next| {
+                let user = user.clone();
+                async move {
+                    req.extensions_mut().insert(user);
+                    next.run(req).await
+                }
+            }))
+            .with_state(state.clone());
+        App {
+            state,
+            router,
+            path,
+        }
+    }
+
+    impl App {
+        async fn send(&self, req: Request<Body>) -> Response {
+            self.router.clone().oneshot(req).await.unwrap()
+        }
+
+        async fn get(&self, uri: &str) -> (StatusCode, String) {
+            let res = self
+                .send(Request::get(uri).body(Body::empty()).unwrap())
+                .await;
+            (res.status(), body_text(res).await)
+        }
+
+        async fn htmx_post(&self, uri: &str, body: &str) -> Response {
+            self.send(
+                Request::post(uri)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .header("hx-request", "true")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+        }
+
+        async fn channels(&self) -> Vec<(i64, String, bool)> {
+            self.state
+                .with_conn(|c| {
+                    Ok(db_notifications::list_channels(c)?
+                        .into_iter()
+                        .map(|ch| (ch.id, ch.name, ch.active))
+                        .collect())
+                })
+                .await
+                .unwrap()
+        }
+    }
+
+    async fn body_text(res: Response) -> String {
+        let bytes = axum::body::to_bytes(res.into_body(), 8 * 1024 * 1024)
+            .await
+            .unwrap();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[tokio::test]
+    async fn the_hedgerow_channel_form_has_no_fields_and_saves() {
+        let app = app().await;
+        let (status, html) = app.get("/settings/notifications/form?kind=hedgerow").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(html.contains("Hedgerow app"), "{html}");
+        assert!(html.contains(r#"name="name""#), "the name is asked for");
+        assert_eq!(
+            html.matches(r#"class="field"#).count(),
+            1,
+            "a provider with no fields renders only the name: {html}"
+        );
+        // It is in the picker too.
+        let (_, picker) = app.get("/settings/notifications/providers").await;
+        assert!(picker.contains("provider-hedgerow"), "{picker}");
+
+        let res = app
+            .htmx_post(
+                "/settings/notifications",
+                "kind=hedgerow&name=Phones&is_default=on",
+            )
+            .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let channels = app.channels().await;
+        assert_eq!(channels.len(), 1, "{channels:?}");
+        assert!(channels[0].2, "new channels are active");
+        let (is_default, kind): (bool, String) = app
+            .state
+            .with_conn(|c| {
+                c.query_row(
+                    "SELECT is_default, kind FROM notification_channels",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+            })
+            .await
+            .unwrap();
+        assert_eq!(kind, "hedgerow");
+        assert!(is_default);
+
+        // The edit page works without a card of fields.
+        let (status, html) = app
+            .get(&format!("/settings/notifications/{}/edit", channels[0].0))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(html.contains(r#"id="sec-provider""#), "{html}");
+        assert_eq!(
+            html.matches(r#"class="field"#).count(),
+            1,
+            "only the name: {html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_second_active_hedgerow_channel_is_refused_in_the_forms() {
+        let app = app().await;
+        let res = app
+            .htmx_post("/settings/notifications", "kind=hedgerow&name=Phones")
+            .await;
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // Adding another: the sheet comes back with the reason, nothing saved.
+        let res = app
+            .htmx_post("/settings/notifications", "kind=hedgerow&name=More")
+            .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let html = body_text(res).await;
+        assert!(html.contains("channel-form"), "the form is shown again");
+        assert!(
+            html.contains("Phones"),
+            "the reason names the channel: {html}"
+        );
+        assert_eq!(app.channels().await.len(), 1);
+
+        // A paused one can exist, but switching it on is refused: the list
+        // comes back so the switch shows what is stored.
+        let second = app
+            .state
+            .with_conn(|c| {
+                let id = db_notifications::insert_channel(c, "Spare", "hedgerow", "{}", false)?;
+                db_notifications::set_active(c, id, false)?;
+                Ok(id)
+            })
+            .await
+            .unwrap();
+        let res = app
+            .htmx_post(
+                &format!("/settings/notifications/{second}/active"),
+                "active=true",
+            )
+            .await;
+        assert_eq!(res.headers()["hx-retarget"], "#channels");
+        let trigger = res.headers()["hx-trigger"].to_str().unwrap().to_string();
+        assert!(trigger.contains("error"), "{trigger}");
+        assert!(
+            app.channels().await.iter().any(|c| c.0 == second && !c.2),
+            "still paused"
+        );
+
+        // The edit form: the same.
+        let res = app
+            .htmx_post(
+                &format!("/settings/notifications/{second}"),
+                "kind=hedgerow&name=Spare&active=on",
+            )
+            .await;
+        assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(app.channels().await.iter().any(|c| c.0 == second && !c.2));
+
+        // Pausing the first makes room.
+        let first = app.channels().await[0].0;
+        let res = app
+            .htmx_post(
+                &format!("/settings/notifications/{first}/active"),
+                "active=false",
+            )
+            .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let res = app
+            .htmx_post(
+                &format!("/settings/notifications/{second}/active"),
+                "active=true",
+            )
+            .await;
+        assert!(res.headers().get("hx-retarget").is_none());
+        assert!(app.channels().await.iter().any(|c| c.0 == second && c.2));
+
+        // Other kinds are not limited.
+        let res = app
+            .htmx_post(
+                "/settings/notifications",
+                "kind=discord&name=Chat&c_url=https%3A%2F%2Fdiscord.com%2Fapi%2Fwebhooks%2F1%2Fabc",
+            )
+            .await;
+        assert_eq!(res.status(), StatusCode::OK);
+        let reply = body_text(res).await;
+        assert_eq!(app.channels().await.len(), 3, "{reply}");
     }
 }

@@ -1348,6 +1348,12 @@ notif.grafana_oncall.desc
 notif.grafana_oncall.url.help
 notif.grafana_oncall.url.label
 notif.grafana_oncall.url.required
+notif.hedgerow.desc
+notif.hedgerow.err_no_devices
+notif.hedgerow.err_not_ready
+notif.hedgerow.err_relay
+notif.hedgerow.err_suspended
+notif.hedgerow_second
 notif.homeassistant.desc
 notif.homeassistant.service.help
 notif.homeassistant.service.label

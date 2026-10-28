@@ -22,6 +22,7 @@ pub mod mcp;
 pub mod net;
 pub mod notify;
 pub mod page;
+pub mod push;
 pub mod settings;
 pub mod state;
 pub mod tls_roots;

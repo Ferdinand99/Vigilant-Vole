@@ -65,12 +65,14 @@ pub static MIGRATIONS: MigrationSet = MigrationSet {
     // (`migrate::TOKEN_SCOPES`) isn't part of our set. Passkeys
     // (`migrate::PASSKEYS`) are: every product on the kit has them. So is
     // the records that channel and two-factor secrets are sealed
-    // (`migrate::SEALED_SECRETS`, `migrate::SEALED_TOTP`).
+    // (`migrate::SEALED_SECRETS`, `migrate::SEALED_TOTP`) and the push
+    // tables of the Hedgerow app channel (`migrate::PUSH`, vole-kit 0.7).
     core: &[
         crate::kit::db::migrate::CORE_TABLES,
         crate::kit::db::migrate::PASSKEYS,
         crate::kit::db::migrate::SEALED_SECRETS,
         crate::kit::db::migrate::SEALED_TOTP,
+        crate::kit::db::migrate::PUSH,
     ],
     adopt_core: Some("0104_adopt_kit_core.sql"),
     migrations: migration_files,

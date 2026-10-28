@@ -68,7 +68,7 @@ pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
         http.clone(),
         session_key.clone(),
     );
-    Ok(AppState {
+    let state = AppState {
         db: pool,
         scheduler,
         session_key,
@@ -76,7 +76,12 @@ pub async fn prepare(config: Config) -> Result<AppState, db::UpgradeError> {
         http,
         sign_in_limits: Default::default(),
         config: Arc::new(config),
-    })
+    };
+    // The Hedgerow app channel's push client: once per process. (The state
+    // builds its `Core` per request, so the kit can't do this in
+    // `Core::new`.)
+    crate::kit::push::install(&state.core());
+    Ok(state)
 }
 
 /// Run the web server until it is stopped (Ctrl-C / SIGTERM).

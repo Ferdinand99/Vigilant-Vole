@@ -21,6 +21,8 @@ use crate::db::api_tokens::{self as db_tokens, TokenScope};
 use crate::db::users as db_users;
 use crate::monitor::Scheduler;
 
+mod push;
+
 const PASSWORD: &str = "correct horse battery";
 static PASSWORD_HASH: LazyLock<String> =
     LazyLock::new(|| auth::try_hash_password(PASSWORD).unwrap());
@@ -1346,7 +1348,11 @@ async fn config_export_import_and_replace_confirmation() {
 async fn every_documented_v1_route_exists() {
     let h = harness().await;
     for r in ROUTES.iter().filter(|r| r.path.starts_with("/api/v1/")) {
-        let uri = r.path.replace("{id}", "999999").replace("{iid}", "999999");
+        let uri = r
+            .path
+            .replace("{id}", "999999")
+            .replace("{iid}", "999999")
+            .replace("{ref}", "unknown");
         let method = Method::from_bytes(r.method.as_bytes()).unwrap();
         let body = matches!(r.method, "POST" | "PUT" | "PATCH").then(|| json!({}));
         let res = h.call(method, &uri, &h.admin_read, body).await;

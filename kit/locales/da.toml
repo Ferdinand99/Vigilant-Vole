@@ -643,6 +643,13 @@ channel_tag.label = "Kanaltag"
 channel_tag.help = "Send i stedet til en kanals abonnenter."
 access_token.required = "Angiv adgangstokenet"
 
+[notif.hedgerow]
+desc = "Push-notifikationer i Hedgerow-appen"
+err_not_ready = "Push er ikke tilgængelig på denne server"
+err_no_devices = "Ingen enhed har registreret sig endnu. Slå notifikationer til for denne forbindelse i Hedgerow-appen."
+err_suspended = "Push-relayet har suspenderet denne server, så der sendes ikke noget. Kontakt relayets driftsansvarlige."
+err_relay = "Problem med push-relayet: {detail}"
+
 [notif.bark]
 desc = "Enkel iOS-push"
 server.label = "Server"

@@ -36,3 +36,5 @@ __pycache__/
 
 # Load test output (reference runs live in docs/performance/)
 tools/loadtest/results/
+
+.superpowers/

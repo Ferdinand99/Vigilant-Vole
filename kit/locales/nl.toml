@@ -642,6 +642,13 @@ channel_tag.label = "Kanaaltag"
 channel_tag.help = "Push in plaats daarvan naar de abonnees van een kanaal."
 access_token.required = "Voer het toegangstoken in"
 
+[notif.hedgerow]
+desc = "Pushmeldingen in de Hedgerow-app"
+err_not_ready = "Push is niet beschikbaar op deze server"
+err_no_devices = "Er heeft zich nog geen apparaat geregistreerd. Zet in de Hedgerow-app meldingen aan voor deze verbinding."
+err_suspended = "De pushrelay heeft deze server opgeschort, dus er wordt niets verstuurd. Neem contact op met de beheerder van de relay."
+err_relay = "Probleem met de pushrelay: {detail}"
+
 [notif.bark]
 desc = "Eenvoudige iOS-push"
 server.label = "Server"

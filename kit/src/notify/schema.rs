@@ -29,6 +29,9 @@ pub type CheckFn = fn(&Value) -> Vec<FieldError>;
 pub enum Transport {
     Http(BuildFn),
     Smtp,
+    /// Delivered by the push relay client, which needs the database
+    /// ([`push::relay`](crate::push::relay)), not by building requests.
+    Relay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

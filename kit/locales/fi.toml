@@ -642,6 +642,13 @@ channel_tag.label = "Kanavan tunniste"
 channel_tag.help = "Lähetä sen sijaan kanavan tilaajille."
 access_token.required = "Anna käyttötunnus"
 
+[notif.hedgerow]
+desc = "Push-ilmoitukset Hedgerow-sovelluksessa"
+err_not_ready = "Push-ilmoitukset eivät ole käytettävissä tällä palvelimella"
+err_no_devices = "Yhtään laitetta ei ole vielä rekisteröity. Ota ilmoitukset käyttöön tälle yhteydelle Hedgerow-sovelluksessa."
+err_suspended = "Push-välitin on keskeyttänyt tämän palvelimen, joten mitään ei lähetetä. Ota yhteyttä välittimen ylläpitäjään."
+err_relay = "Push-välittimen ongelma: {detail}"
+
 [notif.bark]
 desc = "Yksinkertainen iOS-push"
 server.label = "Palvelin"

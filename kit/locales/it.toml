@@ -651,6 +651,13 @@ channel_tag.label = "Tag del canale"
 channel_tag.help = "Invia invece agli iscritti di un canale."
 access_token.required = "Inserisci il token di accesso"
 
+[notif.hedgerow]
+desc = "Notifiche push nell’app Hedgerow"
+err_not_ready = "Le notifiche push non sono disponibili su questo server"
+err_no_devices = "Nessun dispositivo si è ancora registrato. Nell’app Hedgerow, attiva le notifiche per questa connessione."
+err_suspended = "Il relay push ha sospeso questo server, quindi non viene inviato nulla. Contatta il gestore del relay."
+err_relay = "Problema con il relay push: {detail}"
+
 [notif.bark]
 desc = "Push semplici per iOS"
 server.label = "Server"

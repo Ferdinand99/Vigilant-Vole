@@ -580,6 +580,9 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
             "notes",
             "passkey_challenges",
             "passkeys",
+            "push_devices",
+            "push_events",
+            "push_registrations",
             "schema_migrations",
             "settings",
             "users"
@@ -593,6 +596,7 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
             "kit/0003_passkeys.sql",
             "kit/0004_sealed_secrets.sql",
             "kit/0005_sealed_totp.sql",
+            "kit/0006_push.sql",
             "0001_notes.sql"
         ]
     );

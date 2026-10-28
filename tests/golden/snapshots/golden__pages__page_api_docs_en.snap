@@ -114,6 +114,7 @@ content-type: text/html; charset=utf-8
   <a class="chip" href="#system">System <span class="badge">6</span></a>
   <a class="chip" href="#configuration">Configuration <span class="badge">2</span></a>
   <a class="chip" href="#push-and-machine-endpoints">Push and machine endpoints <span class="badge">8</span></a>
+  <a class="chip" href="#push">Push <span class="badge">3</span></a>
 </nav>
 
 <section class="section" id="getting-started" aria-labelledby="start-title">
@@ -154,7 +155,7 @@ content-type: text/html; charset=utf-8
     &#34;fields&#34;: {&#34;target&#34;: &#34;Enter a full URL, including https://, like https://example.com.&#34;}
   }
 }</code></pre>
-      <p class="help">Codes: <code>bad_request</code> 400, <code>unauthorized</code> 401, <code>forbidden</code> 403, <code>not_found</code> 404, <code>conflict</code> 409, <code>validation_failed</code> 422, <code>delivery_failed</code> 502.</p>
+      <p class="help">Codes: <code>bad_request</code> 400, <code>unauthorized</code> 401, <code>forbidden</code> 403, <code>not_found</code> 404, <code>conflict</code> 409, <code>push_disabled</code> 409, <code>validation_failed</code> 422, <code>delivery_failed</code> 502.</p>
     </div>
   </details>
 </section>
@@ -748,7 +749,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="post--api-v1-notification-channels">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/notification-channels</code></span>
-          <span class="list-sub">Create a channel. apply_existing links it to every monitor.</span>
+          <span class="list-sub">Create a channel. apply_existing links it to every monitor. Only one hedgerow (Hedgerow app) channel can be active: a second one is refused with 409 conflict.</span>
         </span>
         <span class="list-trail"><span class="badge status-pending">editor</span></span>
         <div class="list-full">
@@ -771,7 +772,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="patch--api-v1-notification-channels-id">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/notification-channels/{id}</code></span>
-          <span class="list-sub">Update a channel. Secrets you leave out or send masked keep their stored value.</span>
+          <span class="list-sub">Update a channel. Secrets you leave out or send masked keep their stored value. Activating a hedgerow channel while another is active is refused with 409 conflict.</span>
         </span>
         <span class="list-trail"><span class="badge status-pending">editor</span></span>
         <div class="list-full">
@@ -1504,6 +1505,59 @@ status_pages:
           <span class="list-sub">Liveness probe: always &#34;ok&#34;.</span>
         </span>
         <span class="list-trail"><span class="badge status-info">public</span></span>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="push" aria-labelledby="push-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="push-title">Push</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="post--api-v1-push-devices">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/push/devices</code></span>
+          <span class="list-sub">Register a Hedgerow app install to receive this server&#39;s push notifications. The handle is the one the app made at the push relay for this connection. Registering the same handle again returns the same id (200). Read-only tokens may call this: it only changes your own list of devices, and the device is removed when the token is. 409 push_disabled while no active Hedgerow app notification channel exists; 409 too_many_devices at 16 devices per user; 409 too_many_pending while 4 of your devices, or 20 on the server, have not received a push yet; 429 rate_limited after 4 new handles in an hour.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>Details <span class="disclosure-sub">Examples</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">Request</p>
+              <pre class="code"><code>{&#34;handle&#34;: &#34;hrh_…&#34;}</code></pre>
+              <p class="t-footnote muted">Response</p>
+              <pre class="code"><code>{&#34;id&#34;: 3}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-push-devices-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/push/devices/{id}</code></span>
+          <span class="list-sub">Remove one of your own devices. Returns 204; 404 for a device that is not yours. Read-only tokens may call this.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-push-events-ref">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/push/events/{ref}</code></span>
+          <span class="list-sub">The text of a push notification, by the ref the push carried. 404 when it is unknown or older than 24 hours. Read-only tokens may call this.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>Details <span class="disclosure-sub">Examples</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">Response</p>
+              <pre class="code"><code>{&#34;title&#34;: &#34;Payments API is down&#34;, &#34;body&#34;: &#34;HTTP 503&#34;, &#34;kind&#34;: &#34;problem&#34;, &#34;level&#34;: &#34;critical&#34;, &#34;occurred_at&#34;: &#34;<DATETIME>&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
       </li>
     </ul>
   </div>

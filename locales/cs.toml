@@ -1624,4 +1624,5 @@ add_existing_help_new = "Později to můžete změnit u každého monitoru zvlá
 empty_text = "Přidejte Slack, Discord, e-mail, ntfy, PagerDuty nebo jednu z 20 dalších služeb a o výpadku se dozvíte v okamžiku, kdy nastane."
 default_tip = "Automaticky se přidává k novým monitorům"
 foot = "Výchozí kanály se automaticky přidávají k novým monitorům. Kanály pro jeden monitor vyberete v jeho nastavení."
+hedgerow_second = "Aktivní může být jen jeden kanál aplikace Hedgerow a „{name}“ už aktivní je. Nejdřív ho pozastav nebo smaž."
 no_monitors = "Žádné monitory"

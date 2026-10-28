@@ -9,7 +9,7 @@ products (first of them Keen Kestrel). It holds:
 * the i18n engine and the core translations;
 * the database plumbing, the migration runner and the core tables;
 * HTTP conventions, the API reference generator and the MCP protocol layer;
-* the 40 notification providers;
+* the 41 notification providers;
 * the design system: static files, layouts and component macros.
 
 It lives in this repository as a Cargo workspace member, `kit/`. Vigilant
@@ -35,7 +35,8 @@ kit/
 ├── migrations/         # the core set: 0001_core.sql (users, api_tokens, settings),
 │                       #   0002_token_scopes.sql (api_token_scopes),
 │                       #   0003_passkeys.sql (passkeys, passkey_challenges),
-│                       #   0004_sealed_secrets.sql, 0005_sealed_totp.sql (records only, no table)
+│                       #   0004_sealed_secrets.sql, 0005_sealed_totp.sql (records only, no table),
+│                       #   0006_push.sql (push_devices, push_events)
 ├── templates/          # layouts, macros, the shared pages
 └── src/
 examples/kit-demo/      # a second product on the kit (tests only, not released)
@@ -97,14 +98,15 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `crypto` | sealing small secrets at rest under the instance key: `seal`, `open`, `is_sealed`, `Sealer`, `OpenError`, `PREFIX` (see "Sealed secrets") |
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `migrate_with` + `MigrateOptions`) |
+| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `PUSH`, `migrate_with` + `MigrateOptions`) |
 | `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, `session_write_allowed`/`session_write_guard`); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
 | `page` | `PageCtx`, `UserView`, flash messages, `Ui` (`NavItem`, `SettingsTab`, `TabAccess`) |
+| `push` | push from the servers through the Hedgerow push relay: `install`, the device register (`devices`), the stored push texts (`events`), the relay client (`relay`) and the three routes (`api::router`, `api::ROUTE_DOCS`); see "Push (0.7)" |
 | `docs` | `RouteDoc`, `DocsSpec`, the OpenAPI 3.1 document, the Markdown reference; `page`: `/api-docs` and friends |
 | `mcp` | MCP protocol: origin check, Bearer auth, rate limit, JSON-RPC, the `Handler` trait |
-| `notify` | `Alert` (with `Alert::test`), `AlertKind`, `Level`, the 40 providers, schemas, HTTP/SMTP transports, the message layout, `send_in`/`send_config_in` (a channel's language); `form`: the provider form's view-model; `sealed`: channel secrets sealed at rest; `webhook::Wording` |
+| `notify` | `Alert` (with `Alert::test`), `AlertKind`, `Level`, the 41 providers, schemas, HTTP/SMTP transports, the message layout, `send_in`/`send_config_in` (a channel's language); `form`: the provider form's view-model; `sealed`: channel secrets sealed at rest; `webhook::Wording` |
 | `components` | view-models of the design system's data components: `BarRow`, `LineChart`, `CodeLine` |
 | `tls_roots` | system CA store with the bundled fallback |
 | `tz` | time zones for pickers and validation |
@@ -925,6 +927,158 @@ through `Field::placeholder_text`, `Field::default_value` and
 through `Field::tr_help`, which puts the product's webhook placeholders in
 (see "Notification channels").
 
+## Push (0.7)
+
+Alerts as push notifications in the Hedgerow app, through the Hedgerow push
+relay ("Postal Pigeon", `pigeon.hedgerow.tools`). Push is a notification
+channel of kind `hedgerow` ("Hedgerow app"), not a system of its own: an
+administrator adds it once under Notifications and attaches it like any other
+channel (monitors in Vigilant Vole, alert rules in Keen Kestrel, every channel
+in Wise Wren). Without such a channel push is off. The channel has no
+settings: it reaches every app install that registered with the server.
+
+How it works:
+
+1. The app makes one *handle* (`hrh_…`) at the relay per connection and
+   gives it to the server: `POST /api/v1/push/devices`.
+2. When the channel fires, the server stores the alert's text under a random
+   `ref` (`push_events`, 24 hours) and sends `POST /v1/push` to the relay
+   with the handles, the `ref`, `kind: alert` and `ttl` 3600. Neither the
+   relay nor Apple sees the text.
+3. The app's Notification Service Extension fetches the text with
+   `GET /api/v1/push/events/{ref}` from the server it belongs to, with the
+   token from the shared keychain, and rewrites the notification.
+
+### What the kit provides
+
+* `notify::hedgerow`: the provider (`kind` `hedgerow`, `Transport::Relay`,
+  category Push, no fields).
+* `push::install(&core)`: registers the delivery context (database, instance
+  key, product) for the process. Call it once at start-up, after
+  `config::install`. `Core::new` does not do it, because products often build
+  their `Core` per request. Without it a `hedgerow` channel refuses to send
+  ("Push isn't available on this server"). It panics for a product the
+  relay doesn't know (`push::relay::relay_product`: `vigilant-vole`,
+  `keen-kestrel` and `wise-wren`, by `KitConfig::slug`) and for an invalid
+  `KIT_PUSH_RELAY_URL`: both are mistakes of the deployment, not something to
+  find out when the first alert fires.
+* `push::api::router::<S>()`: the three routes (mount it behind
+  `guard::require_auth`; the paths are under `/api/v1`, which products
+  exempt from the CSRF guard) and `push::api::ROUTE_DOCS`, three `RouteDoc`s
+  (group `Push`, access `viewer`) for the product's API reference.
+* `migrate::PUSH` (`kit/0006_push.sql`).
+
+### The routes
+
+| Route | Answer |
+|---|---|
+| `POST /api/v1/push/devices` `{"handle": "hrh_…"}` | `201 {"id": 3}` with `Location`; the same handle again `200` with the same id; `409 push_disabled` while no active `hedgerow` channel exists; `409 too_many_devices` at 16 devices per user (256 per server); `409 too_many_pending` while 4 of the user's devices, or 20 on the whole server, have not received a push yet; `429 rate_limited` after 4 new handles in an hour (deleting a device does not give the registration back); `422 validation_failed` for something that isn't a handle |
+| `DELETE /api/v1/push/devices/{id}` | `204`; `404` for an unknown id or someone else's device |
+| `GET /api/v1/push/events/{ref}` | `{"title", "body", "kind", "level", "occurred_at"}` (plain text; no link: the alert's deep link is not stored, the monitored target stays as a fact line) (`kind` is `problem`, `recovered`, `reminder`, `escalation`, `expiring`, `unstable`, `maintenance_started`, `maintenance_ended` or `test`; `level` `critical`, `warning`, `ok` or `info`; `occurred_at` RFC 3339 UTC), `Cache-Control: no-store`; `404` when unknown or older than 24 hours |
+
+Errors use the REST envelope (`{"error": {"code", "message"}}`).
+
+**Read-only tokens may call exactly these three routes.** The app's tokens are
+often read-only, and registering only changes the caller's *own* list of
+devices. Nothing is added to the guard for it: the handlers check no role,
+take the user from the session or token (never from the request), and a
+device registered with a token is removed when the token (or the user) is.
+Every other route keeps its own role check, so a read-only token still
+reaches nothing else that writes. The routes also take sessions and
+read-and-write tokens.
+
+### Registration with the relay
+
+The first time a `hedgerow` channel fires with devices registered, the
+server registers itself: `GET /v1/challenge`, a proof of work (about a
+second at 20 bits, on a blocking thread; abandoned after four minutes), then
+`POST /v1/instances` with the product and version. The credential (`hrk_…`)
+is kept in the `settings` table sealed under the purpose `push-relay`
+(`push_relay_credential`), next to the relay it belongs to
+(`push_relay_credential_url`): a credential is only used with the relay that
+issued it. Registration runs in a task of its own, one at a time, and after
+a failure waits a minute before trying again; an alert that gives up waiting
+leaves it to finish for the next one. A relay that answers `401
+unknown_instance` (it lost its database) gets one new registration per alert.
+`403 suspended` is logged as an error and nothing is sent for an hour.
+
+The relay's address is `push_relay_url` in `settings`, else the environment
+variable `KIT_PUSH_RELAY_URL`, else `https://pigeon.hedgerow.tools`. It must
+be `https`, or `http` on the local network (a relay you run yourself).
+
+### Sending
+
+* One `POST /v1/push` per batch of 25 handles, with a new `event_id` (UUID)
+  per call and the same `ref`. The text is stored first.
+* **Handles nobody has confirmed go last, in small requests.** A handle that
+  doesn't exist counts against the whole server at the relay (20 unknown
+  handles an hour; more in one request and the relay refuses the whole
+  request with `429`). So handles a push has already reached ("proven",
+  `last_used_at` set) are sent first, 25 to a request, and the others
+  ("unproven": a fresh install, or junk a token registered) after them, 5 to
+  a request. While proven handles exist, nothing that goes wrong with the
+  unproven ones (a `429`, a failed request) fails the delivery or touches the
+  proven requests, which were sent first; the first failed unproven request
+  ends the attempt for the rest. With no proven handle at all, the unproven
+  ones count like any other. The counts of both are logged. To keep junk
+  out, a user can have 4 devices no push has reached (20 on the whole
+  server) and register 4 new handles an hour (`push_registrations` keeps
+  the count).
+* **Two `hedgerow` channels fire an alert once.** The kit can't reject a
+  second channel when it is saved (a channel is a row in the product's table
+  and the provider's check sees one config), so `hedgerow::send` shares one
+  delivery per alert (kind, event, subject, time) between its callers and
+  remembers a success for two minutes. A failure is shared by the callers
+  that were waiting, and is not remembered. Whatever its state, an entry is
+  dropped after five minutes (one whose callers were all cancelled never
+  finishes).
+* `gone` deletes the handle (`push_devices` rows with that hash); `accepted`
+  sets `last_used_at`; `duplicate` and `unsupported_kind` need nothing;
+  `limited`, `unavailable` and anything unknown are logged and given up.
+* **A deadline.** The whole delivery, registration included, takes at most
+  30 seconds, every request at most 10, and all requests go through the
+  kit's guarded client (no proxy, forbidden addresses refused, replies read
+  up to 64 KiB). A relay that is down, slow or suspended never holds up the
+  alert's other channels, which `notify::send_all` runs side by side.
+* **Errors show short codes.** What a person sees ("Send test") is `Push
+  relay problem: {detail}` (`notif.hedgerow.err_relay`, 26 languages) with
+  a stable code as the detail (`rate_limited`, `timeout`, `connect_failed`,
+  `unknown_instance`, `http_400` …). A code from the relay is shown only if
+  it is at most 64 characters of `a-z` and `_`. A `401 invalid_credentials`
+  is logged as an error for the operator and not recovered by registering
+  again.
+* **The outcome** ([`push::relay::deliver`]): `Ok` when at least one handle
+  was accepted, or when nothing needed delivering (no devices, or every
+  handle `gone`, `duplicate` or unsupported); `Err` when nothing got through
+  (relay unreachable, `429`, `503`, everything `limited` or `unavailable`,
+  suspended). A product that retries on `Err` (Keen Kestrel's alert queue)
+  therefore never repeats a push that reached someone; Vigilant Vole and Wise
+  Wren don't retry.
+* A "Send test" with no device registered says so instead of reporting
+  success.
+
+### Secrets
+
+Handles are sealed (`crypto::seal`, purpose `push-handle`); `handle_hash`
+(SHA-256) is what lookups use, and the same user registering the same handle
+again gets the same device. The relay credential is sealed as described
+above. The strings of the channel are in the catalog under
+`notif.hedgerow.*` (26 languages).
+
+### Upgrading from 0.6 to 0.7
+
+A product that does nothing still builds, apart from one thing: `Transport`
+has a new variant, `Relay`, and `PROVIDERS` a new entry. A product that
+matches on `Transport` or lists the providers by hand (Vigilant Vole's
+`notification::PROVIDERS` macro) handles it. To offer push a product:
+
+1. runs `migrate::PUSH` (part of `migrate::CORE`; add it to a hand-written
+   core set);
+2. calls `push::install(&core)` at start-up;
+3. mounts `push::api::router::<S>()` behind `require_auth` and adds
+   `push::api::ROUTE_DOCS` to its API reference;
+4. shows the `hedgerow` provider (it comes with `PROVIDERS`).
+
 ## Resources
 
 ### Translations
@@ -1045,6 +1199,11 @@ The kit has its own migration set, `vole_kit::db::migrate::CORE`:
   plaintext, and older kits refuse the database. Every product on
   `migrate::CORE` has it; Vigilant Vole's set is `&[CORE_TABLES, PASSKEYS,
   SEALED_SECRETS, SEALED_TOTP]`.
+* `PUSH`, `kit/migrations/0006_push.sql` (0.7), creates `push_devices` and
+  `push_events` (see "Push (0.7)"). Every product on `migrate::CORE` has it;
+  a product that lists its core set by hand adds it to offer the `hedgerow`
+  channel. Leaving it out after it ran makes the database look newer
+  (refused), as for any migration.
 
 Core migrations are recorded in `schema_migrations` under `kit/…` names, so
 they can't clash with a product's file names.

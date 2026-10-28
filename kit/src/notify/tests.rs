@@ -220,7 +220,10 @@ fn registry_is_consistent() {
             "duplicate kind {}",
             p.kind
         );
-        assert!(!p.label.is_empty() && !p.icon.is_empty() && !p.fields.is_empty());
+        // The push relay channel has nothing to configure: whom it reaches
+        // is the app installs that registered.
+        assert!(!p.label.is_empty() && !p.icon.is_empty());
+        assert!(!p.fields.is_empty() || matches!(p.transport, Transport::Relay));
         for f in p.fields {
             assert!(
                 f.key.chars().all(|c| c.is_ascii_lowercase() || c == '_'),

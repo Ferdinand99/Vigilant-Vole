@@ -2068,7 +2068,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Create a channel. apply_existing links it to every monitor.",
+        "summary": "Create a channel. apply_existing links it to every monitor. Only one hedgerow (Hedgerow app) channel can be active: a second one is refused with 409 conflict.",
         "tags": [
           "Notifications"
         ],
@@ -2204,7 +2204,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Update a channel. Secrets you leave out or send masked keep their stored value.",
+        "summary": "Update a channel. Secrets you leave out or send masked keep their stored value. Activating a hedgerow channel while another is active is refused with 409 conflict.",
         "tags": [
           "Notifications"
         ],
@@ -2337,6 +2337,151 @@ content-type: application/json
         "summary": "This reference as an OpenAPI 3.1 document.",
         "tags": [
           "System"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/push/devices": {
+      "post": {
+        "operationId": "post--api-v1-push-devices",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "handle": "hrh_…"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": 3
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Register a Hedgerow app install to receive this server's push notifications. The handle is the one the app made at the push relay for this connection. Registering the same handle again returns the same id (200). Read-only tokens may call this: it only changes your own list of devices, and the device is removed when the token is. 409 push_disabled while no active Hedgerow app notification channel exists; 409 too_many_devices at 16 devices per user; 409 too_many_pending while 4 of your devices, or 20 on the server, have not received a push yet; 429 rate_limited after 4 new handles in an hour.",
+        "tags": [
+          "Push"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/push/devices/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-push-devices-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Remove one of your own devices. Returns 204; 404 for a device that is not yours. Read-only tokens may call this.",
+        "tags": [
+          "Push"
+        ],
+        "x-access": "viewer"
+      }
+    },
+    "/api/v1/push/events/{ref}": {
+      "get": {
+        "operationId": "get--api-v1-push-events-ref",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "body": "HTTP 503",
+                  "kind": "problem",
+                  "level": "critical",
+                  "occurred_at": "2026-10-28T09:41:07Z",
+                  "title": "Payments API is down"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "The text of a push notification, by the ref the push carried. 404 when it is unknown or older than 24 hours. Read-only tokens may call this.",
+        "tags": [
+          "Push"
         ],
         "x-access": "viewer"
       }
@@ -4083,6 +4228,9 @@ content-type: application/json
     },
     {
       "name": "Push and machine endpoints"
+    },
+    {
+      "name": "Push"
     }
   ]
 }

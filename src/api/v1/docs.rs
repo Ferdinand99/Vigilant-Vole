@@ -97,7 +97,7 @@ status_pages:
         monitors: [Website]"#;
 
 /// Every documented endpoint, in display order.
-pub static ROUTES: &[RouteDoc] = &[
+const OWN_ROUTES: &[RouteDoc] = &[
     // -- Monitors --
     r("GET", "/api/v1/monitors", "viewer", "Monitors", "List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.")
         .q(&["status: up | down | pending | maintenance | paused | unknown", "type: monitor type, e.g. http", "tag: tag name", "q: search name, target and description", LIMIT_Q, CURSOR_Q])
@@ -146,10 +146,10 @@ pub static ROUTES: &[RouteDoc] = &[
         .res(r#"{"data": [{"kind": "discord", "label": "Discord", "fields": [{"key": "url", "type": "url", "required": true, "secret": true}]}]}"#),
     r("GET", "/api/v1/notification-channels", "viewer", "Notifications", "List channels. Secrets are always masked as \"••••••\".")
         .res(r#"{"data": [{"id": 1, "name": "Ops Discord", "kind": "discord", "active": true, "is_default": true, "monitors": 12, "config": {"url": "••••••", "username": "Vole"}}], "next_cursor": null}"#),
-    r("POST", "/api/v1/notification-channels", "editor", "Notifications", "Create a channel. apply_existing links it to every monitor.")
+    r("POST", "/api/v1/notification-channels", "editor", "Notifications", "Create a channel. apply_existing links it to every monitor. Only one hedgerow (Hedgerow app) channel can be active: a second one is refused with 409 conflict.")
         .req(r#"{"name": "Ops Discord", "kind": "discord", "config": {"url": "https://discord.com/api/webhooks/…"}, "is_default": true, "apply_existing": false}"#),
     r("GET", "/api/v1/notification-channels/{id}", "viewer", "Notifications", "Get one channel (secrets masked)."),
-    r("PATCH", "/api/v1/notification-channels/{id}", "editor", "Notifications", "Update a channel. Secrets you leave out or send masked keep their stored value.")
+    r("PATCH", "/api/v1/notification-channels/{id}", "editor", "Notifications", "Update a channel. Secrets you leave out or send masked keep their stored value. Activating a hedgerow channel while another is active is refused with 409 conflict.")
         .req(r#"{"active": false}"#),
     r("DELETE", "/api/v1/notification-channels/{id}", "editor", "Notifications", "Delete a channel."),
     r("POST", "/api/v1/notification-channels/{id}/test", "editor", "Notifications", "Send a test notification (502 with the provider's error when delivery fails).")
@@ -234,6 +234,31 @@ pub static ROUTES: &[RouteDoc] = &[
     r("GET", "/healthz", "public", "Push and machine endpoints", "Liveness probe: always \"ok\"."),
 ];
 
+/// The three routes of the Hedgerow app, from the kit.
+const PUSH_ROUTES: [RouteDoc; 3] = crate::kit::push::api::ROUTE_DOCS;
+
+const ROUTE_COUNT: usize = OWN_ROUTES.len() + PUSH_ROUTES.len();
+
+/// Our routes, then the kit's push routes (the "Push" group comes last).
+const fn all_routes() -> [RouteDoc; ROUTE_COUNT] {
+    let mut all = [OWN_ROUTES[0]; ROUTE_COUNT];
+    let mut i = 0;
+    while i < ROUTE_COUNT {
+        all[i] = if i < OWN_ROUTES.len() {
+            OWN_ROUTES[i]
+        } else {
+            PUSH_ROUTES[i - OWN_ROUTES.len()]
+        };
+        i += 1;
+    }
+    all
+}
+
+static ALL_ROUTES: [RouteDoc; ROUTE_COUNT] = all_routes();
+
+/// Every documented route: drives the reference page, OpenAPI and `llms.txt`.
+pub static ROUTES: &[RouteDoc] = &ALL_ROUTES;
+
 /// The reference as Markdown (also served as an MCP resource).
 pub fn reference_markdown(base_url: &str) -> String {
     crate::kit::docs::markdown::document(base_url)
@@ -250,6 +275,7 @@ fn curl_path_param(route: &RouteDoc, segment: &str) -> Option<String> {
             }
             "{id}" | "{iid}" => "1",
             "{token}" => "$VV_PUSH_TOKEN",
+            "{ref}" => "$PUSH_REF",
             "{slug}" => "acme",
             "{kind}" => "status",
             _ => return None,
@@ -296,6 +322,30 @@ const ERROR_CODES: &[ErrorCode] = &[
         code: "invalid_document",
         status: 422,
         when: "configuration document that can't be parsed",
+        on_page: false,
+    },
+    ErrorCode {
+        code: "push_disabled",
+        status: 409,
+        when: "registering a Hedgerow app device while no active Hedgerow app notification channel exists",
+        on_page: true,
+    },
+    ErrorCode {
+        code: "too_many_devices",
+        status: 409,
+        when: "registering a Hedgerow app device when the user (16) or the server (256) has the most allowed",
+        on_page: false,
+    },
+    ErrorCode {
+        code: "too_many_pending",
+        status: 409,
+        when: "registering a Hedgerow app device while 4 of the user's devices (20 on the server) have not received a push yet",
+        on_page: false,
+    },
+    ErrorCode {
+        code: "rate_limited",
+        status: 429,
+        when: "registering more than 4 new Hedgerow app devices in an hour",
         on_page: false,
     },
     ErrorCode {

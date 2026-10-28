@@ -58,7 +58,17 @@ pub fn router() -> Router<AppState> {
         .route_layer(middleware::from_fn(
             crate::kit::http::rest::session_write_guard,
         ));
-    Router::new().nest("/api/v1", api).merge(backup::router())
+    // The Hedgerow app's three routes (devices and push texts), with their
+    // full paths. The kit's handlers serve every signed-in caller, read-only
+    // tokens included; `ROUTES` documents them. A session needs to come
+    // from our own pages for the writes, as for every other route here.
+    let push = crate::kit::push::api::router::<AppState>().route_layer(middleware::from_fn(
+        crate::kit::http::rest::session_write_guard,
+    ));
+    Router::new()
+        .nest("/api/v1", api)
+        .merge(push)
+        .merge(backup::router())
 }
 
 async fn fallback() -> V1Error {

@@ -15,7 +15,7 @@ expression: out
 /static/passkeys.js | text/javascript; charset=utf-8 | 11123 bytes | sha256 37ef6b27c220c6a2
 /static/site.webmanifest | application/manifest+json | 623 bytes | sha256 5116097c7a0cd638
 /static/sse.js | text/javascript; charset=utf-8 | 8921 bytes | sha256 3b5992a541619bab
-/static/style.css | text/css; charset=utf-8 | 107876 bytes | sha256 b129302b20a4507c
+/static/style.css | text/css; charset=utf-8 | 107925 bytes | sha256 c34c6d9e11ef04b3
 /static/theme.js | text/javascript; charset=utf-8 | 486 bytes | sha256 7acee2bb1490b403
 /static/nope.css -> 404 
 /static/../Cargo.toml -> 404 

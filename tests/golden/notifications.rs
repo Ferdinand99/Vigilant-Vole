@@ -218,6 +218,7 @@ fn build(p: &ProviderSchema, config: &Value, ev: &NotificationEvent) -> String {
             Err(e) => format!("error: {e}\n"),
         },
         Transport::Smtp => render_email(config, ev),
+        Transport::Relay => String::from("(delivered by the push relay)\n"),
     }
 }
 

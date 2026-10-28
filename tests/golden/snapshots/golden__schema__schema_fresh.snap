@@ -47,6 +47,18 @@ CREATE INDEX idx_monitors_parent ON monitors (parent_id);
 -- index idx_passkeys_user (on passkeys)
 CREATE INDEX idx_passkeys_user ON passkeys (user_id);
 
+-- index idx_push_devices_hash (on push_devices)
+CREATE INDEX idx_push_devices_hash ON push_devices (handle_hash);
+
+-- index idx_push_devices_token (on push_devices)
+CREATE INDEX idx_push_devices_token ON push_devices (token_id);
+
+-- index idx_push_events_created (on push_events)
+CREATE INDEX idx_push_events_created ON push_events (created_at);
+
+-- index idx_push_registrations_user (on push_registrations)
+CREATE INDEX idx_push_registrations_user ON push_registrations (user_id, created_at);
+
 -- index idx_status_page_monitors_monitor (on status_page_monitors)
 CREATE INDEX idx_status_page_monitors_monitor ON status_page_monitors (monitor_id);
 
@@ -318,6 +330,35 @@ CREATE TABLE passkeys (
     backed_up INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_used_at TEXT
+);
+
+-- table push_devices (on push_devices)
+CREATE TABLE push_devices (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_id INTEGER REFERENCES api_tokens(id) ON DELETE CASCADE,
+    handle_sealed TEXT NOT NULL,
+    handle_hash TEXT NOT NULL,                  -- sha256 hex of the handle
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
+    UNIQUE (user_id, handle_hash)
+);
+
+-- table push_events (on push_events)
+CREATE TABLE push_events (
+    ref TEXT PRIMARY KEY,                       -- 16 random bytes, base64url
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    kind TEXT NOT NULL,                         -- problem, recovered, ...
+    level TEXT NOT NULL,                        -- critical, warning, ok, info
+    occurred_at TEXT NOT NULL,                  -- RFC 3339, UTC
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+) WITHOUT ROWID;
+
+-- table push_registrations (on push_registrations)
+CREATE TABLE push_registrations (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- table remote_browsers (on remote_browsers)
@@ -670,6 +711,31 @@ passkeys
   12 last_used_at TEXT 0 - 0
   index idx_passkeys_user unique=0 origin=c partial=0
   index sqlite_autoindex_passkeys_1 unique=1 origin=u partial=0
+push_devices
+  0 id INTEGER 0 - 1
+  1 user_id INTEGER 1 - 0
+  2 token_id INTEGER 0 - 0
+  3 handle_sealed TEXT 1 - 0
+  4 handle_hash TEXT 1 - 0
+  5 created_at TEXT 1 datetime('now') 0
+  6 last_used_at TEXT 0 - 0
+  index idx_push_devices_hash unique=0 origin=c partial=0
+  index idx_push_devices_token unique=0 origin=c partial=0
+  index sqlite_autoindex_push_devices_1 unique=1 origin=u partial=0
+push_events
+  0 ref TEXT 1 - 1
+  1 title TEXT 1 - 0
+  2 body TEXT 1 - 0
+  3 kind TEXT 1 - 0
+  4 level TEXT 1 - 0
+  5 occurred_at TEXT 1 - 0
+  6 created_at TEXT 1 datetime('now') 0
+  index idx_push_events_created unique=0 origin=c partial=0
+  index sqlite_autoindex_push_events_1 unique=1 origin=pk partial=0
+push_registrations
+  0 user_id INTEGER 1 - 0
+  1 created_at TEXT 1 datetime('now') 0
+  index idx_push_registrations_user unique=0 origin=c partial=0
 remote_browsers
   0 id INTEGER 0 - 1
   1 name TEXT 1 - 0

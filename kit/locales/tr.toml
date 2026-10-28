@@ -642,6 +642,13 @@ channel_tag.label = "Kanal etiketi"
 channel_tag.help = "Bunun yerine bir kanalın abonelerine gönderin."
 access_token.required = "Erişim belirtecini girin"
 
+[notif.hedgerow]
+desc = "Hedgerow uygulamasında anlık bildirimler"
+err_not_ready = "Anlık bildirimler bu sunucuda kullanılamıyor"
+err_no_devices = "Henüz hiçbir cihaz kaydolmadı. Hedgerow uygulamasında bu bağlantı için bildirimleri açın."
+err_suspended = "Anlık bildirim rölesi bu sunucuyu askıya aldı, bu yüzden hiçbir şey gönderilmiyor. Rölenin işletmecisiyle iletişime geçin."
+err_relay = "Anlık bildirim rölesinde sorun: {detail}"
+
 [notif.bark]
 desc = "Basit iOS anlık bildirimi"
 server.label = "Sunucu"

@@ -65,6 +65,14 @@ pub const SEALED_TOTP: (&str, &str) = (
     include_str!("../../migrations/0005_sealed_totp.sql"),
 );
 
+/// `push_devices` and `push_events`: push from the servers through the
+/// Hedgerow push relay ([`crate::push`]). Part of [`CORE`]; a product that
+/// lists its core set by hand adds it to offer the `hedgerow` channel.
+pub const PUSH: (&str, &str) = (
+    "kit/0006_push.sql",
+    include_str!("../../migrations/0006_push.sql"),
+);
+
 /// The kit's core migrations, `(name, sql)` in order: every product's
 /// default for [`MigrationSet::core`]. The names start with `kit/` so they
 /// never collide with a product's file names.
@@ -74,6 +82,7 @@ pub const CORE: &[(&str, &str)] = &[
     PASSKEYS,
     SEALED_SECRETS,
     SEALED_TOTP,
+    PUSH,
 ];
 
 /// What a product tells the runner about its migrations.
@@ -882,6 +891,7 @@ mod tests {
                 "kit/0003_passkeys.sql",
                 "kit/0004_sealed_secrets.sql",
                 "kit/0005_sealed_totp.sql",
+                "kit/0006_push.sql",
                 "0001_things.sql"
             ]
         );
@@ -961,7 +971,7 @@ mod tests {
     #[test]
     fn the_token_scope_table_can_be_added_later() {
         static WITHOUT: MigrationSet = MigrationSet {
-            core: &[CORE_TABLES, PASSKEYS, SEALED_SECRETS, SEALED_TOTP],
+            core: &[CORE_TABLES, PASSKEYS, SEALED_SECRETS, SEALED_TOTP, PUSH],
             adopt_core: None,
             migrations: NEW_PRODUCT.migrations,
             fk_off_marker: "-- fk=off",

@@ -305,6 +305,14 @@ fn channel_errors(errors: Vec<(String, String)>) -> V1Error {
     V1Error::fields(errors)
 }
 
+/// Only one Hedgerow app channel can be active: it reaches every registered
+/// device, so a second one would push each alert twice.
+fn second_hedgerow(other: String) -> V1Error {
+    V1Error::conflict(format!(
+        "Only one Hedgerow app channel can be active, and “{other}” is. Pause or delete it first."
+    ))
+}
+
 async fn create_channel(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -323,7 +331,13 @@ async fn create_channel(
     let config = notification::seal_config(&state.session_key, &kind, &config);
     let channel = state
         .with_conn(move |c| {
-            let tx = c.transaction()?;
+            let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            if active
+                && saved_kind == db_notifications::HEDGEROW
+                && let Some(other) = db_notifications::other_active_hedgerow(&tx, None)?
+            {
+                return Ok(Err(other));
+            }
             let id =
                 db_notifications::insert_channel(&tx, &name, &saved_kind, &config, is_default)?;
             if !active {
@@ -334,9 +348,10 @@ async fn create_channel(
             }
             let ch = db_notifications::get_channel(&tx, id)?;
             tx.commit()?;
-            Ok(ch)
+            Ok(Ok(ch))
         })
         .await?
+        .map_err(second_hedgerow)?
         .ok_or_else(|| V1Error::internal("channel vanished after insert"))?;
     tracing::info!(user = %user.username, kind = %kind, "notification channel created via API");
     Ok(created(
@@ -394,9 +409,16 @@ async fn update_channel(
     let active = input.active.unwrap_or(channel.active);
     let is_default = input.is_default.unwrap_or(channel.is_default);
     let apply = input.apply_existing;
+    let hedgerow = channel.kind == db_notifications::HEDGEROW;
     let updated = state
         .with_conn(move |c| {
-            let tx = c.transaction()?;
+            let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            if active
+                && hedgerow
+                && let Some(other) = db_notifications::other_active_hedgerow(&tx, Some(id))?
+            {
+                return Ok(Err(other));
+            }
             db_notifications::update_channel(&tx, id, &name, &config, is_default)?;
             db_notifications::set_active(&tx, id, active)?;
             if apply {
@@ -404,9 +426,10 @@ async fn update_channel(
             }
             let ch = db_notifications::get_channel(&tx, id)?;
             tx.commit()?;
-            Ok(ch)
+            Ok(Ok(ch))
         })
         .await?
+        .map_err(second_hedgerow)?
         .ok_or_else(V1Error::not_found)?;
     tracing::info!(user = %user.username, channel_id = id, "notification channel updated via API");
     Ok(json_ok(&HeaderMap::new(), &channel_json(&updated, None)))

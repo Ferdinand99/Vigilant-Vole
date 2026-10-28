@@ -677,6 +677,13 @@ channel_tag.label = "وسم القناة"
 channel_tag.help = "أرسل إلى مشتركي قناة بدلًا من ذلك."
 access_token.required = "أدخل رمز الوصول"
 
+[notif.hedgerow]
+desc = "إشعارات فورية في تطبيق Hedgerow"
+err_not_ready = "الإشعارات الفورية غير متاحة على هذا الخادم"
+err_no_devices = "لم يسجّل أي جهاز بعد. في تطبيق Hedgerow، فعّل الإشعارات لهذا الاتصال."
+err_suspended = "علّق مرحّل الإشعارات هذا الخادم، لذا لا يُرسل شيء. تواصل مع مشغّل المرحّل."
+err_relay = "مشكلة في مرحّل الإشعارات: {detail}"
+
 [notif.bark]
 desc = "إشعارات دفع بسيطة لـ iOS"
 server.label = "الخادم"
