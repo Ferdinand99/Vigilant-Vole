@@ -642,6 +642,13 @@ channel_tag.label = "Kanaltagg"
 channel_tag.help = "Pusha i stället till en kanals prenumeranter."
 access_token.required = "Ange åtkomsttoken"
 
+[notif.hedgerow]
+desc = "Pushnotiser i Hedgerow-appen"
+err_not_ready = "Push är inte tillgängligt på den här servern"
+err_no_devices = "Ingen enhet har registrerat sig ännu. Slå på notiser för den här anslutningen i Hedgerow-appen."
+err_suspended = "Push-reläet har stängt av den här servern, så ingenting skickas. Kontakta reläets driftansvarige."
+err_relay = "Det gick inte att nå push-reläet: {detail}"
+
 [notif.bark]
 desc = "Enkel push för iOS"
 server.label = "Server"

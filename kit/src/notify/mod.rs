@@ -7,8 +7,8 @@
 //!
 //! Every provider is a module with a `SCHEMA: ProviderSchema` (form fields,
 //! labels, secret flags — rendered generically by the settings UI) and a pure
-//! `build(&config, &alert) -> Vec<OutRequest>` (or, for email, its own
-//! `send`). [`PROVIDERS`] is the registry; [`SUPPORTED_KINDS`] derives from it.
+//! `build(&config, &alert) -> Vec<OutRequest>` (or, for email and the
+//! Hedgerow app, its own `send`). [`PROVIDERS`] is the registry; [`SUPPORTED_KINDS`] derives from it.
 //!
 //! Errors returned by [`send`] are safe to log and show: they never contain
 //! the request URL or any secret from the channel config.
@@ -28,6 +28,7 @@ pub mod feishu;
 pub mod form;
 pub mod googlechat;
 pub mod gotify;
+pub mod hedgerow;
 pub mod homeassistant;
 pub mod http;
 pub mod matrix;
@@ -107,6 +108,7 @@ pub const PROVIDERS: &[&ProviderSchema] = &[
     &apis::CLICKSEND,
     &apis::ELKS,
     &apis::GORUSH,
+    &hedgerow::SCHEMA,
 ];
 
 /// Channel kinds this build can deliver to (derived from [`PROVIDERS`]).
@@ -228,6 +230,7 @@ async fn send_config_in_scope(
             http::execute_all(http, &requests, &secrets).await
         }
         Transport::Smtp => email::send(config, event).await,
+        Transport::Relay => hedgerow::send(event).await,
     };
     result.map_err(|e| http::scrub(&e, &secrets))
 }

@@ -642,6 +642,13 @@ channel_tag.label = "Csatorna címkéje"
 channel_tag.help = "Push egy csatorna feliratkozóinak."
 access_token.required = "Adja meg a hozzáférési tokent"
 
+[notif.hedgerow]
+desc = "Push-értesítések a Hedgerow alkalmazásban"
+err_not_ready = "A push-értesítések nem érhetők el ezen a szerveren"
+err_no_devices = "Még egyetlen eszköz sem regisztrált. A Hedgerow alkalmazásban kapcsolja be az értesítéseket ehhez a kapcsolathoz."
+err_suspended = "A push-relé felfüggesztette ezt a szervert, ezért semmi nem kerül elküldésre. Forduljon a relé üzemeltetőjéhez."
+err_relay = "A push-relé nem érhető el: {detail}"
+
 [notif.bark]
 desc = "Egyszerű iOS-push"
 server.label = "Kiszolgáló"

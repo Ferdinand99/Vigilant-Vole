@@ -633,6 +633,13 @@ channel_tag.label = "頻道標籤"
 channel_tag.help = "改為推送給頻道的訂閱者。"
 access_token.required = "請輸入存取權杖"
 
+[notif.hedgerow]
+desc = "Hedgerow 應用程式中的推播通知"
+err_not_ready = "此伺服器無法使用推播"
+err_no_devices = "尚無裝置註冊。請在 Hedgerow 應用程式中為此連線開啟通知。"
+err_suspended = "推播中繼已暫停此伺服器，因此不會傳送任何內容。請聯絡中繼的營運者。"
+err_relay = "無法連線至推播中繼：{detail}"
+
 [notif.bark]
 desc = "簡單的 iOS 推播"
 server.label = "伺服器"

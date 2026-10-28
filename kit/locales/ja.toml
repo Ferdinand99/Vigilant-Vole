@@ -632,6 +632,13 @@ channel_tag.label = "チャンネルタグ"
 channel_tag.help = "代わりに、チャンネルの購読者にプッシュします。"
 access_token.required = "アクセストークンを入力してください"
 
+[notif.hedgerow]
+desc = "Hedgerow アプリへのプッシュ通知"
+err_not_ready = "このサーバーではプッシュ通知を利用できません"
+err_no_devices = "まだ登録されたデバイスがありません。Hedgerow アプリで、この接続の通知をオンにしてください。"
+err_suspended = "プッシュリレーがこのサーバーを停止したため、何も送信されません。リレーの運営者に連絡してください。"
+err_relay = "プッシュリレーに接続できませんでした: {detail}"
+
 [notif.bark]
 desc = "シンプルなiOSプッシュ"
 server.label = "サーバー"

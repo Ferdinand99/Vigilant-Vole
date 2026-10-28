@@ -359,8 +359,15 @@ mod tests {
             baseline: None,
             after: no_fixups,
         };
+        // The release that records it (later core migrations came after).
         static AFTER: MigrationSet = MigrationSet {
-            core: migrate::CORE,
+            core: &[
+                migrate::CORE_TABLES,
+                migrate::TOKEN_SCOPES,
+                migrate::PASSKEYS,
+                migrate::SEALED_SECRETS,
+                migrate::SEALED_TOTP,
+            ],
             adopt_core: None,
             migrations: Vec::new,
             fk_off_marker: "-- fk=off",

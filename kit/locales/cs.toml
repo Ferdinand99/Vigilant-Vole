@@ -660,6 +660,13 @@ channel_tag.label = "Značka kanálu"
 channel_tag.help = "Místo toho odeslat odběratelům kanálu."
 access_token.required = "Zadejte přístupový token"
 
+[notif.hedgerow]
+desc = "Push oznámení v aplikaci Hedgerow"
+err_not_ready = "Push oznámení nejsou na tomto serveru k dispozici"
+err_no_devices = "Zatím se nezaregistrovalo žádné zařízení. V aplikaci Hedgerow zapněte oznámení pro toto připojení."
+err_suspended = "Push relay tento server pozastavil, takže se nic neodesílá. Obraťte se na provozovatele relay."
+err_relay = "Push relay se nepodařilo kontaktovat: {detail}"
+
 [notif.bark]
 desc = "Jednoduchý push pro iOS"
 server.label = "Server"

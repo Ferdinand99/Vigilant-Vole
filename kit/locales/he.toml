@@ -652,6 +652,13 @@ channel_tag.label = "תגית ערוץ"
 channel_tag.help = "שליחה למנויי ערוץ במקום."
 access_token.required = "יש להזין את אסימון הגישה"
 
+[notif.hedgerow]
+desc = "התראות Push באפליקציית Hedgerow"
+err_not_ready = "התראות Push אינן זמינות בשרת הזה"
+err_no_devices = "עדיין לא נרשם אף מכשיר. באפליקציית Hedgerow, הפעילו התראות עבור החיבור הזה."
+err_suspended = "שרת ההעברה של ה-Push השעה את השרת הזה, ולכן דבר לא נשלח. פנו למפעיל שרת ההעברה."
+err_relay = "לא ניתן להגיע לשרת ההעברה של ה-Push: {detail}"
+
 [notif.bark]
 desc = "Push פשוט ל-iOS"
 server.label = "שרת"

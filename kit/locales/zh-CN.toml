@@ -633,6 +633,13 @@ channel_tag.label = "频道标签"
 channel_tag.help = "改为推送给某个频道的订阅者。"
 access_token.required = "请输入访问令牌"
 
+[notif.hedgerow]
+desc = "Hedgerow 应用中的推送通知"
+err_not_ready = "此服务器不支持推送"
+err_no_devices = "尚无设备注册。请在 Hedgerow 应用中为此连接开启通知。"
+err_suspended = "推送中继已暂停此服务器，因此不会发送任何内容。请联系中继的运营者。"
+err_relay = "无法连接推送中继：{detail}"
+
 [notif.bark]
 desc = "简洁的 iOS 推送"
 server.label = "服务器"

@@ -633,6 +633,13 @@ channel_tag.label = "채널 태그"
 channel_tag.help = "대신 채널 구독자에게 푸시해요."
 access_token.required = "액세스 토큰을 입력하세요"
 
+[notif.hedgerow]
+desc = "Hedgerow 앱 푸시 알림"
+err_not_ready = "이 서버에서는 푸시를 사용할 수 없습니다"
+err_no_devices = "아직 등록된 기기가 없습니다. Hedgerow 앱에서 이 연결의 알림을 켜세요."
+err_suspended = "푸시 릴레이가 이 서버를 정지했으므로 아무것도 전송되지 않습니다. 릴레이 운영자에게 문의하세요."
+err_relay = "푸시 릴레이에 연결할 수 없습니다: {detail}"
+
 [notif.bark]
 desc = "간단한 iOS 푸시"
 server.label = "서버"

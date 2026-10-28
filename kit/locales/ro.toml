@@ -651,6 +651,13 @@ channel_tag.label = "Etichetă canal"
 channel_tag.help = "Trimite în schimb abonaților unui canal."
 access_token.required = "Introdu tokenul de acces"
 
+[notif.hedgerow]
+desc = "Notificări push în aplicația Hedgerow"
+err_not_ready = "Notificările push nu sunt disponibile pe acest server"
+err_no_devices = "Niciun dispozitiv nu s-a înregistrat încă. În aplicația Hedgerow, activează notificările pentru această conexiune."
+err_suspended = "Releul push a suspendat acest server, așa că nu se trimite nimic. Contactează operatorul releului."
+err_relay = "Nu s-a putut contacta releul push: {detail}"
+
 [notif.bark]
 desc = "Push simplu pe iOS"
 server.label = "Server"
