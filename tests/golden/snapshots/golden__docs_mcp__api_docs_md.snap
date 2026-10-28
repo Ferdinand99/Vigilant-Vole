@@ -65,10 +65,14 @@ Every error uses one envelope (`fields` only on validation errors):
 | `forbidden` | 403 | your role or the token's scope doesn't allow it |
 | `not_found` | 404 | no such object or route |
 | `conflict` | 409 | clashes with existing data or the object's state (duplicate tag name or slug, checking a paused monitor) |
+| `push_disabled` | 409 | registering a Hedgerow app device while no active Hedgerow app notification channel exists |
+| `too_many_devices` | 409 | registering a Hedgerow app device when the user (16) or the server (256) has the most allowed |
+| `too_many_pending` | 409 | registering a Hedgerow app device while 4 of the user's devices (20 on the server) have not received a push yet |
 | `too_large` | 413 | configuration document over 2 MB |
 | `unsupported_media_type` | 415 | body without `Content-Type: application/json` |
 | `validation_failed` | 422 | invalid fields; `fields` maps each field to its message |
 | `invalid_document` | 422 | configuration document that can't be parsed |
+| `rate_limited` | 429 | registering more than 4 new Hedgerow app devices in an hour |
 | `delivery_failed` | 502 | a test notification the provider refused |
 | `internal` | 500 | server error; try again |
 
@@ -709,7 +713,7 @@ Example response:
 
 ### POST /api/v1/notification-channels
 
-Create a channel. apply_existing links it to every monitor.
+Create a channel. apply_existing links it to every monitor. Only one hedgerow (Hedgerow app) channel can be active: a second one is refused with 409 conflict.
 
 - Access: editor (write token of an editor or admin)
 - Success: `201 Created`
@@ -737,7 +741,7 @@ curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/notification-channels/
 
 ### PATCH /api/v1/notification-channels/{id}
 
-Update a channel. Secrets you leave out or send masked keep their stored value.
+Update a channel. Secrets you leave out or send masked keep their stored value. Activating a hedgerow channel while another is active is refused with 409 conflict.
 
 - Access: editor (write token of an editor or admin)
 - Success: `200 OK`
@@ -1555,6 +1559,62 @@ Example request:
 
 ```bash
 curl "$VV_URL/healthz"
+```
+
+## Endpoints: Push
+
+### POST /api/v1/push/devices
+
+Register a Hedgerow app install to receive this server's push notifications. The handle is the one the app made at the push relay for this connection. Registering the same handle again returns the same id (200). Read-only tokens may call this: it only changes your own list of devices, and the device is removed when the token is. 409 push_disabled while no active Hedgerow app notification channel exists; 409 too_many_devices at 16 devices per user; 409 too_many_pending while 4 of your devices, or 20 on the server, have not received a push yet; 429 rate_limited after 4 new handles in an hour.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Body: JSON object; fields used in the example: `handle` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/push/devices" -d '{"handle": "hrh_…"}'
+```
+
+Example response:
+
+```json
+{"id": 3}
+```
+
+### DELETE /api/v1/push/devices/{id}
+
+Remove one of your own devices. Returns 204; 404 for a device that is not yours. Read-only tokens may call this.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/push/devices/1"
+```
+
+### GET /api/v1/push/events/{ref}
+
+The text of a push notification, by the ref the push carried. 404 when it is unknown or older than 24 hours. Read-only tokens may call this.
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `ref` (string)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/push/events/$PUSH_REF"
+```
+
+Example response:
+
+```json
+{"title": "Payments API is down", "body": "HTTP 503", "kind": "problem", "level": "critical", "occurred_at": "2026-10-28T09:41:07Z"}
 ```
 
 ## Config as code

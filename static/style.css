@@ -4208,6 +4208,7 @@ html.is-sorting * {
 .provider-webhook { --tile: var(--pal-gray); }
 .provider-apprise { --tile: var(--pal-purple); --mono: "A"; }
 .provider-homeassistant { --tile: var(--pal-cyan); }
+.provider-hedgerow { --tile: var(--pal-green); }
 .choice-body > .provider-tile {
   margin-bottom: 10px;
 }

@@ -52,6 +52,7 @@ API tokens only work under `/api/` and for `/metrics`; they can't open the web U
 | Status pages | `GET/POST /api/v1/status-pages`, `GET/PATCH/DELETE …/{id}`, `PUT …/{id}/sections`, `GET/POST …/{id}/incidents`, `GET/PATCH/DELETE …/{id}/incidents/{iid}`, `GET/POST …/{id}/incidents/{iid}/updates`, `GET/PUT …/{id}/subscription`, `GET …/{id}/subscribers`, `POST …/{id}/subscribers/{sid}/approve`, `DELETE …/{id}/subscribers/{sid}` |
 | Maintenance | `GET/POST /api/v1/maintenance`, `GET/PATCH/DELETE /api/v1/maintenance/{id}` |
 | System | `GET /api/v1/me`, `GET /api/v1/health`, `GET /api/v1/agents`, `GET/PATCH /api/v1/settings`, `GET /api/v1/openapi.json` |
+| Push (Hedgerow app) | `POST /api/v1/push/devices`, `DELETE /api/v1/push/devices/{id}`, `GET /api/v1/push/events/{ref}` — for the Hedgerow app; any token, read-only ones included. Only one Hedgerow app channel can be active (409 `conflict` on the channel routes otherwise) |
 | Configuration | `GET/POST /api/v1/config` — see [config-as-code](config-as-code.md) |
 
 AI assistants can use the same tokens against the MCP endpoint `POST /mcp`: see [mcp.md](mcp.md).

@@ -24,3 +24,4 @@ kit/0001_core.sql
 kit/0003_passkeys.sql
 kit/0004_sealed_secrets.sql
 kit/0005_sealed_totp.sql
+kit/0006_push.sql

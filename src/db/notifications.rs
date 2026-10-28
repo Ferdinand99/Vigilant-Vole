@@ -31,6 +31,27 @@ pub fn insert_channel(
     Ok(id)
 }
 
+/// The kind of the Hedgerow app channel. Only one can be active: it reaches
+/// every device registered with the server, so a second one would push the
+/// same alert twice.
+pub const HEDGEROW: &str = "hedgerow";
+
+/// The name of an active `hedgerow` channel other than `except`, if there is
+/// one.
+pub fn other_active_hedgerow(
+    conn: &Connection,
+    except: Option<i64>,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT name FROM notification_channels
+         WHERE kind = ?1 AND active = 1 AND id IS NOT ?2
+         ORDER BY id LIMIT 1",
+        params![HEDGEROW, except],
+        |r| r.get(0),
+    )
+    .optional()
+}
+
 /// Updates name, config and the default flag (the kind never changes).
 /// Returns `false` when the channel doesn't exist. Turning `is_default` on
 /// here does not link existing monitors — call [`apply_to_all`] for that.

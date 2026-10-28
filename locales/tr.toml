@@ -1575,4 +1575,5 @@ add_existing_help_new = "Bunu daha sonra her monitör için değiştirebilirsini
 empty_text = "Kesintiyi anında öğrenmek için Slack, Discord, e-posta, ntfy, PagerDuty veya diğer 20 hizmetten birini ekleyin."
 default_tip = "Yeni monitörlere otomatik eklenir"
 foot = "Varsayılan kanallar yeni monitörlere otomatik eklenir. Tek bir monitör için kanalları ayarlarından seçin."
+hedgerow_second = "Aynı anda yalnızca bir Hedgerow uygulaması kanalı etkin olabilir ve “{name}” zaten etkin. Önce onu duraklat ya da sil."
 no_monitors = "Monitör yok"

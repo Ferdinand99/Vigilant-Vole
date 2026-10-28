@@ -1600,4 +1600,5 @@ add_existing_help_new = "Poți schimba asta mai târziu, pentru fiecare monitor.
 empty_text = "Adaugă Slack, Discord, e-mail, ntfy, PagerDuty sau unul dintre încă 20 de servicii ca să afli de o întrerupere în clipa în care apare."
 default_tip = "Adăugat automat la monitoarele noi"
 foot = "Canalele implicite sunt adăugate automat la monitoarele noi. Alege canale pentru un singur monitor în setările lui."
+hedgerow_second = "Poate fi activ un singur canal al aplicației Hedgerow, iar „{name}” este deja. Pune-l mai întâi pe pauză sau șterge-l."
 no_monitors = "Niciun monitor"
