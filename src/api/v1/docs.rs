@@ -345,7 +345,7 @@ const ERROR_CODES: &[ErrorCode] = &[
     ErrorCode {
         code: "rate_limited",
         status: 429,
-        when: "registering more than 4 new Hedgerow app devices in an hour",
+        when: "too many requests (wait `Retry-After` seconds), or more than 4 new Hedgerow app devices registered in an hour",
         on_page: false,
     },
     ErrorCode {

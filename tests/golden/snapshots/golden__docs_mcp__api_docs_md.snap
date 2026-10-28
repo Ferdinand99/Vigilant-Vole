@@ -72,7 +72,7 @@ Every error uses one envelope (`fields` only on validation errors):
 | `unsupported_media_type` | 415 | body without `Content-Type: application/json` |
 | `validation_failed` | 422 | invalid fields; `fields` maps each field to its message |
 | `invalid_document` | 422 | configuration document that can't be parsed |
-| `rate_limited` | 429 | registering more than 4 new Hedgerow app devices in an hour |
+| `rate_limited` | 429 | too many requests (wait `Retry-After` seconds), or more than 4 new Hedgerow app devices registered in an hour |
 | `delivery_failed` | 502 | a test notification the provider refused |
 | `internal` | 500 | server error; try again |
 
