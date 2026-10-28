@@ -582,6 +582,7 @@ async fn a_fresh_database_has_the_core_tables_and_the_demos() {
             "passkeys",
             "push_devices",
             "push_events",
+            "push_registrations",
             "schema_migrations",
             "settings",
             "users"

@@ -24,9 +24,15 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 
 /// Delivers `event` to every registered device. See
 /// [`push::relay::deliver`](crate::push::relay::deliver) for the outcome.
+///
+/// An alert is pushed once even when the product attaches two `hedgerow`
+/// channels to it ([`push::relay::deliver_once`](crate::push::relay::deliver_once)).
+/// The kit can't refuse the second channel when it is saved, since a channel
+/// is only a row in the product's table and the provider's check sees one
+/// config at a time.
 pub async fn send(event: &Alert) -> Result<(), String> {
     match crate::push::relay::current() {
-        Some(ctx) => crate::push::relay::deliver(&ctx, event).await,
+        Some(ctx) => crate::push::relay::deliver_once(&ctx, event).await,
         None => Err(crate::i18n::t("notif.hedgerow.err_not_ready").to_string()),
     }
 }

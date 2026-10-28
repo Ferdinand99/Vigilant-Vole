@@ -6,6 +6,10 @@
 -- belongs to a user, and to the API token it registered with when it did
 -- so with a token: deleting either removes it.
 --
+-- `push_registrations`: when each user registered a new handle, to limit how
+-- many they can in an hour. Kept apart from `push_devices` so that deleting
+-- a device and adding it again doesn't reset the count.
+--
 -- `push_events`: the text of a push, kept for 24 hours under a random `ref`
 -- that the push carries. The app fetches it from this server after the
 -- push arrives; the relay and Apple never see it.
@@ -35,3 +39,10 @@ CREATE TABLE push_events (
 ) WITHOUT ROWID;
 
 CREATE INDEX idx_push_events_created ON push_events (created_at);
+
+CREATE TABLE push_registrations (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_push_registrations_user ON push_registrations (user_id, created_at);

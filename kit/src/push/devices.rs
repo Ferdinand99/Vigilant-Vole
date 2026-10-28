@@ -21,6 +21,32 @@ pub const MAX_PER_USER: i64 = 16;
 /// Most devices on the whole server. Every device is a handle presented to
 /// the relay at each alert, so the number is bounded.
 pub const MAX_TOTAL: i64 = 256;
+/// Most devices of one user that no push has reached yet. A handle that
+/// doesn't exist makes the relay count an "unknown handle" against the whole
+/// server (20 an hour), so handles nobody has confirmed are few.
+pub const MAX_PENDING_PER_USER: i64 = 4;
+/// Most new handles one user can register in an hour.
+pub const MAX_NEW_PER_HOUR: i64 = 4;
+
+/// The limits of [`register_with`].
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    pub per_user: i64,
+    pub total: i64,
+    pub pending_per_user: i64,
+    pub new_per_hour: i64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            per_user: MAX_PER_USER,
+            total: MAX_TOTAL,
+            pending_per_user: MAX_PENDING_PER_USER,
+            new_per_hour: MAX_NEW_PER_HOUR,
+        }
+    }
+}
 
 /// Whether `handle` has the shape of a relay handle: `hrh_` and a body of
 /// URL-safe base64 characters. (The relay's handles are 54 characters long;
@@ -46,6 +72,10 @@ pub enum LimitReached {
     User,
     /// The server has [`MAX_TOTAL`] devices.
     Server,
+    /// The user has [`MAX_PENDING_PER_USER`] devices no push has reached.
+    Pending,
+    /// The user registered [`MAX_NEW_PER_HOUR`] new handles in the last hour.
+    Rate,
 }
 
 /// How a registration ended.
@@ -74,6 +104,18 @@ pub fn register(
     token_id: Option<i64>,
     handle: &str,
 ) -> rusqlite::Result<Result<Registered, LimitReached>> {
+    register_with(conn, sealer, user_id, token_id, handle, &Limits::default())
+}
+
+/// [`register`] with other limits.
+pub fn register_with(
+    conn: &mut Connection,
+    sealer: &Sealer,
+    user_id: i64,
+    token_id: Option<i64>,
+    handle: &str,
+    limits: &Limits,
+) -> rusqlite::Result<Result<Registered, LimitReached>> {
     let digest = hash(handle);
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let existing: Option<i64> = tx
@@ -98,13 +140,40 @@ pub fn register(
         params![user_id],
         |r| r.get(0),
     )?;
-    if mine >= MAX_PER_USER {
+    if mine >= limits.per_user {
         return Ok(Err(LimitReached::User));
     }
     let all: i64 = tx.query_row("SELECT COUNT(*) FROM push_devices", [], |r| r.get(0))?;
-    if all >= MAX_TOTAL {
+    if all >= limits.total {
         return Ok(Err(LimitReached::Server));
     }
+    let pending: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM push_devices WHERE user_id = ?1 AND last_used_at IS NULL",
+        params![user_id],
+        |r| r.get(0),
+    )?;
+    if pending >= limits.pending_per_user {
+        return Ok(Err(LimitReached::Pending));
+    }
+    // Counted in a table of its own, so that deleting a device and adding it
+    // again doesn't reset the count.
+    let recent: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM push_registrations
+         WHERE user_id = ?1 AND created_at > datetime('now', '-1 hour')",
+        params![user_id],
+        |r| r.get(0),
+    )?;
+    if recent >= limits.new_per_hour {
+        return Ok(Err(LimitReached::Rate));
+    }
+    tx.execute(
+        "DELETE FROM push_registrations WHERE created_at <= datetime('now', '-1 day')",
+        [],
+    )?;
+    tx.execute(
+        "INSERT INTO push_registrations (user_id) VALUES (?1)",
+        params![user_id],
+    )?;
     tx.execute(
         "INSERT INTO push_devices (user_id, token_id, handle_sealed, handle_hash)
          VALUES (?1, ?2, ?3, ?4)",
@@ -149,23 +218,29 @@ pub fn count(conn: &Connection) -> rusqlite::Result<i64> {
 }
 
 /// Every handle to push to, opened, oldest first and each once (two users
-/// who registered the same handle get one push). Devices of disabled users
-/// are left out: they could no longer fetch the text. So are devices whose
-/// handle can't be opened (another `session.key`), which are counted in the
-/// second value.
-pub fn handles(conn: &Connection, sealer: &Sealer) -> rusqlite::Result<(Vec<String>, usize)> {
+/// who registered the same handle get one push), with whether a push to it
+/// was ever accepted. Devices of disabled users are left out: they could no
+/// longer fetch the text. So are devices whose handle can't be opened
+/// (another `session.key`), which are counted in the second value.
+pub fn handles(
+    conn: &Connection,
+    sealer: &Sealer,
+) -> rusqlite::Result<(Vec<(String, bool)>, usize)> {
     let mut stmt = conn.prepare(
-        "SELECT d.handle_sealed FROM push_devices d
+        "SELECT d.handle_sealed, d.last_used_at IS NOT NULL FROM push_devices d
          JOIN users u ON u.id = d.user_id AND u.active = 1
          ORDER BY d.id",
     )?;
-    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-    let mut out: Vec<String> = Vec::new();
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)))?;
+    let mut out: Vec<(String, bool)> = Vec::new();
     let mut unreadable = 0;
     for row in rows {
-        match sealer.open(&row?) {
-            Ok(handle) if !out.contains(&handle) => out.push(handle),
-            Ok(_) => {}
+        let (sealed, proven) = row?;
+        match sealer.open(&sealed) {
+            Ok(handle) => match out.iter_mut().find(|(h, _)| *h == handle) {
+                Some(seen) => seen.1 |= proven,
+                None => out.push((handle, proven)),
+            },
             Err(_) => unreadable += 1,
         }
     }

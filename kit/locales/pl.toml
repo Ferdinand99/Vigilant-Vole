@@ -666,7 +666,7 @@ desc = "Powiadomienia push w aplikacji Hedgerow"
 err_not_ready = "Powiadomienia push nie są dostępne na tym serwerze"
 err_no_devices = "Nie zarejestrowano jeszcze żadnego urządzenia. W aplikacji Hedgerow włącz powiadomienia dla tego połączenia."
 err_suspended = "Przekaźnik push zawiesił ten serwer, więc nic nie jest wysyłane. Skontaktuj się z operatorem przekaźnika."
-err_relay = "Nie można połączyć się z przekaźnikiem push: {detail}"
+err_relay = "Problem z przekaźnikiem push: {detail}"
 
 [notif.bark]
 desc = "Prosty push na iOS"

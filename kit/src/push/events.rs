@@ -67,9 +67,14 @@ fn clip(text: String, max: usize) -> String {
 
 impl Event {
     /// The push text of `alert`: the same headline and body the other push
-    /// providers show. The monitor target has already lost its credentials
-    /// (`notify::send` strips them first).
+    /// providers show, without the deep link (no URL is stored: the app
+    /// never opens anything from a push). The monitor target has already
+    /// lost its credentials (`notify::send` strips them first).
     pub fn from_alert(alert: &Alert) -> Event {
+        let alert = &Alert {
+            url: None,
+            ..alert.clone()
+        };
         let occurred = alert
             .occurred_at
             .to_offset(time::UtcOffset::UTC)

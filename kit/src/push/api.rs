@@ -2,7 +2,9 @@
 //!
 //! * `POST /api/v1/push/devices` `{"handle": "hrh_…"}`: `201 {"id"}`; the same
 //!   handle again `200` with the same id; `409 push_disabled` while the
-//!   server has no active `hedgerow` channel.
+//!   server has no active `hedgerow` channel; `409 too_many_devices` (16 a
+//!   user); `409 too_many_pending` (4 devices no push has reached yet);
+//!   `429 rate_limited` (4 new handles an hour).
 //! * `DELETE /api/v1/push/devices/{id}`: `204`; `404` for a device that is
 //!   not yours.
 //! * `GET /api/v1/push/events/{ref}`: the text of a push, or `404` when it is
@@ -42,7 +44,7 @@ pub const ROUTE_DOCS: [RouteDoc; 3] = [
         "/api/v1/push/devices",
         "viewer",
         "Push",
-        "Register a Hedgerow app install to receive this server's push notifications. The handle is the one the app made at the push relay for this connection. Registering the same handle again returns the same id (200). Read-only tokens may call this: it only changes your own list of devices, and the device is removed when the token is. 409 push_disabled while no active Hedgerow app notification channel exists; 409 too_many_devices at 16 devices per user.",
+        "Register a Hedgerow app install to receive this server's push notifications. The handle is the one the app made at the push relay for this connection. Registering the same handle again returns the same id (200). Read-only tokens may call this: it only changes your own list of devices, and the device is removed when the token is. 409 push_disabled while no active Hedgerow app notification channel exists; 409 too_many_devices at 16 devices per user; 409 too_many_pending while 4 of your devices have not received a push yet; 429 rate_limited after 4 new handles in an hour.",
     )
     .req(r#"{"handle": "hrh_…"}"#)
     .res(r#"{"id": 3}"#),
@@ -126,6 +128,16 @@ async fn register(
             StatusCode::CONFLICT,
             "too_many_devices",
             "This server has registered the most devices allowed (256).",
+        )),
+        Err(devices::LimitReached::Pending) => Err(V1Error::new(
+            StatusCode::CONFLICT,
+            "too_many_pending",
+            "Four of your devices have not received a push yet. Wait for an alert, or remove one.",
+        )),
+        Err(devices::LimitReached::Rate) => Err(V1Error::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "You have registered four new devices in the last hour. Try again later.",
         )),
     }
 }

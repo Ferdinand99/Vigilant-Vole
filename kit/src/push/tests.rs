@@ -304,6 +304,9 @@ async fn fake_push(
 
 static N: AtomicUsize = AtomicUsize::new(0);
 
+/// `last_used_at` of devices a push has reached long ago.
+const PROVEN_AT: &str = "2000-01-01 00:00:00";
+
 struct World {
     core: Core,
     ctx: Arc<Context>,
@@ -358,24 +361,40 @@ impl World {
         }
     }
 
-    /// Registers `n` devices, 16 to a user (the first user, then others);
+    /// Registers `n` devices that a push has reached before ("proven");
     /// their handles.
     async fn add_devices(&self, n: usize) -> Vec<String> {
+        self.add_devices_from(1000, n, true).await
+    }
+
+    /// Registers `n` devices no push has reached yet.
+    async fn add_unproven(&self, from: usize, n: usize) -> Vec<String> {
+        self.add_devices_from(from, n, false).await
+    }
+
+    async fn add_devices_from(&self, from: usize, n: usize, proven: bool) -> Vec<String> {
         let sealer = Sealer::new(&self.core.session_key, devices::PURPOSE);
-        let first = self.user;
-        let handles: Vec<String> = (0..n).map(|i| handle(1000 + i)).collect();
+        let user = self.user;
+        let handles: Vec<String> = (0..n).map(|i| handle(from + i)).collect();
         let list = handles.clone();
+        let unlimited = devices::Limits {
+            per_user: i64::MAX,
+            total: i64::MAX,
+            pending_per_user: i64::MAX,
+            new_per_hour: i64::MAX,
+        };
         self.core
             .with_conn(move |c| {
-                let per_user = devices::MAX_PER_USER as usize;
-                let mut user = first;
-                for (i, h) in list.iter().enumerate() {
-                    if i > 0 && i % per_user == 0 {
-                        user = users::insert_user(c, &format!("user{i}"), "x", Role::Viewer)?;
-                    }
-                    devices::register(c, &sealer, user, None, h)
+                for h in &list {
+                    devices::register_with(c, &sealer, user, None, h, &unlimited)
                         .unwrap()
                         .unwrap();
+                    if proven {
+                        c.execute(
+                            "UPDATE push_devices SET last_used_at = ?2 WHERE handle_hash = ?1",
+                            rusqlite::params![devices::hash(h), PROVEN_AT],
+                        )?;
+                    }
                 }
                 Ok(())
             })
@@ -515,12 +534,12 @@ async fn pushes_go_out_in_batches_of_25_with_one_ref_and_new_event_ids() {
     ids.sort();
     ids.dedup();
     assert_eq!(ids.len(), 3, "a new event id for every call");
-    // Every device was reached.
+    // Every device was reached just now.
     let used: i64 = w
         .core
         .with_conn(|c| {
             c.query_row(
-                "SELECT COUNT(*) FROM push_devices WHERE last_used_at IS NOT NULL",
+                "SELECT COUNT(*) FROM push_devices WHERE last_used_at > '2001-01-01'",
                 [],
                 |r| r.get(0),
             )
@@ -850,7 +869,7 @@ async fn an_unreachable_relay_is_an_error_not_a_hang() {
     let started = Instant::now();
     let err = w.deliver(AlertKind::Problem).await.unwrap_err();
     assert!(started.elapsed() < Duration::from_secs(15));
-    assert!(err.contains("push relay"), "{err}");
+    assert!(err.contains("Push relay problem: connect_failed"), "{err}");
     // The URL is not part of the message.
     assert!(!err.contains("127.0.0.1"), "{err}");
 }
@@ -949,14 +968,23 @@ async fn the_register_is_per_user_and_limited() {
     let outcome = w
         .core
         .with_conn(move |c| {
+            // Only the per-user cap is under test here.
+            let limits = devices::Limits {
+                pending_per_user: i64::MAX,
+                new_per_hour: i64::MAX,
+                ..Default::default()
+            };
+            let reg = |c: &mut rusqlite::Connection, u: i64, h: &str| {
+                devices::register_with(c, &sealer, u, None, h, &limits)
+            };
             let h = handle(1);
-            let first = devices::register(c, &sealer, user, None, &h)?;
-            let again = devices::register(c, &sealer, user, None, &h)?;
+            let first = reg(c, user, &h)?;
+            let again = reg(c, user, &h)?;
             // The same handle for another user is a separate registration.
-            let theirs = devices::register(c, &sealer, other, None, &h)?;
+            let theirs = reg(c, other, &h)?;
             let mut last = Ok(devices::Registered::Created(0));
             for n in 2..=devices::MAX_PER_USER as usize + 1 {
-                last = devices::register(c, &sealer, user, None, &handle(n))?;
+                last = reg(c, user, &handle(n))?;
             }
             Ok((first, again, theirs, last, devices::count(c)?))
         })
@@ -997,15 +1025,21 @@ async fn disabled_users_get_no_push() {
         .await
         .unwrap();
     w.deliver(AlertKind::Problem).await.unwrap();
-    assert_eq!(handles_of(&w.relay.pushes()[0].1).len(), 3);
+    // The two proven devices in one request, then the new one in its own.
+    assert_eq!(handles_of(&w.relay.pushes()[0].1).len(), 2);
+    assert_eq!(
+        handles_of(&w.relay.pushes()[1].1),
+        std::slice::from_ref(&theirs)
+    );
 
     w.core
         .with_conn(move |c| c.execute("UPDATE users SET active = 0 WHERE id = ?1", [other]))
         .await
         .unwrap();
     w.deliver(AlertKind::Problem).await.unwrap();
-    assert_eq!(handles_of(&w.relay.pushes()[1].1), handles);
-    assert!(!w.relay.pushes()[1].1.to_string().contains(&theirs));
+    assert_eq!(w.relay.pushes().len(), 3);
+    assert_eq!(handles_of(&w.relay.pushes()[2].1), handles);
+    assert!(!w.relay.pushes()[2].1.to_string().contains(&theirs));
 }
 
 #[tokio::test]
@@ -1286,10 +1320,8 @@ async fn bad_handles_and_too_many_devices_are_refused() {
         .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
 
-    for n in 0..devices::MAX_PER_USER as usize {
-        let (status, _, _) = api.register(&api.admin_write, &handle(n)).await;
-        assert_eq!(status, StatusCode::CREATED, "{n}");
-    }
+    // Sixteen devices that a push has reached.
+    api.world.add_devices(devices::MAX_PER_USER as usize).await;
     let (status, _, body) = api.register(&api.admin_write, &handle(99)).await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
     assert_eq!(body["error"]["code"], "too_many_devices");
@@ -1530,6 +1562,415 @@ async fn deleting_the_token_or_the_user_removes_the_devices() {
         .await
         .unwrap();
     assert_eq!(api.world.device_count().await, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Fix round 1
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn deliveries_that_arrive_during_a_registration_wait_for_it() {
+    let w = World::new().await;
+    w.add_devices(2).await;
+    w.relay
+        .state
+        .challenge_delay_ms
+        .store(800, Ordering::SeqCst);
+
+    let (a, b, c) = tokio::join!(
+        w.deliver(AlertKind::Problem),
+        w.deliver(AlertKind::Recovered),
+        w.deliver(AlertKind::Reminder)
+    );
+    a.unwrap();
+    b.unwrap();
+    c.unwrap();
+    // One registration, and every alert was pushed with its credential.
+    assert_eq!(w.relay.challenges(), 1);
+    assert_eq!(w.relay.registrations().len(), 1);
+    let pushes = w.relay.pushes();
+    assert_eq!(pushes.len(), 3);
+    assert!(pushes.iter().all(|(bearer, _)| bearer == "hrk_registered0"));
+}
+
+#[tokio::test]
+async fn alerts_that_all_get_unknown_instance_share_one_new_registration() {
+    let w = World::new().await;
+    w.add_devices(2).await;
+    w.deliver(AlertKind::Problem).await.unwrap();
+    w.relay.forget_everyone();
+    w.relay
+        .state
+        .challenge_delay_ms
+        .store(500, Ordering::SeqCst);
+
+    let (a, b, c) = tokio::join!(
+        w.deliver(AlertKind::Problem),
+        w.deliver(AlertKind::Recovered),
+        w.deliver(AlertKind::Reminder)
+    );
+    a.unwrap();
+    b.unwrap();
+    c.unwrap();
+    assert_eq!(w.relay.registrations().len(), 2, "one more, not three");
+    assert_eq!(w.relay.pushes().len(), 4);
+}
+
+#[tokio::test]
+async fn proven_devices_go_first_and_unproven_ones_in_small_batches() {
+    let w = World::new().await;
+    let proven = w.add_devices(3).await;
+    let unproven = w.add_unproven(6000, 7).await;
+
+    w.deliver(AlertKind::Problem).await.unwrap();
+
+    let pushes = w.relay.pushes();
+    let sizes: Vec<usize> = pushes.iter().map(|(_, p)| handles_of(p).len()).collect();
+    assert_eq!(sizes, [3, 5, 2]);
+    assert_eq!(handles_of(&pushes[0].1), proven);
+    let rest: Vec<String> = pushes[1..]
+        .iter()
+        .flat_map(|(_, p)| handles_of(p))
+        .collect();
+    assert_eq!(rest, unproven);
+    // What was accepted is proven now: one request next time.
+    w.deliver(AlertKind::Problem).await.unwrap();
+    let sizes: Vec<usize> = w.relay.pushes()[3..]
+        .iter()
+        .map(|(_, p)| handles_of(p).len())
+        .collect();
+    assert_eq!(sizes, [10]);
+}
+
+#[tokio::test]
+async fn a_refused_unproven_batch_does_not_fail_the_proven_delivery() {
+    let w = World::new().await;
+    let proven = w.add_devices(3).await;
+    w.add_unproven(6000, 7).await;
+    let known = proven.clone();
+    // The relay refuses a request with handles it doesn't know.
+    w.relay.script(move |push| {
+        let handles = handles_of(push);
+        if handles.iter().all(|h| known.contains(h)) {
+            let results: Vec<Value> = handles
+                .iter()
+                .map(|_| json!({"status": "accepted"}))
+                .collect();
+            (StatusCode::OK, json!({ "results": results }))
+        } else {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                json!({"error": "rate_limited", "message": "unknown handles"}),
+            )
+        }
+    });
+
+    w.deliver(AlertKind::Problem).await.unwrap();
+
+    // The proven batch went first and counts; the first refused unproven
+    // batch ended the attempt for the rest (no point in more of them).
+    let pushes = w.relay.pushes();
+    assert_eq!(pushes.len(), 2);
+    assert_eq!(handles_of(&pushes[0].1), proven);
+    assert_eq!(handles_of(&pushes[1].1).len(), 5);
+    assert_eq!(w.device_count().await, 10, "nothing is forgotten");
+    let proven_now: i64 = w
+        .core
+        .with_conn(|c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM push_devices WHERE last_used_at > '2001-01-01'",
+                [],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(proven_now, 3);
+
+    // With no proven device at all, the same refusal is a failed delivery.
+    let w = World::new().await;
+    w.add_unproven(6000, 3).await;
+    w.relay.script(|_| {
+        (
+            StatusCode::TOO_MANY_REQUESTS,
+            json!({"error": "rate_limited", "message": "unknown handles"}),
+        )
+    });
+    assert!(
+        w.deliver(AlertKind::Problem)
+            .await
+            .unwrap_err()
+            .contains("rate_limited")
+    );
+}
+
+#[tokio::test]
+async fn new_handles_are_limited_per_hour_and_deleting_does_not_reset_it() {
+    let w = World::new().await;
+    let sealer = Sealer::new(&w.core.session_key, devices::PURPOSE);
+    let (user, other) = (
+        w.user,
+        w.core
+            .with_conn(|c| users::insert_user(c, "bob", "x", Role::Viewer))
+            .await
+            .unwrap(),
+    );
+    let out = w
+        .core
+        .with_conn(move |c| {
+            // Only the hourly limit is under test: devices count as proven.
+            let limits = devices::Limits {
+                pending_per_user: i64::MAX,
+                ..Default::default()
+            };
+            let reg = |c: &mut rusqlite::Connection, u: i64, n: usize| {
+                devices::register_with(c, &sealer, u, None, &handle(n), &limits)
+            };
+            let mut ids = Vec::new();
+            for n in 0..devices::MAX_NEW_PER_HOUR as usize {
+                ids.push(reg(c, user, n)?.unwrap().id());
+            }
+            let fifth = reg(c, user, 50)?;
+            // Deleting a device doesn't give the registration back.
+            devices::delete_own(c, user, ids[0])?;
+            let after_delete = reg(c, user, 51)?;
+            // Another user is not affected, and registering an existing
+            // handle again costs nothing.
+            let theirs = reg(c, other, 60)?;
+            let again = reg(c, user, 1)?;
+            // An hour later it is possible again.
+            c.execute(
+                "UPDATE push_registrations SET created_at = datetime('now', '-61 minutes')",
+                [],
+            )?;
+            let later = reg(c, user, 52)?;
+            Ok((
+                fifth,
+                after_delete,
+                theirs.is_ok(),
+                again.is_ok(),
+                later.is_ok(),
+            ))
+        })
+        .await
+        .unwrap();
+    assert_eq!(out.0, Err(devices::LimitReached::Rate));
+    assert_eq!(out.1, Err(devices::LimitReached::Rate));
+    assert!(out.2 && out.3 && out.4);
+}
+
+#[tokio::test]
+async fn devices_no_push_has_reached_are_capped_per_user() {
+    let w = World::new().await;
+    let sealer = Sealer::new(&w.core.session_key, devices::PURPOSE);
+    let user = w.user;
+    let out = w
+        .core
+        .with_conn(move |c| {
+            let limits = devices::Limits {
+                new_per_hour: i64::MAX,
+                ..Default::default()
+            };
+            for n in 0..devices::MAX_PENDING_PER_USER as usize {
+                devices::register_with(c, &sealer, user, None, &handle(n), &limits)?.unwrap();
+            }
+            let fifth = devices::register_with(c, &sealer, user, None, &handle(50), &limits)?;
+            // Re-registering one of them is fine.
+            let again = devices::register_with(c, &sealer, user, None, &handle(1), &limits)?;
+            // Once a push reached one, there is room for another.
+            c.execute(
+                "UPDATE push_devices SET last_used_at = datetime('now') WHERE handle_hash = ?1",
+                [devices::hash(&handle(1))],
+            )?;
+            let sixth = devices::register_with(c, &sealer, user, None, &handle(51), &limits)?;
+            Ok((fifth, again.is_ok(), sixth.is_ok()))
+        })
+        .await
+        .unwrap();
+    assert_eq!(out.0, Err(devices::LimitReached::Pending));
+    assert!(out.1 && out.2);
+}
+
+#[tokio::test]
+async fn the_api_refuses_too_many_pending_devices_and_too_many_new_ones() {
+    let api = Api::new().await;
+    api.world.add_channel("hedgerow", true).await;
+    for n in 0..4 {
+        let (status, _, body) = api.register(&api.admin_write, &handle(n)).await;
+        assert_eq!(status, StatusCode::CREATED, "{n}: {body}");
+    }
+    // Four devices no push has reached.
+    let (status, _, body) = api.register(&api.admin_write, &handle(10)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["error"]["code"], "too_many_pending");
+    // The same handle again is still a plain 200.
+    let (status, _, _) = api.register(&api.admin_write, &handle(1)).await;
+    assert_eq!(status, StatusCode::OK);
+    // They get a push; four new handles in the hour is the limit.
+    api.world
+        .core
+        .with_conn(|c| c.execute("UPDATE push_devices SET last_used_at = datetime('now')", []))
+        .await
+        .unwrap();
+    let (status, _, body) = api.register(&api.admin_write, &handle(10)).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(body["error"]["code"], "rate_limited");
+    // Someone else is not held back.
+    let (status, _, _) = api.register(&api.viewer_read, &handle(10)).await;
+    assert_eq!(status, StatusCode::CREATED);
+}
+
+#[test]
+fn the_text_of_a_push_has_no_url() {
+    let mut alert = event(AlertKind::Problem);
+    alert.url = Some("https://vv.example/monitors/7?token=hunter2".into());
+    // The providers' own body does carry the link ...
+    assert!(crate::notify::message::body_text(&alert).contains("vv.example"));
+    // ... the push text doesn't.
+    let text = events::Event::from_alert(&alert);
+    for part in [&text.title, &text.body, &text.kind, &text.level] {
+        assert!(
+            !part.contains("vv.example") && !part.contains("hunter2"),
+            "{part}"
+        );
+    }
+    // What the alert is about stays, as plain text.
+    assert!(text.body.contains("Target: https://pay.example/health"));
+}
+
+#[tokio::test]
+async fn a_stored_text_has_no_url_either() {
+    let w = World::new().await;
+    w.add_devices(1).await;
+    let mut alert = event(AlertKind::Problem);
+    alert.url = Some("https://vv.example/monitors/7".into());
+    relay::deliver(&w.ctx, &alert).await.unwrap();
+    let (title, body): (String, String) = w
+        .core
+        .with_conn(|c| {
+            c.query_row("SELECT title, body FROM push_events", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+        })
+        .await
+        .unwrap();
+    assert!(!title.contains("vv.example") && !body.contains("vv.example"));
+}
+
+#[tokio::test]
+async fn error_codes_from_the_relay_are_cleaned_before_they_are_shown() {
+    let w = World::new().await;
+    w.add_devices(1).await;
+    let show = |code: String| {
+        w.relay.script(move |_| {
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": code, "message": "text of the relay"}),
+            )
+        });
+    };
+    show("invalid_request".into());
+    let err = w.deliver(AlertKind::Problem).await.unwrap_err();
+    assert_eq!(err, "Push relay problem: invalid_request");
+    for hostile in [
+        "<script>alert(1)</script>".to_string(),
+        "Has Spaces And Capitals".to_string(),
+        "a".repeat(65),
+        "line\nbreak".to_string(),
+        String::new(),
+    ] {
+        show(hostile.clone());
+        let err = w.deliver(AlertKind::Problem).await.unwrap_err();
+        assert_eq!(err, "Push relay problem: http_400", "{hostile:?}");
+    }
+    // 64 characters is still fine.
+    show("a".repeat(64));
+    let err = w.deliver(AlertKind::Problem).await.unwrap_err();
+    assert!(err.ends_with(&"a".repeat(64)), "{err}");
+}
+
+#[tokio::test]
+async fn invalid_credentials_are_an_error_that_is_not_retried_by_registering() {
+    let w = World::new().await;
+    w.add_devices(1).await;
+    w.deliver(AlertKind::Problem).await.unwrap();
+    w.relay.script(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            json!({"error": "invalid_credentials", "message": "no"}),
+        )
+    });
+    let err = w.deliver(AlertKind::Problem).await.unwrap_err();
+    assert_eq!(err, "Push relay problem: invalid_credentials");
+    assert_eq!(w.relay.registrations().len(), 1, "no new registration");
+}
+
+#[tokio::test]
+async fn an_alert_two_hedgerow_channels_fire_is_pushed_once() {
+    let w = World::new().await;
+    w.add_devices(2).await;
+    let channel = |id: i64| NotificationChannel {
+        id,
+        name: format!("app {id}"),
+        kind: "hedgerow".into(),
+        config: "{}".into(),
+        active: true,
+        is_default: false,
+        created_at: "2026-10-28 00:00:00".into(),
+    };
+    let http = reqwest::Client::new();
+    let e = event(AlertKind::Problem);
+    let send_both = |e: crate::notify::alert::Alert| {
+        let (ctx, http) = (w.ctx.clone(), http.clone());
+        async move {
+            let (one, two) = (channel(1), channel(2));
+            relay::scoped(ctx, async {
+                tokio::join!(
+                    crate::notify::send(&http, &one, &e),
+                    crate::notify::send(&http, &two, &e)
+                )
+            })
+            .await
+        }
+    };
+
+    let (a, b) = send_both(e.clone()).await;
+    a.unwrap();
+    b.unwrap();
+    assert_eq!(w.relay.pushes().len(), 1);
+    // The same alert a little later is still the same alert.
+    let (a, b) = send_both(e.clone()).await;
+    a.unwrap();
+    b.unwrap();
+    assert_eq!(w.relay.pushes().len(), 1);
+    // Another alert is another push.
+    let mut next = e.clone();
+    next.occurred_at += time::Duration::seconds(1);
+    let (a, b) = send_both(next).await;
+    a.unwrap();
+    b.unwrap();
+    assert_eq!(w.relay.pushes().len(), 2);
+
+    // A failure is shared, and not remembered: the retry goes through.
+    let mut failing = e.clone();
+    failing.occurred_at += time::Duration::seconds(2);
+    w.relay.script(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({"error": "overloaded", "message": "busy"}),
+        )
+    });
+    let (a, b) = send_both(failing.clone()).await;
+    assert!(a.is_err() && b.is_err());
+    *w.relay.state.script.lock().unwrap() = None;
+    let (a, b) = send_both(failing).await;
+    a.unwrap();
+    b.unwrap();
+    assert_eq!(
+        w.relay.pushes().len(),
+        4,
+        "the failed attempt was recorded by the relay too"
+    );
 }
 
 #[test]

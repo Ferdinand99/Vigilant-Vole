@@ -655,7 +655,7 @@ desc = "Notificaciones push en la app Hedgerow"
 err_not_ready = "Las notificaciones push no están disponibles en este servidor"
 err_no_devices = "Todavía no se ha registrado ningún dispositivo. En la app Hedgerow, activa las notificaciones para esta conexión."
 err_suspended = "El relé de notificaciones push ha suspendido este servidor, así que no se envía nada. Ponte en contacto con el operador del relé."
-err_relay = "No se pudo contactar con el relé de notificaciones push: {detail}"
+err_relay = "Problema con el relé de notificaciones push: {detail}"
 
 [notif.bark]
 desc = "Push sencillo para iOS"

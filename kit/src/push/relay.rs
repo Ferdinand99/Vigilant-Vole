@@ -23,12 +23,14 @@
 //! Every request goes through the kit's guarded client
 //! ([`crate::notify::http`]); replies are read up to [`REPLY_CAP`] bytes.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use std::time::{Duration, Instant};
 
 use axum_extra::extract::cookie::Key;
 use deadpool_sqlite::Pool;
+use futures_util::future::{BoxFuture, FutureExt, Shared};
 use reqwest::Method;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -129,7 +131,21 @@ pub struct Context {
     backoff_until: Mutex<Option<Instant>>,
     /// The relay suspended this server: nothing is sent before this.
     suspended_until: Mutex<Option<Instant>>,
+    /// Deliveries by alert, so that an alert two `hedgerow` channels both
+    /// fire is pushed once ([`deliver_once`]).
+    deliveries: Mutex<HashMap<String, Delivery>>,
 }
+
+/// One alert's delivery, shared by every caller with the same alert.
+struct Delivery {
+    result: Shared<BoxFuture<'static, Result<(), String>>>,
+    /// When it succeeded; `None` while it runs.
+    done: Option<Instant>,
+}
+
+/// How long a successful delivery is remembered, to recognise the same alert
+/// arriving through a second channel.
+const REMEMBER_DELIVERED: Duration = Duration::from_secs(120);
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -160,6 +176,7 @@ impl Context {
             registering: Arc::default(),
             backoff_until: Mutex::new(None),
             suspended_until: Mutex::new(None),
+            deliveries: Mutex::new(HashMap::new()),
         })
     }
 
@@ -346,11 +363,12 @@ pub enum Failure {
 
 impl Failure {
     /// The text for the person who set the channel up ("Send test", logs).
-    /// It names codes and statuses, never a URL or a secret.
+    /// The detail is a short stable code (`rate_limited`, `timeout`, …),
+    /// never a URL, a secret or a sentence of the relay's.
     pub fn message(&self) -> String {
         match self {
             Failure::Suspended => crate::i18n::t("notif.hedgerow.err_suspended").to_string(),
-            Failure::UnknownInstance => relay_error("the relay doesn't know this server"),
+            Failure::UnknownInstance => relay_error("unknown_instance"),
             Failure::Transient(detail) | Failure::Rejected(detail) => relay_error(detail),
         }
     }
@@ -358,6 +376,21 @@ impl Failure {
 
 fn relay_error(detail: &str) -> String {
     crate::i18n::tf("notif.hedgerow.err_relay", &[("detail", detail)])
+}
+
+/// A database error: logged, and shown as a code.
+fn db_error(err: impl std::fmt::Display) -> String {
+    tracing::warn!(%err, "push: database error");
+    relay_error("database_error")
+}
+
+/// An error code from the relay as it may reach logs and the "Send test"
+/// text: at most 64 characters of `a-z` and `_`; anything else is dropped.
+fn clean_code(code: &str) -> Option<String> {
+    (!code.is_empty()
+        && code.len() <= 64
+        && code.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+    .then(|| code.to_string())
 }
 
 struct Reply {
@@ -371,9 +404,10 @@ impl Reply {
         serde_json::from_slice(&self.body).ok()
     }
 
-    /// The relay's error code (`{"error": "<code>", …}`).
+    /// The relay's error code (`{"error": "<code>", …}`), if it is one that
+    /// [`clean_code`] lets through.
     fn error_code(&self) -> Option<String> {
-        self.json()?.get("error")?.as_str().map(str::to_string)
+        clean_code(self.json()?.get("error")?.as_str()?)
     }
 
     /// The failure a non-success reply stands for.
@@ -383,13 +417,13 @@ impl Reply {
             (401, Some("unknown_instance")) => Failure::UnknownInstance,
             (403, Some("suspended")) => Failure::Suspended,
             (429 | 503, _) | (500.., _) => {
-                let what = code.unwrap_or_else(|| format!("HTTP {}", self.status));
+                let what = code.unwrap_or_else(|| format!("http_{}", self.status));
                 Failure::Transient(match self.retry_after {
-                    Some(secs) => format!("{what}, retry in {secs} s"),
+                    Some(secs) => format!("{what} retry_after={secs}"),
                     None => what,
                 })
             }
-            _ => Failure::Rejected(code.unwrap_or_else(|| format!("HTTP {}", self.status))),
+            _ => Failure::Rejected(code.unwrap_or_else(|| format!("http_{}", self.status))),
         }
     }
 }
@@ -402,15 +436,18 @@ async fn call(
     body: Option<&Value>,
     timeout: Duration,
 ) -> Result<Reply, Failure> {
-    let transient = |e: String| Failure::Transient(e);
-    let client = out::client().map_err(transient)?;
+    let client = out::client().map_err(|e| {
+        tracing::warn!(error = %e, "push: no HTTP client");
+        Failure::Transient("client_unavailable".into())
+    })?;
     // An IP in the URL never reaches the guarded resolver.
     if let Some(host) = url::Url::parse(url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))
         && let Err(err) = crate::net::check_host(&host)
     {
-        return Err(Failure::Rejected(err.to_string()));
+        tracing::warn!(%err, "push: the relay address is not allowed");
+        return Err(Failure::Rejected("address_not_allowed".into()));
     }
     let mut request = client.request(method, url).timeout(timeout);
     if let Some(token) = bearer {
@@ -419,10 +456,17 @@ async fn call(
     if let Some(body) = body {
         request = request.json(body);
     }
-    let response = request
-        .send()
-        .await
-        .map_err(|e| transient(out::describe_reqwest(e)))?;
+    let response = request.send().await.map_err(|e| {
+        let code = if e.is_timeout() {
+            "timeout"
+        } else if e.is_connect() {
+            "connect_failed"
+        } else {
+            "network_error"
+        };
+        tracing::debug!(error = %out::describe_reqwest(e), "push: request failed");
+        Failure::Transient(code.into())
+    })?;
     let status = response.status().as_u16();
     let retry_after = response
         .headers()
@@ -465,14 +509,12 @@ impl Context {
             return Err(reply.failure());
         }
         let challenge: Challenge = serde_json::from_slice(&reply.body)
-            .map_err(|_| Failure::Transient("unreadable challenge".into()))?;
+            .map_err(|_| Failure::Transient("unreadable_challenge".into()))?;
         if challenge.challenge.is_empty()
             || challenge.challenge.len() > 256
             || challenge.difficulty > MAX_DIFFICULTY
         {
-            return Err(Failure::Rejected(
-                "the relay's challenge is out of range".into(),
-            ));
+            return Err(Failure::Rejected("challenge_out_of_range".into()));
         }
 
         let cancel = Arc::new(AtomicBool::new(false));
@@ -484,10 +526,10 @@ impl Context {
         let solving = tokio::task::spawn_blocking(move || solve(&text, difficulty, &flag));
         let nonce = match tokio::time::timeout(SOLVE_LIMIT, solving).await {
             Ok(Ok(Some(nonce))) => nonce,
-            Ok(_) => return Err(Failure::Transient("proof of work failed".into())),
+            Ok(_) => return Err(Failure::Transient("pow_failed".into())),
             Err(_) => {
                 cancel.store(true, Ordering::Relaxed);
-                return Err(Failure::Transient("proof of work took too long".into()));
+                return Err(Failure::Transient("pow_timeout".into()));
             }
         };
 
@@ -511,12 +553,10 @@ impl Context {
             return Err(reply.failure());
         }
         let registration: Registration = serde_json::from_slice(&reply.body)
-            .map_err(|_| Failure::Transient("unreadable registration".into()))?;
+            .map_err(|_| Failure::Transient("unreadable_registration".into()))?;
         let credential = registration.instance_credential;
         if !credential.starts_with("hrk_") || credential.len() > 256 {
-            return Err(Failure::Rejected(
-                "the relay's credential is malformed".into(),
-            ));
+            return Err(Failure::Rejected("malformed_credential".into()));
         }
 
         let sealed = self.sealer().seal(&credential);
@@ -528,7 +568,10 @@ impl Context {
             tx.commit()
         })
         .await
-        .map_err(|e| Failure::Rejected(format!("couldn't keep the credential: {e}")))?;
+        .map_err(|e| {
+            tracing::warn!(error = %e, "push: couldn't keep the relay credential");
+            Failure::Rejected("storage_error".into())
+        })?;
         tracing::info!(product = self.product, "registered with the push relay");
         Ok(credential)
     }
@@ -536,7 +579,9 @@ impl Context {
     /// The credential for `url`: the stored one, or a new registration. A
     /// credential equal to `stale` (the relay just said it doesn't know it)
     /// doesn't count. Only one registration runs at a time and it goes on
-    /// in a task of its own, so a deadline here leaves it to finish.
+    /// in a task of its own, so a deadline here leaves it to finish. A
+    /// delivery that arrives while one runs waits for it (up to its own
+    /// deadline) and uses its credential instead of registering again.
     async fn credential(
         self: &Arc<Self>,
         url: &str,
@@ -548,22 +593,28 @@ impl Context {
         {
             return Ok(credential);
         }
-        if lock(&self.backoff_until).is_some_and(|until| Instant::now() < until) {
-            return Err(Failure::Transient(
-                "the last registration failed; trying again shortly".into(),
-            ));
+        let backed_off = || lock(&self.backoff_until).is_some_and(|until| Instant::now() < until);
+        if backed_off() {
+            return Err(Failure::Transient("registration_backoff".into()));
         }
-        let Ok(guard) = self.registering.clone().try_lock_owned() else {
-            return Err(Failure::Transient("registration in progress".into()));
+        // One registration at a time: a delivery that finds one running
+        // waits for it, then looks at what it left.
+        let waiting = deadline.saturating_duration_since(Instant::now());
+        let Ok(guard) = tokio::time::timeout(waiting, self.registering.clone().lock_owned()).await
+        else {
+            return Err(Failure::Transient("registration_pending".into()));
         };
-        let (me, url, stale) = (self.clone(), url.to_string(), stale.map(str::to_string));
+        if let Some(credential) = self.stored_credential(url).await
+            && Some(credential.as_str()) != stale
+        {
+            return Ok(credential);
+        }
+        if backed_off() {
+            return Err(Failure::Transient("registration_backoff".into()));
+        }
+        let (me, url) = (self.clone(), url.to_string());
         let task = tokio::spawn(async move {
             let _guard = guard;
-            if let Some(credential) = me.stored_credential(&url).await
-                && Some(credential.as_str()) != stale.as_deref()
-            {
-                return Ok(credential);
-            }
             let result = me.register(&url).await;
             *lock(&me.backoff_until) = match &result {
                 Ok(_) => None,
@@ -577,10 +628,8 @@ impl Context {
         let remaining = deadline.saturating_duration_since(Instant::now());
         match tokio::time::timeout(remaining, task).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(Failure::Transient("registration task failed".into())),
-            Err(_) => Err(Failure::Transient(
-                "registration is taking long; it goes on in the background".into(),
-            )),
+            Ok(Err(_)) => Err(Failure::Transient("registration_task_failed".into())),
+            Err(_) => Err(Failure::Transient("registration_pending".into())),
         }
     }
 }
@@ -662,7 +711,7 @@ async fn send_batch(
     let results = reply
         .json()
         .and_then(|v| v.get("results").and_then(Value::as_array).cloned())
-        .ok_or_else(|| Failure::Transient("unreadable reply".into()))?;
+        .ok_or_else(|| Failure::Transient("unreadable_reply".into()))?;
     // A short answer leaves the rest unknown: treat them as unavailable.
     Ok((0..handles.len())
         .map(|i| results.get(i).map_or(Status::Unavailable, Status::parse))
@@ -683,18 +732,21 @@ struct Tally {
 }
 
 impl Tally {
-    fn record(&mut self, handles: &[String], statuses: Vec<Status>) {
+    /// `strict`: the statuses `limited` and `unavailable` count against the
+    /// delivery. They don't for handles that never worked (see [`deliver`]).
+    fn record(&mut self, handles: &[String], statuses: Vec<Status>, strict: bool) {
         for (handle, status) in handles.iter().zip(statuses) {
             match status {
                 Status::Accepted => self.accepted.push(handle.clone()),
                 Status::Gone => self.gone.push(handle.clone()),
                 Status::Duplicate => self.duplicate += 1,
                 Status::UnsupportedKind => self.unsupported += 1,
-                Status::Limited(retry) => {
+                Status::Limited(retry) if strict => {
                     self.limited += 1;
                     self.retry_after = self.retry_after.max(retry);
                 }
-                Status::Unavailable => self.unavailable += 1,
+                Status::Unavailable if strict => self.unavailable += 1,
+                Status::Limited(_) | Status::Unavailable => {}
             }
         }
     }
@@ -704,23 +756,83 @@ impl Tally {
     }
 }
 
+/// Most handles in a request that holds handles which never worked. The
+/// relay refuses a whole request that presents too many handles it doesn't
+/// know (20 an hour), so the ones nobody has confirmed go in small requests
+/// of their own, after the proven ones.
+pub const UNPROVEN_BATCH: usize = 5;
+
+/// Delivers `event` to every registered device, once per alert even if
+/// several `hedgerow` channels fire it: the second caller waits for the
+/// first and gets the same result. A success is remembered for two minutes,
+/// a failure is not (a product's retry goes through).
+pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
+    let key = format!(
+        "{:?}|{}|{:?}|{}|{}",
+        event.kind,
+        event.event,
+        event.subject_id,
+        event.subject,
+        event.occurred_at.unix_timestamp_nanos()
+    );
+    let shared = {
+        let mut deliveries = lock(&ctx.deliveries);
+        deliveries.retain(|_, d| d.done.is_none_or(|at| at.elapsed() < REMEMBER_DELIVERED));
+        match deliveries.get(&key) {
+            Some(d) => d.result.clone(),
+            None => {
+                let (me, alert) = (ctx.clone(), event.clone());
+                let result = async move { deliver(&me, &alert).await }.boxed().shared();
+                deliveries.insert(
+                    key.clone(),
+                    Delivery {
+                        result: result.clone(),
+                        done: None,
+                    },
+                );
+                result
+            }
+        }
+    };
+    let result = shared.await;
+    let mut deliveries = lock(&ctx.deliveries);
+    match (&result, deliveries.get_mut(&key)) {
+        (Ok(()), Some(d)) => {
+            d.done.get_or_insert_with(Instant::now);
+        }
+        (Err(_), _) => {
+            deliveries.remove(&key);
+        }
+        _ => {}
+    }
+    result
+}
+
 /// Delivers `event` to every registered device. See the module docs for the
 /// outcome. The error is safe to show: no URL, no handle, no credential.
+///
+/// Handles that have been accepted before ("proven") go first, 25 to a
+/// request. Handles never accepted ("unproven": a fresh install, or a junk
+/// handle a token registered) go last, [`UNPROVEN_BATCH`] to a request, and
+/// when proven handles exist, nothing that goes wrong with them (a `429` for
+/// unknown handles, a failed request) fails the delivery or stops the proven
+/// requests, which have already been sent. With no proven handle at all, the
+/// unproven ones count like any other.
 pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
     if ctx.is_suspended() {
         return Err(Failure::Suspended.message());
     }
     let sealer = Sealer::new(&ctx.key, devices::PURPOSE);
-    let (handles, unreadable) = db::interact(&ctx.pool, move |c| devices::handles(c, &sealer))
+    let (list, unreadable) = db::interact(&ctx.pool, move |c| devices::handles(c, &sealer))
         .await
-        .map_err(|e| relay_error(&e.to_string()))?;
+        .map_err(db_error)?;
     if unreadable > 0 {
         tracing::warn!(
             count = unreadable,
             "push devices skipped: their handles can't be opened with this instance key"
         );
     }
-    if handles.is_empty() {
+    if list.is_empty() {
         // Nobody registered yet: nothing to retry. A test message says so.
         return if event.kind == AlertKind::Test {
             Err(crate::i18n::t("notif.hedgerow.err_no_devices").to_string())
@@ -728,10 +840,32 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
             Ok(())
         };
     }
+    let proven: Vec<String> = list.iter().filter(|d| d.1).map(|d| d.0.clone()).collect();
+    let unproven: Vec<String> = list.iter().filter(|d| !d.1).map(|d| d.0.clone()).collect();
+    tracing::info!(
+        proven = proven.len(),
+        unproven = unproven.len(),
+        "pushing to devices"
+    );
+    // Without a proven handle the unproven ones are all there is.
+    let strict_unproven = proven.is_empty();
+    // `(handles, counts against the delivery)`
+    let batches: Vec<(&[String], bool)> = proven
+        .chunks(MAX_HANDLES)
+        .map(|b| (b, true))
+        .chain(
+            unproven
+                .chunks(UNPROVEN_BATCH)
+                .map(|b| (b, strict_unproven)),
+        )
+        .collect();
 
     let started = Instant::now();
     let deadline = started + ctx.deadline;
-    let url = ctx.relay_url().await.map_err(|e| relay_error(&e))?;
+    let url = ctx.relay_url().await.map_err(|e| {
+        tracing::warn!(error = %e, "push: invalid relay URL");
+        relay_error("invalid_relay_url")
+    })?;
 
     // The text goes in first: the app fetches it as soon as the push lands.
     let reference = events::new_ref();
@@ -739,7 +873,7 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
     let ref_for_db = reference.clone();
     db::interact(&ctx.pool, move |c| events::insert(c, &ref_for_db, &stored))
         .await
-        .map_err(|e| relay_error(&e.to_string()))?;
+        .map_err(db_error)?;
 
     let mut credential = ctx
         .credential(&url, None, deadline)
@@ -748,18 +882,22 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
 
     let mut tally = Tally::default();
     let mut registered_again = false;
-    'batches: for batch in handles.chunks(MAX_HANDLES) {
+    'batches: for (batch, strict) in batches {
         let event_id = new_uuid();
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                tally.fail(Failure::Transient("timed out".into()));
+                if strict {
+                    tally.fail(Failure::Transient("timeout".into()));
+                } else {
+                    tracing::warn!("push: out of time before the unproven devices");
+                }
                 break 'batches;
             }
             let timeout = remaining.min(out::TIMEOUT);
             match send_batch(&url, &credential, batch, &reference, &event_id, timeout).await {
                 Ok(statuses) => {
-                    tally.record(batch, statuses);
+                    tally.record(batch, statuses, strict);
                     break;
                 }
                 Err(Failure::UnknownInstance) if !registered_again => {
@@ -782,8 +920,22 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
                     break 'batches;
                 }
                 Err(failure) => {
-                    tracing::warn!(?failure, "push batch failed");
-                    tally.fail(failure);
+                    if failure == Failure::Rejected("invalid_credentials".into()) {
+                        tracing::error!(
+                            "the push relay refused this server's credential (invalid_credentials); \
+                             the stored credential is wrong, and registering again needs an operator"
+                        );
+                    }
+                    if strict {
+                        tracing::warn!(?failure, "push batch failed");
+                        tally.fail(failure);
+                    } else {
+                        tracing::warn!(
+                            ?failure,
+                            handles = batch.len(),
+                            "push to unproven devices failed; the delivery to the proven ones stands"
+                        );
+                    }
                     break 'batches;
                 }
             }
@@ -826,12 +978,12 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
     }
     if tally.limited + tally.unavailable > 0 {
         let detail = match tally.retry_after {
-            Some(secs) => format!("limited or unavailable, retry in {secs} s"),
-            None => "limited or unavailable".to_string(),
+            Some(secs) => format!("limited retry_after={secs}"),
+            None => "limited_or_unavailable".to_string(),
         };
         return Err(relay_error(&detail));
     }
-    // Everything was gone, already sent or not supported: nothing a retry
-    // would change.
+    // Everything was gone, already sent, not supported or unproven and
+    // failing: nothing a retry would change.
     Ok(())
 }
