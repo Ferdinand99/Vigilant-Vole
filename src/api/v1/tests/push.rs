@@ -461,3 +461,69 @@ async fn maintenance_notices_go_to_the_hedgerow_channel_too() {
         "{text}"
     );
 }
+
+#[tokio::test]
+async fn a_session_post_to_the_push_routes_needs_the_same_origin() {
+    let h = harness().await;
+    let mut b = Browser::login(&h, "viewer").await;
+    // A cross-site form post (simple content type, no Origin) is refused, as
+    // for every other session write.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/push/devices")
+        .header(header::CONTENT_TYPE, "text/plain");
+    let res = b
+        .send(req, ReqBody::from(json!({"handle": HANDLE}).to_string()))
+        .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    // The same request from our own pages gets past the guard.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/push/devices")
+        .header(header::ORIGIN, "http://vole.test")
+        .header(header::CONTENT_TYPE, "application/json");
+    let res = b
+        .send(req, ReqBody::from(json!({"handle": HANDLE}).to_string()))
+        .await;
+    assert_ne!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn an_edit_of_an_active_hedgerow_channel_works_when_two_are_active() {
+    let h = harness().await;
+    // Two active ones can exist already (config as code, an import).
+    let ids = h
+        .state
+        .with_conn(|c| {
+            let mut ids = Vec::new();
+            for name in ["Phones", "Tablets", "Spare"] {
+                ids.push(crate::db::notifications::insert_channel(
+                    c, name, "hedgerow", "{}", false,
+                )?);
+            }
+            crate::db::notifications::set_active(c, ids[2], false)?;
+            Ok(ids)
+        })
+        .await
+        .unwrap();
+    let (status, body) = h
+        .json(
+            Method::PATCH,
+            &format!("/api/v1/notification-channels/{}", ids[0]),
+            &h.editor,
+            Some(json!({"name": "Renamed"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["name"], "Renamed");
+    // Switching the paused one on is still refused.
+    let (status, body) = h
+        .json(
+            Method::PATCH,
+            &format!("/api/v1/notification-channels/{}", ids[2]),
+            &h.editor,
+            Some(json!({"active": true})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+}
