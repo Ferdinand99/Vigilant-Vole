@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.15.0...v0.15.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* check for one active Hedgerow app channel only when a channel becomes active ([81c16df](https://github.com/Ferdinand99/Vigilant-Vole/commit/81c16df04c43f205533a683d8213663124ca013f))
+* the rate_limited error covers every 429 in the API docs, not only push ([#74](https://github.com/Ferdinand99/Vigilant-Vole/issues/74)) ([93a806e](https://github.com/Ferdinand99/Vigilant-Vole/commit/93a806e2a68a9b4dda5097377404d7609cb23bf6))
+
 ## [0.15.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.14.0...v0.15.0) (2026-10-28)
 
 
