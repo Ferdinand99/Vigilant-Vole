@@ -463,6 +463,32 @@ async fn maintenance_notices_go_to_the_hedgerow_channel_too() {
 }
 
 #[tokio::test]
+async fn a_session_post_to_the_push_routes_needs_the_same_origin() {
+    let h = harness().await;
+    let mut b = Browser::login(&h, "viewer").await;
+    // A cross-site form post (simple content type, no Origin) is refused, as
+    // for every other session write.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/push/devices")
+        .header(header::CONTENT_TYPE, "text/plain");
+    let res = b
+        .send(req, ReqBody::from(json!({"handle": HANDLE}).to_string()))
+        .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    // The same request from our own pages gets past the guard.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/push/devices")
+        .header(header::ORIGIN, "http://vole.test")
+        .header(header::CONTENT_TYPE, "application/json");
+    let res = b
+        .send(req, ReqBody::from(json!({"handle": HANDLE}).to_string()))
+        .await;
+    assert_ne!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn an_edit_of_an_active_hedgerow_channel_works_when_two_are_active() {
     let h = harness().await;
     // Two active ones can exist already (config as code, an import).
