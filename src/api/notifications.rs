@@ -550,8 +550,12 @@ async fn update(
     let saved = state
         .with_conn(move |c| {
             let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            // Only a channel that becomes active needs the check: two active
+            // ones can already exist (config as code, an import), and then
+            // the rest of an edit must still go through.
             if kind == db_notifications::HEDGEROW
                 && active
+                && !db_notifications::channel_active(&tx, id)?
                 && let Some(other) = db_notifications::other_active_hedgerow(&tx, Some(id))?
             {
                 return Ok(Err(other));
@@ -635,6 +639,7 @@ async fn toggle_active(
             let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             if active
                 && hedgerow
+                && !db_notifications::channel_active(&tx, id)?
                 && let Some(other) = db_notifications::other_active_hedgerow(&tx, Some(id))?
             {
                 return Ok(Some(other));
@@ -1189,5 +1194,53 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let reply = body_text(res).await;
         assert_eq!(app.channels().await.len(), 3, "{reply}");
+    }
+
+    #[tokio::test]
+    async fn the_one_active_hedgerow_check_runs_only_when_a_channel_becomes_active() {
+        let app = app().await;
+        // Two active ones can exist already (config as code, an import).
+        let (a, b, spare) = app
+            .state
+            .with_conn(|c| {
+                let a = db_notifications::insert_channel(c, "Phones", "hedgerow", "{}", false)?;
+                let b = db_notifications::insert_channel(c, "Tablets", "hedgerow", "{}", false)?;
+                let spare = db_notifications::insert_channel(c, "Spare", "hedgerow", "{}", false)?;
+                db_notifications::set_active(c, spare, false)?;
+                Ok((a, b, spare))
+            })
+            .await
+            .unwrap();
+
+        // Renaming an active one still works, in the form and with the switch.
+        let res = app
+            .htmx_post(
+                &format!("/settings/notifications/{a}"),
+                "kind=hedgerow&name=Renamed&active=on",
+            )
+            .await;
+        assert_ne!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let channels = app.channels().await;
+        assert!(
+            channels.iter().any(|c| c.0 == a && c.1 == "Renamed" && c.2),
+            "{channels:?}"
+        );
+        let res = app
+            .htmx_post(
+                &format!("/settings/notifications/{b}/active"),
+                "active=true",
+            )
+            .await;
+        assert!(res.headers().get("hx-retarget").is_none());
+
+        // Activating the inactive one is refused.
+        let res = app
+            .htmx_post(
+                &format!("/settings/notifications/{spare}/active"),
+                "active=true",
+            )
+            .await;
+        assert_eq!(res.headers()["hx-retarget"], "#channels");
+        assert!(app.channels().await.iter().any(|c| c.0 == spare && !c.2));
     }
 }

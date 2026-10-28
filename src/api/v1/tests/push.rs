@@ -461,3 +461,43 @@ async fn maintenance_notices_go_to_the_hedgerow_channel_too() {
         "{text}"
     );
 }
+
+#[tokio::test]
+async fn an_edit_of_an_active_hedgerow_channel_works_when_two_are_active() {
+    let h = harness().await;
+    // Two active ones can exist already (config as code, an import).
+    let ids = h
+        .state
+        .with_conn(|c| {
+            let mut ids = Vec::new();
+            for name in ["Phones", "Tablets", "Spare"] {
+                ids.push(crate::db::notifications::insert_channel(
+                    c, name, "hedgerow", "{}", false,
+                )?);
+            }
+            crate::db::notifications::set_active(c, ids[2], false)?;
+            Ok(ids)
+        })
+        .await
+        .unwrap();
+    let (status, body) = h
+        .json(
+            Method::PATCH,
+            &format!("/api/v1/notification-channels/{}", ids[0]),
+            &h.editor,
+            Some(json!({"name": "Renamed"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["name"], "Renamed");
+    // Switching the paused one on is still refused.
+    let (status, body) = h
+        .json(
+            Method::PATCH,
+            &format!("/api/v1/notification-channels/{}", ids[2]),
+            &h.editor,
+            Some(json!({"active": true})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+}

@@ -52,6 +52,19 @@ pub fn other_active_hedgerow(
     .optional()
 }
 
+/// Whether the channel is active now. `false` when it doesn't exist. Read it
+/// inside the transaction that then changes the channel.
+pub fn channel_active(conn: &Connection, id: i64) -> rusqlite::Result<bool> {
+    Ok(conn
+        .query_row(
+            "SELECT active FROM notification_channels WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false))
+}
+
 /// Updates name, config and the default flag (the kind never changes).
 /// Returns `false` when the channel doesn't exist. Turning `is_default` on
 /// here does not link existing monitors — call [`apply_to_all`] for that.

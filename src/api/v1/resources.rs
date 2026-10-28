@@ -413,8 +413,12 @@ async fn update_channel(
     let updated = state
         .with_conn(move |c| {
             let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            // Only a channel that becomes active needs the check: two active
+            // ones can already exist (config as code, an import), and then
+            // the rest of an edit must still go through.
             if active
                 && hedgerow
+                && !db_notifications::channel_active(&tx, id)?
                 && let Some(other) = db_notifications::other_active_hedgerow(&tx, Some(id))?
             {
                 return Ok(Err(other));
