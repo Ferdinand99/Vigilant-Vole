@@ -282,6 +282,8 @@ pk_exists = "Această cheie de acces este deja salvată pentru contul tău."
 pk_failed = "Cheia de acces nu a putut fi salvată. Încearcă din nou."
 reauth_needed = "Introdu parola ca să confirmi această modificare."
 your_password = "Parola ta"
+confirm_its_you = "Confirmă că ești tu"
+confirm_its_you_help = "Confirmă că ești tu ca să faci această modificare."
 revoke_tokens = "Revocă și tokenurile mele API"
 revoke_tokens_help = "Scripturile care le folosesc nu vor mai funcționa până creezi altele noi."
 

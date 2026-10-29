@@ -281,6 +281,8 @@ pk_exists = "Esta llave de acceso ya está guardada en tu cuenta."
 pk_failed = "No se pudo guardar la llave de acceso. Inténtalo de nuevo."
 reauth_needed = "Introduce tu contraseña para confirmar este cambio."
 your_password = "Tu contraseña"
+confirm_its_you = "Confirma que eres tú"
+confirm_its_you_help = "Confirma que eres tú para hacer este cambio."
 revoke_tokens = "Revocar también mis tokens de API"
 revoke_tokens_help = "Los scripts que los usan dejarán de funcionar hasta que crees otros nuevos."
 

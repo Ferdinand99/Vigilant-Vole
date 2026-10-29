@@ -264,6 +264,8 @@ pk_exists = "此密碼金鑰已儲存在你的帳號中。"
 pk_failed = "無法儲存密碼金鑰。請再試一次。"
 reauth_needed = "請輸入密碼以確認此變更。"
 your_password = "你的密碼"
+confirm_its_you = "確認是你本人"
+confirm_its_you_help = "請確認是你本人，以進行此變更。"
 revoke_tokens = "同時撤銷我的 API 權杖"
 revoke_tokens_help = "使用這些權杖的腳本會停止運作，直到你建立新的權杖。"
 

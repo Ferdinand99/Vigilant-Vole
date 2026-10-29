@@ -19,7 +19,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
-use crate::auth::{self, CurrentUser, Role};
+use crate::auth::{self, CurrentUser, Role, reauth};
 use crate::db::api_tokens as db_tokens;
 use crate::db::passkeys as db_passkeys;
 use crate::db::users::{self as db_users, User, UserChangeError};
@@ -75,6 +75,11 @@ struct UsersTemplate {
     ctx: PageCtx,
     users: Vec<UserRow>,
     roles: &'static [Role],
+    /// Where the sheets ask for the admin's password.
+    reauth: reauth::View,
+    /// The kit sets no passwords (`CredentialMode::External`): no new user
+    /// with a temporary password, no password reset.
+    external: bool,
 }
 
 pub(super) async fn list(
@@ -99,12 +104,15 @@ pub(super) async fn list(
         "users",
     )
     .await;
+    let reauth = reauth::View::new(&jar, &user, "/settings/users");
     Ok((
         jar,
         HtmlTemplate(UsersTemplate {
             ctx,
             users: rows,
             roles: Role::all(),
+            external: reauth.external,
+            reauth,
         }),
     )
         .into_response())
@@ -183,7 +191,7 @@ pub(super) async fn create(
     // A new administrator outlasts a stolen session: confirm it's you.
     if role == Role::Admin
         && let Err(msg) =
-            super::security::require_password(&core, &user, form.current_password).await?
+            super::security::require_password(&core, &user, &jar, form.current_password).await?
     {
         return Ok(back(jar, "error", msg));
     }
@@ -236,7 +244,7 @@ pub(super) async fn update(
             .is_some_and(|target| target.role != Role::Admin);
         if promoting
             && let Err(msg) =
-                super::security::require_password(&core, &user, form.current_password).await?
+                super::security::require_password(&core, &user, &jar, form.current_password).await?
         {
             return Ok(back(jar, "error", msg));
         }
@@ -299,7 +307,8 @@ pub(super) async fn reset_password(
             crate::i18n::tf("users.err_temp_password", &[("problem", problem)]),
         ));
     }
-    if let Err(msg) = super::security::require_password(&core, &user, form.current_password).await?
+    if let Err(msg) =
+        super::security::require_password(&core, &user, &jar, form.current_password).await?
     {
         return Ok(back(jar, "error", msg));
     }
@@ -338,7 +347,8 @@ pub(super) async fn reset_two_factor(
             change_message(UserChangeError::NotFound),
         ));
     };
-    if let Err(msg) = super::security::require_password(&core, &user, form.current_password).await?
+    if let Err(msg) =
+        super::security::require_password(&core, &user, &jar, form.current_password).await?
     {
         return Ok(back(jar, "error", msg));
     }

@@ -43,6 +43,14 @@
 
 <section class="section" aria-labelledby="password-title">
   {% call m::section_head(tr("login.password"), tr("sec.password_sub"), "password-title") %}{% endcall %}
+  {%- if let Some(path) = password_path %}
+  <div class="card stack-sm">
+    <div class="cluster cluster-between">
+      <span></span>
+      <a class="btn btn-secondary" href="{{ path }}">{{ tr("sec.change_password") }}</a>
+    </div>
+  </div>
+  {%- else %}
   <form class="card stack-sm" method="post" action="/settings/security/password">
     <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden>
     <div class="field">
@@ -67,6 +75,7 @@
       {{ m::button(tr("sec.change_password"), "secondary") }}
     </div>
   </form>
+  {%- endif %}
 </section>
 
 <section class="section" id="two-factor" aria-labelledby="tfa-title">
@@ -204,10 +213,14 @@
   <div class="sheet-body">
     <form id="new-codes-form" class="form" method="post" action="/settings/security/2fa/recovery">
       <p class="muted">{{ tr("sec.codes_stop") }}</p>
+      {%- if reauth.external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
       <div class="field">
         <label class="label" for="f-codes-password">{{ tr("sec.current_password") }}</label>
         <input id="f-codes-password" name="password" type="password" required maxlength="1024" autocomplete="current-password">
       </div>
+      {%- endif %}
     </form>
   </div>
   <footer class="sheet-foot">
@@ -225,10 +238,14 @@
   <div class="sheet-body">
     <form id="disable-2fa-form" class="form" method="post" action="/settings/security/2fa/disable">
       <p class="muted">{{ tr("sec.disable_text") }}</p>
+      {%- if reauth.external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
       <div class="field">
         <label class="label" for="f-disable-password">{{ tr("sec.current_password") }}</label>
         <input id="f-disable-password" name="password" type="password" required maxlength="1024" autocomplete="current-password">
       </div>
+      {%- endif %}
       <div class="field">
         <label class="label" for="f-disable-code">{{ tr("sec.disable_code") }}</label>
         <input id="f-disable-code" name="code" type="text" required autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="32">
@@ -255,10 +272,14 @@
         <label class="label" for="f-passkey-name">{{ tr("sec.pk_name") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
         <input id="f-passkey-name" name="name" type="text" maxlength="60" autocomplete="off" placeholder="{{ tr1("sec.pk_default_name", "n", passkeys.len() + 1) }}…">
       </div>
+      {%- if reauth.external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
       <div class="field">
         <label class="label" for="f-passkey-password">{{ tr("sec.current_password") }}</label>
         <input id="f-passkey-password" name="password" type="password" required maxlength="1024" autocomplete="current-password">
       </div>
+      {%- endif %}
     </form>
   </div>
   <footer class="sheet-foot">
@@ -298,10 +319,14 @@
   <div class="sheet-body">
     <form id="delete-passkey-{{ p.id }}-form" class="form" method="post" action="/settings/security/passkeys/{{ p.id }}/delete">
       <p class="help">{{ tr("sec.pk_delete_msg") }}</p>
+      {%- if reauth.external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
       <div class="field">
         <label class="label" for="f-passkey-{{ p.id }}-password">{{ tr("sec.current_password") }}</label>
         <input id="f-passkey-{{ p.id }}-password" name="current_password" type="password" required maxlength="1024" autocomplete="current-password">
       </div>
+      {%- endif %}
     </form>
   </div>
   <footer class="sheet-foot">

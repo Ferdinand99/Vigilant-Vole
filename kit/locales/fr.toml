@@ -281,6 +281,8 @@ pk_exists = "Cette clé d’accès est déjà enregistrée pour ce compte."
 pk_failed = "Impossible d’enregistrer la clé d’accès. Réessayer."
 reauth_needed = "Saisissez votre mot de passe pour confirmer cette modification."
 your_password = "Votre mot de passe"
+confirm_its_you = "Confirmez que c’est bien vous"
+confirm_its_you_help = "Confirmez que c’est bien vous pour effectuer cette modification."
 revoke_tokens = "Révoquer aussi mes jetons d’API"
 revoke_tokens_help = "Les scripts qui les utilisent cesseront de fonctionner jusqu’à ce que vous en créiez de nouveaux."
 

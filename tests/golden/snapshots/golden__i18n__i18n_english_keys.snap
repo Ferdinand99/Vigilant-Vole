@@ -1729,6 +1729,8 @@ sec.codes_left.other
 sec.codes_low
 sec.codes_stop
 sec.codes_warning
+sec.confirm_its_you
+sec.confirm_its_you_help
 sec.confirm_new
 sec.copy_all
 sec.create_codes

@@ -206,6 +206,17 @@
 <span class="avatar{% if !size.is_empty() %} avatar-{{ size }}{% endif %}" aria-hidden="true">{{ initials }}</span>
 {%- endmacro %}
 
+{#- Stands for a password field with external credentials: asks for a fresh
+    confirmation through the product's page (nothing once it is given). -#}
+{% macro reauth_confirm(fresh, url) -%}
+{%- if !fresh %}
+<div class="field">
+  <p class="help">{{ tr("sec.confirm_its_you_help") }}</p>
+  <a class="btn btn-secondary btn-sm" href="{{ url }}">{{ tr("sec.confirm_its_you") }}</a>
+</div>
+{%- endif %}
+{%- endmacro %}
+
 {#- Read-only value with a copy button (API tokens shown once). -#}
 {% macro copy_field(id, value, label = "") -%}
 <div class="copy-field">

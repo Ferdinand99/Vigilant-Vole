@@ -99,7 +99,7 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
 | `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `PUSH`, `migrate_with` + `MigrateOptions`) |
-| `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `pages`: the shared pages and their routers |
+| `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `reauth`: the fresh-confirmation grant of external credentials; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, `session_write_allowed`/`session_write_guard`); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
 | `page` | `PageCtx`, `UserView`, flash messages, `Ui` (`NavItem`, `SettingsTab`, `TabAccess`) |
@@ -173,7 +173,7 @@ No test can forget it.
 | `webhook` | how the webhook provider names what alerts are about: the default body's fields, the body template's placeholders, the URL field's example (`notify::webhook::Wording`; `Wording::NEUTRAL` says `subject` and `duration`) | `subject: "monitor"`, `duration: "downtime"`, `url_example: "https://example.com/hooks/vigilant…"` |
 | `token_scopes` | the product's own API token scopes (see "API token scopes") | `&[]` |
 | `general` | the kit's General page with the product's fields (see "General settings"); `None` for none or the product's own | `None` (its own page) |
-| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials`, `invites`, `sign_in_codes`. `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
+| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials` (`CredentialMode::Plain`, or `External` for a product that signs people in on its own pages: see "External credentials"), `invites`, `sign_in_codes`. `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
 
 `DocsSpec` holds the routes, the OpenAPI texts, the error example and the
 `curl` placeholders. It also holds the product's Markdown sections and, for
@@ -676,6 +676,94 @@ username. A few unrelated words work well."); the strength meter
 refused password names the rule it broke (`users.err_password_short`,
 `err_password_long`, `err_password_username`, `err_password_weak`). Usernames
 are 1–64 characters of letters, digits, `.`, `_`, `-` and `@`.
+
+## External credentials
+
+Some products never let the server see a password: they sign people in on
+their own pages (a zero-knowledge password manager that proves the password
+in the browser, say) and only need the kit for the session, the account
+pages and the admin panel. They set
+
+```rust
+features: &KitFeatures {
+    credentials: CredentialMode::External(&ExternalCredentials {
+        login_path: "/vault/login",
+        setup_path: "/vault/setup",
+        password_path: "/vault/password",
+        reauth_path: "/vault/reauth",
+    }),
+    ..KitFeatures::DEFAULT
+},
+```
+
+The four paths are routes of the product (absolute, no query; `config::check`
+refuses anything else at start-up). `CredentialMode::Plain`, the default, is
+the kit as described above and nothing in it changes.
+
+### What the kit's pages do
+
+| Page | In `External` mode |
+| --- | --- |
+| `GET /login` | `303` to `login_path`, with `?next=` when the kit would have followed the `next` it got (a plain local path; anything else is dropped) |
+| `POST /login` | `404` |
+| `/setup` (GET and POST) | `303` to `setup_path`; a query string (the setup token the start-up message links with) goes along |
+| Security page, Password | a link to `password_path` in place of the form; `POST /settings/security/password` is `404` |
+| Users page | "New user" (a temporary password) and "Reset password" are hidden; `POST /settings/users` and `POST /settings/users/{id}/password` are `404`. A product replaces them with invitations and sign-in codes |
+| `/login/2fa`, `/logout`, `/login/passkey` and `/login/passkey/options` | as before |
+
+Signing in with a passkey stays: it needs no password and gives a session
+(the same as the kit's other products). A product whose secrets are held
+only by the client has to know that a passkey session does not unlock them.
+
+### Confirming it's you again
+
+Anything that asked for the current password (adding or removing a
+passkey, switching two-factor authentication off, new recovery codes, a
+write or never-expiring token, making someone an administrator, resetting
+someone's two-factor authentication) asks for a **grant**
+instead. Without one, the sheet shows "Confirm it’s you", a link to
+`reauth_path?next=<the page>`, and the change is refused with the same
+message when it is posted anyway; a password sent along counts for nothing.
+
+The product's page at `reauth_path` confirms the signed-in user in its own
+way and finishes with
+
+```rust
+let jar = vole_kit::auth::reauth::grant(jar, user.id, session_version, secure_cookies(&headers));
+(jar, Redirect::to(&session::sanitize_next(next)))
+```
+
+The grant is the cookie `<prefix>_reauth` (the session cookie's name with
+`_session` replaced: `vv_session` gives `vv_reauth`), signed with the
+session key, `r1.<user id>.<session version>.<issued at>`. It lasts five
+minutes (`reauth::TTL_SECS`) and is not used up by a change, so a few
+changes in a row take one confirmation. It is `HttpOnly`,
+`SameSite=Strict`, `Path=/` and `Secure` over https. It counts only for the
+user and the session version it was issued for; signing out everywhere (which
+moves the version) ends it, and so do signing out and `login_jar`. The
+version of the signed-in session is `resolve_session`'s
+`SessionClaims::version`. `reauth::is_fresh(jar, user_id, session_version)`
+tells whether one is held, for the product's own sensitive routes;
+`reauth::grant_at` and `is_fresh_at` take the time, for tests.
+
+### What a product uses from the kit
+
+* `auth::guard::login_jar(jar, user_id, session_version, secure)`: the
+  session cookie, after the product's own sign-in (and its second factor,
+  `auth::pages::verify_second_factor`).
+* `Core::limits` (`SignInLimits`: `account`, `ip`, `passkey`): the same
+  throttles as the kit's own sign-in.
+* `auth::pages::check_setup_token(core, headers, peer, given)`: the setup
+  token check of the kit's own setup page (a wrong token counts against the
+  address, `SetupTokenError` says why it was refused). Call it first on the
+  product's setup page.
+* `auth::pages::insert_first_admin(core, username, password_hash, site_name,
+  timezone)`: creates the first admin, the site name and the time zone in
+  one transaction; `None` if someone else was first. `password_hash` is
+  opaque to the kit. A product that keeps the credential elsewhere stores a
+  marker such as `"!external"`: it is not a hash, so `verify_password` never
+  matches it.
+* `auth::reauth::grant` and `is_fresh`, above.
 
 ## Passkeys
 

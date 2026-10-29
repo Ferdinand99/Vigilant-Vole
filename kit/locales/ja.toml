@@ -263,6 +263,8 @@ pk_exists = "このパスキーはすでにアカウントに保存されてい�
 pk_failed = "パスキーを保存できませんでした。もう一度お試しください。"
 reauth_needed = "この変更を確認するため、パスワードを入力してください。"
 your_password = "あなたのパスワード"
+confirm_its_you = "ご本人であることを確認"
+confirm_its_you_help = "この変更を行うには、ご本人であることを確認してください。"
 revoke_tokens = "自分のAPIトークンも無効化する"
 revoke_tokens_help = "それらを使うスクリプトは、新しいトークンを作成するまで動かなくなります。"
 

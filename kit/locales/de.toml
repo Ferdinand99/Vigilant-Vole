@@ -273,6 +273,8 @@ pk_exists = "Dieser Passkey ist für dein Konto bereits gespeichert."
 pk_failed = "Der Passkey konnte nicht gespeichert werden. Versuche es erneut."
 reauth_needed = "Gib dein Passwort ein, um diese Änderung zu bestätigen."
 your_password = "Dein Passwort"
+confirm_its_you = "Bestätige, dass du es bist"
+confirm_its_you_help = "Bestätige, dass du es bist, um diese Änderung vorzunehmen."
 revoke_tokens = "Meine API-Tokens ebenfalls widerrufen"
 revoke_tokens_help = "Skripte, die sie verwenden, funktionieren nicht mehr, bis du neue erstellst."
 

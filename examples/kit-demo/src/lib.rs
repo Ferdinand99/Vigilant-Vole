@@ -40,7 +40,7 @@ use sha2::Digest as _;
 use tokio::sync::broadcast;
 use vole_kit::auth::{CurrentUser, ExtraScope, Role, guard, pages};
 use vole_kit::components::{BarRow, CodeLine, LineChart, share};
-use vole_kit::config::{KitConfig, KitFeatures};
+use vole_kit::config::{CredentialMode, ExternalCredentials, KitConfig, KitFeatures};
 use vole_kit::db::migrate::{self, MigrateOptions, MigrationError, MigrationSet};
 use vole_kit::db::{PoolOptions, build_pool_with, migrate_with};
 use vole_kit::docs::{Credential, DocsSpec, HeaderScheme, RATE_LIMITED, r};
@@ -322,6 +322,21 @@ pub static KIT_NO_API: KitConfig = KitConfig {
     features: &KitFeatures {
         api_tokens: false,
         api_docs: false,
+        ..KitFeatures::DEFAULT
+    },
+    ..KIT
+};
+
+/// The demo for a product that signs people in on its own pages
+/// (`CredentialMode::External`; `tests/external_credentials.rs`).
+pub static KIT_EXTERNAL: KitConfig = KitConfig {
+    features: &KitFeatures {
+        credentials: CredentialMode::External(&ExternalCredentials {
+            login_path: "/vault/login",
+            setup_path: "/vault/setup",
+            password_path: "/vault/password",
+            reauth_path: "/vault/reauth",
+        }),
         ..KitFeatures::DEFAULT
     },
     ..KIT

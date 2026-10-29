@@ -135,24 +135,39 @@ fn setup_locked(throttled: Option<std::time::Duration>) -> Response {
     (status, HtmlTemplate(page)).into_response()
 }
 
+/// Why [`check_setup_token`] turned a visitor away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetupTokenError {
+    /// A setup token is required and none was given.
+    Missing,
+    /// The token given is wrong.
+    Wrong,
+    /// Too many wrong tokens from this address; try again after the wait.
+    Throttled(std::time::Duration),
+}
+
 /// Checks the visitor's setup token. `Ok` when none is required
-/// ([`session::required_setup_token`]) or `given` matches; otherwise the
-/// locked page. A token that is tried and wrong counts against the client
-/// address in the sign-in IP limiter (key `setup:<ip>`), so it can't be
-/// guessed online; showing the page without a token does not.
-fn check_setup_token(
+/// ([`session::required_setup_token`]) or `given` matches. A token that is
+/// tried and wrong counts against the client address in the sign-in IP
+/// limiter (key `setup:<ip>`), so it can't be guessed online; being without
+/// a token does not.
+///
+/// The kit's own setup page uses it; a product with
+/// [`CredentialMode::External`](crate::config::CredentialMode::External)
+/// calls it from its own setup page, before it creates the first admin.
+pub fn check_setup_token(
     core: &Core,
     headers: &HeaderMap,
     peer: Option<std::net::SocketAddr>,
     given: Option<&str>,
-) -> Result<(), Box<Response>> {
+) -> Result<(), SetupTokenError> {
     let Some(expected) = session::required_setup_token() else {
         return Ok(());
     };
     let given = given.map(str::trim).filter(|g| !g.is_empty());
     let Some(given) = given else {
         tracing::warn!("setup page opened without the setup token");
-        return Err(Box::new(setup_locked(None)));
+        return Err(SetupTokenError::Missing);
     };
     let key =
         session::client_ip(headers, peer, session::trust_proxy()).map(|ip| format!("setup:{ip}"));
@@ -160,16 +175,60 @@ fn check_setup_token(
         && let Err(wait) = core.limits.ip.reserve(key, Instant::now())
     {
         tracing::warn!(ip = ?key, "setup token attempts throttled");
-        return Err(Box::new(setup_locked(Some(wait))));
+        return Err(SetupTokenError::Throttled(wait));
     }
     if !session::setup_token_matches(Some(&expected), Some(given)) {
         tracing::warn!(ip = ?key, "setup attempted with a wrong setup token");
-        return Err(Box::new(setup_locked(None)));
+        return Err(SetupTokenError::Wrong);
     }
     if let Some(key) = &key {
         core.limits.ip.clear(key);
     }
     Ok(())
+}
+
+/// [`check_setup_token`], with the locked page as the error.
+fn gate_setup_token(
+    core: &Core,
+    headers: &HeaderMap,
+    peer: Option<std::net::SocketAddr>,
+    given: Option<&str>,
+) -> Result<(), Box<Response>> {
+    check_setup_token(core, headers, peer, given).map_err(|e| {
+        Box::new(match e {
+            SetupTokenError::Throttled(wait) => setup_locked(Some(wait)),
+            SetupTokenError::Missing | SetupTokenError::Wrong => setup_locked(None),
+        })
+    })
+}
+
+/// Creates the first admin with a password hash the product made itself and
+/// stores the site name and time zone, in one transaction. The kit never
+/// looks inside the hash: for an account that signs in some other way it can
+/// be a marker no password verifies against, such as `"!external"`. `None`
+/// when a user already exists, so two racing setups can't both succeed.
+/// Check [`check_setup_token`] and the user name
+/// ([`username_problem`](crate::auth::username_problem)) first.
+pub async fn insert_first_admin(
+    core: &Core,
+    username: &str,
+    password_hash: &str,
+    site_name: &str,
+    timezone: &str,
+) -> ApiResult<Option<i64>> {
+    let (username, password_hash) = (username.to_string(), password_hash.to_string());
+    let (site_name, timezone) = (site_name.to_string(), timezone.to_string());
+    core.with_conn(move |c| {
+        let tx = c.transaction()?;
+        let id = db_users::insert_first_admin(&tx, &username, &password_hash, "")?;
+        if id.is_some() {
+            db_settings::set(&tx, db_settings::SITE_NAME, &site_name)?;
+            db_settings::set(&tx, db_settings::TIMEZONE, &timezone)?;
+            tx.commit()?;
+        }
+        Ok(id)
+    })
+    .await
 }
 
 pub(super) async fn setup_form(
@@ -181,7 +240,7 @@ pub(super) async fn setup_form(
     if guard::has_users(&core).await? {
         return Ok(Redirect::to("/login").into_response());
     }
-    if let Err(locked) = check_setup_token(&core, &headers, peer, query.token.as_deref()) {
+    if let Err(locked) = gate_setup_token(&core, &headers, peer, query.token.as_deref()) {
         return Ok(*locked);
     }
     let page = SetupTemplate {
@@ -201,7 +260,7 @@ pub(super) async fn setup_submit(
     if guard::has_users(&core).await? {
         return Ok(Redirect::to("/login").into_response());
     }
-    if let Err(locked) = check_setup_token(&core, &headers, peer, Some(&form.token)) {
+    if let Err(locked) = gate_setup_token(&core, &headers, peer, Some(&form.token)) {
         return Ok(*locked);
     }
     // Only the token (the locked page's field): on to the form itself.
@@ -253,18 +312,7 @@ pub(super) async fn setup_submit(
         site
     };
     let tz = page.timezone.clone();
-    let created = core
-        .with_conn(move |c| {
-            let tx = c.transaction()?;
-            let id = db_users::insert_first_admin(&tx, &username, &password_hash, "")?;
-            if id.is_some() {
-                db_settings::set(&tx, db_settings::SITE_NAME, &site_name)?;
-                db_settings::set(&tx, db_settings::TIMEZONE, &tz)?;
-                tx.commit()?;
-            }
-            Ok(id)
-        })
-        .await?;
+    let created = insert_first_admin(&core, &username, &password_hash, &site_name, &tz).await?;
     let Some(user_id) = created else {
         // Someone else finished setup first.
         return Ok(Redirect::to("/login").into_response());
@@ -662,6 +710,11 @@ pub(super) async fn logout(jar: SignedCookieJar) -> impl IntoResponse {
         .remove(session::removal_cookie(
             crate::config::get().pending_2fa_cookie,
         ));
+    // A fresh confirmation ends with the session it was given for.
+    let jar = match crate::config::get().features.credentials {
+        crate::config::CredentialMode::Plain => jar,
+        crate::config::CredentialMode::External(_) => auth::reauth::clear(jar),
+    };
     (jar, Redirect::to("/login"))
 }
 

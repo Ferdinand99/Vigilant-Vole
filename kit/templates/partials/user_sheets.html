@@ -24,11 +24,17 @@
         </div>
       </div>
       {%- if !u.role_is("admin") %}
+      {%- if external %}
+      <div data-show-when="role=admin">
+        {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      </div>
+      {%- else %}
       <div class="field" data-show-when="role=admin">
         <label class="label" for="eu-{{ u.id }}-current-password">{{ tr("sec.your_password") }}</label>
         <input id="eu-{{ u.id }}-current-password" name="current_password" type="password" maxlength="1024" autocomplete="current-password" aria-describedby="eu-{{ u.id }}-current-password-help">
         <p class="help" id="eu-{{ u.id }}-current-password-help">{{ tr("users.admin_password_help") }}</p>
       </div>
+      {%- endif %}
       {%- endif %}
       {%- endif %}
     </form>
@@ -39,7 +45,7 @@
   </footer>
 </dialog>
 
-{%- if !u.is_self %}
+{%- if !u.is_self && !external %}
 <dialog class="sheet" id="reset-pw-{{ u.id }}" aria-labelledby="reset-pw-{{ u.id }}-title">
   <div class="sheet-grabber" aria-hidden="true"></div>
   <header class="sheet-head">
@@ -77,10 +83,14 @@
   <div class="sheet-body">
     <form id="reset-tfa-{{ u.id }}-form" class="form" method="post" action="/settings/users/{{ u.id }}/2fa/reset">
       <p class="help">{{ tr("users.reset_tfa_msg") }}</p>
+      {%- if external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
       <div class="field">
         <label class="label" for="rt-{{ u.id }}-current-password">{{ tr("sec.your_password") }}</label>
         <input id="rt-{{ u.id }}-current-password" name="current_password" type="password" required maxlength="1024" autocomplete="current-password">
       </div>
+      {%- endif %}
     </form>
   </div>
   <footer class="sheet-foot">

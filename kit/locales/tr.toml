@@ -273,6 +273,8 @@ pk_exists = "Bu geçiş anahtarı hesabınız için zaten kayıtlı."
 pk_failed = "Geçiş anahtarı kaydedilemedi. Yeniden deneyin."
 reauth_needed = "Bu değişikliği onaylamak için parolanızı girin."
 your_password = "Parolanız"
+confirm_its_you = "Sizin olduğunuzu onaylayın"
+confirm_its_you_help = "Bu değişikliği yapmak için sizin olduğunuzu onaylayın."
 revoke_tokens = "API belirteçlerimi de iptal et"
 revoke_tokens_help = "Bunları kullanan betikler, yenilerini oluşturana kadar çalışmaz."
 

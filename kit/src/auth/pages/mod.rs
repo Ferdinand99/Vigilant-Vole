@@ -10,6 +10,7 @@
 //! product's parts (name, logo, navigation, settings tabs) come from its
 //! [`KitConfig`](crate::config::KitConfig).
 
+mod external;
 mod general;
 mod passkeys;
 mod security;
@@ -23,27 +24,38 @@ use axum::routing::{delete, get, post};
 use axum_extra::extract::cookie::Key;
 
 pub use passkeys::relying_party;
-pub use sign_in::verify_second_factor;
+pub use sign_in::{SetupTokenError, check_setup_token, insert_first_admin, verify_second_factor};
 
+use crate::config::CredentialMode;
 use crate::docs::page as docs;
 use crate::state::Core;
 
 /// Setup, sign-in, the second factor and sign-out: no session needed.
+///
+/// With [`CredentialMode::External`] `/setup` and `/login` only point to the
+/// product's own pages (`POST /login` is 404); the second factor, the
+/// passkey sign-in and sign-out stay.
 pub fn public_router<S>() -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
     Core: FromRef<S>,
     Key: FromRef<S>,
 {
-    Router::new()
-        .route(
-            "/setup",
-            get(sign_in::setup_form).post(sign_in::setup_submit),
-        )
-        .route(
-            "/login",
-            get(sign_in::login_form).post(sign_in::login_submit),
-        )
+    let router = match crate::config::get().features.credentials {
+        CredentialMode::Plain => Router::new()
+            .route(
+                "/setup",
+                get(sign_in::setup_form).post(sign_in::setup_submit),
+            )
+            .route(
+                "/login",
+                get(sign_in::login_form).post(sign_in::login_submit),
+            ),
+        CredentialMode::External(_) => Router::new()
+            .route("/setup", get(external::setup).post(external::setup))
+            .route("/login", get(external::login).post(external::gone)),
+    };
+    router
         .route(
             "/login/2fa",
             get(sign_in::two_factor_form).post(sign_in::two_factor_submit),
@@ -72,10 +84,22 @@ where
     } else {
         Router::new()
     };
+    // With external credentials the kit sets no passwords: no temporary
+    // password for a new user, no admin reset, no change of one's own.
+    let external = matches!(cfg.features.credentials, CredentialMode::External(_));
+    let router = if external {
+        router.route("/settings/users", get(users::list).post(external::gone))
+    } else {
+        router
+            .route("/settings/users", get(users::list).post(users::create))
+            .route("/settings/users/{id}/password", post(users::reset_password))
+            .route(
+                "/settings/security/password",
+                post(security::change_password),
+            )
+    };
     let router = router
-        .route("/settings/users", get(users::list).post(users::create))
         .route("/settings/users/{id}", post(users::update))
-        .route("/settings/users/{id}/password", post(users::reset_password))
         .route(
             "/settings/users/{id}/2fa/reset",
             post(users::reset_two_factor),
@@ -89,10 +113,6 @@ where
         .route("/settings/users/{id}/delete", post(users::delete))
         .route("/settings/security", get(security::security_page))
         .route("/settings/security/profile", post(security::save_profile))
-        .route(
-            "/settings/security/password",
-            post(security::change_password),
-        )
         .route(
             "/settings/security/sessions",
             post(security::sign_out_others),

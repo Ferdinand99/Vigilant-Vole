@@ -292,6 +292,8 @@ pk_exists = "Ten klucz dostępu jest już zapisany na Twoim koncie."
 pk_failed = "Nie udało się zapisać klucza dostępu. Spróbuj ponownie."
 reauth_needed = "Wpisz swoje hasło, aby potwierdzić tę zmianę."
 your_password = "Twoje hasło"
+confirm_its_you = "Potwierdź, że to Ty"
+confirm_its_you_help = "Potwierdź, że to Ty, aby wprowadzić tę zmianę."
 revoke_tokens = "Unieważnij też moje tokeny API"
 revoke_tokens_help = "Skrypty, które ich używają, przestaną działać, dopóki nie utworzysz nowych."
 

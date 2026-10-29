@@ -4,6 +4,7 @@
 //! - [`session`]: session + pending-2FA cookies, proxy awareness, `?next=` sanitising
 //! - [`csrf`]: the same-origin check behind `api::auth::csrf_guard`
 //! - [`rate_limit`]: in-memory login throttling with exponential backoff
+//! - [`reauth`]: the fresh-confirmation grant of `CredentialMode::External`
 //! - [`totp`]: TOTP 2FA (enrolment, verification with replay protection, recovery codes)
 //! - [`webauthn`]: passkeys, the WebAuthn registration and sign-in ceremonies
 //! - [`tokens`]: API tokens (generation, hashing, header parsing)
@@ -26,6 +27,7 @@ mod flow_tests;
 pub mod guard;
 pub mod pages;
 pub mod rate_limit;
+pub mod reauth;
 pub mod session;
 pub mod tokens;
 pub mod totp;
@@ -439,6 +441,36 @@ fn write_new_key_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A product whose users sign in some other way stores a marker in
+    /// `password_hash` (`"!external"`). It is no PHC string: it never
+    /// verifies, whatever is offered, and never panics.
+    #[test]
+    fn a_hash_that_is_not_a_hash_never_verifies() {
+        let real = hash_password("Correct-Horse-Battery-2026");
+        assert!(verify_password(&real, "Correct-Horse-Battery-2026"));
+        for marker in [
+            "!external",
+            "",
+            "!",
+            "*",
+            "$",
+            "$argon2id$",
+            "$argon2id$v=19$m=19456,t=2,p=1$",
+            "$argon2id$v=19$m=19456,t=2,p=1$not-base64!$also-not",
+            "$argon2id$v=19$m=0,t=0,p=0$AAAAAAAAAAA$AAAAAAAAAAA",
+            "$unknown$v=1$x$y",
+            "\u{0}\u{1}\u{2}",
+            "!external\n",
+        ] {
+            for attempt in ["", "!external", marker, "Correct-Horse-Battery-2026"] {
+                assert!(
+                    !verify_password(marker, attempt),
+                    "{marker:?} verified {attempt:?}"
+                );
+            }
+        }
+    }
 
     fn user(role: Role) -> CurrentUser {
         CurrentUser {

@@ -145,15 +145,60 @@ pub enum CredentialMode {
     /// The kit's own forms: a plain password, hashed with Argon2 on the
     /// server.
     Plain,
-    /// The product checks credentials itself.
+    /// The product checks credentials itself, on its own pages (a sign-in
+    /// that never sends the password to the server, say). The kit's pages
+    /// take no password at all: see [`ExternalCredentials`].
     External(&'static ExternalCredentials),
 }
 
-/// What a product with [`CredentialMode::External`] provides.
+/// What a product with [`CredentialMode::External`] provides: the places
+/// the kit's pages send people to instead of asking for a password. All
+/// are routes of the product, plain absolute paths (`/vault/login`).
+///
+/// - `GET /login` redirects to `login_path`, keeping `?next=`; `POST /login`
+///   is 404. The product signs the user in with
+///   [`login_jar`](crate::auth::guard::login_jar) (and
+///   [`verify_second_factor`](crate::auth::pages::verify_second_factor)).
+///   Signing in with a passkey (`/login/passkey`) stays as it is: it gives a
+///   session and nothing else.
+/// - `/setup` (GET and POST) redirects to `setup_path`. The product checks
+///   the setup token with
+///   [`check_setup_token`](crate::auth::pages::check_setup_token) and
+///   creates the first admin with
+///   [`insert_first_admin`](crate::auth::pages::insert_first_admin).
+/// - The password form on the Security page is a link to `password_path`;
+///   changing the password through the kit (`POST
+///   /settings/security/password`) is 404.
+/// - Creating a user with a temporary password and resetting a password
+///   (the Users page) are gone, and their routes are 404.
+/// - Wherever a page asked for the current password (adding a passkey,
+///   two-factor changes, tokens, promoting an admin, ...), it asks for a
+///   fresh confirmation instead: a link to `reauth_path?next=<this page>`.
+///   The product's page confirms the user in its own way and then calls
+///   [`reauth::grant`](crate::auth::reauth::grant), which is good for
+///   [`reauth::TTL_SECS`](crate::auth::reauth::TTL_SECS) seconds.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ExternalCredentials {
-    /// The product's own sign-in page.
+    /// The product's sign-in page.
     pub login_path: &'static str,
+    /// The product's page for creating the first admin.
+    pub setup_path: &'static str,
+    /// The product's page for changing the password.
+    pub password_path: &'static str,
+    /// The product's page that confirms the signed-in user once more. It
+    /// gets `?next=<path to come back to>` and ends in
+    /// [`reauth::grant`](crate::auth::reauth::grant).
+    pub reauth_path: &'static str,
+}
+
+impl ExternalCredentials {
+    /// `path` with `?next=` set to `next` (a same-site path).
+    pub(crate) fn with_next(path: &str, next: &str) -> String {
+        format!(
+            "{path}?next={}",
+            url::form_urlencoded::byte_serialize(next.as_bytes()).collect::<String>()
+        )
+    }
 }
 
 /// A permission a product adds to API tokens ([`KitConfig::token_scopes`]),
@@ -248,8 +293,8 @@ pub fn install(config: &'static KitConfig) {
 
 /// What [`install`] checks besides the catalogs: the token scopes (valid,
 /// distinct names with English texts, and their core migration), the
-/// passkeys' core migration and the General page (the product's texts and
-/// fields).
+/// passkeys' core migration, the paths of [`CredentialMode::External`] and
+/// the General page (the product's texts and fields).
 pub fn check(config: &KitConfig) -> Result<(), String> {
     use crate::i18n::{Lang, catalog};
     let source = Lang::EN.info().source;
@@ -284,6 +329,21 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
         problems.push(format!(
             "passkeys need the core migration {passkeys} in MigrationSet::core"
         ));
+    }
+    if let CredentialMode::External(ext) = config.features.credentials {
+        for (what, path) in [
+            ("login_path", ext.login_path),
+            ("setup_path", ext.setup_path),
+            ("password_path", ext.password_path),
+            ("reauth_path", ext.reauth_path),
+        ] {
+            if !path.starts_with('/') || path.starts_with("//") || path.contains(['?', '#']) {
+                problems.push(format!(
+                    "ExternalCredentials::{what} must be an absolute path of the product \
+                     without a query ({path:?})"
+                ));
+            }
+        }
     }
     if let Some(general) = config.general {
         for key in catalog::GENERAL_PRODUCT_KEYS {
@@ -337,6 +397,43 @@ mod tests {
         assert!(!f.invites && !f.sign_in_codes);
         assert_eq!(KitFeatures::default(), f);
         assert_eq!(*crate::testing::CONFIG.features, f);
+    }
+
+    #[test]
+    fn external_credentials_need_paths_of_the_product() {
+        static GOOD: ExternalCredentials = ExternalCredentials {
+            login_path: "/vault/login",
+            setup_path: "/vault/setup",
+            password_path: "/vault/password",
+            reauth_path: "/vault/reauth",
+        };
+        static BAD: ExternalCredentials = ExternalCredentials {
+            login_path: "https://example.com/login",
+            setup_path: "//example.com/setup",
+            password_path: "vault/password",
+            reauth_path: "/vault/reauth?x=1",
+        };
+        static GOOD_FEATURES: KitFeatures = KitFeatures {
+            credentials: CredentialMode::External(&GOOD),
+            ..KitFeatures::DEFAULT
+        };
+        static BAD_FEATURES: KitFeatures = KitFeatures {
+            credentials: CredentialMode::External(&BAD),
+            ..KitFeatures::DEFAULT
+        };
+        static WITH_GOOD: KitConfig = KitConfig {
+            features: &GOOD_FEATURES,
+            ..crate::testing::CONFIG
+        };
+        static WITH_BAD: KitConfig = KitConfig {
+            features: &BAD_FEATURES,
+            ..crate::testing::CONFIG
+        };
+        assert_eq!(check(&WITH_GOOD), Ok(()));
+        let problems = check(&WITH_BAD).unwrap_err();
+        for what in ["login_path", "setup_path", "password_path", "reauth_path"] {
+            assert!(problems.contains(what), "{what}: {problems}");
+        }
     }
 
     #[test]
