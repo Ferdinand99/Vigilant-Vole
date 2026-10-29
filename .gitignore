@@ -24,8 +24,6 @@ Thumbs.db
 *.db-wal
 *.db-shm
 
-# Claude Code local state (never publish)
-.claude/
 
 # e2e / Playwright artifacts
 test-results/
@@ -36,5 +34,3 @@ __pycache__/
 
 # Load test output (reference runs live in docs/performance/)
 tools/loadtest/results/
-
-.superpowers/

@@ -12,7 +12,6 @@ data/
 .gitignore
 .gitattributes
 .github
-.claude
 .vscode
 .idea
 scratch/
