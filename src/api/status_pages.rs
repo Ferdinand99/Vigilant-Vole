@@ -398,6 +398,7 @@ struct SettingsForm {
     custom_css: String,
     refresh_seconds: String,
     custom_domain: String,
+    custom_domain_only: bool,
     /// The page has a password now (the field is write-only).
     has_password: bool,
     /// New password ("" = keep), only carried for validation.
@@ -428,6 +429,7 @@ impl SettingsForm {
             custom_css: p.custom_css.clone().unwrap_or_default(),
             refresh_seconds: p.refresh_seconds.to_string(),
             custom_domain: p.custom_domain.clone().unwrap_or_default(),
+            custom_domain_only: p.custom_domain_only,
             has_password: p.is_protected(),
             ..SettingsForm::default()
         }
@@ -476,6 +478,8 @@ struct SettingsInput {
     refresh_seconds: String,
     #[serde(default)]
     custom_domain: String,
+    #[serde(default)]
+    custom_domain_only: bool,
     /// Write-only: a new page password ("" keeps the current one).
     #[serde(default)]
     page_password: String,
@@ -521,6 +525,7 @@ fn validate_settings(input: SettingsInput) -> (SettingsForm, Option<NewStatusPag
         custom_css: input.custom_css.trim().to_string(),
         refresh_seconds: input.refresh_seconds.trim().to_string(),
         custom_domain: input.custom_domain.trim().to_string(),
+        custom_domain_only: input.custom_domain_only,
         remove_password: input.remove_password,
         ..SettingsForm::default()
     };
@@ -575,6 +580,7 @@ fn validate_settings(input: SettingsInput) -> (SettingsForm, Option<NewStatusPag
         title: f.title.clone(),
         description: f.description.clone(),
         custom_domain: domain,
+        custom_domain_only: f.custom_domain_only,
         published: f.published,
         theme: f.theme.clone(),
         show_tags: f.show_tags,
@@ -1616,9 +1622,22 @@ mod tests {
             custom_css: String::new(),
             refresh_seconds: "60".into(),
             custom_domain: "HTTPS://Status.Acme.test/".into(),
+            custom_domain_only: false,
             page_password: String::new(),
             remove_password: false,
         }
+    }
+
+    #[test]
+    fn settings_carry_the_domain_only_flag() {
+        let (form, page) = validate_settings(input());
+        assert!(!form.custom_domain_only);
+        assert!(!page.unwrap().custom_domain_only);
+        let mut on = input();
+        on.custom_domain_only = true;
+        let (form, page) = validate_settings(on);
+        assert!(form.custom_domain_only);
+        assert!(page.unwrap().custom_domain_only);
     }
 
     #[test]

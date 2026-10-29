@@ -179,6 +179,64 @@ fn export_import_round_trip_is_lossless() {
 }
 
 #[test]
+fn custom_domain_only_round_trips_and_defaults_to_off() {
+    let key = crate::notification::tests_support::test_key();
+    let mut conn = test_conn();
+    let doc = parse_document(
+        "status_pages:\n  - slug: acme\n    title: Acme\n    custom_domain: status.acme.test\n    custom_domain_only: true\n  - slug: plain\n    title: Plain\n    custom_domain: plain.acme.test\n",
+    )
+    .unwrap();
+    let applied = apply(&mut conn, &key, &doc, Mode::Merge).unwrap().unwrap();
+    assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
+    let acme = db_pages::get_by_slug(&conn, "acme").unwrap().unwrap();
+    let plain = db_pages::get_by_slug(&conn, "plain").unwrap().unwrap();
+    assert!(acme.custom_domain_only);
+    assert!(!plain.custom_domain_only);
+
+    // Exported only where it is on, and the export applies to a new
+    // database unchanged.
+    let first = export(&conn, &key, true).unwrap();
+    let text = render(&first, Format::Yaml).unwrap();
+    assert_eq!(text.matches("custom_domain_only").count(), 1, "{text}");
+    for format in [Format::Yaml, Format::Json] {
+        let parsed = parse_document(&render(&first, format).unwrap()).unwrap();
+        let mut fresh = test_conn();
+        let applied = apply(&mut fresh, &key, &parsed, Mode::Merge)
+            .unwrap()
+            .unwrap();
+        assert!(applied.plan.errors.is_empty(), "{:?}", applied.plan.errors);
+        assert_eq!(export(&fresh, &key, true).unwrap(), first, "{format:?}");
+        assert!(
+            db_pages::get_by_slug(&fresh, "acme")
+                .unwrap()
+                .unwrap()
+                .custom_domain_only
+        );
+    }
+
+    // The dry run names the change, and turning it off applies.
+    let mut off = first.clone();
+    for p in off.status_pages.as_mut().unwrap() {
+        p.custom_domain_only = false;
+    }
+    let plan = plan(&conn, &key, &off, Mode::Merge).unwrap();
+    assert!(
+        plan.items
+            .iter()
+            .any(|i| i.changes.iter().any(|c| c == "custom_domain_only")),
+        "{:?}",
+        plan.items
+    );
+    apply(&mut conn, &key, &off, Mode::Merge).unwrap().unwrap();
+    assert!(
+        !db_pages::get_by_slug(&conn, "acme")
+            .unwrap()
+            .unwrap()
+            .custom_domain_only
+    );
+}
+
+#[test]
 fn reapplying_an_export_is_a_no_op() {
     let conn = seeded();
     let doc = export(&conn, &crate::notification::tests_support::test_key(), true).unwrap();

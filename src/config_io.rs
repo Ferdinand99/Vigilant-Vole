@@ -265,6 +265,9 @@ pub struct StatusPageDoc {
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_domain: Option<String>,
+    /// Serve only this page on the custom domain (everything else answers 404).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub custom_domain_only: bool,
     #[serde(default = "yes")]
     pub published: bool,
     #[serde(default = "default_theme")]
@@ -735,6 +738,7 @@ pub fn export(conn: &Connection, key: &Key, include_secrets: bool) -> rusqlite::
             title: p.title,
             description: p.description,
             custom_domain: p.custom_domain,
+            custom_domain_only: p.custom_domain_only,
             published: p.published,
             theme: p.theme,
             show_tags: p.show_tags,
@@ -2481,6 +2485,10 @@ fn plan_page(
                 ("title", old.title != page.title),
                 ("description", old.description != page.description),
                 ("custom_domain", old.custom_domain != page.custom_domain),
+                (
+                    "custom_domain_only",
+                    old.custom_domain_only != page.custom_domain_only,
+                ),
                 ("published", old.published != page.published),
                 ("theme", old.theme != page.theme),
                 ("show_tags", old.show_tags != page.show_tags),
@@ -2608,6 +2616,7 @@ pub fn validate_page(p: &StatusPageDoc) -> Result<NewStatusPage, Vec<(String, St
         title: title.to_string(),
         description: p.description.trim().to_string(),
         custom_domain: domain,
+        custom_domain_only: p.custom_domain_only,
         published: p.published,
         theme: p.theme.clone(),
         show_tags: p.show_tags,
@@ -3137,14 +3146,15 @@ fn resolve_window(
 // statements of our own.
 fn insert_page(conn: &Connection, p: &NewStatusPage) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO status_pages (slug, title, description, custom_domain, published, theme, show_tags, show_uptime,
-             show_response, show_powered_by, footer_text, custom_css, refresh_seconds)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO status_pages (slug, title, description, custom_domain, custom_domain_only, published, theme,
+             show_tags, show_uptime, show_response, show_powered_by, footer_text, custom_css, refresh_seconds)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             p.slug,
             p.title,
             p.description,
             p.custom_domain,
+            p.custom_domain_only,
             p.published,
             p.theme,
             p.show_tags,

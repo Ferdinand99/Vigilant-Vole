@@ -14,6 +14,8 @@ pub mod access;
 pub mod analytics;
 pub mod assets;
 #[cfg(test)]
+mod domain_only_tests;
+#[cfg(test)]
 mod extras_tests;
 pub mod feed;
 #[cfg(test)]
@@ -1305,10 +1307,19 @@ async fn json_summary(
 
 const DOMAIN_TTL: Duration = Duration::from_secs(30);
 
+/// What a custom domain serves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DomainTarget {
+    slug: String,
+    /// Serve only the status page: everything else answers 404 (see
+    /// [`domain_only_allows`]).
+    only: bool,
+}
+
 struct DomainCache {
     loaded: Instant,
-    /// custom_domain → slug (published pages only).
-    map: HashMap<String, String>,
+    /// custom_domain → page (published pages only).
+    map: HashMap<String, DomainTarget>,
 }
 
 /// Keyed by the app instance (the `Config` allocation), so tests with
@@ -1346,7 +1357,7 @@ fn request_host(request: &Request) -> Option<String> {
     Some(host.trim_end_matches('.').to_ascii_lowercase())
 }
 
-async fn slug_for_host(state: &AppState, host: &str) -> Option<String> {
+async fn domain_for_host(state: &AppState, host: &str) -> Option<DomainTarget> {
     let key = instance_key(state);
     if let Ok(cache) = DOMAINS.lock()
         && let Some(entry) = cache.get(&key)
@@ -1354,15 +1365,23 @@ async fn slug_for_host(state: &AppState, host: &str) -> Option<String> {
     {
         return entry.map.get(host).cloned();
     }
-    let map: HashMap<String, String> =
+    let map: HashMap<String, DomainTarget> =
         match state.with_conn(|c| db_pages::published_domains(c)).await {
-            Ok(rows) => rows.into_iter().collect(),
+            Ok(rows) => rows
+                .into_iter()
+                .map(|(domain, slug, only)| (domain, DomainTarget { slug, only }))
+                .collect(),
             Err(err) => {
                 tracing::warn!(%err, "custom domain lookup failed");
-                return None;
+                // Keep answering from the last known list rather than
+                // opening up a status-page-only domain.
+                return DOMAINS
+                    .lock()
+                    .ok()
+                    .and_then(|cache| cache.get(&key).and_then(|e| e.map.get(host).cloned()));
             }
         };
-    let slug = map.get(host).cloned();
+    let target = map.get(host).cloned();
     if let Ok(mut cache) = DOMAINS.lock() {
         cache.insert(
             key,
@@ -1372,31 +1391,66 @@ async fn slug_for_host(state: &AppState, host: &str) -> Option<String> {
             },
         );
     }
-    slug
+    target
+}
+
+/// Whether a request on a status-page-only domain may reach the app:
+/// the page itself (`GET`/`HEAD` `/` and `/favicon.ico`), the static files it
+/// loads, its own `/status/{slug}` routes (feed, refresh fragment, logo,
+/// favicon, analytics snippet, subscribe, unlock) and its JSON summary
+/// `/api/status-page/{slug}`. Anything else is answered with a 404.
+fn domain_only_allows(slug: &str, method: &Method, path: &str) -> bool {
+    let reads = matches!(*method, Method::GET | Method::HEAD);
+    if reads && (path == "/" || path == "/favicon.ico") {
+        return true;
+    }
+    if path.starts_with("/static/") {
+        return true;
+    }
+    if let Some(rest) = path.strip_prefix("/status/")
+        && let Some(after) = rest.strip_prefix(slug)
+    {
+        return after.is_empty() || after.starts_with('/');
+    }
+    path.strip_prefix("/api/status-page/") == Some(slug)
+}
+
+fn domain_not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        "Not found",
+    )
+        .into_response()
 }
 
 /// Middleware wrapping the whole app (outside auth): when the request `Host`
 /// matches a published status page's `custom_domain`, `GET /` serves that
 /// page instead of the dashboard (and `/favicon.ico` its uploaded favicon).
 /// Every other path passes through (static assets, the
-/// `/status/{slug}/fragment` refresh, logo, unlock, badges, …).
+/// `/status/{slug}/fragment` refresh, logo, unlock, badges, …), unless the
+/// page has `custom_domain_only`: then only what the page needs is served
+/// (see [`domain_only_allows`]) and everything else is a plain 404.
 pub async fn custom_domain(
     State(state): State<AppState>,
     request: Request,
     next: Next,
 ) -> Response {
+    let Some(host) = request_host(&request) else {
+        return next.run(request).await;
+    };
+    let Some(DomainTarget { slug, only }) = domain_for_host(&state, &host).await else {
+        return next.run(request).await;
+    };
+    if only && !domain_only_allows(&slug, request.method(), request.uri().path()) {
+        return domain_not_found();
+    }
     let get = matches!(*request.method(), Method::GET | Method::HEAD);
     let is_root = get && request.uri().path() == "/";
     let is_favicon = get && request.uri().path() == "/favicon.ico";
     if !is_root && !is_favicon {
         return next.run(request).await;
     }
-    let Some(host) = request_host(&request) else {
-        return next.run(request).await;
-    };
-    let Some(slug) = slug_for_host(&state, &host).await else {
-        return next.run(request).await;
-    };
     if is_favicon {
         return match assets::custom_domain_favicon(&state, slug, request.headers()).await {
             Some(resp) => resp,
@@ -1405,12 +1459,13 @@ pub async fn custom_domain(
     }
     // Public pages follow the visitor's browser language.
     let lang = crate::i18n::negotiate(request.headers()).unwrap_or_else(crate::i18n::current);
-    crate::i18n::scope(lang, serve_custom_domain(state, slug, request, next)).await
+    crate::i18n::scope(lang, serve_custom_domain(state, slug, only, request, next)).await
 }
 
 async fn serve_custom_domain(
     state: AppState,
     slug: String,
+    only: bool,
     request: Request,
     next: Next,
 ) -> Response {
@@ -1435,6 +1490,7 @@ async fn serve_custom_domain(
                 ..view
             })
         }
+        Ok(None) if only => domain_not_found(),
         Ok(None) => next.run(request).await,
         Err(err) => err.into_response(),
     }

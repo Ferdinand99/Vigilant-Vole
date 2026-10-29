@@ -947,6 +947,7 @@ fn convert(t: Tables, source: &str) -> KumaImport {
             title: title.chars().take(120).collect(),
             description: s(row, &["description"]).unwrap_or_default(),
             custom_domain: domain,
+            custom_domain_only: false,
             published: b(row, &["published"]).unwrap_or(true) && !protected,
             theme: theme.into(),
             show_tags: b(row, &["show_tags"]).unwrap_or(false),

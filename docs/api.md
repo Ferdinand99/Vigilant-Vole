@@ -108,7 +108,7 @@ Public and machine endpoints (no API token):
 
 \* Badges are public for monitors on a published status page without a password, or for all monitors when *Public badges* is on.
 
-Status pages in `/api/v1/status-pages` also carry `password_protected` (bool), `analytics` (as in [config-as-code](config-as-code.md#status_pages)), `logo_url` and `favicon_url`. Writes accept `password` (write-only; `""` removes), `analytics`, and `logo`/`favicon` as `data:image/…;base64,…` URLs (`""` removes):
+Status pages in `/api/v1/status-pages` carry and accept `custom_domain_only` (bool, default `false`; `true` makes the page's custom domain serve only that page and answer `404` for everything else, see the README), `password_protected` (bool), `analytics` (as in [config-as-code](config-as-code.md#status_pages)), `logo_url` and `favicon_url`. Writes accept `password` (write-only; `""` removes), `analytics`, and `logo`/`favicon` as `data:image/…;base64,…` URLs (`""` removes):
 
 ```bash
 curl -X PATCH -H "$AUTH" -H 'Content-Type: application/json' $BASE/api/v1/status-pages/1   -d '{"password": "correct horse", "analytics": {"provider": "plausible", "site_id": "status.example.com", "script_url": "https://plausible.io/js/script.js"}}'

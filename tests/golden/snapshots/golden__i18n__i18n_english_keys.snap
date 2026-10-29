@@ -1871,6 +1871,8 @@ sp.deleted
 sp.description_help
 sp.description_placeholder
 sp.domain_help
+sp.domain_only
+sp.domain_only_help
 sp.draft
 sp.empty_text
 sp.empty_title
