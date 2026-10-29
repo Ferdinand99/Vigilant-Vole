@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.15.1...v0.16.0) (2026-10-29)
+
+
+### Features
+
+* custom domains can serve only their status page ([#78](https://github.com/Ferdinand99/Vigilant-Vole/issues/78)) ([b828f7c](https://github.com/Ferdinand99/Vigilant-Vole/commit/b828f7cf885d416c11a6a3066a59a7f5d1fe6d73))
+* **kit:** external credential mode for apps that sign in on the client ([#82](https://github.com/Ferdinand99/Vigilant-Vole/issues/82)) ([8c0eb8a](https://github.com/Ferdinand99/Vigilant-Vole/commit/8c0eb8ad10f1ef5a3b72053f71f40e315866fb51))
+* **kit:** invitation links (opt-in) ([#83](https://github.com/Ferdinand99/Vigilant-Vole/issues/83)) ([9777c8f](https://github.com/Ferdinand99/Vigilant-Vole/commit/9777c8f2e81d75ba31953510e28edcd5d3bd5ffa))
+* **kit:** one-time sign-in codes and instance email (opt-in) ([#85](https://github.com/Ferdinand99/Vigilant-Vole/issues/85)) ([70629dd](https://github.com/Ferdinand99/Vigilant-Vole/commit/70629dd528ce045db5aa9c5a327b6448ff14000e))
+* **kit:** per-app feature switches; API tokens and API docs can be turned off ([#81](https://github.com/Ferdinand99/Vigilant-Vole/issues/81)) ([eaf32ce](https://github.com/Ferdinand99/Vigilant-Vole/commit/eaf32ce66ba67436097925995f1799c4156c986b))
+
+
+### Bug Fixes
+
+* **kit:** bind the re-auth grant to its purpose and session ([#84](https://github.com/Ferdinand99/Vigilant-Vole/issues/84)) ([e0166ab](https://github.com/Ferdinand99/Vigilant-Vole/commit/e0166abe279d6cc18d7e075a780174c130273906))
+* **kit:** sign-in code lifecycle, token revocation and re-auth for mail settings ([#86](https://github.com/Ferdinand99/Vigilant-Vole/issues/86)) ([e584971](https://github.com/Ferdinand99/Vigilant-Vole/commit/e584971810dbbe8f12b87d0a5a9e25b71a1304b2))
+* security review backlog ([#77](https://github.com/Ferdinand99/Vigilant-Vole/issues/77)) ([912495f](https://github.com/Ferdinand99/Vigilant-Vole/commit/912495fa1fc687d43f435123e1f32ccce6d9ebbe))
+
 ## [0.15.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.15.0...v0.15.1) (2026-10-28)
 
 
