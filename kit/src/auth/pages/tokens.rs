@@ -157,7 +157,7 @@ async fn render(
         None => (None, String::new()),
     };
     let page = TokensTemplate {
-        reauth: reauth::View::new(&jar, user, "/settings/tokens"),
+        reauth: reauth::View::new(&jar, &core.session_key, user, "/settings/tokens"),
         ctx,
         tokens: mine.into_iter().map(TokenRow::from).collect(),
         others,
@@ -270,6 +270,12 @@ pub(super) async fn create(
     .await?;
     let scope_name = extra.unwrap_or(scope.as_str());
     tracing::info!(user = %user.username, token = %name, scope = scope_name, "API token created");
+    // A write token outlasts a stolen session: the confirmation is used up.
+    let jar = if scope == TokenScope::Write {
+        reauth::spend(jar)
+    } else {
+        jar
+    };
     let jar = flash(jar, "success", crate::i18n::t("tokens.created"));
     render(&core, &user, jar, Some((token, name))).await
 }

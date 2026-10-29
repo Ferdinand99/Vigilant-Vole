@@ -447,6 +447,45 @@ async fn wrong_setup_tokens_are_throttled_per_address() {
     );
 }
 
+#[tokio::test]
+async fn wrong_setup_tokens_are_throttled_without_a_client_address_too() {
+    use pages::{SetupTokenError, check_setup_token};
+    let app = App::fresh().await;
+    session::set_setup_open_for_tests(Some(false));
+    let token = session::required_setup_token().unwrap();
+    let headers = HeaderMap::new();
+    // A product that passes no peer address, and there is no trusted
+    // forwarded header: the attempts share one key.
+    let mut results = Vec::new();
+    for i in 0..30 {
+        let guess = format!("guess-{i}");
+        results.push(check_setup_token(&app.core, &headers, None, Some(&guess)));
+    }
+    assert_eq!(results[0], Err(SetupTokenError::Wrong));
+    assert!(
+        matches!(results[29], Err(SetupTokenError::Throttled(_))),
+        "{results:?}"
+    );
+    assert!(
+        app.core
+            .limits
+            .ip
+            .retry_after("setup:unknown", std::time::Instant::now())
+            .is_some()
+    );
+    // While backing off, even the right token waits ...
+    assert!(matches!(
+        check_setup_token(&app.core, &headers, None, Some(&token)),
+        Err(SetupTokenError::Throttled(_))
+    ));
+    // ... and an address that is known has its own count.
+    let peer: SocketAddr = "192.0.2.7:4000".parse().unwrap();
+    assert_eq!(
+        check_setup_token(&app.core, &headers, Some(peer), Some(&token)),
+        Ok(())
+    );
+}
+
 // ---------------------------------------------------------------------------
 // VK-06
 // ---------------------------------------------------------------------------

@@ -146,11 +146,17 @@ pub enum SetupTokenError {
     Throttled(std::time::Duration),
 }
 
+/// The throttle key for setup tokens tried by a visitor whose address is
+/// not known.
+const SETUP_UNKNOWN_KEY: &str = "setup:unknown";
+
 /// Checks the visitor's setup token. `Ok` when none is required
 /// ([`session::required_setup_token`]) or `given` matches. A token that is
 /// tried and wrong counts against the client address in the sign-in IP
 /// limiter (key `setup:<ip>`), so it can't be guessed online; being without
-/// a token does not.
+/// a token does not. Without an address (`peer` is `None` and no trusted
+/// forwarded header) the attempts share the key `setup:unknown`: they are
+/// throttled all the same, and only together.
 ///
 /// The kit's own setup page uses it; a product with
 /// [`CredentialMode::External`](crate::config::CredentialMode::External)
@@ -169,11 +175,19 @@ pub fn check_setup_token(
         tracing::warn!("setup page opened without the setup token");
         return Err(SetupTokenError::Missing);
     };
-    let key =
-        session::client_ip(headers, peer, session::trust_proxy()).map(|ip| format!("setup:{ip}"));
-    if let Some(key) = &key
-        && let Err(wait) = core.limits.ip.reserve(key, Instant::now())
-    {
+    // Never unthrottled: when there is no client address (a product that
+    // passed `peer = None`, and no trusted forwarded header), all such
+    // visitors share one key.
+    let key = match session::client_ip(headers, peer, session::trust_proxy()) {
+        Some(ip) => format!("setup:{ip}"),
+        None => {
+            tracing::warn!(
+                "setup token checked without a client address; throttled under one shared key"
+            );
+            SETUP_UNKNOWN_KEY.to_string()
+        }
+    };
+    if let Err(wait) = core.limits.ip.reserve(&key, Instant::now()) {
         tracing::warn!(ip = ?key, "setup token attempts throttled");
         return Err(SetupTokenError::Throttled(wait));
     }
@@ -181,9 +195,7 @@ pub fn check_setup_token(
         tracing::warn!(ip = ?key, "setup attempted with a wrong setup token");
         return Err(SetupTokenError::Wrong);
     }
-    if let Some(key) = &key {
-        core.limits.ip.clear(key);
-    }
+    core.limits.ip.clear(&key);
     Ok(())
 }
 
