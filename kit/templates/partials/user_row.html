@@ -7,6 +7,7 @@
   </span>
   <span class="list-trail cluster">
     {%- if !u.active %}<span class="pill status-paused">{{ tr("users.disabled") }}</span>{% endif %}
+    {%- if sign_in_codes %}{% if let Some(until) = u.code_until %}<span class="badge" data-tip="{{ tr("detail.expires") }} {{ until }} UTC">{{ tr("sign_in_code.pending") }}</span>{% endif %}{% endif %}
     {%- if u.totp_enabled %}<span class="badge status-up" data-tip="{{ tr("users.tfa_on") }}">2FA</span>{% endif %}
     <span class="badge{% if u.role_is("admin") %} badge-brand{% endif %}">{{ u.role.label() }}</span>
     <button type="button" class="btn btn-icon btn-plain btn-sm" popovertarget="user-menu-{{ u.id }}" aria-label="{{ tr1("users.actions_for", "name", u.username) }}">{{ m::icon("more") }}</button>
@@ -18,6 +19,9 @@
     {%- endif %}
     {%- if sign_in_codes && !u.is_self %}
     <button class="menu-item" type="button" data-sheet-open="#reset-code-{{ u.id }}" commandfor="reset-code-{{ u.id }}" command="show-modal">{{ m::icon("key") }}{{ tr("sign_in_code.reset") }}</button>
+    {%- endif %}
+    {%- if sign_in_codes && !u.is_self && u.code_until.is_some() %}
+    <button class="menu-item" type="button" data-sheet-open="#revoke-code-{{ u.id }}" commandfor="revoke-code-{{ u.id }}" command="show-modal">{{ m::icon("x") }}{{ tr("sign_in_code.revoke") }}</button>
     {%- endif %}
     {%- if u.totp_enabled %}
     <button class="menu-item" type="button" data-sheet-open="#reset-tfa-{{ u.id }}" commandfor="reset-tfa-{{ u.id }}" command="show-modal">{{ m::icon("shield") }}{{ tr("users.reset_tfa") }}</button>

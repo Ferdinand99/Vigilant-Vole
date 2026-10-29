@@ -177,10 +177,15 @@ where
         router
     };
     let router = if cfg.features.sign_in_codes {
-        let router = router.route(
-            "/settings/users/{id}/sign-in-code",
-            post(sign_in_code::create),
-        );
+        let router = router
+            .route(
+                "/settings/users/{id}/sign-in-code",
+                post(sign_in_code::create),
+            )
+            .route(
+                "/settings/users/{id}/sign-in-code/revoke",
+                post(sign_in_code::revoke),
+            );
         if cfg.general.is_some() {
             router.route("/settings/general/smtp-test", post(general::smtp_test))
         } else {

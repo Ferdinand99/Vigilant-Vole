@@ -523,8 +523,16 @@ async fn finish_login(
     secure: bool,
 ) -> ApiResult<Response> {
     let id = user.id;
-    core.with_conn(move |c| db_users::touch_last_login(c, id))
-        .await?;
+    let codes = core.cfg.features.sign_in_codes;
+    core.with_conn(move |c| {
+        db_users::touch_last_login(c, id)?;
+        // They can sign in: a code an admin made for them is not needed.
+        if codes {
+            crate::db::sign_in_codes::revoke_for_user(c, id)?;
+        }
+        Ok(())
+    })
+    .await?;
     tracing::info!(user = %user.username, "login");
     let jar = login_jar(jar, user.id, user.session_version, secure);
     Ok((jar, Redirect::to(next)).into_response())

@@ -119,6 +119,24 @@
   </section>
   {%- endfor %}
 
+  {%- if smtp.is_some() %}
+
+  <section class="form-section" aria-labelledby="sec-confirm">
+    <h2 class="form-section-title" id="sec-confirm">{{ tr("sec.confirm_its_you") }}</h2>
+    <div class="card">
+      <p class="help">{{ tr("sign_in_code.password_help") }}</p>
+      {%- if reauth.external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- if !password_error.is_empty() %}
+      <p class="field-error">{{ m::icon("alert-circle") }}{{ password_error }}</p>
+      {%- endif %}
+      {%- else %}
+      {{ m::field_text("current_password", tr("sec.your_password"), kind="password", autocomplete="current-password", error=&self.password_error) }}
+      {%- endif %}
+    </div>
+  </section>
+  {%- endif %}
+
   <div class="form-actions">
     {{ m::button(tr("general.save")) }}
   </div>

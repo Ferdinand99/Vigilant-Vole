@@ -20,7 +20,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 use tower::ServiceExt as _;
 use vole_kit::auth::sign_in_codes;
-use vole_kit::auth::{Role, totp};
+use vole_kit::auth::{Role, TokenScope, totp};
 use vole_kit::db;
 use vole_kit::state::Core;
 
@@ -342,6 +342,72 @@ impl App {
         (res, code)
     }
 
+    /// Like [`App::admin_code`], and also emails it (the box is ticked).
+    async fn admin_code_mailed(&self, admin: &mut Browser, id: i64) -> (Res, Option<String>) {
+        let res = self
+            .post(
+                admin,
+                &format!("/settings/users/{id}/sign-in-code"),
+                &[("current_password", PASSWORD), ("send_email", "true")],
+            )
+            .await;
+        let code = shown_code(&res.body);
+        (res, code)
+    }
+
+    /// Sets a user's email address on the edit sheet, with the password.
+    async fn set_email(&self, admin: &mut Browser, id: i64, email: &str) -> Res {
+        self.post(
+            admin,
+            &format!("/settings/users/{id}"),
+            &[
+                ("display_name", "Bob"),
+                ("role", "viewer"),
+                ("email", email),
+                ("current_password", PASSWORD),
+            ],
+        )
+        .await
+    }
+
+    async fn stored_email(&self, id: i64) -> Option<String> {
+        self.core
+            .with_conn(move |c| db::sign_in_codes::email(c, id))
+            .await
+            .unwrap()
+    }
+
+    /// How many pending codes the user has.
+    async fn pending(&self, id: i64) -> i64 {
+        self.core
+            .with_conn(move |c| db::sign_in_codes::count_pending(c, id))
+            .await
+            .unwrap()
+    }
+
+    /// An API token for the user, made directly.
+    async fn add_token(&self, id: i64, hash: &'static str) {
+        self.core
+            .with_conn(move |c| {
+                db::api_tokens::insert(c, id, "t", "vv_x", hash, TokenScope::Read, None)
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn tokens_of(&self, id: i64) -> i64 {
+        self.core
+            .with_conn(move |c| {
+                c.query_row(
+                    "SELECT COUNT(*) FROM api_tokens WHERE user_id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )
+            })
+            .await
+            .unwrap()
+    }
+
     async fn codes_in_db(&self) -> i64 {
         self.core
             .with_conn(|c| c.query_row("SELECT COUNT(*) FROM sign_in_codes", [], |r| r.get(0)))
@@ -384,9 +450,55 @@ impl App {
             ("timezone", "UTC"),
             ("language", "en"),
             ("notes_per_page", "20"),
+            ("current_password", PASSWORD),
         ];
         form.extend_from_slice(extra);
         self.post(admin, "/settings/general", &form).await
+    }
+
+    /// The General page's form with the kit's fields and `extra`; the
+    /// password only when given.
+    async fn general(
+        &self,
+        admin: &mut Browser,
+        extra: &[(&str, &str)],
+        password: Option<&str>,
+    ) -> Res {
+        let mut form = vec![
+            ("site_name", "Ours"),
+            ("base_url", ""),
+            ("timezone", "UTC"),
+            ("language", "en"),
+            ("notes_per_page", "20"),
+        ];
+        // Later pairs win: the first of a name is the one the kit reads.
+        for (k, v) in extra {
+            form.retain(|(name, _)| name != k);
+            form.push((*k, *v));
+        }
+        if let Some(password) = password {
+            form.push(("current_password", password));
+        }
+        self.post(admin, "/settings/general", &form).await
+    }
+
+    /// Mail settings pointing at the fake server `smtp`.
+    async fn mail_on(&self, admin: &mut Browser, smtp: &FakeSmtp) {
+        let port = smtp.port.to_string();
+        let res = self
+            .set_mail(
+                admin,
+                &[
+                    ("smtp_host", "127.0.0.1"),
+                    ("smtp_port", &port),
+                    ("smtp_security", "none"),
+                    ("smtp_username", ""),
+                    ("smtp_password_clear", "true"),
+                    ("smtp_from", "Kit Demo <noreply@example.com>"),
+                ],
+            )
+            .await;
+        assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
     }
 
     /// The Users page once more (it shows the flash message).
@@ -629,7 +741,7 @@ async fn repeated_failures_are_throttled_per_account_and_per_address() {
     // right code, and even from another address.
     let wrong = sign_in_codes::generate();
     let mut statuses = Vec::new();
-    for i in 0..8 {
+    for i in 0..14 {
         let mut b = Browser::at(&format!("10.2.0.{i}:1"));
         let res = app.redeem(&mut b, "target", &wrong, NEW_PASSWORD).await;
         statuses.push(res.status);
@@ -638,7 +750,9 @@ async fn repeated_failures_are_throttled_per_account_and_per_address() {
         }
     }
     assert!(
-        statuses[..5].iter().all(|s| *s == StatusCode::UNAUTHORIZED),
+        statuses[..10]
+            .iter()
+            .all(|s| *s == StatusCode::UNAUTHORIZED),
         "{statuses:?}"
     );
     assert_eq!(
@@ -890,6 +1004,7 @@ async fn admins_set_and_clear_an_email_address_on_the_edit_sheet() {
             ("display_name", "Bob"),
             ("role", "viewer"),
             ("email", email),
+            ("current_password", PASSWORD),
         ]
     };
     let res = app
@@ -917,6 +1032,7 @@ async fn admins_set_and_clear_an_email_address_on_the_edit_sheet() {
                     ("display_name", "Changed"),
                     ("role", "viewer"),
                     ("email", bad),
+                    ("current_password", PASSWORD),
                 ],
             )
             .await;
@@ -955,21 +1071,13 @@ async fn no_email_is_sent_without_mail_settings() {
     let (app, mut admin) = App::set_up().await;
     let smtp = FakeSmtp::start().await;
     let bob = app.add_user("bob", None).await;
-    app.post(
-        &mut admin,
-        &format!("/settings/users/{bob}"),
-        &[
-            ("display_name", "Bob"),
-            ("role", "viewer"),
-            ("email", "bob@example.com"),
-        ],
-    )
-    .await;
+    app.set_email(&mut admin, bob, "bob@example.com").await;
 
-    // The sheet says nothing about email, and neither does the result.
+    // The sheet offers no email box, and even a form that asks for one sends
+    // nothing.
     let page = app.users_page(&mut admin).await;
-    assert!(!page.contains("also emailed"), "{page}");
-    let (res, code) = app.admin_code(&mut admin, bob).await;
+    assert!(!page.contains("name=\"send_email\""), "{page}");
+    let (res, code) = app.admin_code_mailed(&mut admin, bob).await;
     assert!(code.is_some(), "{}", res.body);
     assert!(!res.body.contains("emailed"), "{}", res.body);
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -989,16 +1097,7 @@ async fn with_mail_settings_the_code_is_emailed_and_never_logged() {
     let (app, mut admin) = App::set_up().await;
     let smtp = FakeSmtp::start().await;
     let bob = app.add_user("bob", None).await;
-    app.post(
-        &mut admin,
-        &format!("/settings/users/{bob}"),
-        &[
-            ("display_name", "Bob"),
-            ("role", "viewer"),
-            ("email", "bob@example.com"),
-        ],
-    )
-    .await;
+    app.set_email(&mut admin, bob, "bob@example.com").await;
     let port = smtp.port.to_string();
     let res = app
         .set_mail(
@@ -1017,11 +1116,15 @@ async fn with_mail_settings_the_code_is_emailed_and_never_logged() {
         Some("127.0.0.1")
     );
 
-    // The sheet announces it.
+    // The sheet has the box, ticked, with the address next to it.
     let page = app.users_page(&mut admin).await;
-    assert!(page.contains("also emailed to bob@example.com"), "{page}");
+    assert!(page.contains("name=\"send_email\""), "{page}");
+    assert!(
+        page.contains("Also send it by email to bob@example.com"),
+        "{page}"
+    );
 
-    let (res, code) = app.admin_code(&mut admin, bob).await;
+    let (res, code) = app.admin_code_mailed(&mut admin, bob).await;
     let code = code.expect("the page shows the code");
     assert!(
         res.body.contains("was also emailed to bob@example.com"),
@@ -1070,16 +1173,7 @@ async fn a_mail_that_fails_still_shows_the_code_and_logs_neither_it_nor_the_pass
     // This server offers no AUTH, so signing in to it fails.
     let smtp = FakeSmtp::start().await;
     let bob = app.add_user("bob", None).await;
-    app.post(
-        &mut admin,
-        &format!("/settings/users/{bob}"),
-        &[
-            ("display_name", "Bob"),
-            ("role", "viewer"),
-            ("email", "bob@example.com"),
-        ],
-    )
-    .await;
+    app.set_email(&mut admin, bob, "bob@example.com").await;
     let port = smtp.port.to_string();
     let secret = "smtp-secret-pw-12345";
     let res = app
@@ -1106,7 +1200,7 @@ async fn a_mail_that_fails_still_shows_the_code_and_logs_neither_it_nor_the_pass
     assert!(general.contains("A password is saved."), "{general}");
     assert!(general.contains("value=\"mailer\""));
 
-    let (res, code) = app.admin_code(&mut admin, bob).await;
+    let (res, code) = app.admin_code_mailed(&mut admin, bob).await;
     let code = code.expect("the code is shown even when the mail fails");
     assert_eq!(res.status, StatusCode::OK);
     assert!(
@@ -1148,6 +1242,7 @@ async fn a_mail_that_fails_still_shows_the_code_and_logs_neither_it_nor_the_pass
                 ("smtp_host", "127.0.0.1"),
                 ("smtp_port", &port),
                 ("smtp_security", "none"),
+                ("smtp_username", ""),
                 ("smtp_password_clear", "true"),
                 ("smtp_from", "noreply@example.com"),
             ],
@@ -1238,8 +1333,19 @@ async fn the_mail_form_checks_its_fields_and_the_test_button_sends_a_test() {
     assert_eq!(messages.len(), 1, "{messages:?}");
     assert!(messages[0].contains("To: ada@example.com"));
 
-    // Turning mail off removes every setting.
-    let res = app.set_mail(&mut admin, &[]).await;
+    // Turning mail off removes every setting: the fields are there, empty.
+    let res = app
+        .set_mail(
+            &mut admin,
+            &[
+                ("smtp_host", ""),
+                ("smtp_port", ""),
+                ("smtp_security", "starttls"),
+                ("smtp_username", ""),
+                ("smtp_from", ""),
+            ],
+        )
+        .await;
     assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
     for key in ["smtp_host", "smtp_port", "smtp_from", "smtp_security"] {
         assert_eq!(app.settings_value(key).await, None, "{key}");
@@ -1259,4 +1365,671 @@ async fn the_mail_form_checks_its_fields_and_the_test_button_sends_a_test() {
         )
         .await;
     assert_eq!(res.status, StatusCode::FORBIDDEN);
+}
+
+// ---------------------------------------------------------------------------
+// The lifecycle of a pending code
+// ---------------------------------------------------------------------------
+
+/// Ada makes a code for `id` and the code is pending.
+async fn pending_code(app: &App, admin: &mut Browser, id: i64) -> String {
+    let (res, code) = app.admin_code(admin, id).await;
+    let code = code.unwrap_or_else(|| panic!("no code: {}", res.body));
+    assert_eq!(app.pending(id).await, 1);
+    code
+}
+
+/// The code no longer works for `name`.
+async fn assert_dead(app: &App, name: &str, code: &str, what: &str) {
+    let mut b = Browser::at("10.20.0.1:1");
+    let res = app.redeem(&mut b, name, code, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{what}: {}", res.body);
+    assert!(!b.signed_in(), "{what}");
+}
+
+#[tokio::test]
+async fn a_pending_code_ends_with_a_password_change_a_reset_a_disable_and_a_sign_in() {
+    let (app, mut admin) = App::set_up().await;
+
+    // The user changes their own password.
+    let own = app.add_user("own-change", Some(TEMP)).await;
+    let mut session = Browser::at("10.20.1.1:1");
+    app.post(
+        &mut session,
+        "/login",
+        &[("username", "own-change"), ("password", TEMP)],
+    )
+    .await;
+    assert!(session.signed_in());
+    let code = pending_code(&app, &mut admin, own).await;
+    let res = app
+        .post(
+            &mut session,
+            "/settings/security/password",
+            &[
+                ("current_password", TEMP),
+                ("new_password", NEW_PASSWORD),
+                ("confirm_password", NEW_PASSWORD),
+            ],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(app.pending(own).await, 0, "own password change");
+    assert_dead(&app, "own-change", &code, "own password change").await;
+
+    // An admin sets a temporary password.
+    let reset = app.add_user("admin-reset", Some(TEMP)).await;
+    let code = pending_code(&app, &mut admin, reset).await;
+    let res = app
+        .post(
+            &mut admin,
+            &format!("/settings/users/{reset}/password"),
+            &[("password", NEW_PASSWORD), ("current_password", PASSWORD)],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(app.pending(reset).await, 0, "admin password reset");
+    assert_dead(&app, "admin-reset", &code, "admin password reset").await;
+
+    // An admin resets their two-factor.
+    let tfa = app.add_user("tfa-reset", None).await;
+    app.core
+        .with_conn(move |c| {
+            db::users::set_pending_totp_secret(c, tfa, SECRET)?;
+            db::users::enable_totp(c, tfa, 0, &[])
+        })
+        .await
+        .unwrap();
+    let code = pending_code(&app, &mut admin, tfa).await;
+    let res = app
+        .post(
+            &mut admin,
+            &format!("/settings/users/{tfa}/2fa/reset"),
+            &[("current_password", PASSWORD)],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(app.pending(tfa).await, 0, "two-factor reset");
+    assert_dead(&app, "tfa-reset", &code, "two-factor reset").await;
+
+    // Disabling, and enabling again, do not bring a code back.
+    let off = app.add_user("off-on", None).await;
+    let code = pending_code(&app, &mut admin, off).await;
+    app.post(&mut admin, &format!("/settings/users/{off}/disable"), &[])
+        .await;
+    assert_eq!(app.pending(off).await, 0, "disable");
+    app.post(&mut admin, &format!("/settings/users/{off}/enable"), &[])
+        .await;
+    assert_eq!(app.pending(off).await, 0, "enable");
+    assert_dead(&app, "off-on", &code, "disable and enable").await;
+    app.post(&mut admin, &format!("/settings/users/{off}/disable"), &[])
+        .await;
+    let code = app.code_for(off).await;
+    assert_eq!(app.pending(off).await, 1, "a code made while disabled");
+    app.post(&mut admin, &format!("/settings/users/{off}/enable"), &[])
+        .await;
+    assert_eq!(app.pending(off).await, 0, "enable alone");
+    assert_dead(&app, "off-on", &code, "enable alone").await;
+
+    // The user signs in the usual way.
+    let back = app.add_user("remembered", Some(TEMP)).await;
+    let code = pending_code(&app, &mut admin, back).await;
+    let mut b = Browser::at("10.20.2.1:1");
+    app.post(
+        &mut b,
+        "/login",
+        &[("username", "remembered"), ("password", TEMP)],
+    )
+    .await;
+    assert!(b.signed_in());
+    assert_eq!(app.pending(back).await, 0, "a sign-in");
+    assert_dead(&app, "remembered", &code, "a sign-in").await;
+    // A wrong password does not count as one.
+    let other = app.add_user("fumbles", Some(TEMP)).await;
+    let code = pending_code(&app, &mut admin, other).await;
+    let mut b = Browser::at("10.20.2.2:1");
+    app.post(
+        &mut b,
+        "/login",
+        &[("username", "fumbles"), ("password", "not the password")],
+    )
+    .await;
+    assert!(!b.signed_in());
+    assert_eq!(app.pending(other).await, 1, "a failed sign-in");
+    let mut b = Browser::at("10.20.2.3:1");
+    let res = app.redeem(&mut b, "fumbles", &code, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+}
+
+#[tokio::test]
+async fn the_users_page_shows_a_pending_code_and_an_admin_revokes_it() {
+    let (app, mut admin) = App::set_up().await;
+    let bob = app.add_user("bob", None).await;
+    let carol = app.add_user("carol", Some(TEMP)).await;
+    let mut carol_browser = Browser::at("10.21.0.1:1");
+    app.post(
+        &mut carol_browser,
+        "/login",
+        &[("username", "carol"), ("password", TEMP)],
+    )
+    .await;
+    assert!(carol_browser.signed_in());
+
+    let revoke = format!("/settings/users/{bob}/sign-in-code/revoke");
+    let page = app.users_page(&mut admin).await;
+    assert!(!page.contains("Code pending"), "{page}");
+    assert!(!page.contains("revoke-code-"), "{page}");
+
+    let code = pending_code(&app, &mut admin, bob).await;
+    let page = app.users_page(&mut admin).await;
+    assert!(page.contains("Code pending"), "{page}");
+    assert!(
+        page.contains(&format!("id=\"revoke-code-{bob}\"")),
+        "{page}"
+    );
+    assert!(page.contains(&revoke));
+    assert!(page.contains("Revoke code"), "{page}");
+    // Carol has no code, so no sheet and no label for her.
+    assert!(!page.contains(&format!("revoke-code-{carol}")));
+
+    // Not without the admin's password, not with a wrong one.
+    for (password, message) in [("", REAUTH_NEEDED), ("not the password", WRONG_PASSWORD)] {
+        let res = app
+            .post(&mut admin, &revoke, &[("current_password", password)])
+            .await;
+        assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+        assert!(app.users_page(&mut admin).await.contains(message));
+        assert_eq!(app.pending(bob).await, 1, "still pending");
+    }
+    // Not by someone who is not an admin.
+    let res = app
+        .post(&mut carol_browser, &revoke, &[("current_password", TEMP)])
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN, "{}", res.body);
+    assert_eq!(app.pending(bob).await, 1);
+
+    let res = app
+        .post(&mut admin, &revoke, &[("current_password", PASSWORD)])
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    let page = app.users_page(&mut admin).await;
+    assert!(page.contains("pending code for bob was revoked"), "{page}");
+    assert!(!page.contains("Code pending"), "{page}");
+    assert_eq!(app.pending(bob).await, 0);
+    assert_dead(&app, "bob", &code, "revoked by the admin").await;
+    // Nothing else about the account changed.
+    assert!(app.user("bob").await.active);
+}
+
+#[tokio::test]
+async fn redeeming_deletes_the_users_api_tokens_and_only_theirs() {
+    let (app, mut admin) = App::set_up().await;
+    let bob = app.add_user("bob", None).await;
+    let carol = app.add_user("carol", None).await;
+    app.add_token(bob, "hash-bob-1").await;
+    app.add_token(bob, "hash-bob-2").await;
+    app.add_token(carol, "hash-carol-1").await;
+    let (_, code) = app.admin_code(&mut admin, bob).await;
+    let code = code.unwrap();
+    assert_eq!(app.tokens_of(bob).await, 2, "making a code deletes nothing");
+
+    // A refused attempt deletes nothing.
+    let mut b = Browser::at("10.22.0.1:1");
+    let wrong = sign_in_codes::generate();
+    let res = app.redeem(&mut b, "bob", &wrong, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(app.tokens_of(bob).await, 2);
+
+    let res = app.redeem(&mut b, "bob", &code, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(app.tokens_of(bob).await, 0, "the tokens went with the code");
+    assert_eq!(app.tokens_of(carol).await, 1, "other users keep theirs");
+}
+
+// ---------------------------------------------------------------------------
+// Where the code goes needs the admin's password
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn the_mail_settings_and_the_public_url_need_the_admins_password() {
+    let (app, mut admin) = App::set_up().await;
+    let smtp = FakeSmtp::start().await;
+    let port = smtp.port.to_string();
+    let mail = [
+        ("smtp_host", "127.0.0.1"),
+        ("smtp_port", port.as_str()),
+        ("smtp_security", "none"),
+        ("smtp_from", "Kit Demo <noreply@example.com>"),
+    ];
+
+    // The mail server: not without the password, not with a wrong one.
+    for (password, message) in [
+        (None, REAUTH_NEEDED),
+        (Some(""), REAUTH_NEEDED),
+        (Some("not the password"), WRONG_PASSWORD),
+    ] {
+        let res = app.general(&mut admin, &mail, password).await;
+        assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", res.body);
+        assert!(res.body.contains(message), "{message}: {}", res.body);
+        assert_eq!(app.settings_value("smtp_host").await, None);
+    }
+    let res = app.general(&mut admin, &mail, Some(PASSWORD)).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(
+        app.settings_value("smtp_host").await.as_deref(),
+        Some("127.0.0.1")
+    );
+
+    // Changing any one field of it asks again; the sender here.
+    let moved = [
+        ("smtp_host", "127.0.0.1"),
+        ("smtp_port", port.as_str()),
+        ("smtp_security", "none"),
+        ("smtp_from", "Evil <evil@example.com>"),
+    ];
+    let res = app.general(&mut admin, &moved, None).await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", res.body);
+    assert_eq!(
+        app.settings_value("smtp_from").await.as_deref(),
+        Some("Kit Demo <noreply@example.com>")
+    );
+
+    // The public URL, where the link in the mail points.
+    let url = [("base_url", "https://vole.example.org")];
+    let res = app
+        .general(&mut admin, &[mail.as_slice(), &url].concat(), None)
+        .await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", res.body);
+    assert_eq!(app.settings_value("base_url").await, None);
+    let res = app
+        .general(
+            &mut admin,
+            &[mail.as_slice(), &url].concat(),
+            Some(PASSWORD),
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(
+        app.settings_value("base_url").await.as_deref(),
+        Some("https://vole.example.org")
+    );
+
+    // Saving the same values again, or changing something else, asks for
+    // nothing.
+    let same = [mail.as_slice(), &url, &[("site_name", "Renamed")]].concat();
+    let res = app.general(&mut admin, &same, None).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(
+        app.settings_value("site_name").await.as_deref(),
+        Some("Renamed")
+    );
+
+    // A form without the mail fields (a stale page, a script) keeps them.
+    let res = app
+        .general(
+            &mut admin,
+            &[
+                ("base_url", "https://vole.example.org"),
+                ("site_name", "Ours"),
+            ],
+            None,
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    for (key, value) in [
+        ("smtp_host", "127.0.0.1"),
+        ("smtp_port", port.as_str()),
+        ("smtp_from", "Kit Demo <noreply@example.com>"),
+    ] {
+        assert_eq!(
+            app.settings_value(key).await.as_deref(),
+            Some(value),
+            "{key}"
+        );
+    }
+    // Turning it off is saying so, and asks for the password.
+    let off = [
+        ("smtp_host", ""),
+        ("smtp_port", ""),
+        ("smtp_username", ""),
+        ("smtp_from", ""),
+        ("base_url", "https://vole.example.org"),
+    ];
+    let res = app.general(&mut admin, &off, None).await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", res.body);
+    assert!(app.settings_value("smtp_host").await.is_some());
+    let res = app.general(&mut admin, &off, Some(PASSWORD)).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(app.settings_value("smtp_host").await, None);
+    // The page has the password field.
+    let page = app.get(&mut admin, "/settings/general").await.body;
+    assert!(page.contains("name=\"current_password\""), "{page}");
+}
+
+#[tokio::test]
+async fn a_users_email_address_needs_the_admins_password_to_change() {
+    let (app, mut admin) = App::set_up().await;
+    let bob = app.add_user("bob", None).await;
+    let path = format!("/settings/users/{bob}");
+    let form = |email: &'static str, password: &'static str| {
+        [
+            ("display_name", "Robert"),
+            ("role", "viewer"),
+            ("email", email),
+            ("current_password", password),
+        ]
+    };
+
+    // Setting one: not without the password, not with a wrong one.
+    for (password, message) in [("", REAUTH_NEEDED), ("not the password", WRONG_PASSWORD)] {
+        let res = app
+            .post(&mut admin, &path, &form("bob@example.com", password))
+            .await;
+        assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+        assert!(app.users_page(&mut admin).await.contains(message));
+        assert_eq!(app.stored_email(bob).await, None);
+        assert_ne!(
+            app.user("bob").await.display_name,
+            "Robert",
+            "all or nothing"
+        );
+    }
+    let res = app
+        .post(&mut admin, &path, &form("bob@example.com", PASSWORD))
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        app.stored_email(bob).await.as_deref(),
+        Some("bob@example.com")
+    );
+
+    // Changing it, and clearing it, ask again.
+    for new in ["evil@example.com", ""] {
+        let res = app.post(&mut admin, &path, &form(new, "")).await;
+        assert_eq!(res.status, StatusCode::SEE_OTHER);
+        assert_eq!(
+            app.stored_email(bob).await.as_deref(),
+            Some("bob@example.com"),
+            "{new:?}"
+        );
+    }
+    // The same address, or a form without the field, asks for nothing.
+    let res = app
+        .post(&mut admin, &path, &form("bob@example.com", ""))
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER);
+    assert!(
+        app.users_page(&mut admin).await.contains("User saved"),
+        "unchanged address"
+    );
+    app.post(
+        &mut admin,
+        &path,
+        &[("display_name", "Bobby"), ("role", "viewer")],
+    )
+    .await;
+    assert_eq!(app.user("bob").await.display_name, "Bobby");
+    assert_eq!(
+        app.stored_email(bob).await.as_deref(),
+        Some("bob@example.com")
+    );
+    app.post(&mut admin, &path, &form("", PASSWORD)).await;
+    assert_eq!(app.stored_email(bob).await, None);
+}
+
+#[tokio::test]
+async fn the_code_is_emailed_only_when_the_admin_ticks_the_box() {
+    let (app, mut admin) = App::set_up().await;
+    let smtp = FakeSmtp::start().await;
+    let bob = app.add_user("bob", None).await;
+    let carol = app.add_user("carol", None).await;
+    app.set_email(&mut admin, bob, "bob@example.com").await;
+    app.mail_on(&mut admin, &smtp).await;
+
+    // The box is on the sheet of a user with an address, ticked; not on
+    // carol's, who has none.
+    let page = app.users_page(&mut admin).await;
+    assert_eq!(page.matches("name=\"send_email\"").count(), 1, "{page}");
+    assert!(
+        page.contains("name=\"send_email\" value=\"true\" checked"),
+        "{page}"
+    );
+
+    // A form that doesn't tick it sends no mail.
+    let (res, code) = app.admin_code(&mut admin, bob).await;
+    assert!(code.is_some(), "{}", res.body);
+    assert!(!res.body.contains("emailed"), "{}", res.body);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(smtp.messages().is_empty());
+
+    // Ticked: one mail. Ticked for a user without an address: none.
+    let (res, _) = app.admin_code_mailed(&mut admin, bob).await;
+    assert!(res.body.contains("was also emailed to bob@example.com"));
+    let (res, code) = app.admin_code_mailed(&mut admin, carol).await;
+    assert!(
+        code.is_some() && !res.body.contains("emailed"),
+        "{}",
+        res.body
+    );
+    assert_eq!(smtp.messages().len(), 1);
+}
+
+#[tokio::test]
+async fn names_cannot_pull_the_code_into_the_subject_or_add_headers() {
+    let (app, mut admin) = App::set_up().await;
+    let smtp = FakeSmtp::start().await;
+    let bob = app.add_user("bob", None).await;
+    app.set_email(&mut admin, bob, "bob@example.com").await;
+    app.mail_on(&mut admin, &smtp).await;
+    // The person's display name and the site name are the attacker's.
+    let evil = "{code} {url} Bob\r\nBcc: evil@example.com";
+    let res = app
+        .post(
+            &mut admin,
+            &format!("/settings/users/{bob}"),
+            &[
+                ("display_name", evil),
+                ("role", "viewer"),
+                ("email", "bob@example.com"),
+            ],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(app.user("bob").await.display_name, evil.trim());
+    let site = "Ours {code}\r\nBcc: evil@example.com";
+    let res = app
+        .general(
+            &mut admin,
+            &[
+                ("site_name", site),
+                ("smtp_host", "127.0.0.1"),
+                ("smtp_security", "none"),
+            ],
+            None,
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+
+    let (res, code) = app.admin_code_mailed(&mut admin, bob).await;
+    let code = code.expect("the page shows the code");
+    assert!(res.body.contains("was also emailed to"), "{}", res.body);
+    let messages = smtp.messages();
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let mail = &messages[0];
+    let (head, body) = mail.split_once("\n\n").expect("headers and body");
+    let compact = code.replace('-', "");
+    assert!(!head.contains(&code) && !head.contains(&compact), "{head}");
+    assert!(
+        !head.lines().any(|l| l.to_lowercase().starts_with("bcc:")),
+        "a header was added: {head}"
+    );
+    assert_eq!(
+        head.lines().filter(|l| l.starts_with("Subject:")).count(),
+        1,
+        "{head}"
+    );
+    assert!(!head.contains("{code}"), "{head}");
+    assert!(
+        !body.contains("{code}") && !body.contains("{url}"),
+        "{body}"
+    );
+    assert_eq!(body.matches(&code).count(), 1, "the code once: {body}");
+    // The line break did not start a line of the body either.
+    assert!(
+        !body.lines().any(|l| l.to_lowercase().starts_with("bcc:")),
+        "{body}"
+    );
+    assert_eq!(mail_code(mail), code);
+}
+
+#[tokio::test]
+async fn unencrypted_credentials_are_refused_and_the_test_button_is_limited() {
+    let (app, mut admin) = App::set_up().await;
+    let res = app
+        .set_mail(
+            &mut admin,
+            &[
+                ("smtp_host", "mail.example.com"),
+                ("smtp_port", "25"),
+                ("smtp_security", "none"),
+                ("smtp_username", "mailer"),
+                ("smtp_password", "pw"),
+                ("smtp_from", "noreply@example.com"),
+            ],
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", res.body);
+    assert!(
+        res.body
+            .contains("can’t be sent unencrypted to another computer"),
+        "{}",
+        res.body
+    );
+    assert_eq!(app.settings_value("smtp_host").await, None);
+    assert_eq!(app.settings_value("smtp_password").await, None);
+    // Without credentials, or with encryption, the same server is fine.
+    for extra in [
+        [
+            ("smtp_username", ""),
+            ("smtp_password", ""),
+            ("smtp_security", "none"),
+        ],
+        [
+            ("smtp_username", "mailer"),
+            ("smtp_password", "pw"),
+            ("smtp_security", "tls"),
+        ],
+    ] {
+        let mut form = vec![
+            ("smtp_host", "mail.example.com"),
+            ("smtp_port", "25"),
+            ("smtp_from", "noreply@example.com"),
+        ];
+        form.extend_from_slice(&extra);
+        let res = app.set_mail(&mut admin, &form).await;
+        assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    }
+
+    // Five test mails, then a wait.
+    let smtp = FakeSmtp::start().await;
+    app.mail_on(&mut admin, &smtp).await;
+    for i in 0..7 {
+        let res = app
+            .post(
+                &mut admin,
+                "/settings/general/smtp-test",
+                &[("to", "ada@example.com")],
+            )
+            .await;
+        assert_eq!(res.status, StatusCode::SEE_OTHER, "{i}");
+        let page = app.get(&mut admin, "/settings/general").await.body;
+        if i < 5 {
+            assert!(page.contains("Test email sent to"), "{i}: {page}");
+        } else {
+            assert!(page.contains("Too many test emails"), "{i}: {page}");
+        }
+    }
+    assert_eq!(smtp.messages().len(), 5);
+}
+
+// ---------------------------------------------------------------------------
+// The throttle and the log
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn codes_and_sign_in_have_their_own_throttles_and_a_huge_name_is_just_wrong() {
+    let (app, _admin) = App::set_up().await;
+    let wrong = sign_in_codes::generate();
+
+    // Guessing codes for ada does not use up ada's sign-in budget ...
+    for i in 0..14 {
+        let mut b = Browser::at(&format!("10.23.0.{i}:1"));
+        app.redeem(&mut b, "ada", &wrong, NEW_PASSWORD).await;
+    }
+    let mut b = Browser::at("10.23.1.1:1");
+    let res = app.redeem(&mut b, "ada", &wrong, NEW_PASSWORD).await;
+    assert_eq!(
+        res.status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "codes are waiting"
+    );
+    assert!(app.signs_in("ada", PASSWORD).await, "the sign-in is not");
+
+    // ... and failed sign-ins for bob do not stop his code.
+    let bob = app.add_user("bob", Some(TEMP)).await;
+    let code = app.code_for(bob).await;
+    for i in 0..8 {
+        let mut b = Browser::at(&format!("10.23.2.{i}:1"));
+        app.post(
+            &mut b,
+            "/login",
+            &[("username", "bob"), ("password", "not the password")],
+        )
+        .await;
+    }
+    assert!(!app.signs_in("bob", TEMP).await, "the sign-in waits");
+    let mut b = Browser::at("10.23.3.1:1");
+    let res = app.redeem(&mut b, "bob", &code, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+
+    // A name of 300 000 characters is one more wrong name, with the same
+    // answer.
+    let huge = "A".repeat(300_000);
+    let mut b = Browser::at("10.23.4.1:1");
+    for _ in 0..2 {
+        let res = app.redeem(&mut b, &huge, &wrong, NEW_PASSWORD).await;
+        assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+        assert!(res.body.contains("don’t match, or the code has expired"));
+    }
+}
+
+#[tokio::test]
+async fn the_log_never_holds_what_was_typed_as_a_user_name() {
+    let (app, _admin) = App::set_up().await;
+    let target = app.add_user("target", None).await;
+    let code = app.code_for(target).await;
+    let mut b = Browser::at("10.24.0.1:1");
+    // The code pasted into the user name field, and a name that tries to
+    // start a log line of its own.
+    let res = app.redeem(&mut b, &code, &code, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    let forged = "mallory\nFORGED-LINE sign-in code redeemed user=ada";
+    let res = app.redeem(&mut b, forged, &code, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    for _ in 0..12 {
+        app.redeem(&mut b, "throttled-name", &code, NEW_PASSWORD)
+            .await;
+    }
+    let log = logs();
+    assert!(log.contains("failed sign-in code"), "{log}");
+    assert!(log.contains("sign-in code attempts throttled"), "{log}");
+    assert!(!log.contains(&code), "the code is in the log");
+    assert!(
+        !log.contains(&code.replace('-', "")),
+        "the code is in the log"
+    );
+    assert!(!log.contains("FORGED-LINE"), "{log}");
+    assert!(!log.contains("mallory"), "{log}");
+    assert!(!log.contains("throttled-name"), "{log}");
+    assert!(log.contains("user_ref="), "{log}");
 }

@@ -30,7 +30,7 @@
           {%- endfor %}
         </div>
       </div>
-      {%- if !u.role_is("admin") %}
+      {%- if !u.role_is("admin") && !sign_in_codes %}
       {%- if external %}
       <div data-show-when="role=admin">
         {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
@@ -42,6 +42,18 @@
         <p class="help" id="eu-{{ u.id }}-current-password-help">{{ tr("users.admin_password_help") }}</p>
       </div>
       {%- endif %}
+      {%- endif %}
+      {%- endif %}
+      {%- if sign_in_codes %}
+      {#- With sign-in codes the password is also needed to change the email address: always there, used when it matters. -#}
+      {%- if external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
+      <div class="field">
+        <label class="label" for="eu-{{ u.id }}-current-password">{{ tr("sec.your_password") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <input id="eu-{{ u.id }}-current-password" name="current_password" type="password" maxlength="1024" autocomplete="current-password" aria-describedby="eu-{{ u.id }}-current-password-help">
+        <p class="help" id="eu-{{ u.id }}-current-password-help">{{ tr("sign_in_code.password_help") }}</p>
+      </div>
       {%- endif %}
       {%- endif %}
     </form>
@@ -90,8 +102,9 @@
   <div class="sheet-body">
     <form id="reset-code-{{ u.id }}-form" class="form" method="post" action="/settings/users/{{ u.id }}/sign-in-code">
       <p class="help">{{ tr("sign_in_code.reset_help") }}</p>
+      <p class="help">{{ tr("sign_in_code.reset_tokens") }}</p>
       {%- if smtp_ready && !u.email.is_empty() %}
-      <p class="help">{{ tr1("sign_in_code.reset_mail", "email", u.email) }}</p>
+      {{ m::checkbox("send_email", tr1("sign_in_code.send_mail", "email", u.email), true) }}
       {%- endif %}
       {%- if external %}
       {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
@@ -106,6 +119,33 @@
   <footer class="sheet-foot">
     <button type="button" class="btn btn-secondary" data-sheet-close commandfor="reset-code-{{ u.id }}" command="close">{{ tr("common.cancel") }}</button>
     <button type="submit" class="btn btn-primary" form="reset-code-{{ u.id }}-form">{{ tr("sign_in_code.create") }}</button>
+  </footer>
+</dialog>
+{%- endif %}
+
+{%- if sign_in_codes && !u.is_self && u.code_until.is_some() %}
+<dialog class="sheet" id="revoke-code-{{ u.id }}" aria-labelledby="revoke-code-{{ u.id }}-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="revoke-code-{{ u.id }}-title">{{ tr1("sign_in_code.revoke_for", "name", u.username) }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="revoke-code-{{ u.id }}" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="revoke-code-{{ u.id }}-form" class="form" method="post" action="/settings/users/{{ u.id }}/sign-in-code/revoke">
+      <p class="help">{{ tr("sign_in_code.revoke_help") }}</p>
+      {%- if external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
+      <div class="field">
+        <label class="label" for="rv-{{ u.id }}-current-password">{{ tr("sec.your_password") }}</label>
+        <input id="rv-{{ u.id }}-current-password" name="current_password" type="password" required maxlength="1024" autocomplete="current-password">
+      </div>
+      {%- endif %}
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="revoke-code-{{ u.id }}" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-danger" form="revoke-code-{{ u.id }}-form">{{ tr("sign_in_code.revoke") }}</button>
   </footer>
 </dialog>
 {%- endif %}

@@ -2,29 +2,29 @@
 source: tests/golden/i18n.rs
 expression: out
 ---
-en     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=14a21e1b19aee4fc
-nb     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=e29c109f580415a0
-ar     keys= 2558 missing_vs_en=  0 extra_vs_en=136 keys_sha256=b55d9a9d2d1d1e2b values_sha256=b04fed3caa9066f2
-cs     keys= 2490 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=a2ba1fe8e1377f32 values_sha256=2c28c48a8e08f6a7
-da     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=2579b1a23fe071d3
-de     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=e1b9eaaec0633546
-es     keys= 2456 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=c3ac3c54f6a5b2fc values_sha256=ac511f74091feb74
-fa     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=4e8438c7a46cccd6
-fi     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=ba59324ced99f07d
-fr     keys= 2456 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=c3ac3c54f6a5b2fc values_sha256=d5899af104e2306c
-he     keys= 2456 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=b1f273f4985d2a78 values_sha256=e034da50bd11d775
-hu     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=7722cb1f0c09fc60
-it     keys= 2456 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=c3ac3c54f6a5b2fc values_sha256=2de8847ea82b709b
-ja     keys= 2388 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=5288d84196da9e4b values_sha256=cb3ec64236d9140e
-ko     keys= 2388 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=5288d84196da9e4b values_sha256=be789ecefb8766c1
-nl     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=2e7f02e5805b6805
-pl     keys= 2490 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=a2ba1fe8e1377f32 values_sha256=370f6a48b07cdfce
-pt-BR  keys= 2456 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=c3ac3c54f6a5b2fc values_sha256=2f1882cf2b0e5aba
-pt-PT  keys= 2456 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=c3ac3c54f6a5b2fc values_sha256=99d7f79e89e20b4c
-ro     keys= 2456 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=be77d9a3fa855cd6 values_sha256=26fcc4e20cbea04a
-ru     keys= 2490 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=a2ba1fe8e1377f32 values_sha256=28bc61c18e0f22a3
-sv     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=d4c2d19c4fe816f6
-tr     keys= 2422 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=93831b15cea822e4 values_sha256=b7df6ab4faaaf790
-uk     keys= 2490 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=a2ba1fe8e1377f32 values_sha256=7d0f33d106eb7243
-zh-CN  keys= 2388 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=5288d84196da9e4b values_sha256=1a0835bb79da7cce
-zh-TW  keys= 2388 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=5288d84196da9e4b values_sha256=4ab831d55b19f552
+en     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=eca08135218f4d32
+nb     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=6107572c360bf8b4
+ar     keys= 2567 missing_vs_en=  0 extra_vs_en=136 keys_sha256=a511ee5a2e43da86 values_sha256=26987f8c94679f9b
+cs     keys= 2499 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=ce8981619914d633 values_sha256=fafc566625888280
+da     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=022ba079eca35d85
+de     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=7c83f60ac81b81f2
+es     keys= 2465 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=af61d6ada9f064c4 values_sha256=f1024323cffd093b
+fa     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=192aee841b8e8de2
+fi     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=d2ee50e10c82318e
+fr     keys= 2465 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=af61d6ada9f064c4 values_sha256=437a70d63ac13bf2
+he     keys= 2465 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=ab38248d36499794 values_sha256=50707955d88353e3
+hu     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=d5a79cbc182332bf
+it     keys= 2465 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=af61d6ada9f064c4 values_sha256=fab8f7d301992763
+ja     keys= 2397 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=17a4154ee5a96f97 values_sha256=63cd4b6f5f39c529
+ko     keys= 2397 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=17a4154ee5a96f97 values_sha256=797c021ed1973e5f
+nl     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=93d404ff52a95116
+pl     keys= 2499 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=ce8981619914d633 values_sha256=7ef9152cf85977df
+pt-BR  keys= 2465 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=af61d6ada9f064c4 values_sha256=a9738284ea5284b5
+pt-PT  keys= 2465 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=af61d6ada9f064c4 values_sha256=afd759b0be33104d
+ro     keys= 2465 missing_vs_en=  0 extra_vs_en= 34 keys_sha256=d439309337fcc98a values_sha256=9c93e5a2e3814a89
+ru     keys= 2499 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=ce8981619914d633 values_sha256=8882b0e2f84f3780
+sv     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=a70294dc80b398cc
+tr     keys= 2431 missing_vs_en=  0 extra_vs_en=  0 keys_sha256=9a4d66fb160f97b9 values_sha256=890a91b303006c43
+uk     keys= 2499 missing_vs_en=  0 extra_vs_en= 68 keys_sha256=ce8981619914d633 values_sha256=f870ef6226b9796b
+zh-CN  keys= 2397 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=17a4154ee5a96f97 values_sha256=c95c9eaed2cf206e
+zh-TW  keys= 2397 missing_vs_en= 34 extra_vs_en=  0 keys_sha256=17a4154ee5a96f97 values_sha256=417fd97ca7f5db42

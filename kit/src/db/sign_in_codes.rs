@@ -7,10 +7,15 @@
 //! is used, revoked or past `expires_at`; every function here that takes a
 //! code by hash only sees pending ones, so an expired, used, revoked and
 //! unknown code are indistinguishable.
+//!
+//! A pending code is revoked by everything that settles how its user signs
+//! in: a new password (their own, an admin's, or the one a redeemed code
+//! sets), a reset of their two-factor, disabling or enabling the account and
+//! a successful sign-in. [`revoke_if_enabled`] is what those call.
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
-use super::users;
+use super::{api_tokens, users};
 
 /// How long a code works.
 pub const LIFETIME_HOURS: i64 = 24;
@@ -56,8 +61,10 @@ pub fn insert(
 
 /// Uses the pending code with this hash for `user_id`, a user that is
 /// active, and signs the user out everywhere (their `session_version` moves
-/// on). With `password_hash` the user's password is set in the same
-/// transaction. One transaction, and the claim is a single statement: of two
+/// on) and deletes all of the user's API tokens: a code is a recovery path,
+/// so a token that may have leaked must not outlive it. With
+/// `password_hash` the user's password is set in the same transaction. One
+/// transaction, and the claim is a single statement: of two
 /// callers racing for the same code exactly one gets `Some`. The code must
 /// belong to `user_id`: a valid code for somebody else is left alone, and
 /// the answer is `None` exactly as for a code that does not exist. Returns
@@ -82,6 +89,7 @@ pub fn redeem(
     if claimed != 1 {
         return Ok(None);
     }
+    api_tokens::delete_all_for_user(&tx, user_id)?;
     let version = match password_hash {
         Some(hash) => users::set_password(&tx, user_id, hash)?,
         None => users::bump_session_version(&tx, user_id)?,
@@ -98,6 +106,31 @@ pub fn revoke_for_user(conn: &Connection, user_id: i64) -> rusqlite::Result<usiz
         ),
         params![user_id],
     )
+}
+
+/// [`revoke_for_user`] for code that runs whether or not the feature is on
+/// (the password and account functions of `db::users`): the `sign_in_codes`
+/// table only exists with the feature, so without it this does nothing.
+pub fn revoke_if_enabled(conn: &Connection, user_id: i64) -> rusqlite::Result<usize> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sign_in_codes')",
+        [],
+        |r| r.get(0),
+    )?;
+    if exists {
+        revoke_for_user(conn, user_id)
+    } else {
+        Ok(0)
+    }
+}
+
+/// The users that have a pending code, `(user id, expires_at)`.
+pub fn pending_users(conn: &Connection) -> rusqlite::Result<Vec<(i64, String)>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT user_id, MAX(expires_at) FROM sign_in_codes WHERE {PENDING} GROUP BY user_id"
+    ))?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    rows.collect()
 }
 
 /// How many codes of this user are pending.
@@ -260,6 +293,79 @@ mod tests {
             })
             .unwrap();
         assert_eq!(version, 10, "a refused code changes nothing");
+    }
+
+    #[test]
+    fn redeeming_deletes_the_users_api_tokens_and_only_theirs() {
+        let mut c = conn();
+        for (user, hash) in [(2, "h2"), (3, "h3")] {
+            c.execute(
+                "INSERT INTO api_tokens (user_id, name, prefix, token_hash, scope)
+                 VALUES (?1, 't', 'vv_x', ?2, 'read')",
+                params![user, hash],
+            )
+            .unwrap();
+        }
+        insert(&mut c, 2, &hash(1), 1).unwrap();
+        // A refused redeem leaves them.
+        assert_eq!(redeem(&mut c, &hash(9), 2, None).unwrap(), None);
+        let tokens = |c: &Connection, user: i64| -> i64 {
+            c.query_row(
+                "SELECT COUNT(*) FROM api_tokens WHERE user_id = ?1",
+                [user],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!((tokens(&c, 2), tokens(&c, 3)), (1, 1));
+        assert!(redeem(&mut c, &hash(1), 2, None).unwrap().is_some());
+        assert_eq!((tokens(&c, 2), tokens(&c, 3)), (0, 1));
+    }
+
+    #[test]
+    fn password_changes_two_factor_resets_and_account_changes_revoke_pending_codes() {
+        let mut c = conn();
+        let pending = |c: &Connection| count_pending(c, 2).unwrap();
+        insert(&mut c, 2, &hash(1), 1).unwrap();
+        users::set_password(&c, 2, "new").unwrap();
+        assert_eq!(pending(&c), 0, "a new password");
+
+        insert(&mut c, 2, &hash(2), 1).unwrap();
+        users::disable_totp(&c, 2).unwrap();
+        assert_eq!(pending(&c), 0, "a two-factor reset");
+
+        insert(&mut c, 2, &hash(3), 1).unwrap();
+        users::set_active(&mut c, 2, false).unwrap().unwrap();
+        assert_eq!(pending(&c), 0, "disabling");
+        insert(&mut c, 2, &hash(4), 1).unwrap();
+        users::set_active(&mut c, 2, true).unwrap().unwrap();
+        assert_eq!(pending(&c), 0, "enabling");
+        // The code from before the disable does not come back.
+        assert_eq!(redeem(&mut c, &hash(3), 2, None).unwrap(), None);
+
+        // Another user's code is left alone.
+        insert(&mut c, 3, &hash(5), 1).unwrap();
+        users::set_password(&c, 2, "again").unwrap();
+        assert_eq!(count_pending(&c, 3).unwrap(), 1);
+        assert_eq!(pending_users(&c).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn without_the_feature_revoking_does_nothing() {
+        // The tables of the feature are not there.
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        for (_, sql) in crate::db::migrate::CORE {
+            c.execute_batch(sql).unwrap();
+        }
+        c.execute(
+            "INSERT INTO users (id, username, password_hash, role) VALUES (1, 'ada', 'x', 'admin')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(revoke_if_enabled(&c, 1).unwrap(), 0);
+        users::set_password(&c, 1, "y").unwrap();
+        users::disable_totp(&c, 1).unwrap();
     }
 
     #[test]

@@ -42,7 +42,11 @@ impl GeneralSettings {
     /// invalid, taken by the kit or used twice, texts `has` doesn't know,
     /// and defaults the field itself would refuse. Checked by
     /// [`crate::config::install`].
-    pub fn problems(&self, has: &impl Fn(&str) -> bool) -> Vec<String> {
+    ///
+    /// `sign_in_codes` says the product has
+    /// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)
+    /// on: only then are the mail settings' form names the kit's.
+    pub fn problems(&self, has: &impl Fn(&str) -> bool, sign_in_codes: bool) -> Vec<String> {
         let mut problems = Vec::new();
         let mut seen: Vec<&str> = Vec::new();
         for section in self.sections {
@@ -62,7 +66,10 @@ impl GeneralSettings {
                 if !valid {
                     problems.push(format!("{what}: invalid key"));
                 }
-                if RESERVED.contains(&key) || seen.contains(&key) {
+                if RESERVED.contains(&key)
+                    || (sign_in_codes && MAIL_RESERVED.contains(&key))
+                    || seen.contains(&key)
+                {
                     problems.push(format!("{what}: key already used"));
                 }
                 seen.push(key);
@@ -97,12 +104,19 @@ const RESERVED: &[&str] = &[
     settings::BASE_URL,
     settings::TIMEZONE,
     settings::LANGUAGE,
+];
+
+/// Form names of the mail settings and their confirmation, the kit's only
+/// with [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes).
+const MAIL_RESERVED: &[&str] = &[
     settings::SMTP_HOST,
     settings::SMTP_PORT,
     settings::SMTP_SECURITY,
     settings::SMTP_USERNAME,
     settings::SMTP_PASSWORD,
     settings::SMTP_FROM,
+    "smtp_password_clear",
+    "current_password",
 ];
 
 /// A titled group of product fields on the General page.
@@ -358,6 +372,39 @@ mod tests {
     }
 
     #[test]
+    fn the_mail_keys_are_the_kits_only_with_sign_in_codes() {
+        static MAIL: &[SettingsSection] = &[SettingsSection {
+            title: "general.site",
+            fields: &[
+                SettingField {
+                    key: "smtp_host",
+                    ..DAYS
+                },
+                SettingField {
+                    key: "current_password",
+                    ..DAYS
+                },
+            ],
+        }];
+        let has = |k: &str| k.starts_with("general.");
+        let mine = GeneralSettings {
+            sections: MAIL,
+            ..GeneralSettings::CORE_ONLY
+        };
+        // Feature off: a product's own field may have these names.
+        assert_eq!(mine.problems(&has, false), Vec::<String>::new());
+        let on = mine.problems(&has, true).join(
+            "
+",
+        );
+        assert!(on.contains("\"smtp_host\": key already used"), "{on}");
+        assert!(
+            on.contains("\"current_password\": key already used"),
+            "{on}"
+        );
+    }
+
+    #[test]
     fn a_products_sections_are_checked() {
         static GOOD: &[SettingsSection] = &[SettingsSection {
             title: "general.site",
@@ -368,7 +415,7 @@ mod tests {
             sections: GOOD,
             ..GeneralSettings::CORE_ONLY
         };
-        assert_eq!(good.problems(&has), Vec::<String>::new());
+        assert_eq!(good.problems(&has, false), Vec::<String>::new());
         assert_eq!(good.fields().count(), 1);
 
         static BAD: &[SettingsSection] = &[SettingsSection {
@@ -391,7 +438,7 @@ mod tests {
             sections: BAD,
             ..GeneralSettings::CORE_ONLY
         };
-        let problems = bad.problems(&has).join("\n");
+        let problems = bad.problems(&has, false).join("\n");
         for expected in [
             "no English text for nope.title",
             "\"timezone\": key already used",
