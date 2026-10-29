@@ -459,7 +459,7 @@ CREATE TABLE status_pages (
     refresh_seconds INTEGER NOT NULL DEFAULT 60,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-, show_powered_by INTEGER NOT NULL DEFAULT 1, password_hash TEXT, password_version INTEGER NOT NULL DEFAULT 0, analytics_enabled INTEGER NOT NULL DEFAULT 1, analytics_unique INTEGER NOT NULL DEFAULT 1, analytics_provider TEXT NOT NULL DEFAULT 'none', analytics_site_id TEXT NOT NULL DEFAULT '', analytics_url TEXT NOT NULL DEFAULT '', subscribe_enabled INTEGER NOT NULL DEFAULT 0, subscribe_channel_id INTEGER REFERENCES notification_channels(id) ON DELETE SET NULL, subscribe_webhooks INTEGER NOT NULL DEFAULT 0);
+, show_powered_by INTEGER NOT NULL DEFAULT 1, password_hash TEXT, password_version INTEGER NOT NULL DEFAULT 0, analytics_enabled INTEGER NOT NULL DEFAULT 1, analytics_unique INTEGER NOT NULL DEFAULT 1, analytics_provider TEXT NOT NULL DEFAULT 'none', analytics_site_id TEXT NOT NULL DEFAULT '', analytics_url TEXT NOT NULL DEFAULT '', subscribe_enabled INTEGER NOT NULL DEFAULT 0, subscribe_channel_id INTEGER REFERENCES notification_channels(id) ON DELETE SET NULL, subscribe_webhooks INTEGER NOT NULL DEFAULT 0, custom_domain_only INTEGER NOT NULL DEFAULT 0 CHECK (custom_domain_only IN (0, 1)));
 
 -- table tags (on tags)
 CREATE TABLE tags (
@@ -824,6 +824,7 @@ status_pages
   23 subscribe_enabled INTEGER 1 0 0
   24 subscribe_channel_id INTEGER 0 - 0
   25 subscribe_webhooks INTEGER 1 0 0
+  26 custom_domain_only INTEGER 1 0 0
   index sqlite_autoindex_status_pages_1 unique=1 origin=u partial=0
   index sqlite_autoindex_status_pages_2 unique=1 origin=u partial=0
 tags

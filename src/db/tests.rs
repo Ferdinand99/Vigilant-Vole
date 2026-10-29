@@ -626,7 +626,7 @@ fn a_fresh_database_adopts_the_core_set_after_our_migrations() {
             "kit/0005_sealed_totp.sql",
             "kit/0004_sealed_secrets.sql",
             "kit/0003_passkeys.sql",
-            "0106_agent_checked_monitors.sql"
+            "0107_status_page_domain_only.sql"
         ]
     );
     assert!(!ran.contains(&"kit/0001_core.sql".to_string()), "{ran:?}");
@@ -678,7 +678,37 @@ fn the_core_row_does_not_hide_a_newer_migration() {
     let err = apply_migrations(&mut conn).unwrap_err();
     assert!(
         matches!(&err, super::MigrationError::NewerSchema { schema, known, .. }
-            if schema == "0110_from_the_future" && known == "0106_agent_checked_monitors"),
+            if schema == "0110_from_the_future" && known == "0107_status_page_domain_only"),
         "{err:?}"
+    );
+}
+
+#[test]
+fn domain_only_upgrade_keeps_pages_as_they_were() {
+    let mut conn = migrated_before("0107");
+    conn.execute_batch(
+        "INSERT INTO status_pages (id, slug, title, custom_domain) VALUES (1, 'acme', 'Acme', 'status.acme.test');",
+    )
+    .unwrap();
+    super::apply_migrations(&mut conn).unwrap();
+    assert!(applied(&conn).contains(&"0107_status_page_domain_only.sql".to_string()));
+    // Existing pages keep serving the whole app on their domain.
+    let page = crate::db::status_pages::get(&conn, 1).unwrap().unwrap();
+    assert_eq!(page.custom_domain.as_deref(), Some("status.acme.test"));
+    assert!(!page.custom_domain_only);
+    // The flag is a plain 0/1.
+    conn.execute(
+        "UPDATE status_pages SET custom_domain_only = 1 WHERE id = 1",
+        [],
+    )
+    .unwrap();
+    let page = crate::db::status_pages::get(&conn, 1).unwrap().unwrap();
+    assert!(page.custom_domain_only);
+    assert!(
+        conn.execute(
+            "UPDATE status_pages SET custom_domain_only = 2 WHERE id = 1",
+            []
+        )
+        .is_err()
     );
 }

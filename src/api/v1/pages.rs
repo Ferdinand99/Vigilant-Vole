@@ -87,6 +87,7 @@ fn page_json(conn: &Connection, p: &StatusPage) -> rusqlite::Result<Value> {
 /// Password state (never the password), analytics and image URLs.
 fn add_extras(v: &mut Value, p: &StatusPage) {
     v["password_protected"] = json!(p.is_protected());
+    v["custom_domain_only"] = json!(p.custom_domain_only);
     v["analytics"] = json!(AnalyticsDoc::from_settings(&p.analytics));
     v["logo_url"] = json!(p.logo_url());
     v["favicon_url"] = json!(p.favicon_url());
@@ -142,6 +143,7 @@ struct PageIn {
     title: Option<String>,
     description: Option<String>,
     custom_domain: Option<String>,
+    custom_domain_only: Option<bool>,
     published: Option<bool>,
     theme: Option<String>,
     show_tags: Option<bool>,
@@ -178,6 +180,7 @@ fn merge(input: &PageIn, base: StatusPageDoc) -> StatusPageDoc {
             Some(d) => Some(d.clone()),
             None => base.custom_domain,
         },
+        custom_domain_only: input.custom_domain_only.unwrap_or(base.custom_domain_only),
         published: input.published.unwrap_or(base.published),
         theme: input.theme.clone().unwrap_or(base.theme),
         show_tags: input.show_tags.unwrap_or(base.show_tags),
@@ -202,6 +205,7 @@ fn doc_of(p: &StatusPage) -> StatusPageDoc {
         title: p.title.clone(),
         description: p.description.clone(),
         custom_domain: p.custom_domain.clone(),
+        custom_domain_only: p.custom_domain_only,
         published: p.published,
         theme: p.theme.clone(),
         show_tags: p.show_tags,
@@ -310,14 +314,15 @@ fn save(
         }
         None => {
             tx.execute(
-                "INSERT INTO status_pages (slug, title, description, custom_domain, published, theme, show_tags, show_uptime,
-                     show_response, show_powered_by, footer_text, custom_css, refresh_seconds)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                "INSERT INTO status_pages (slug, title, description, custom_domain, custom_domain_only, published, theme,
+                     show_tags, show_uptime, show_response, show_powered_by, footer_text, custom_css, refresh_seconds)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 rusqlite::params![
                     page.slug,
                     page.title,
                     page.description,
                     page.custom_domain,
+                    page.custom_domain_only,
                     page.published,
                     page.theme,
                     page.show_tags,
@@ -379,6 +384,7 @@ async fn create(
         title: String::new(),
         description: String::new(),
         custom_domain: None,
+        custom_domain_only: false,
         published: true,
         theme: "auto".into(),
         show_tags: false,

@@ -18,6 +18,9 @@ pub struct StatusPage {
     pub title: String,
     pub description: String,
     pub custom_domain: Option<String>,
+    /// The custom domain serves only this page (everything else answers 404).
+    #[serde(skip)]
+    pub custom_domain_only: bool,
     pub published: bool,
     /// "auto" | "light" | "dark".
     pub theme: String,
@@ -53,6 +56,8 @@ pub struct NewStatusPage {
     pub title: String,
     pub description: String,
     pub custom_domain: Option<String>,
+    /// The custom domain serves only this page (everything else answers 404).
+    pub custom_domain_only: bool,
     pub published: bool,
     pub theme: String,
     pub show_tags: bool,
@@ -71,6 +76,7 @@ impl Default for NewStatusPage {
             title: String::new(),
             description: String::new(),
             custom_domain: None,
+            custom_domain_only: false,
             published: true,
             theme: "auto".into(),
             show_tags: false,
@@ -110,6 +116,7 @@ impl StatusPage {
             title: self.title.clone(),
             description: self.description.clone(),
             custom_domain: self.custom_domain.clone(),
+            custom_domain_only: self.custom_domain_only,
             published: self.published,
             theme: self.theme.clone(),
             show_tags: self.show_tags,
@@ -156,7 +163,7 @@ impl SectionMonitor {
     }
 }
 
-const COLUMNS: &str = "id, slug, title, description, custom_domain, published, theme, show_tags, show_uptime, \
+const COLUMNS: &str = "id, slug, title, description, custom_domain, custom_domain_only, published, theme, show_tags, show_uptime, \
                        show_response, show_powered_by, footer_text, custom_css, refresh_seconds, created_at, updated_at, \
                        password_hash, password_version, analytics_enabled, analytics_unique, analytics_provider, \
                        analytics_site_id, analytics_url, \
@@ -199,6 +206,7 @@ pub fn row_to_page(row: &Row) -> rusqlite::Result<StatusPage> {
         title: row.get("title")?,
         description: row.get("description")?,
         custom_domain: row.get("custom_domain")?,
+        custom_domain_only: row.get("custom_domain_only")?,
         published: row.get("published")?,
         theme: row.get("theme")?,
         show_tags: row.get("show_tags")?,
@@ -392,12 +400,13 @@ pub fn get_by_slug(conn: &Connection, slug: &str) -> rusqlite::Result<Option<Sta
     .optional()
 }
 
-/// `(custom_domain, slug)` of every published page with a custom domain.
-pub fn published_domains(conn: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+/// `(custom_domain, slug, custom_domain_only)` of every published page with a
+/// custom domain.
+pub fn published_domains(conn: &Connection) -> rusqlite::Result<Vec<(String, String, bool)>> {
     let mut stmt = conn.prepare(
-        "SELECT custom_domain, slug FROM status_pages WHERE published = 1 AND custom_domain IS NOT NULL AND custom_domain != ''",
+        "SELECT custom_domain, slug, custom_domain_only FROM status_pages WHERE published = 1 AND custom_domain IS NOT NULL AND custom_domain != ''",
     )?;
-    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
     rows.collect()
 }
 
@@ -426,14 +435,15 @@ pub fn domain_taken(
 pub fn insert(conn: &mut Connection, p: &NewStatusPage) -> rusqlite::Result<i64> {
     let tx = conn.transaction()?;
     tx.execute(
-        "INSERT INTO status_pages (slug, title, description, custom_domain, published, theme, show_tags, show_uptime,
-             show_response, show_powered_by, footer_text, custom_css, refresh_seconds)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO status_pages (slug, title, description, custom_domain, custom_domain_only, published, theme,
+             show_tags, show_uptime, show_response, show_powered_by, footer_text, custom_css, refresh_seconds)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             p.slug,
             p.title,
             p.description,
             p.custom_domain,
+            p.custom_domain_only,
             p.published,
             p.theme,
             p.show_tags,
@@ -458,7 +468,7 @@ pub fn update(conn: &Connection, id: i64, p: &NewStatusPage) -> rusqlite::Result
     Ok(conn.execute(
         "UPDATE status_pages SET slug = ?2, title = ?3, description = ?4, custom_domain = ?5, published = ?6, theme = ?7,
              show_tags = ?8, show_uptime = ?9, show_response = ?10, show_powered_by = ?11, footer_text = ?12,
-             custom_css = ?13, refresh_seconds = ?14, updated_at = datetime('now')
+             custom_css = ?13, refresh_seconds = ?14, custom_domain_only = ?15, updated_at = datetime('now')
          WHERE id = ?1",
         params![
             id,
@@ -474,7 +484,8 @@ pub fn update(conn: &Connection, id: i64, p: &NewStatusPage) -> rusqlite::Result
             p.show_powered_by,
             p.footer_text,
             p.custom_css,
-            p.refresh_seconds
+            p.refresh_seconds,
+            p.custom_domain_only
         ],
     )? > 0)
 }
@@ -850,7 +861,7 @@ mod tests {
         update(&conn, id, &changed).unwrap();
         assert_eq!(
             published_domains(&conn).unwrap(),
-            vec![("status.acme.test".to_string(), "acme".to_string())]
+            vec![("status.acme.test".to_string(), "acme".to_string(), false)]
         );
 
         assert_eq!(list(&conn).unwrap().len(), 1);

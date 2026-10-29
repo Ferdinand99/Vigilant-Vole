@@ -199,6 +199,7 @@
     <h2 class="form-section-title" id="sec-domain">{{ tr("sp.custom_domain") }}</h2>
     <div class="card">
       {{ m::field_text("custom_domain", tr("detail.domain"), value=&form.custom_domain, placeholder="status.example.com…", help=tr("sp.domain_help"), error=&form.domain_error) }}
+      {{ m::switch("custom_domain_only", tr("sp.domain_only"), form.custom_domain_only, help=tr("sp.domain_only_help")) }}
     </div>
   </section>
 

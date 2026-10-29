@@ -238,6 +238,7 @@ mod tests {
             title: "Acme".into(),
             description: String::new(),
             custom_domain: Some("status.acme.test".into()),
+            custom_domain_only: false,
             published: true,
             theme: "auto".into(),
             show_tags: false,

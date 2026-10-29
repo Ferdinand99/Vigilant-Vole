@@ -282,6 +282,7 @@ default one.
 | `title` | string | – | Required. |
 | `description` | string | `""` | Shown under the title. |
 | `custom_domain` | string | – | Serve the page at `/` on this host (point the DNS at Vigilant Vole / your proxy). |
+| `custom_domain_only` | bool | `false` | With a `custom_domain`: serve only this status page there. The domain answers `404` for everything except `/`, `/favicon.ico`, `/static/*`, `/status/<slug>…` and `/api/status-page/<slug>` (no sign-in, dashboard or `/api/v1`). Exported only when `true`. |
 | `published` | bool | `true` | `false` = draft (not public). |
 | `theme` | string | `auto` | `auto`, `light`, `dark`. |
 | `show_tags` | bool | `false` | |
