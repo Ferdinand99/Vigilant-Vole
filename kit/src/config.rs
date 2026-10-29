@@ -125,8 +125,9 @@ pub struct KitFeatures {
     /// One-time sign-in codes: an admin resets someone's sign-in from the
     /// Users page and gets a code, shown once and good for 24 hours and one
     /// use, with which that person chooses a new password at
-    /// `/sign-in-code` (and, when the instance has mail settings under
-    /// General and the user has an email address, gets it by email). Needs
+    /// `/sign-in-code` (using it also deletes their API tokens; the admin can
+    /// also email it, when the instance has mail settings under General and
+    /// the user has an email address, and can revoke a pending code). Needs
     /// the [`SIGN_IN_CODES`](crate::db::migrate::SIGN_IN_CODES) migration in
     /// [`MigrationSet::core`](crate::db::migrate::MigrationSet::core). With
     /// [`CredentialMode::External`] `/sign-in-code` leads to the product's
@@ -379,7 +380,7 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
                 problems.push(format!("the General page needs the product text {key}"));
             }
         }
-        problems.extend(general.problems(&has));
+        problems.extend(general.problems(&has, config.features.sign_in_codes));
     }
     if problems.is_empty() {
         Ok(())

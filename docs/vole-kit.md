@@ -484,7 +484,7 @@ the product's state (anything `Core` and `Key` can be taken from):
   * `/settings/users` (create, edit, password, 2FA reset, passkey reset,
     enable, disable, delete; with `KitFeatures::invites` also `/settings/invites`
     and `/settings/invites/{id}/revoke`, with `KitFeatures::sign_in_codes`
-    also `/settings/users/{id}/sign-in-code`);
+    also `/settings/users/{id}/sign-in-code` and `.../sign-in-code/revoke`);
   * `/settings/tokens` (list, create with the product's scopes, revoke);
   * `/settings/security` (profile and language, password, other sessions,
     2FA set-up/cancel/enable/disable/recovery codes, passkeys:
@@ -945,13 +945,47 @@ works **once**, for **24 hours**, and a newer code for the same user revokes
 the earlier unused ones. A disabled user's code does not work (and the sheet
 refuses to make one).
 
+A pending code ends early, and the Users page shows it while it lasts: the
+row has a "Code pending" label (with the expiry in its tooltip) and a "Revoke
+code" action. Revoking asks for the admin's password, or a fresh grant, like
+creating a code. A pending code is also revoked by:
+
+* a new password: the user's own, an admin's temporary one, or one set with
+  `db::users::set_password`;
+* a two-factor reset (`db::users::disable_totp`);
+* disabling and enabling the account (`db::users::set_active`; a code made
+  for a disabled user is revoked when the account is enabled);
+* a successful sign-in of the user, with a password (and the second factor)
+  or a passkey. A product with `External` credentials that signs people in
+  itself calls `db::sign_in_codes::revoke_for_user` there;
+* deleting the user (the rows cascade).
+
+The functions of `db::users` revoke through `db::sign_in_codes::revoke_if_enabled`,
+which does nothing when the `sign_in_codes` table does not exist, so a product
+without the feature is unchanged.
+
 The edit sheet of a user has an optional email address (`user_emails`; empty
-clears it; a form without the field leaves it alone). When the instance has
-mail settings (below) and the user has an address, the code is also emailed,
-in the user's language, as a plain-text message, through
-`notify::email::deliver`; the page says so, or that the mail failed. The
-code is never logged: the log has the user and the admin, and for a mail that
-failed the error, not the message.
+clears it; a form without the field leaves it alone). **Changing, setting or
+clearing an address asks for the admin's password** (or a fresh grant, used up
+by it): the address is where codes can be sent. An address is taken as typed
+and is **not verified**: `verified_at` stays empty, nothing is sent to the new
+address to confirm it, and a mistyped address sends the code to a stranger.
+The check is that it looks like an address. That is why mailing is a choice.
+
+The create sheet has an "Also send by email to ..." box. It is offered, and
+ticked, only when the instance has mail settings (below) and the user has an
+address, and it shows that address. A request without `send_email=true` sends
+no mail. When it is ticked the code is emailed in the user's language as a
+plain-text message, through `notify::email::deliver`; the page says so, or that
+the mail failed. The message is made from the translated templates with fixed
+fields: the subject has only the site name; the body has the person's name,
+user name, the site and the link; the code is put into the body **last**, after
+every other value, so no name can bring it into the subject. Braces and control
+characters (line breaks) are dropped from the names that go in, and a line
+break can't start another header (`mail::build` drops control characters from
+the subject and refuses them in the sender and recipient). The code is never
+logged: the log has the user and the admin, and for a mail that failed the
+error, not the message.
 
 ### Instance mail settings
 
@@ -962,12 +996,30 @@ password and sender. The settings are in the `settings` table (`smtp_host`,
 a product's own General fields can't use these keys). The password is sealed
 under the instance key ("Sealed secrets", purpose
 `vole-kit/instance-smtp`) and never shown again: leave the field empty to keep
-it, tick the box to remove it. Leave every field empty to turn mail off.
+it, tick the box to remove it. Fields that are not in the submitted form keep
+their saved value (a stale page or a script sending part of the form does not
+switch mail off); a field that is there and empty clears it, and a form with
+every field empty turns mail off. The `smtp_*` keys (and `current_password`)
+are reserved for the kit only when `sign_in_codes` is on; with the feature off
+a product's own General field may use them.
+
+Changing the mail settings or the public URL (`base_url`, where the link in the
+mail points) asks for the admin's password (a password field at the bottom of
+the page; a fresh grant with `External` credentials, used up by the change);
+saving the same values again, or changing something else, asks for nothing.
+Without that, a stolen session could point the mail at a server it controls and
+wait for the next reset.
+
+A connection without encryption (`none`) with a user name or password is
+refused unless the server is on this machine (`localhost` or a loopback
+address), when the settings are saved and again when a message is sent.
 "Send a test email" (`POST /settings/general/smtp-test`) sends through the
-saved settings. The same address rule as for alert channels applies (no
-link-local or cloud-metadata addresses). `vole_kit::mail` has the pieces
-(`Smtp`, `load`, `send`, `parse`) for a product without the General page. The
-alert channels keep their own SMTP settings; this is separate.
+saved settings, to any valid address, at most five per ten minutes per admin
+(then the page says how long to wait). The same address rule as for alert
+channels applies (no link-local or cloud-metadata addresses). `vole_kit::mail`
+has the pieces (`Smtp`, `load`, `build`, `send`, `parse`) for a product without
+the General page. The alert channels keep their own SMTP settings; this is
+separate.
 
 ### What the user does
 
@@ -976,9 +1028,15 @@ code, new password and confirmation, with the usual password rules ("Password
 rules"). The code may be typed with any case, spaces or dashes, and with
 Crockford's look-alikes (`O` for `0`, `I` and `L` for `1`). On `POST` the kit
 throttles the attempt per account (key `code:<name>`) and per address (key
-`code:<ip>`) with the sign-in limiters, then, in one immediate transaction,
-claims the code and sets the password (hashed whether or not the code turns
-out to be good). The claim is a single `UPDATE` that matches the code's hash
+`code:<ip>`, an IPv6 address by its /64) with limiters of their own
+(`SignInLimits::code_account`, `code_ip`), apart from the sign-in ones, so that
+guessing codes can't use up an account's sign-in budget nor the other way round.
+They are a backoff, as at sign-in, never a hard lock: ten free failures per
+account, then 2 s doubling up to five minutes (the code has 160 bits, so a
+guess is hopeless and the throttle only bounds the load). A user name longer
+than a user name can be is replaced by its digest in the key, so the key stays
+small. Then, in one immediate transaction, the attempt claims the code and sets
+the password (hashed whether or not the code turns out to be good). The claim is a single `UPDATE` that matches the code's hash
 *and* the user it was made for, so a good code of somebody else is not used up
 and answers like any wrong one, and of two people racing for one code exactly
 one wins. Every failure (expired, used, revoked, unknown, someone else's,
@@ -987,11 +1045,19 @@ told apart (`429`, with the wait), as at sign-in. A new password the rules
 refuse is a `422` on the form and counts as no attempt, and the code stays.
 
 On success the user's `session_version` moves on (every session is signed
-out), the password is the new one, and the user is signed in. Two-factor and
-passkeys are not touched: with two-factor on the user goes on to `/login/2fa`
-first, because a code replaces the password, not the second factor. API
-tokens are left alone (an admin who suspects they leaked uses "Also revoke
-their API tokens" on the password reset).
+out), the password is the new one, **all the user's API tokens are deleted**
+(in the same transaction as the claim: a code is for an account whose
+credentials may have leaked, and a token is the longest-lived one; with
+`External` credentials the admin has no password reset to do it with), and the
+user is signed in. Two-factor and passkeys are not touched: with two-factor on
+the user goes on to `/login/2fa` first, because a code replaces the password,
+not the second factor. The sheet that creates a code says that using it deletes
+the tokens.
+
+The log has what happened, not what was typed: a failed or throttled attempt
+logs `user_ref`, eight hex digits of the digest of the typed name (a name could
+hold a line break, or a code pasted into the wrong field), and the address; the
+code is never logged.
 
 ### With external credentials
 
@@ -1000,20 +1066,32 @@ With `CredentialMode::External` the kit never sees a password, so
 `404`. The product's page asks for the user name, the code and its own new
 credential, and uses `vole_kit::auth::sign_in_codes`:
 
-* `redeem(core, username, code) -> ApiResult<Result<i64, Generic>>`: uses
-  the code up (once, atomically) and bumps the user's `session_version`; the
-  user's id comes back. `redeem_from(core, username, code, Some(ip))` also
-  throttles per address. Every failure, a throttled attempt included, is the
-  one `Generic`.
-* `set_password_hash(core, user_id, hash) -> ApiResult<bool>`: stores the
-  product's credential (opaque to the kit, like `"!external"`); it signs
-  nobody out, `redeem` did. Then `guard::login_jar` (after
+* `redeem_from(core, username, code, ip: Option<IpAddr>) -> ApiResult<Result<RedeemToken, Generic>>`:
+  uses the code up (once, atomically), bumps the user's `session_version` and
+  deletes the user's API tokens. Pass the visitor's address
+  (`session::client_ip`): it is throttled per account and per address with the
+  code limiters; only without any peer address is `None` right. Every failure,
+  a throttled attempt included, is the one `Generic`. (There is no `redeem`
+  without the address.)
+* `RedeemToken` is the proof of the redeem: `user_id()` and
+  `session_version()` (for `guard::login_jar`). It is not `Clone`, is used up
+  by `set_password_hash`, lives in memory, and is good for ten minutes
+  (`REDEEM_TOKEN_TTL`).
+* `set_password_hash(core, token, hash) -> ApiResult<bool>`: stores the
+  product's credential (opaque to the kit, like `"!external"`) for the user the
+  token names; `false` and nothing stored when the token is too old. It signs
+  nobody out, the redeem did. A product cannot set a credential through this
+  module without a redeem. Then `guard::login_jar` (after
   `verify_second_factor` for a user with two-factor).
-* `generate()`, `normalize(text)`, `hash(code)`, `CODE_LEN`.
+* `generate()`, `normalize(text)`, `hash(code)`, `log_ref(name)`, `CODE_LEN`.
 
 The same functions exist on a bare connection in `db::sign_in_codes`
-(`insert`, `redeem`, `revoke_for_user`, `count_pending`, `email`, `emails`,
-`set_email`).
+(`insert`, `redeem`, `revoke_for_user`, `revoke_if_enabled`, `count_pending`,
+`pending_users`, `email`, `emails`, `set_email`).
+
+A product that signs in itself should also call
+`db::sign_in_codes::revoke_for_user` after a successful sign-in, as the kit's
+own sign-in does.
 
 ### Tests
 

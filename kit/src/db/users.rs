@@ -215,13 +215,18 @@ pub fn bump_session_version(conn: &Connection, id: i64) -> rusqlite::Result<i64>
 
 /// Sets a new password hash and signs the user out everywhere. Returns the new
 /// session version (so the caller can re-issue its own cookie).
+///
+/// A pending one-time sign-in code of the user is revoked: a new password
+/// settles how they sign in.
 pub fn set_password(conn: &Connection, id: i64, password_hash: &str) -> rusqlite::Result<i64> {
-    conn.query_row(
+    let version = conn.query_row(
         "UPDATE users SET password_hash = ?2, session_version = session_version + 1
          WHERE id = ?1 RETURNING session_version",
         params![id, password_hash],
         |r| r.get(0),
-    )
+    )?;
+    super::sign_in_codes::revoke_if_enabled(conn, id)?;
+    Ok(version)
 }
 
 pub fn set_display_name(conn: &Connection, id: i64, display_name: &str) -> rusqlite::Result<()> {
@@ -278,6 +283,8 @@ pub fn set_active(conn: &mut Connection, id: i64, active: bool) -> ChangeResult 
          WHERE id = ?1",
         params![id, active],
     )?;
+    // Disabled or enabled again, the account is not what a code was made for.
+    super::sign_in_codes::revoke_if_enabled(&tx, id)?;
     tx.commit()?;
     Ok(Ok(()))
 }
@@ -384,6 +391,8 @@ pub fn disable_totp(conn: &Connection, id: i64) -> rusqlite::Result<()> {
          WHERE id = ?1",
         params![id],
     )?;
+    // A two-factor reset settles how they sign in: pending codes end.
+    super::sign_in_codes::revoke_if_enabled(conn, id)?;
     Ok(())
 }
 

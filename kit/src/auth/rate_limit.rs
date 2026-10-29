@@ -183,6 +183,28 @@ pub const PASSKEY_POLICY: Policy = Policy {
     forget_after: Duration::from_secs(60 * 60),
 };
 
+/// Per account for one-time sign-in codes. A code has 160 bits, so a guess
+/// is hopeless and the throttle only bounds the load; it is also a way to keep
+/// somebody from using their code, so it is laxer than [`ACCOUNT_POLICY`] and
+/// caps at five minutes. Like all of these, a backoff and no hard lock.
+pub const CODE_ACCOUNT_POLICY: Policy = Policy {
+    free_failures: 10,
+    base_delay: Duration::from_secs(2),
+    max_delay: Duration::from_secs(5 * 60),
+    forget_after: Duration::from_secs(60 * 60),
+};
+
+/// Test emails per admin: five, then ten minutes of waiting (the
+/// [`reserve`](RateLimiter::reserve) that lets the fifth through is the
+/// one that starts the wait). `forget_after` is a second short of the wait,
+/// so that the count starts over when the wait is over.
+pub const MAIL_TEST_POLICY: Policy = Policy {
+    free_failures: 4,
+    base_delay: Duration::from_secs(10 * 60),
+    max_delay: Duration::from_secs(10 * 60),
+    forget_after: Duration::from_secs(10 * 60 - 1),
+};
+
 /// The sign-in throttles of one running instance: per account
 /// ([`ACCOUNT_POLICY`]), per client IP ([`IP_POLICY`]) and per client IP for
 /// passkeys ([`PASSKEY_POLICY`]). It lives in
@@ -198,6 +220,15 @@ pub struct SignInLimits {
     pub ip: Arc<RateLimiter>,
     /// Keys `ip:<address>`: failed passkey sign-ins, apart from `ip`.
     pub passkey: Arc<RateLimiter>,
+    /// Keys `code:<name>` (one-time sign-in codes, [`CODE_ACCOUNT_POLICY`]):
+    /// apart from `account`, so that guessing codes can't eat the login
+    /// budget of an account, nor the other way round.
+    pub code_account: Arc<RateLimiter>,
+    /// Keys `code:<address>` (an IPv6 address by its /64), apart from `ip`.
+    pub code_ip: Arc<RateLimiter>,
+    /// Keys `mail-test:<admin id>`: the test email of the General page
+    /// ([`MAIL_TEST_POLICY`]).
+    pub mail_test: Arc<RateLimiter>,
 }
 
 impl SignInLimits {
@@ -212,6 +243,9 @@ impl SignInLimits {
             account: Arc::new(RateLimiter::new(account)),
             ip: Arc::new(RateLimiter::new(ip)),
             passkey: Arc::new(RateLimiter::new(PASSKEY_POLICY)),
+            code_account: Arc::new(RateLimiter::new(CODE_ACCOUNT_POLICY)),
+            code_ip: Arc::new(RateLimiter::new(IP_POLICY)),
+            mail_test: Arc::new(RateLimiter::new(MAIL_TEST_POLICY)),
         }
     }
 }
@@ -233,6 +267,25 @@ mod tests {
             max_delay: Duration::from_secs(60),
             forget_after: Duration::from_secs(600),
         })
+    }
+
+    #[test]
+    fn the_test_email_allows_five_and_then_waits_ten_minutes() {
+        let l = RateLimiter::new(MAIL_TEST_POLICY);
+        let t = Instant::now();
+        for i in 0..5 {
+            assert!(l.reserve("admin", t).is_ok(), "{i}");
+        }
+        let wait = l.reserve("admin", t).unwrap_err();
+        assert_eq!(wait, Duration::from_secs(600));
+        assert!(l.reserve("other", t).is_ok(), "per admin");
+        // Still waiting after nine minutes, free again after ten.
+        assert!(l.reserve("admin", t + Duration::from_secs(540)).is_err());
+        assert!(l.reserve("admin", t + Duration::from_secs(600)).is_ok());
+        for _ in 0..4 {
+            assert!(l.reserve("admin", t + Duration::from_secs(601)).is_ok());
+        }
+        assert!(l.reserve("admin", t + Duration::from_secs(601)).is_err());
     }
 
     #[test]

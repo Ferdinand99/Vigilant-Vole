@@ -3,10 +3,16 @@
 //! - `GET  /settings/general`: site name, public URL, time zone, language
 //!   and the product's own fields
 //! - `POST /settings/general`: validate and save; errors re-render the page
-//!   with 422
-//! - `POST /settings/general/smtp-test`: with
+//!   with 422. Fields that are not in the form keep their saved value (a
+//!   stale page or a script that sends part of the form does not wipe the
+//!   mail settings). With
 //!   [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes),
-//!   sends a test email through the instance's mail settings
+//!   changing the mail settings or the public URL (where a one-time code
+//!   is sent or linked) asks for the admin's password, or with
+//!   `CredentialMode::External` for a fresh grant
+//! - `POST /settings/general/smtp-test`: with the same feature, sends a test
+//!   email through the instance's mail settings (five per ten minutes per
+//!   admin)
 
 use askama::Template;
 use axum::Form;
@@ -15,7 +21,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::SignedCookieJar;
 
-use crate::auth::CurrentUser;
+use crate::auth::{CurrentUser, reauth};
 use crate::db::{settings as db_settings, sign_in_codes as db_codes, users as db_users};
 use crate::http::{ApiResult, HtmlTemplate};
 use crate::i18n::{Lang, Tr as _};
@@ -182,6 +188,10 @@ struct GeneralTemplate {
     /// The mail settings, with
     /// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes).
     smtp: Option<SmtpView>,
+    /// Where the page asks for the admin's password (with the mail
+    /// settings).
+    reauth: reauth::View,
+    password_error: String,
 }
 
 impl GeneralTemplate {
@@ -194,6 +204,7 @@ impl GeneralTemplate {
             &self.site_name_error,
             &self.base_url_error,
             &self.timezone_error,
+            &self.password_error,
         ]
         .iter()
         .any(|e| !e.is_empty())
@@ -215,6 +226,7 @@ async fn template(
     core: &Core,
     user: &CurrentUser,
     ctx: PageCtx,
+    reauth: reauth::View,
     general: &'static GeneralSettings,
 ) -> ApiResult<GeneralTemplate> {
     let codes = core.cfg.features.sign_in_codes;
@@ -261,6 +273,8 @@ async fn template(
         timezone_error: String::new(),
         sections,
         smtp: smtp.map(|(smtp, email)| SmtpView::new(&smtp, &core.session_key, email)),
+        reauth,
+        password_error: String::new(),
     })
 }
 
@@ -289,8 +303,9 @@ pub(super) async fn page(
     let Some(general) = page_settings(&core) else {
         return Err(crate::http::ApiError::NotFound);
     };
+    let view = reauth::View::new(&jar, &core.session_key, &user, "/settings/general");
     let (ctx, jar) = context(&core, &user, &jar).await;
-    let page = template(&core, &user, ctx, general).await?;
+    let page = template(&core, &user, ctx, view, general).await?;
     Ok((jar, HtmlTemplate(page)).into_response())
 }
 
@@ -309,8 +324,11 @@ pub(super) async fn save(
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.as_str())
     };
+    let view = reauth::View::new(&jar, &core.session_key, &user, "/settings/general");
     let (ctx, jar) = context(&core, &user, &jar).await;
-    let mut page = template(&core, &user, ctx, general).await?;
+    let mut page = template(&core, &user, ctx, view, general).await?;
+    // The public URL as it is stored, to tell whether this save changes it.
+    let stored_base_url = page.base_url.clone();
 
     let site_name = value(db_settings::SITE_NAME)
         .unwrap_or("")
@@ -360,17 +378,21 @@ pub(super) async fn save(
         }
     }
     // The mail settings: what is typed stays on the page, the saved
-    // password never is.
+    // password never is. A field the form does not have keeps its saved
+    // value; a field that is there and empty clears it.
     let mut mail_to_store = None;
+    let mut mail_changed = false;
     if let Some(view) = page.smtp.as_mut() {
+        let saved = core.with_conn(|c| Smtp::load(c)).await?;
+        let field = |name: &str, saved: &str| value(name).unwrap_or(saved).to_string();
         let form = mail::Form {
-            host: value("smtp_host").unwrap_or("").to_string(),
-            port: value("smtp_port").unwrap_or("").to_string(),
-            security: value("smtp_security").unwrap_or("").to_string(),
-            username: value("smtp_username").unwrap_or("").to_string(),
+            host: field("smtp_host", &saved.host),
+            port: field("smtp_port", &saved.port),
+            security: field("smtp_security", &saved.security),
+            username: field("smtp_username", &saved.username),
             password: value("smtp_password").unwrap_or("").to_string(),
             clear_password: value("smtp_password_clear").is_some_and(db_settings::parse_bool),
-            from: value("smtp_from").unwrap_or("").to_string(),
+            from: field("smtp_from", &saved.from),
         };
         view.host = form.host.trim().to_string();
         view.port = form.port.trim().to_string();
@@ -379,9 +401,11 @@ pub(super) async fn save(
         }
         view.username = form.username.trim().to_string();
         view.from = form.from.trim().to_string();
-        let saved = core.with_conn(|c| Smtp::load(c)).await?;
         match mail::parse(&form, &saved, &core.session_key) {
-            Ok(smtp) => mail_to_store = Some(smtp),
+            Ok(smtp) => {
+                mail_changed = smtp != saved;
+                mail_to_store = Some(smtp);
+            }
             Err(problems) => {
                 let text = |key: Option<&'static str>| key.map(crate::i18n::t).unwrap_or_default();
                 view.host_error = text(problems.host).into();
@@ -393,6 +417,19 @@ pub(super) async fn save(
     }
     if page.has_errors() {
         return Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, HtmlTemplate(page)).into_response());
+    }
+
+    // Where a sign-in code is sent (the mail server) and linked (the public
+    // URL) decides who gets it: changing either is as good as taking the
+    // accounts, so it asks for the admin's password again.
+    let confirm = page.smtp.is_some()
+        && (mail_changed || base_url.as_deref().unwrap_or("") != stored_base_url);
+    if confirm {
+        let password = value("current_password").unwrap_or("").to_string();
+        if let Err(msg) = super::security::require_password(&core, &user, &jar, password).await? {
+            page.password_error = msg;
+            return Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, HtmlTemplate(page)).into_response());
+        }
     }
 
     let uid = user.id;
@@ -422,6 +459,8 @@ pub(super) async fn save(
         .and_then(Lang::from_code)
         .unwrap_or(lang);
     let jar = flash(jar, "success", crate::i18n::t_in(next, "general.saved"));
+    // A confirmation that changed where codes go is used up.
+    let jar = if confirm { reauth::spend(jar) } else { jar };
     Ok((jar, Redirect::to("/settings/general")).into_response())
 }
 
@@ -444,6 +483,20 @@ pub(super) async fn smtp_test(
     };
     if !core.cfg.features.sign_in_codes {
         return Err(crate::http::ApiError::NotFound);
+    }
+    // Five per ten minutes per admin: the button sends mail to any address.
+    let key = format!("mail-test:{}", user.id);
+    if let Err(wait) = core
+        .limits
+        .mail_test
+        .reserve(&key, std::time::Instant::now())
+    {
+        let minutes = wait.as_secs().div_ceil(60).max(1).to_string();
+        return Ok(back(
+            jar,
+            "error",
+            crate::i18n::tf("sign_in_code.test_limited", &[("minutes", &minutes)]),
+        ));
     }
     let to = form.to.trim().to_string();
     if !mail::is_address(&to) {

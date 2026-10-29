@@ -4,7 +4,11 @@
 //! An admin resets someone's sign-in from the Users page and gets a code,
 //! once: 160 random bits in Crockford base32, written as eight groups of
 //! four characters (`7GQ2-M4XB-...`). It works once, for 24 hours, and until
-//! a newer code for the same user replaces it. Only its SHA-256 is stored,
+//! a newer code for the same user replaces it, or a password change, a
+//! two-factor reset, disabling or enabling the account, a sign-in or an
+//! admin's "Revoke code" ends it. Using it also deletes the user's API
+//! tokens, in the same transaction as the claim: a code is for an account
+//! whose credentials may have leaked. Only its SHA-256 is stored,
 //! so a leaked database holds no usable code, and a code is found by that
 //! hash and then compared with the user it was made for, so no comparison of
 //! secrets takes place.
@@ -20,15 +24,22 @@
 //!
 //! ```ignore
 //! // On the product's password page, with ?code=1, on submit:
-//! let Ok(user_id) = sign_in_codes::redeem_from(&core, &username, &code, Some(ip)).await? else {
+//! let Ok(redeemed) = sign_in_codes::redeem_from(&core, &username, &code, Some(ip)).await? else {
 //!     return not_valid(); // the same page for every kind of failure
 //! };
-//! // The code is used up and the user's sessions are gone. Now store
-//! // whatever the product signs in with ...
-//! sign_in_codes::set_password_hash(&core, user_id, &marker_hash).await?;
+//! // The code is used up, the user's sessions and API tokens are gone. Now
+//! // store whatever the product signs in with. Only the token that the
+//! // redeem gave can do it, once, within ten minutes ...
+//! let (user_id, version) = (redeemed.user_id(), redeemed.session_version());
+//! sign_in_codes::set_password_hash(&core, redeemed, &marker_hash).await?;
 //! // ... and sign the user in (guard::login_jar, after verify_second_factor
 //! // when the user has two-factor on).
 //! ```
+//!
+//! The throttles of codes are their own
+//! ([`code_account`](crate::auth::rate_limit::SignInLimits::code_account),
+//! [`code_ip`](crate::auth::rate_limit::SignInLimits::code_ip)); what the visitor types is never logged by
+//! the kit (see [`log_ref`]).
 
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -117,14 +128,42 @@ pub fn hash(code: &str) -> [u8; 32] {
     Sha256::digest(canonical.as_deref().unwrap_or(code).as_bytes()).into()
 }
 
-/// The throttle key of an account's attempts.
+/// The longest user name (characters), as `auth::username_problem` allows:
+/// a longer one can't exist.
+const MAX_USERNAME: usize = 64;
+
+/// The throttle key of an account's attempts. A name longer than any user
+/// name is replaced by its digest, so the key (the visitor chose the text)
+/// stays small.
 fn account_key(username: &str) -> String {
-    format!("code:{}", username.trim().to_lowercase())
+    let name = username.trim().to_lowercase();
+    if name.chars().count() > MAX_USERNAME {
+        let digest = Sha256::digest(name.as_bytes());
+        format!("code:h:{}", hex::encode(&digest[..16]))
+    } else {
+        format!("code:{name}")
+    }
 }
 
-/// The throttle key of a client address.
+/// The throttle key of a client address: an IPv6 address by its /64, which
+/// is what one subscriber gets.
 fn ip_key(ip: IpAddr) -> String {
-    format!("code:{ip}")
+    match ip {
+        IpAddr::V4(v4) => format!("code:{v4}"),
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            format!("code:{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+        }
+    }
+}
+
+/// A short stand-in for the user name the visitor typed, for the log: eight
+/// hex digits of its digest. The text itself could hold a line break that
+/// forges a log line, or a code pasted into the wrong field, so it is never
+/// logged; the stand-in still tells attempts at one name from another.
+pub fn log_ref(username: &str) -> String {
+    let digest = Sha256::digest(username.trim().to_lowercase().as_bytes());
+    hex::encode(&digest[..4])
 }
 
 /// Why an attempt did not redeem a code.
@@ -160,13 +199,13 @@ pub(crate) async fn attempt(
     let now = Instant::now();
     // Counted before the work, so a burst of parallel guesses can't all pass
     // the check before the first is recorded.
-    if let Err(wait) = core.limits.account.reserve(&account, now) {
+    if let Err(wait) = core.limits.code_account.reserve(&account, now) {
         return Ok(Err(Refused::Throttled(wait)));
     }
     if let Some(address) = &address
-        && let Err(wait) = core.limits.ip.reserve(address, now)
+        && let Err(wait) = core.limits.code_ip.reserve(address, now)
     {
-        core.limits.account.release(&account);
+        core.limits.code_account.release(&account);
         return Ok(Err(Refused::Throttled(wait)));
     }
     let password_hash = match new_password {
@@ -192,9 +231,9 @@ pub(crate) async fn attempt(
         .await?;
     match redeemed {
         Some(redeemed) => {
-            core.limits.account.clear(&account);
+            core.limits.code_account.clear(&account);
             if let Some(address) = &address {
-                core.limits.ip.release(address);
+                core.limits.code_ip.release(address);
             }
             Ok(Ok(redeemed))
         }
@@ -202,48 +241,110 @@ pub(crate) async fn attempt(
     }
 }
 
+/// How long a [`RedeemToken`] can set a credential: ten minutes.
+pub const REDEEM_TOKEN_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// The proof that a code was just redeemed, given by [`redeem_from`]: the
+/// only thing [`set_password_hash`] takes, so a product cannot set a user's
+/// credential through this module without a redeem. It names the user, is
+/// used up by `set_password_hash` (it is not `Clone`) and is no good after
+/// [`REDEEM_TOKEN_TTL`]. It is kept in memory only: a product that restarts
+/// between the two steps asks for a new code.
+#[derive(Debug)]
+#[must_use = "a redeemed code is spent; use the token to store the product's credential"]
+pub struct RedeemToken {
+    user_id: i64,
+    session_version: i64,
+    issued: Instant,
+}
+
+impl RedeemToken {
+    fn new(redeemed: Redeemed) -> Self {
+        Self {
+            user_id: redeemed.user_id,
+            session_version: redeemed.session_version,
+            issued: Instant::now(),
+        }
+    }
+
+    /// The user whose code it was.
+    pub fn user_id(&self) -> i64 {
+        self.user_id
+    }
+
+    /// The user's new `session_version`, for [`login_jar`](crate::auth::guard::login_jar).
+    pub fn session_version(&self) -> i64 {
+        self.session_version
+    }
+
+    /// Whether it still counts, as of `now`.
+    fn is_fresh(&self, now: Instant) -> bool {
+        now.saturating_duration_since(self.issued) <= REDEEM_TOKEN_TTL
+    }
+
+    /// The same token, as if it was issued `by` earlier (tests that need an
+    /// old one). Not part of a product's own code.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn aged(mut self, by: Duration) -> Self {
+        self.issued = self.issued.checked_sub(by).unwrap_or(self.issued);
+        self
+    }
+}
+
 /// Redeems a code for a product that signs people in itself
 /// ([`CredentialMode::External`](crate::config::CredentialMode::External)):
 /// the code is used up (once: of two calls racing for it, one wins), the
-/// user's sessions are signed out (their `session_version` moves on), and
-/// the user's id is returned. The user's two-factor and passkeys are not
-/// touched, and nothing else is changed: the product then stores its own
-/// credential ([`set_password_hash`]) and signs the user in.
+/// user's sessions are signed out (their `session_version` moves on) and
+/// the user's API tokens are deleted, all in one transaction. The user's
+/// two-factor and passkeys are not touched, and nothing else is changed: the
+/// product then stores its own credential ([`set_password_hash`], with the
+/// [`RedeemToken`] that comes back) and signs the user in.
 ///
-/// Attempts are throttled per account with the kit's own throttle; a
-/// throttled attempt is the same [`Generic`] failure. Use [`redeem_from`]
-/// to throttle per client address too.
-pub async fn redeem(core: &Core, username: &str, code: &str) -> ApiResult<Result<i64, Generic>> {
-    redeem_from(core, username, code, None).await
-}
-
-/// [`redeem`], also throttled per client address (`ip`).
+/// Attempts are throttled per account and, when `ip` is given, per client
+/// address, with throttles of their own (the sign-in ones are not touched);
+/// a throttled attempt is the same [`Generic`] failure. Pass the visitor's
+/// address ([`session::client_ip`](crate::auth::session::client_ip)); only
+/// without one (no peer address at all) is `None` right, because then the
+/// address can't be throttled, only the account.
 pub async fn redeem_from(
     core: &Core,
     username: &str,
     code: &str,
     ip: Option<IpAddr>,
-) -> ApiResult<Result<i64, Generic>> {
+) -> ApiResult<Result<RedeemToken, Generic>> {
     if !core.cfg.features.sign_in_codes {
         return Ok(Err(Generic));
     }
     Ok(attempt(core, username, code, ip, None)
         .await?
-        .map(|redeemed| redeemed.user_id)
+        .map(RedeemToken::new)
         .map_err(|_| Generic))
 }
 
-/// Stores `password_hash` as the user's credential, as given: the kit never
-/// looks inside it (a product that signs in elsewhere keeps a marker such
-/// as `"!external"` there). It does not sign anybody out: [`redeem`]
-/// already did. `false` when there is no such user.
-pub async fn set_password_hash(core: &Core, user_id: i64, password_hash: &str) -> ApiResult<bool> {
-    let hash = password_hash.to_string();
+/// Stores `password_hash` as the credential of the user the `token` names,
+/// as given: the kit never looks inside it (a product that signs in
+/// elsewhere keeps a marker such as `"!external"` there). The token is used
+/// up either way. It does not sign anybody out: the redeem already did, and
+/// it revokes any code the user still has. `false` when the token is older
+/// than [`REDEEM_TOKEN_TTL`] or the user is gone; nothing is stored then.
+pub async fn set_password_hash(
+    core: &Core,
+    token: RedeemToken,
+    password_hash: &str,
+) -> ApiResult<bool> {
+    if !token.is_fresh(Instant::now()) {
+        return Ok(false);
+    }
+    let (user_id, hash) = (token.user_id, password_hash.to_string());
     core.with_conn(move |c| {
-        Ok(c.execute(
+        let stored = c.execute(
             "UPDATE users SET password_hash = ?2 WHERE id = ?1",
             rusqlite::params![user_id, hash],
-        )? == 1)
+        )? == 1;
+        if stored {
+            db_codes::revoke_if_enabled(c, user_id)?;
+        }
+        Ok(stored)
     })
     .await
 }
@@ -301,6 +402,52 @@ mod tests {
         assert_ne!(hash(&code), hash(&generate()));
         // A text that is no code hashes as itself.
         assert_eq!(hash("abc"), <[u8; 32]>::from(Sha256::digest(b"abc")));
+    }
+
+    #[test]
+    fn throttle_keys_are_small_and_cover_the_whole_ipv6_prefix() {
+        assert_eq!(account_key("  Ada "), "code:ada");
+        let long = "A".repeat(2_000_000);
+        let key = account_key(&long);
+        assert!(key.len() < 64, "{}", key.len());
+        assert_ne!(key, account_key(&format!("{long}B")), "still apart");
+        assert_eq!(
+            account_key(&"é".repeat(64)),
+            format!("code:{}", "é".repeat(64))
+        );
+        assert!(account_key(&"é".repeat(65)).starts_with("code:h:"));
+        // Two addresses of one /64 share a key; another /64 does not.
+        let key = |s: &str| ip_key(s.parse().unwrap());
+        assert_eq!(key("2001:db8:1:2::1"), key("2001:db8:1:2:ffff::9"));
+        assert_ne!(key("2001:db8:1:2::1"), key("2001:db8:1:3::1"));
+        assert_eq!(key("203.0.113.9"), "code:203.0.113.9");
+    }
+
+    #[test]
+    fn what_is_logged_for_a_user_name_is_a_short_digest() {
+        let r = log_ref("Ada\r\nforged line");
+        assert_eq!(r.len(), 8);
+        assert!(r.bytes().all(|b| b.is_ascii_hexdigit()));
+        assert_eq!(log_ref(" ADA "), log_ref("ada"));
+        assert_ne!(log_ref("ada"), log_ref("bob"));
+    }
+
+    #[test]
+    fn a_redeem_token_expires_after_ten_minutes() {
+        let token = RedeemToken::new(Redeemed {
+            user_id: 1,
+            session_version: 2,
+        });
+        assert_eq!((token.user_id(), token.session_version()), (1, 2));
+        let issued = token.issued;
+        assert!(token.is_fresh(issued));
+        assert!(token.is_fresh(issued + REDEEM_TOKEN_TTL));
+        assert!(!token.is_fresh(issued + REDEEM_TOKEN_TTL + Duration::from_secs(1)));
+        assert!(
+            !token
+                .aged(Duration::from_secs(11 * 60))
+                .is_fresh(Instant::now())
+        );
     }
 
     #[test]

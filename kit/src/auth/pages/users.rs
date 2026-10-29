@@ -6,8 +6,10 @@
 //! - `POST /settings/users/{id}/sign-in-code` (one-time sign-in codes, see
 //!   `sign_in_code`)
 //!
-//! Adding or promoting an administrator, and resetting a password or
-//! two-factor, ask the admin for their own password again.
+//! Adding or promoting an administrator, resetting a password or
+//! two-factor, and (with sign-in codes) creating or revoking a code or
+//! changing someone's email address ask the admin for their own password
+//! again.
 //! - `POST /settings/users/{id}/passkeys/reset`
 //! - `POST /settings/users/{id}/enable` · `/disable` · `/delete`
 //!
@@ -51,11 +53,23 @@ struct UserRow {
     /// The email address ("" for none; only read with
     /// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)).
     email: String,
+    /// When the user's pending sign-in code expires (UTC), if they have one.
+    code_until: Option<String>,
 }
 
 impl UserRow {
-    fn from_user(u: User, current: i64, passkeys: &[(i64, i64)], emails: &[(i64, String)]) -> Self {
+    fn from_user(
+        u: User,
+        current: i64,
+        passkeys: &[(i64, i64)],
+        emails: &[(i64, String)],
+        codes: &[(i64, String)],
+    ) -> Self {
         Self {
+            code_until: codes
+                .iter()
+                .find(|(id, _)| *id == u.id)
+                .map(|(_, until)| until.clone()),
             email: emails
                 .iter()
                 .find(|(id, _)| *id == u.id)
@@ -131,7 +145,7 @@ pub(super) async fn render(
 ) -> ApiResult<Response> {
     let invites = core.cfg.features.invites;
     let sign_in_codes = core.cfg.features.sign_in_codes;
-    let (users, passkeys, pending, emails) = core
+    let (users, passkeys, pending, emails, codes) = core
         .with_conn(move |c| {
             Ok((
                 db_users::list_users(c)?,
@@ -146,13 +160,18 @@ pub(super) async fn render(
                 } else {
                     Vec::new()
                 },
+                if sign_in_codes {
+                    db_codes::pending_users(c)?
+                } else {
+                    Vec::new()
+                },
             ))
         })
         .await?;
     let smtp_ready = sign_in_codes && crate::mail::load(core).await?.is_some();
     let rows = users
         .into_iter()
-        .map(|u| UserRow::from_user(u, user.id, &passkeys, &emails))
+        .map(|u| UserRow::from_user(u, user.id, &passkeys, &emails, &codes))
         .collect();
     let (ctx, jar) = PageCtx::build(
         core,
@@ -288,7 +307,8 @@ pub struct UpdateForm {
     display_name: String,
     #[serde(default)]
     role: String,
-    /// The admin's own password, needed to make someone an administrator.
+    /// The admin's own password, needed to make someone an administrator
+    /// and, with sign-in codes, to change an email address.
     #[serde(default)]
     current_password: String,
     /// The user's email address with
@@ -335,7 +355,17 @@ pub(super) async fn update(
             .with_conn(move |c| db_users::get_user(c, id))
             .await?
             .is_some_and(|target| target.role != Role::Admin);
-    if promoting
+    // A code goes to the address stored here: changing it is as good as
+    // taking the account, so it asks the admin's password too.
+    let new_email = email.clone();
+    let email_changes = match new_email {
+        Some(new) => {
+            core.with_conn(move |c| Ok(db_codes::email(c, id)?.unwrap_or_default() != new))
+                .await?
+        }
+        None => false,
+    };
+    if (promoting || email_changes)
         && let Err(msg) =
             super::security::require_password(&core, &user, &jar, form.current_password).await?
     {
@@ -355,9 +385,13 @@ pub(super) async fn update(
     match result {
         Ok(()) => {
             tracing::info!(admin = %user.username, user_id = id, role = %role, "user updated");
-            // An administrator made outlasts a stolen session: the
-            // confirmation is used up.
-            let jar = if promoting { reauth::spend(jar) } else { jar };
+            // An administrator made outlasts a stolen session, and so does
+            // an address that receives codes: the confirmation is used up.
+            let jar = if promoting || email_changes {
+                reauth::spend(jar)
+            } else {
+                jar
+            };
             Ok(back(jar, "success", crate::i18n::t("users.saved")))
         }
         Err(err) => Ok(back(jar, "error", change_message(err))),

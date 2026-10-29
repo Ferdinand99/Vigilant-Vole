@@ -1,7 +1,10 @@
 //! One-time sign-in codes ([`auth::sign_in_codes`](crate::auth::sign_in_codes)):
 //! - `POST /settings/users/{id}/sign-in-code` (admin): creates a code for
-//!   another user and shows it once, and emails it when the instance has
-//!   mail settings and the user an address
+//!   another user and shows it once, and emails it when the admin ticked
+//!   "Also send by email" (offered when the instance has mail settings and
+//!   the user an address)
+//! - `POST /settings/users/{id}/sign-in-code/revoke` (admin): ends the
+//!   user's pending code
 //! - `GET /sign-in-code`, `POST /sign-in-code` (public): the user types
 //!   their user name, the code and a new password and is signed in. With
 //!   `CredentialMode::External` the GET leads to the product's password page
@@ -9,7 +12,13 @@
 //!
 //! Every way the code can fail (expired, used, revoked, unknown, someone
 //! else's, no such user) gets the same answer ([`failed`]). The code is
-//! never logged.
+//! never logged, and neither is the user name a visitor typed (it could be a
+//! code pasted into the wrong field, or hold a line break): the log has
+//! [`log_ref`](sign_in_codes::log_ref) of it.
+//!
+//! The email is made from the translated templates, with fixed fields: the
+//! subject has only the site name, and the code goes into the body last,
+//! after every other value is in, so no name can pull it into the subject.
 
 use askama::Template;
 use axum::Form;
@@ -53,23 +62,53 @@ pub struct ResetForm {
     /// The admin's own password (`CredentialMode::Plain`).
     #[serde(default)]
     current_password: String,
+    /// Also email the code ("Also send by email"; a form without the field
+    /// sends nothing).
+    #[serde(default)]
+    send_email: bool,
 }
 
 fn back(jar: SignedCookieJar, kind: &str, message: impl Into<String>) -> Response {
     (flash(jar, kind, message), Redirect::to("/settings/users")).into_response()
 }
 
-/// The message in the language of the person it goes to.
+/// A value for a mail: without braces (so that no name can spell a
+/// placeholder) and without control characters (so that no name can break a
+/// header or a line).
+fn plain(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, '{' | '}'))
+        .collect()
+}
+
+/// The sign-in code mail in the language of the person it goes to, from the
+/// fixed templates: the subject has the site name only; the body has the
+/// person's name, user name, the site and the link. The code is put in
+/// last, once, after all of those, so it can only appear where the template
+/// has `{code}`.
 fn mail_text(
     lang: Lang,
-    subject_key: &'static str,
-    body_key: &'static str,
-    args: &[(&str, &str)],
+    site: &str,
+    name: &str,
+    username: &str,
+    url: &str,
+    code: &str,
 ) -> (String, String) {
-    (
-        crate::i18n::interpolate(crate::i18n::t_in(lang, subject_key), args),
-        crate::i18n::interpolate(crate::i18n::t_in(lang, body_key), args),
-    )
+    let subject = crate::i18n::interpolate(
+        crate::i18n::t_in(lang, "sign_in_code.mail_subject"),
+        &[("site", &plain(site))],
+    );
+    let body = crate::i18n::interpolate(
+        crate::i18n::t_in(lang, "sign_in_code.mail_body"),
+        &[
+            ("name", &plain(name)),
+            ("username", &plain(username)),
+            ("site", &plain(site)),
+            ("url", &plain(url)),
+        ],
+    );
+    (subject, body.replace("{code}", code))
 }
 
 pub(super) async fn create(
@@ -103,6 +142,7 @@ pub(super) async fn create(
 
     let code = sign_in_codes::generate();
     let (hash, admin) = (sign_in_codes::hash(&code), user.id);
+    let send_email = form.send_email;
     core.with_conn(move |c| db_codes::insert(c, id, &hash, admin))
         .await?;
     tracing::info!(admin = %user.username, user = %target.username, "sign-in code created");
@@ -113,25 +153,14 @@ pub(super) async fn create(
     };
     let url = format!("{origin}/sign-in-code");
     let (mut emailed_to, mut mail_failed) = (None, false);
-    if let Some(address) = recipient(&core, id).await? {
+    if send_email && let Some(address) = recipient(&core, id).await? {
         let lang = target
             .language
             .as_deref()
             .and_then(Lang::from_code)
             .unwrap_or_else(crate::i18n::site_default);
         let site = super::sign_in::site_name(&core).await;
-        let (subject, body) = mail_text(
-            lang,
-            "sign_in_code.mail_subject",
-            "sign_in_code.mail_body",
-            &[
-                ("name", target.name()),
-                ("username", &target.username),
-                ("site", &site),
-                ("code", &code),
-                ("url", &url),
-            ],
-        );
+        let (subject, body) = mail_text(lang, &site, target.name(), &target.username, &url, &code);
         match crate::mail::send(&core, &address, &subject, &body).await {
             Ok(()) => emailed_to = Some(address),
             Err(error) => {
@@ -151,6 +180,36 @@ pub(super) async fn create(
         mail_failed,
     };
     super::users::render(&core, &user, jar, None, Some(new_code)).await
+}
+
+/// Ends the user's pending code ("Revoke code"): the admin's own password, or
+/// a fresh grant, like creating one.
+pub(super) async fn revoke(
+    State(core): State<Core>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Path(id): Path<i64>,
+    Form(form): Form<ResetForm>,
+) -> ApiResult<Response> {
+    user.require_admin()?;
+    let Some(target) = core.with_conn(move |c| db_users::get_user(c, id)).await? else {
+        return Ok(back(jar, "error", crate::i18n::t("users.err_gone")));
+    };
+    if let Err(msg) =
+        super::security::require_password(&core, &user, &jar, form.current_password).await?
+    {
+        return Ok(back(jar, "error", msg));
+    }
+    let revoked = core
+        .with_conn(move |c| db_codes::revoke_for_user(c, id))
+        .await?;
+    tracing::info!(admin = %user.username, user = %target.username, revoked, "sign-in code revoked");
+    let jar = reauth::spend(jar);
+    Ok(back(
+        jar,
+        "success",
+        crate::i18n::tf("sign_in_code.revoked", &[("name", &target.username)]),
+    ))
 }
 
 /// The address to email a code to: the user's, when the instance has mail
@@ -264,25 +323,26 @@ pub(super) async fn submit(
 
     let ip = session::client_ip(&headers, peer, session::trust_proxy());
     let code: String = form.code.chars().take(MAX_CODE_INPUT).collect();
-    let redeemed =
-        match sign_in_codes::attempt(&core, &username, &code, ip, Some(form.password)).await? {
-            Ok(redeemed) => redeemed,
-            Err(Refused::Throttled(wait)) => {
-                tracing::warn!(user = %username, ip = ?ip, "sign-in code attempts throttled");
-                let page = CodeTemplate {
-                    error: Some(super::sign_in::wait_message(wait)),
-                    username,
-                    ..CodeTemplate::blank()
-                };
-                return Ok(private(
-                    (StatusCode::TOO_MANY_REQUESTS, HtmlTemplate(page)).into_response(),
-                ));
-            }
-            Err(Refused::Generic) => {
-                tracing::info!(user = %username, ip = ?ip, "failed sign-in code");
-                return Ok(failed(&username));
-            }
-        };
+    let redeemed = match sign_in_codes::attempt(&core, &username, &code, ip, Some(form.password))
+        .await?
+    {
+        Ok(redeemed) => redeemed,
+        Err(Refused::Throttled(wait)) => {
+            tracing::warn!(user_ref = %sign_in_codes::log_ref(&username), ip = ?ip, "sign-in code attempts throttled");
+            let page = CodeTemplate {
+                error: Some(super::sign_in::wait_message(wait)),
+                username,
+                ..CodeTemplate::blank()
+            };
+            return Ok(private(
+                (StatusCode::TOO_MANY_REQUESTS, HtmlTemplate(page)).into_response(),
+            ));
+        }
+        Err(Refused::Generic) => {
+            tracing::info!(user_ref = %sign_in_codes::log_ref(&username), ip = ?ip, "failed sign-in code");
+            return Ok(failed(&username));
+        }
+    };
 
     let id = redeemed.user_id;
     let Some(user) = core
@@ -311,4 +371,45 @@ pub(super) async fn submit(
     }
     let jar = login_jar(jar, user.id, redeemed.session_version, secure);
     Ok((jar, Redirect::to("/")).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_mail_has_a_fixed_subject_and_the_code_only_in_the_body() {
+        let code = "7GQ2-M4XB-0C5T-WZ9K-HE1N-Q8DY-A3RF-V6PS";
+        // Names that try to pull the code in, to name another placeholder or
+        // to break a line.
+        let evil = "{code}{url}{{code}}\r\nBcc: evil@example.com";
+        let (subject, body) = mail_text(
+            Lang::EN,
+            evil,
+            evil,
+            evil,
+            "https://vole.example.org/sign-in-code",
+            code,
+        );
+        assert!(
+            !subject.contains(code) && !subject.contains("{code}"),
+            "{subject}"
+        );
+        assert!(!subject.contains(['\r', '\n']), "{subject:?}");
+        assert!(!subject.contains(['{', '}']), "{subject}");
+        assert_eq!(body.matches(code).count(), 1, "{body}");
+        assert!(
+            !body.contains("{code}") && !body.contains("{url}"),
+            "{body}"
+        );
+        assert!(!body.contains("{{"), "{body}");
+        // A plain name comes through.
+        let (subject, body) = mail_text(Lang::EN, "Ours", "Ada", "ada", "https://x.test/c", code);
+        assert!(subject.contains("Ours"), "{subject}");
+        assert!(
+            body.contains("Hi Ada,") && body.contains("https://x.test/c"),
+            "{body}"
+        );
+        assert!(!subject.contains(code));
+    }
 }

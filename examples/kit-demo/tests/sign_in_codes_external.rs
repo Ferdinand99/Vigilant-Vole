@@ -24,12 +24,14 @@ use serde::Deserialize;
 use tower::ServiceExt as _;
 use vole_kit::auth::guard::{self, PeerAddr, login_jar, secure_cookies};
 use vole_kit::auth::pages::{check_setup_token, insert_first_admin};
-use vole_kit::auth::sign_in_codes::{self, Generic};
-use vole_kit::auth::{Role, reauth};
+use vole_kit::auth::sign_in_codes::{self, Generic, RedeemToken};
+use vole_kit::auth::{Role, TokenScope, reauth};
 use vole_kit::db;
 use vole_kit::state::Core;
 
 static N: AtomicUsize = AtomicUsize::new(0);
+/// The visitor's address, as a product passes it to `redeem_from`.
+const TEST_IP: &str = "198.51.100.7";
 const CONFIRM: &str = "Confirm it’s you to make this change.";
 
 // ---------------------------------------------------------------------------
@@ -117,9 +119,10 @@ async fn vault_password(
         .await
         .unwrap()
     {
-        Ok(id) => {
+        Ok(token) => {
+            let id = token.user_id();
             assert!(
-                sign_in_codes::set_password_hash(&core, id, "!external-new")
+                sign_in_codes::set_password_hash(&core, token, "!external-new")
                     .await
                     .unwrap()
             );
@@ -131,6 +134,19 @@ async fn vault_password(
 
 async fn vault_form() -> Response {
     "the product's password page".into_response()
+}
+
+/// What a product calls on its password page, with the visitor's address.
+async fn redeem_token(core: &Core, user: &str, code: &str) -> Result<RedeemToken, Generic> {
+    let ip = TEST_IP.parse().ok();
+    sign_in_codes::redeem_from(core, user, code, ip)
+        .await
+        .unwrap()
+}
+
+/// [`redeem_token`], for the user's id only.
+async fn redeem(core: &Core, user: &str, code: &str) -> Result<i64, Generic> {
+    redeem_token(core, user, code).await.map(|t| t.user_id())
 }
 
 fn vault(core: &Core) -> Router {
@@ -386,12 +402,7 @@ async fn an_admin_needs_a_fresh_confirmation_and_it_is_used_up() {
     assert_eq!(app.codes_in_db().await, 1);
 
     // The code is valid for the product.
-    assert!(
-        sign_in_codes::redeem(&app.core, "bob", &code)
-            .await
-            .unwrap()
-            .is_ok()
-    );
+    assert!(redeem(&app.core, "bob", &code).await.is_ok());
 
     // Not for yourself, not for someone else's account without being admin.
     app.get(&mut admin, "/vault/reauth").await;
@@ -430,12 +441,43 @@ async fn redeeming_uses_the_code_up_and_signs_the_user_out() {
         .unwrap();
     let before = app.user("bob").await;
     let code = app.code_for(bob).await;
-
-    let id = sign_in_codes::redeem(&app.core, "Bob", &code)
+    for (id, hash) in [(bob, "tok-bob-1"), (bob, "tok-bob-2")] {
+        app.core
+            .with_conn(move |c| {
+                db::api_tokens::insert(c, id, "t", "vv_x", hash, TokenScope::Read, None)
+            })
+            .await
+            .unwrap();
+    }
+    let carol = app.add_user("carol").await;
+    app.core
+        .with_conn(move |c| {
+            db::api_tokens::insert(c, carol, "t", "vv_x", "tok-carol", TokenScope::Read, None)
+        })
         .await
-        .unwrap()
+        .unwrap();
+    let tokens = |user: i64| {
+        let core = app.core.clone();
+        async move {
+            core.with_conn(move |c| {
+                c.query_row(
+                    "SELECT COUNT(*) FROM api_tokens WHERE user_id = ?1",
+                    [user],
+                    |r| r.get::<_, i64>(0),
+                )
+            })
+            .await
+            .unwrap()
+        }
+    };
+
+    let token = redeem_token(&app.core, "Bob", &code)
+        .await
         .expect("the code works");
-    assert_eq!(id, bob);
+    assert_eq!(token.user_id(), bob);
+    assert_eq!(token.session_version(), before.session_version + 1);
+    assert_eq!(tokens(bob).await, 0, "the redeem deleted the user's tokens");
+    assert_eq!(tokens(carol).await, 1, "and nobody else's");
     let after = app.user("bob").await;
     assert_ne!(after.session_version, before.session_version, "signed out");
     assert!(after.totp_enabled, "two-factor stays");
@@ -448,30 +490,51 @@ async fn redeeming_uses_the_code_up_and_signs_the_user_out() {
     assert!(res.location().starts_with("/login"), "{}", res.location());
 
     // Once.
-    assert_eq!(
-        sign_in_codes::redeem(&app.core, "bob", &code)
-            .await
-            .unwrap(),
-        Err(Generic)
-    );
+    assert!(redeem(&app.core, "bob", &code).await.is_err());
     assert_eq!(
         app.user("bob").await.session_version,
         after.session_version,
         "a refused code changes nothing"
     );
 
-    // The product stores its credential.
+    // The product stores its credential, with the proof of the redeem. The
+    // token is moved into the call, so it can't be used a second time.
     assert!(
-        sign_in_codes::set_password_hash(&app.core, bob, "!marker")
+        sign_in_codes::set_password_hash(&app.core, token, "!marker")
             .await
             .unwrap()
     );
     assert_eq!(app.user("bob").await.password_hash, "!marker");
+}
+
+#[tokio::test]
+async fn a_credential_needs_a_fresh_proof_of_a_redeem() {
+    let (app, _admin) = App::set_up().await;
+    let bob = app.add_user("bob").await;
+    let carol = app.add_user("carol").await;
+
+    // Ten minutes and more: refused, and nothing is stored.
+    let code = app.code_for(bob).await;
+    let token = redeem_token(&app.core, "bob", &code).await.unwrap();
+    let late = token.aged(sign_in_codes::REDEEM_TOKEN_TTL + std::time::Duration::from_secs(1));
     assert!(
-        !sign_in_codes::set_password_hash(&app.core, 999, "!marker")
+        !sign_in_codes::set_password_hash(&app.core, late, "!late")
             .await
             .unwrap()
     );
+    assert_eq!(app.user("bob").await.password_hash, "!external");
+
+    // Within the time: stored, for the user the code was for and nobody else.
+    let code = app.code_for(carol).await;
+    let token = redeem_token(&app.core, "carol", &code).await.unwrap();
+    let nearly = token.aged(sign_in_codes::REDEEM_TOKEN_TTL - std::time::Duration::from_secs(5));
+    assert!(
+        sign_in_codes::set_password_hash(&app.core, nearly, "!on-time")
+            .await
+            .unwrap()
+    );
+    assert_eq!(app.user("carol").await.password_hash, "!on-time");
+    assert_eq!(app.user("bob").await.password_hash, "!external");
 }
 
 #[tokio::test]
@@ -541,19 +604,10 @@ async fn every_refusal_is_the_same_generic_error() {
         ("victim", "garbage"),
         ("victim", ""),
     ] {
-        assert_eq!(
-            sign_in_codes::redeem(&app.core, user, code).await.unwrap(),
-            Err(Generic),
-            "{user}"
-        );
+        assert_eq!(redeem(&app.core, user, code).await, Err(Generic), "{user}");
     }
     // Nothing was spent by the others' attempts.
-    assert_eq!(
-        sign_in_codes::redeem(&app.core, "victim", &c_victim)
-            .await
-            .unwrap(),
-        Ok(victim)
-    );
+    assert_eq!(redeem(&app.core, "victim", &c_victim).await, Ok(victim));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -565,7 +619,7 @@ async fn of_many_racing_redeems_exactly_one_wins() {
 
     let tries = (0..5).map(|_| {
         let (core, code) = (app.core.clone(), code.clone());
-        tokio::spawn(async move { sign_in_codes::redeem(&core, "bob", &code).await.unwrap() })
+        tokio::spawn(async move { redeem(&core, "bob", &code).await })
     });
     let results: Vec<_> = futures_util::future::join_all(tries)
         .await
@@ -594,21 +648,11 @@ async fn redeem_is_throttled_per_account_and_per_address() {
     let good = app.code_for(bob).await;
     let wrong = sign_in_codes::generate();
 
-    for _ in 0..8 {
-        assert_eq!(
-            sign_in_codes::redeem(&app.core, "bob", &wrong)
-                .await
-                .unwrap(),
-            Err(Generic)
-        );
+    for _ in 0..14 {
+        assert_eq!(redeem(&app.core, "bob", &wrong).await, Err(Generic));
     }
     // The account waits: even the right code gets the same refusal.
-    assert_eq!(
-        sign_in_codes::redeem(&app.core, "bob", &good)
-            .await
-            .unwrap(),
-        Err(Generic)
-    );
+    assert_eq!(redeem(&app.core, "bob", &good).await, Err(Generic));
     assert_eq!(app.codes_in_db().await, 1);
     let still: Option<String> = app
         .core
@@ -628,23 +672,94 @@ async fn redeem_is_throttled_per_account_and_per_address() {
         let r = sign_in_codes::redeem_from(&app.core, &format!("guess{i}"), &wrong, Some(ip))
             .await
             .unwrap();
-        assert_eq!(r, Err(Generic));
+        assert!(r.is_err());
     }
     // A fresh account from the throttled address is refused even with a good code.
     let carol = app.add_user("carol").await;
     let c = app.code_for(carol).await;
-    assert_eq!(
+    assert!(
         sign_in_codes::redeem_from(&app.core, "carol", &c, Some(ip))
             .await
-            .unwrap(),
-        Err(Generic)
+            .unwrap()
+            .is_err()
     );
     // From another address it works.
     let other: std::net::IpAddr = "203.0.113.10".parse().unwrap();
-    assert_eq!(
-        sign_in_codes::redeem_from(&app.core, "carol", &c, Some(other))
-            .await
-            .unwrap(),
-        Ok(carol)
-    );
+    let token = sign_in_codes::redeem_from(&app.core, "carol", &c, Some(other))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(token.user_id(), carol);
+}
+
+#[tokio::test]
+async fn the_mail_settings_and_an_address_need_a_fresh_confirmation_that_is_used_up() {
+    let (app, mut admin) = App::set_up().await;
+    let host = |app: &App| {
+        let core = app.core.clone();
+        async move {
+            core.with_conn(|c| db::settings::get(c, "smtp_host"))
+                .await
+                .unwrap()
+        }
+    };
+    let form = |host: &'static str| {
+        vec![
+            ("site_name", "Ours"),
+            ("base_url", ""),
+            ("timezone", "UTC"),
+            ("language", "en"),
+            ("notes_per_page", "20"),
+            ("smtp_host", host),
+            ("smtp_from", "noreply@example.com"),
+        ]
+    };
+
+    // The page asks for the confirmation instead of a password.
+    let page = app.get(&mut admin, "/settings/general").await.body;
+    assert!(page.contains("Confirm it’s you"), "{page}");
+    assert!(!page.contains("name=\"current_password\""), "{page}");
+
+    // Without one, nothing is saved.
+    let res = app
+        .post(&mut admin, "/settings/general", &form("mail.example.com"))
+        .await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", res.body);
+    assert!(res.body.contains(CONFIRM), "{}", res.body);
+    assert_eq!(host(&app).await, None);
+
+    // With one, it is, and the confirmation is used up.
+    app.get(&mut admin, "/vault/reauth").await;
+    let res = app
+        .post(&mut admin, "/settings/general", &form("mail.example.com"))
+        .await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(host(&app).await.as_deref(), Some("mail.example.com"));
+    let res = app
+        .post(&mut admin, "/settings/general", &form("evil.example.com"))
+        .await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", res.body);
+    assert_eq!(host(&app).await.as_deref(), Some("mail.example.com"));
+
+    // The same goes for a user's address.
+    let bob = app.add_user("bob").await;
+    let path = format!("/settings/users/{bob}");
+    let edit = [
+        ("display_name", "Bob"),
+        ("role", "viewer"),
+        ("email", "bob@example.com"),
+    ];
+    app.post(&mut admin, &path, &edit).await;
+    let stored = |app: &App| {
+        let core = app.core.clone();
+        async move {
+            core.with_conn(move |c| db::sign_in_codes::email(c, bob))
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(stored(&app).await, None);
+    app.get(&mut admin, "/vault/reauth").await;
+    app.post(&mut admin, &path, &edit).await;
+    assert_eq!(stored(&app).await.as_deref(), Some("bob@example.com"));
 }
