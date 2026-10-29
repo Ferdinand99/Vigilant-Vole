@@ -122,7 +122,17 @@ pub struct KitFeatures {
     /// page and the product accepts the invitation
     /// ([`auth::invites`](crate::auth::invites)). Off, the routes are 404.
     pub invites: bool,
-    /// One-time sign-in codes.
+    /// One-time sign-in codes: an admin resets someone's sign-in from the
+    /// Users page and gets a code, shown once and good for 24 hours and one
+    /// use, with which that person chooses a new password at
+    /// `/sign-in-code` (and, when the instance has mail settings under
+    /// General and the user has an email address, gets it by email). Needs
+    /// the [`SIGN_IN_CODES`](crate::db::migrate::SIGN_IN_CODES) migration in
+    /// [`MigrationSet::core`](crate::db::migrate::MigrationSet::core). With
+    /// [`CredentialMode::External`] `/sign-in-code` leads to the product's
+    /// password page (`?code=1`) and the product redeems the code
+    /// ([`auth::sign_in_codes`](crate::auth::sign_in_codes)). Off, the
+    /// routes are 404 and the pages show nothing of it.
     pub sign_in_codes: bool,
 }
 
@@ -340,6 +350,12 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
     if config.features.invites && !config.migrations.core.iter().any(|(n, _)| *n == invites) {
         problems.push(format!(
             "invitations need the core migration {invites} in MigrationSet::core"
+        ));
+    }
+    let codes = crate::db::migrate::SIGN_IN_CODES.0;
+    if config.features.sign_in_codes && !config.migrations.core.iter().any(|(n, _)| *n == codes) {
+        problems.push(format!(
+            "sign-in codes need the core migration {codes} in MigrationSet::core"
         ));
     }
     if let CredentialMode::External(ext) = config.features.credentials {

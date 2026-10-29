@@ -30,3 +30,4 @@ vole-kit-build = { path = "../../kit/kit-build" }
 # The software passkey authenticator, and /setup open without a token.
 vole-kit = { path = "../../kit", features = ["test-support"] }
 tower = { workspace = true }
+tracing = { workspace = true }

@@ -31,6 +31,7 @@ pub mod pages;
 pub mod rate_limit;
 pub mod reauth;
 pub mod session;
+pub mod sign_in_codes;
 pub mod tokens;
 pub mod totp;
 pub mod webauthn;

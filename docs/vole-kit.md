@@ -98,7 +98,7 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `crypto` | sealing small secrets at rest under the instance key: `seal`, `open`, `is_sealed`, `Sealer`, `OpenError`, `PREFIX` (see "Sealed secrets") |
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `PUSH`, `INVITES`, `migrate_with` + `MigrateOptions`) |
+| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `PUSH`, `INVITES`, `SIGN_IN_CODES`, `migrate_with` + `MigrateOptions`) |
 | `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `reauth`: the fresh-confirmation grant of external credentials; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, `session_write_allowed`/`session_write_guard`); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
@@ -173,7 +173,7 @@ No test can forget it.
 | `webhook` | how the webhook provider names what alerts are about: the default body's fields, the body template's placeholders, the URL field's example (`notify::webhook::Wording`; `Wording::NEUTRAL` says `subject` and `duration`) | `subject: "monitor"`, `duration: "downtime"`, `url_example: "https://example.com/hooks/vigilant…"` |
 | `token_scopes` | the product's own API token scopes (see "API token scopes") | `&[]` |
 | `general` | the kit's General page with the product's fields (see "General settings"); `None` for none or the product's own | `None` (its own page) |
-| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials` (`CredentialMode::Plain`, or `External` for a product that signs people in on its own pages: see "External credentials"), `invites` (invitation links: see "Invitation links"), `sign_in_codes`. `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
+| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials` (`CredentialMode::Plain`, or `External` for a product that signs people in on its own pages: see "External credentials"), `invites` (invitation links: see "Invitation links"), `sign_in_codes` (one-time sign-in codes and the instance's mail settings: see "One-time sign-in codes"). `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
 
 `DocsSpec` holds the routes, the OpenAPI texts, the error example and the
 `curl` placeholders. It also holds the product's Markdown sections and, for
@@ -476,13 +476,15 @@ No code change is needed. What users and operators notice:
 the product's state (anything `Core` and `Key` can be taken from):
 
 * `public_router()`: `/setup`, `/login`, `/login/2fa`, `/login/passkey`
-  (and `/options`), `/logout`, and with `KitFeatures::invites`
-  `/invite/{token}`.
+  (and `/options`), `/logout`, with `KitFeatures::invites`
+  `/invite/{token}` and with `KitFeatures::sign_in_codes` `/sign-in-code`.
 * `router()` must sit behind `require_auth`. It serves:
-  * `/settings/general` (admins), only with `KitConfig::general`;
+  * `/settings/general` (admins), only with `KitConfig::general` (with
+    `KitFeatures::sign_in_codes` also `/settings/general/smtp-test`);
   * `/settings/users` (create, edit, password, 2FA reset, passkey reset,
     enable, disable, delete; with `KitFeatures::invites` also `/settings/invites`
-    and `/settings/invites/{id}/revoke`);
+    and `/settings/invites/{id}/revoke`, with `KitFeatures::sign_in_codes`
+    also `/settings/users/{id}/sign-in-code`);
   * `/settings/tokens` (list, create with the product's scopes, revoke);
   * `/settings/security` (profile and language, password, other sessions,
     2FA set-up/cancel/enable/disable/recovery codes, passkeys:
@@ -900,6 +902,126 @@ share a test binary with the default configuration (the kit's configuration
 is installed once per process), so the end-to-end tests are the kit-demo
 binaries `tests/invites.rs` (the kit's own sign-in), `tests/invites_external.rs`
 (`External`) and, for the feature off, `tests/features_off.rs`.
+
+## One-time sign-in codes
+
+A person who can't sign in (a forgotten password, a lost device) gets a
+one-time code from an admin and chooses a new password with it. A product
+turns the feature on, and adds the migration to its core set:
+
+```rust
+features: &KitFeatures { sign_in_codes: true, ..KitFeatures::DEFAULT },
+migrations: &MigrationSet {
+    core: &[CORE_TABLES, PASSKEYS, /* ... */ SIGN_IN_CODES],
+    ..
+},
+```
+
+Like invitation links it is off by default and changes nothing then: the
+routes are `404`, no page shows anything of it and the tables do not exist.
+The `SIGN_IN_CODES` migration (`kit/migrations/0008_sign_in_codes.sql`) is
+**not** part of `CORE`, so a product on `CORE` as it is keeps its schema, and
+`config::check` refuses `sign_in_codes: true` without it. The tables are
+`sign_in_codes` (`user_id`, `code_hash`, `created_by`, `created_at`,
+`expires_at`, `used_at`, `revoked_at`) and `user_emails` (`user_id`, `email`,
+`verified_at`; optional, one address per user). `users` is not changed.
+
+### What an admin does
+
+On the Users page (admins only) every other user has "Reset sign-in" (never
+oneself). The sheet asks for the admin's own password, or with
+`CredentialMode::External` the usual "Confirm it’s you" link, which is used up
+by creating the code: a code is a way into the account. The page then shows
+the code once, in a copy field, with `Cache-Control: no-store`:
+
+```
+7GQ2-M4XB-0C5T-WZ9K-HE1N-Q8DY-A3RF-V6PS
+```
+
+It is 20 random bytes (160 bits) in Crockford base32, written as eight groups
+of four characters. Only the SHA-256 of the 32 characters is stored
+(`sign_in_codes.code_hash`), so a database copy holds no usable code. A code
+works **once**, for **24 hours**, and a newer code for the same user revokes
+the earlier unused ones. A disabled user's code does not work (and the sheet
+refuses to make one).
+
+The edit sheet of a user has an optional email address (`user_emails`; empty
+clears it; a form without the field leaves it alone). When the instance has
+mail settings (below) and the user has an address, the code is also emailed,
+in the user's language, as a plain-text message, through
+`notify::email::deliver`; the page says so, or that the mail failed. The
+code is never logged: the log has the user and the admin, and for a mail that
+failed the error, not the message.
+
+### Instance mail settings
+
+With the feature on, the General page (`KitConfig::general`) has an "Email
+(SMTP)" section: server, port, security (STARTTLS, TLS or none), user name,
+password and sender. The settings are in the `settings` table (`smtp_host`,
+`smtp_port`, `smtp_security`, `smtp_username`, `smtp_password`, `smtp_from`;
+a product's own General fields can't use these keys). The password is sealed
+under the instance key ("Sealed secrets", purpose
+`vole-kit/instance-smtp`) and never shown again: leave the field empty to keep
+it, tick the box to remove it. Leave every field empty to turn mail off.
+"Send a test email" (`POST /settings/general/smtp-test`) sends through the
+saved settings. The same address rule as for alert channels applies (no
+link-local or cloud-metadata addresses). `vole_kit::mail` has the pieces
+(`Smtp`, `load`, `send`, `parse`) for a product without the General page. The
+alert channels keep their own SMTP settings; this is separate.
+
+### What the user does
+
+`GET /sign-in-code` (linked from the sign-in page) is a form with user name,
+code, new password and confirmation, with the usual password rules ("Password
+rules"). The code may be typed with any case, spaces or dashes, and with
+Crockford's look-alikes (`O` for `0`, `I` and `L` for `1`). On `POST` the kit
+throttles the attempt per account (key `code:<name>`) and per address (key
+`code:<ip>`) with the sign-in limiters, then, in one immediate transaction,
+claims the code and sets the password (hashed whether or not the code turns
+out to be good). The claim is a single `UPDATE` that matches the code's hash
+*and* the user it was made for, so a good code of somebody else is not used up
+and answers like any wrong one, and of two people racing for one code exactly
+one wins. Every failure (expired, used, revoked, unknown, someone else's,
+disabled or unknown user) is the same `401` page; only a throttled attempt is
+told apart (`429`, with the wait), as at sign-in. A new password the rules
+refuse is a `422` on the form and counts as no attempt, and the code stays.
+
+On success the user's `session_version` moves on (every session is signed
+out), the password is the new one, and the user is signed in. Two-factor and
+passkeys are not touched: with two-factor on the user goes on to `/login/2fa`
+first, because a code replaces the password, not the second factor. API
+tokens are left alone (an admin who suspects they leaked uses "Also revoke
+their API tokens" on the password reset).
+
+### With external credentials
+
+With `CredentialMode::External` the kit never sees a password, so
+`GET /sign-in-code` answers `303` to `{password_path}?code=1` and `POST` is
+`404`. The product's page asks for the user name, the code and its own new
+credential, and uses `vole_kit::auth::sign_in_codes`:
+
+* `redeem(core, username, code) -> ApiResult<Result<i64, Generic>>`: uses
+  the code up (once, atomically) and bumps the user's `session_version`; the
+  user's id comes back. `redeem_from(core, username, code, Some(ip))` also
+  throttles per address. Every failure, a throttled attempt included, is the
+  one `Generic`.
+* `set_password_hash(core, user_id, hash) -> ApiResult<bool>`: stores the
+  product's credential (opaque to the kit, like `"!external"`); it signs
+  nobody out, `redeem` did. Then `guard::login_jar` (after
+  `verify_second_factor` for a user with two-factor).
+* `generate()`, `normalize(text)`, `hash(code)`, `CODE_LEN`.
+
+The same functions exist on a bare connection in `db::sign_in_codes`
+(`insert`, `redeem`, `revoke_for_user`, `count_pending`, `email`, `emails`,
+`set_email`).
+
+### Tests
+
+Unit tests are in `db::sign_in_codes`, `auth::sign_in_codes` and `mail`. The
+end-to-end tests are the kit-demo binaries `tests/sign_in_codes.rs` (the
+kit's own sign-in, with a fake SMTP server and a check of what is logged),
+`tests/sign_in_codes_external.rs` (`External`, including a race for one code)
+and, for the feature off, `tests/features_off.rs`.
 
 ## Passkeys
 
@@ -1433,6 +1555,12 @@ The kit has its own migration set, `vole_kit::db::migrate::CORE`:
   "Invitation links"). Not part of `migrate::CORE`: a product that turns
   `KitFeatures::invites` on adds it to its core set (`config::check` demands
   it); the others keep their schema.
+
+* `SIGN_IN_CODES`, `kit/migrations/0008_sign_in_codes.sql`, creates
+  `sign_in_codes` and `user_emails` (see "One-time sign-in codes"). Not part
+  of `migrate::CORE`: a product that turns `KitFeatures::sign_in_codes` on
+  adds it to its core set (`config::check` demands it); the others keep
+  their schema. The `users` table is not changed.
 
 Core migrations are recorded in `schema_migrations` under `kit/…` names, so
 they can't clash with a product's file names.

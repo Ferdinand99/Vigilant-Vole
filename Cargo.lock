@@ -1832,6 +1832,7 @@ dependencies = [
  "sha2 0.11.1",
  "tokio",
  "tower",
+ "tracing",
  "url",
  "vole-kit",
  "vole-kit-build",

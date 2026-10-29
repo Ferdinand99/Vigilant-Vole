@@ -83,6 +83,16 @@ pub const INVITES: (&str, &str) = (
     include_str!("../../migrations/0007_invites.sql"),
 );
 
+/// `sign_in_codes` and `user_emails`: one-time sign-in codes
+/// ([`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)).
+/// Not part of [`CORE`]: a product that turns the feature on lists it in its
+/// [`MigrationSet::core`] ([`crate::config::install`] checks); the others
+/// keep their schema as it was.
+pub const SIGN_IN_CODES: (&str, &str) = (
+    "kit/0008_sign_in_codes.sql",
+    include_str!("../../migrations/0008_sign_in_codes.sql"),
+);
+
 /// The kit's core migrations, `(name, sql)` in order: every product's
 /// default for [`MigrationSet::core`]. The names start with `kit/` so they
 /// never collide with a product's file names.

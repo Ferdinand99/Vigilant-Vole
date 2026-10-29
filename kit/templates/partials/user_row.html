@@ -16,6 +16,9 @@
     {%- if !u.is_self && !external %}
     <button class="menu-item" type="button" data-sheet-open="#reset-pw-{{ u.id }}" commandfor="reset-pw-{{ u.id }}" command="show-modal">{{ m::icon("key") }}{{ tr("users.reset_password") }}</button>
     {%- endif %}
+    {%- if sign_in_codes && !u.is_self %}
+    <button class="menu-item" type="button" data-sheet-open="#reset-code-{{ u.id }}" commandfor="reset-code-{{ u.id }}" command="show-modal">{{ m::icon("key") }}{{ tr("sign_in_code.reset") }}</button>
+    {%- endif %}
     {%- if u.totp_enabled %}
     <button class="menu-item" type="button" data-sheet-open="#reset-tfa-{{ u.id }}" commandfor="reset-tfa-{{ u.id }}" command="show-modal">{{ m::icon("shield") }}{{ tr("users.reset_tfa") }}</button>
     {%- endif %}

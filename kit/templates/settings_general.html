@@ -40,6 +40,41 @@
       </div>
     </div>
   </section>
+  {%- if let Some(s) = smtp %}
+
+  <section class="form-section" aria-labelledby="sec-smtp">
+    <h2 class="form-section-title" id="sec-smtp">{{ tr("sign_in_code.smtp") }}</h2>
+    <div class="card">
+      <p class="help">{{ tr("sign_in_code.smtp_help") }}</p>
+      {{ m::field_text("smtp_host", tr("notif.email.host.label"), value=&s.host, placeholder="smtp.example.com…", error=&s.host_error) }}
+      <div class="field-row">
+        {{ m::field_text("smtp_port", tr("notif.email.port.label"), value=&s.port, kind="number", placeholder="587", help=tr("notif.email.port.help"), error=&s.port_error) }}
+        <div class="field">
+          <label class="label" for="f-smtp_security">{{ tr("notif.email.security.label") }}</label>
+          <select id="f-smtp_security" name="smtp_security">
+            <option value="starttls"{% if s.selected("starttls") %} selected{% endif %}>STARTTLS</option>
+            <option value="tls"{% if s.selected("tls") %} selected{% endif %}>{{ tr("notif.email.security.opt_tls") }}</option>
+            <option value="none"{% if s.selected("none") %} selected{% endif %}>{{ tr("notif.email.security.opt_none") }}</option>
+          </select>
+        </div>
+      </div>
+      {{ m::field_text("smtp_username", tr("notif.email.username.label"), value=&s.username, autocomplete="off", error=&s.username_error) }}
+      <div class="field">
+        <label class="label" for="f-smtp_password">{{ tr("notif.email.password.label") }}</label>
+        <input id="f-smtp_password" name="smtp_password" type="password" autocomplete="new-password" maxlength="1024"{% if s.password_set %} placeholder="••••••••"{% endif %}{% if s.password_set || s.password_unreadable %} aria-describedby="f-smtp_password-help"{% endif %}>
+        {%- if s.password_unreadable %}
+        <p class="field-error" id="f-smtp_password-help">{{ m::icon("alert-circle") }}{{ tr("notif.err_secret_unreadable") }}</p>
+        {%- else if s.password_set %}
+        <p class="help" id="f-smtp_password-help">{{ tr("sign_in_code.smtp_password_kept") }}</p>
+        {%- endif %}
+      </div>
+      {%- if s.password_set %}
+      {{ m::checkbox("smtp_password_clear", tr("sign_in_code.smtp_password_clear"), false) }}
+      {%- endif %}
+      {{ m::field_text("smtp_from", tr("notif.email.from.label"), value=&s.from, placeholder="Hedgerow <noreply@example.com>…", help=tr("sign_in_code.smtp_from_help"), error=&s.from_error) }}
+    </div>
+  </section>
+  {%- endif %}
   {%- for s in sections %}
 
   <section class="form-section" aria-labelledby="sec-{{ s.id }}">
@@ -88,4 +123,18 @@
     {{ m::button(tr("general.save")) }}
   </div>
 </form>
+{%- if let Some(s) = smtp %}
+
+<form class="form" method="post" action="/settings/general/smtp-test">
+  <section class="form-section" aria-labelledby="sec-smtp-test">
+    <h2 class="form-section-title" id="sec-smtp-test">{{ tr("sign_in_code.smtp_test") }}</h2>
+    <div class="card">
+      {{ m::field_text("to", tr("sign_in_code.smtp_test_to"), value=&s.test_to, kind="email", help=tr("sign_in_code.smtp_test_help"), required=true, sfx="-test") }}
+      <div class="form-actions">
+        {{ m::button(tr("sign_in_code.smtp_test_send"), kind="secondary") }}
+      </div>
+    </div>
+  </section>
+</form>
+{%- endif %}
 {% endblock %}

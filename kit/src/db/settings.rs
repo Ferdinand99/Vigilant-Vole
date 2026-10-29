@@ -9,6 +9,16 @@ pub const TIMEZONE: &str = "timezone";
 pub const LANGUAGE: &str = "language";
 pub const SITE_NAME: &str = "site_name";
 
+/// The instance's mail settings ([`crate::mail`]): server, port, security
+/// (`starttls`, `tls` or `none`), user name, the password (sealed) and the
+/// sender.
+pub const SMTP_HOST: &str = "smtp_host";
+pub const SMTP_PORT: &str = "smtp_port";
+pub const SMTP_SECURITY: &str = "smtp_security";
+pub const SMTP_USERNAME: &str = "smtp_username";
+pub const SMTP_PASSWORD: &str = "smtp_password";
+pub const SMTP_FROM: &str = "smtp_from";
+
 pub fn get(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
     conn.query_row(
         "SELECT value FROM settings WHERE key = ?1",

@@ -1,0 +1,40 @@
+{% extends "auth_layout.html" %}
+{% import "macros.html" as m %}
+
+{% block subtitle %}<p class="auth-sub">{{ tr("sign_in_code.sub") }}</p>{% endblock %}
+
+{% block content %}
+<form class="form" method="post" action="/sign-in-code" novalidate>
+  {{ m::field_text("username", tr("login.username"), value=&self.username, required=true, autocomplete="username") }}
+
+  <div class="field">
+    <label class="label" for="f-code">{{ tr("sign_in_code.code") }}</label>
+    <input id="f-code" name="code" type="text" value="{{ code }}" required class="mono" maxlength="128" autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-describedby="f-code-help">
+    <p class="help" id="f-code-help">{{ tr("sign_in_code.code_help") }}</p>
+  </div>
+
+  <div class="field{% if !password_error.is_empty() %} is-invalid{% endif %}">
+    <label class="label" for="f-password">{{ tr("sec.new_password") }}</label>
+    <input id="f-password" name="password" type="password" required minlength="10" maxlength="1024" autocomplete="new-password"
+      data-password-strength aria-describedby="f-password-help{% if !password_error.is_empty() %} f-password-error{% endif %}"
+      {%- if !password_error.is_empty() %} aria-invalid="true"{% endif %}>
+    <div class="meter" data-strength-meter aria-hidden="true"></div>
+    <p class="help" id="f-password-help" data-strength-label aria-live="polite">{{ tr("setup.password_help") }}</p>
+    {%- if !password_error.is_empty() %}
+    <p class="field-error" id="f-password-error">{{ m::icon("alert-circle") }}{{ password_error }}</p>
+    {%- endif %}
+  </div>
+
+  <div class="field{% if !confirm_error.is_empty() %} is-invalid{% endif %}">
+    <label class="label" for="f-confirm">{{ tr("sec.confirm_new") }}</label>
+    <input id="f-confirm" name="confirm" type="password" required minlength="10" maxlength="1024" autocomplete="new-password"
+      {%- if !confirm_error.is_empty() %} aria-invalid="true" aria-describedby="f-confirm-error"{% endif %}>
+    {%- if !confirm_error.is_empty() %}
+    <p class="field-error" id="f-confirm-error">{{ m::icon("alert-circle") }}{{ confirm_error }}</p>
+    {%- endif %}
+  </div>
+
+  <button type="submit" class="btn btn-primary btn-lg btn-block">{{ tr("sign_in_code.submit") }}</button>
+  <p class="auth-foot"><a href="/login">{{ tr("sign_in_code.back") }}</a></p>
+</form>
+{% endblock %}

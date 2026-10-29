@@ -51,7 +51,7 @@ fn back(jar: SignedCookieJar, kind: &str, message: impl Into<String>) -> Respons
 
 /// `https://host` of this request, for a link when the site has no public
 /// URL set.
-fn request_origin(headers: &HeaderMap) -> String {
+pub(super) fn request_origin(headers: &HeaderMap) -> String {
     let scheme = if secure_cookies(headers) {
         "https"
     } else {
@@ -110,7 +110,7 @@ pub(super) async fn create(
     };
     let link = format!("{origin}/invite/{token}");
     let jar = flash(jar, "success", crate::i18n::t("invite.created"));
-    super::users::render(&core, &user, jar, Some(link)).await
+    super::users::render(&core, &user, jar, Some(link), None).await
 }
 
 pub(super) async fn revoke(

@@ -84,6 +84,26 @@ static INVITES_CORE: &[(&str, &str)] = &[
     migrate::INVITES,
 ];
 
+/// The core migrations plus the sign-in codes' ([`KitFeatures::sign_in_codes`]).
+static CODES_CORE: &[(&str, &str)] = &[
+    migrate::CORE_TABLES,
+    migrate::TOKEN_SCOPES,
+    migrate::PASSKEYS,
+    migrate::SEALED_SECRETS,
+    migrate::SEALED_TOTP,
+    migrate::PUSH,
+    migrate::SIGN_IN_CODES,
+];
+
+static MIGRATIONS_CODES: MigrationSet = MigrationSet {
+    core: CODES_CORE,
+    adopt_core: None,
+    migrations,
+    fk_off_marker: "-- kd:foreign_keys=off",
+    baseline: None,
+    after: no_fixups,
+};
+
 static MIGRATIONS_INVITES: MigrationSet = MigrationSet {
     core: INVITES_CORE,
     adopt_core: None,
@@ -388,6 +408,33 @@ pub static KIT_INVITES_EXTERNAL: KitConfig = KitConfig {
     migrations: &MIGRATIONS_INVITES,
     ..KIT
 };
+/// The demo with one-time sign-in codes (`tests/sign_in_codes.rs`).
+pub static KIT_CODES: KitConfig = KitConfig {
+    features: &KitFeatures {
+        sign_in_codes: true,
+        ..KitFeatures::DEFAULT
+    },
+    migrations: &MIGRATIONS_CODES,
+    ..KIT
+};
+
+/// The demo with one-time sign-in codes for a product that signs people in
+/// on its own pages (`tests/sign_in_codes_external.rs`).
+pub static KIT_CODES_EXTERNAL: KitConfig = KitConfig {
+    features: &KitFeatures {
+        credentials: CredentialMode::External(&ExternalCredentials {
+            login_path: "/vault/login",
+            setup_path: "/vault/setup",
+            password_path: "/vault/password",
+            reauth_path: "/vault/reauth",
+        }),
+        sign_in_codes: true,
+        ..KitFeatures::DEFAULT
+    },
+    migrations: &MIGRATIONS_CODES,
+    ..KIT
+};
+
 /// Installs [`KIT`]; call before anything else (tests too).
 pub fn install() {
     vole_kit::config::install(&KIT);

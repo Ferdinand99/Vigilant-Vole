@@ -11,6 +11,13 @@
         <label class="label" for="eu-{{ u.id }}-display">{{ tr("users.display_name") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
         <input id="eu-{{ u.id }}-display" name="display_name" type="text" maxlength="80" autocomplete="off" value="{{ u.display_name }}" placeholder="{{ u.username }}…">
       </div>
+      {%- if sign_in_codes %}
+      <div class="field">
+        <label class="label" for="eu-{{ u.id }}-email">{{ tr("sign_in_code.email") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <input id="eu-{{ u.id }}-email" name="email" type="email" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{ u.email }}" placeholder="ada@example.com…" aria-describedby="eu-{{ u.id }}-email-help">
+        <p class="help" id="eu-{{ u.id }}-email-help">{{ tr("sign_in_code.email_help") }}</p>
+      </div>
+      {%- endif %}
       {%- if u.is_self %}
       <input type="hidden" name="role" value="{{ u.role.as_str() }}">
       <p class="help">{{ tr1("users.your_role", "role", u.role.label()) }}</p>
@@ -69,6 +76,36 @@
   <footer class="sheet-foot">
     <button type="button" class="btn btn-secondary" data-sheet-close commandfor="reset-pw-{{ u.id }}" command="close">{{ tr("common.cancel") }}</button>
     <button type="submit" class="btn btn-primary" form="reset-pw-{{ u.id }}-form">{{ tr("users.reset_password") }}</button>
+  </footer>
+</dialog>
+{%- endif %}
+
+{%- if sign_in_codes && !u.is_self %}
+<dialog class="sheet" id="reset-code-{{ u.id }}" aria-labelledby="reset-code-{{ u.id }}-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="reset-code-{{ u.id }}-title">{{ tr1("sign_in_code.reset_for", "name", u.username) }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="reset-code-{{ u.id }}" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="reset-code-{{ u.id }}-form" class="form" method="post" action="/settings/users/{{ u.id }}/sign-in-code">
+      <p class="help">{{ tr("sign_in_code.reset_help") }}</p>
+      {%- if smtp_ready && !u.email.is_empty() %}
+      <p class="help">{{ tr1("sign_in_code.reset_mail", "email", u.email) }}</p>
+      {%- endif %}
+      {%- if external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
+      <div class="field">
+        <label class="label" for="rc-{{ u.id }}-current-password">{{ tr("sec.your_password") }}</label>
+        <input id="rc-{{ u.id }}-current-password" name="current_password" type="password" required maxlength="1024" autocomplete="current-password">
+      </div>
+      {%- endif %}
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="reset-code-{{ u.id }}" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="reset-code-{{ u.id }}-form">{{ tr("sign_in_code.create") }}</button>
   </footer>
 </dialog>
 {%- endif %}

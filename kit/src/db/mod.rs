@@ -20,6 +20,7 @@ pub mod migrate;
 pub mod passkeys;
 pub mod role;
 pub mod settings;
+pub mod sign_in_codes;
 pub mod users;
 
 /// Applied to every new pooled connection. `foreign_keys` is a per-connection

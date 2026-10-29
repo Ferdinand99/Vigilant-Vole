@@ -16,6 +16,7 @@ mod invite;
 mod passkeys;
 mod security;
 mod sign_in;
+mod sign_in_code;
 mod tokens;
 mod users;
 
@@ -38,7 +39,10 @@ use crate::state::Core;
 /// passkey sign-in and sign-out stay. With
 /// [`KitFeatures::invites`](crate::config::KitFeatures::invites) there is
 /// also `/invite/{token}`, where an invited person creates their account
-/// (in that mode it leads on to the product's setup page).
+/// (in that mode it leads on to the product's setup page), and with
+/// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)
+/// `/sign-in-code`, where someone redeems a one-time code and chooses a new
+/// password (in that mode it leads on to the product's password page).
 pub fn public_router<S>() -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
@@ -66,6 +70,16 @@ where
     } else {
         router
     };
+    // One-time sign-in codes: where a user redeems one (in `External` mode
+    // it leads on to the product's password page).
+    let router = if crate::config::get().features.sign_in_codes {
+        router.route(
+            "/sign-in-code",
+            get(sign_in_code::form).post(sign_in_code::submit),
+        )
+    } else {
+        router
+    };
     router
         .route(
             "/login/2fa",
@@ -77,7 +91,9 @@ where
 }
 
 /// Users (and, with [`KitFeatures::invites`](crate::config::KitFeatures::invites),
-/// their invitations), API tokens (with [`KitFeatures::api_tokens`](crate::config::KitFeatures::api_tokens)),
+/// their invitations and, with
+/// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes),
+/// their one-time sign-in codes and email addresses), API tokens (with [`KitFeatures::api_tokens`](crate::config::KitFeatures::api_tokens)),
 /// Security, the API reference (with
 /// [`KitFeatures::api_docs`](crate::config::KitFeatures::api_docs)) and, with
 /// [`KitConfig::general`](crate::config::KitConfig::general), General
@@ -157,6 +173,19 @@ where
         router
             .route("/settings/invites", post(invite::create))
             .route("/settings/invites/{id}/revoke", post(invite::revoke))
+    } else {
+        router
+    };
+    let router = if cfg.features.sign_in_codes {
+        let router = router.route(
+            "/settings/users/{id}/sign-in-code",
+            post(sign_in_code::create),
+        );
+        if cfg.general.is_some() {
+            router.route("/settings/general/smtp-test", post(general::smtp_test))
+        } else {
+            router
+        }
     } else {
         router
     };
