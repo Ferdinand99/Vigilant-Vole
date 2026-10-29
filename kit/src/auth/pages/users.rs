@@ -3,6 +3,8 @@
 //! - `POST /settings/users/{id}` (display name + role)
 //! - `POST /settings/users/{id}/password` (set a temporary password)
 //! - `POST /settings/users/{id}/2fa/reset`
+//! - `POST /settings/users/{id}/sign-in-code` (one-time sign-in codes, see
+//!   `sign_in_code`)
 //!
 //! Adding or promoting an administrator, and resetting a password or
 //! two-factor, ask the admin for their own password again.
@@ -23,11 +25,14 @@ use crate::auth::{self, CurrentUser, Role, reauth};
 use crate::db::api_tokens as db_tokens;
 use crate::db::invites as db_invites;
 use crate::db::passkeys as db_passkeys;
+use crate::db::sign_in_codes as db_codes;
 use crate::db::users::{self as db_users, User, UserChangeError};
 use crate::http::{ApiResult, HtmlTemplate};
 use crate::i18n::Tr as _;
 use crate::page::{PageCtx, flash, initials};
 use crate::state::Core;
+
+use super::sign_in_code::NewCode;
 
 /// One row of the user list.
 struct UserRow {
@@ -43,11 +48,19 @@ struct UserRow {
     active: bool,
     last_login_at: Option<String>,
     is_self: bool,
+    /// The email address ("" for none; only read with
+    /// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)).
+    email: String,
 }
 
 impl UserRow {
-    fn from_user(u: User, current: i64, passkeys: &[(i64, i64)]) -> Self {
+    fn from_user(u: User, current: i64, passkeys: &[(i64, i64)], emails: &[(i64, String)]) -> Self {
         Self {
+            email: emails
+                .iter()
+                .find(|(id, _)| *id == u.id)
+                .map(|(_, e)| e.clone())
+                .unwrap_or_default(),
             passkeys: passkeys
                 .iter()
                 .find(|(id, _)| *id == u.id)
@@ -89,6 +102,13 @@ struct UsersTemplate {
     pending: Vec<db_invites::Invite>,
     /// The link of the invitation created by this request (shown once).
     new_invite: Option<String>,
+    /// One-time sign-in codes are on
+    /// ([`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)).
+    sign_in_codes: bool,
+    /// The instance can send mail (settings under General).
+    smtp_ready: bool,
+    /// The sign-in code created by this request (shown once).
+    new_code: Option<NewCode>,
 }
 
 pub(super) async fn list(
@@ -97,18 +117,21 @@ pub(super) async fn list(
     jar: SignedCookieJar,
 ) -> ApiResult<Response> {
     user.require_admin()?;
-    render(&core, &user, jar, None).await
+    render(&core, &user, jar, None, None).await
 }
 
-/// The Users page; `new_invite` is the link of an invitation just created.
+/// The Users page; `new_invite` is the link of an invitation just created,
+/// `new_code` a sign-in code just created.
 pub(super) async fn render(
     core: &Core,
     user: &CurrentUser,
     jar: SignedCookieJar,
     new_invite: Option<String>,
+    new_code: Option<NewCode>,
 ) -> ApiResult<Response> {
     let invites = core.cfg.features.invites;
-    let (users, passkeys, pending) = core
+    let sign_in_codes = core.cfg.features.sign_in_codes;
+    let (users, passkeys, pending, emails) = core
         .with_conn(move |c| {
             Ok((
                 db_users::list_users(c)?,
@@ -118,12 +141,18 @@ pub(super) async fn render(
                 } else {
                     Vec::new()
                 },
+                if sign_in_codes {
+                    db_codes::emails(c)?
+                } else {
+                    Vec::new()
+                },
             ))
         })
         .await?;
+    let smtp_ready = sign_in_codes && crate::mail::load(core).await?.is_some();
     let rows = users
         .into_iter()
-        .map(|u| UserRow::from_user(u, user.id, &passkeys))
+        .map(|u| UserRow::from_user(u, user.id, &passkeys, &emails))
         .collect();
     let (ctx, jar) = PageCtx::build(
         core,
@@ -135,7 +164,7 @@ pub(super) async fn render(
     )
     .await;
     let reauth = reauth::View::new(&jar, &core.session_key, user, "/settings/users");
-    let secret = new_invite.is_some();
+    let secret = new_invite.is_some() || new_code.is_some();
     let mut response = (
         jar,
         HtmlTemplate(UsersTemplate {
@@ -147,11 +176,15 @@ pub(super) async fn render(
             invites,
             pending,
             new_invite,
+            sign_in_codes,
+            smtp_ready,
+            new_code,
         }),
     )
         .into_response();
     if secret {
-        // The page holds a link that works once: keep it out of caches.
+        // The page holds a link or a code that works once: keep it out of
+        // caches.
         response.headers_mut().insert(
             axum::http::header::CACHE_CONTROL,
             axum::http::HeaderValue::from_static("no-store"),
@@ -258,6 +291,11 @@ pub struct UpdateForm {
     /// The admin's own password, needed to make someone an administrator.
     #[serde(default)]
     current_password: String,
+    /// The user's email address with
+    /// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes);
+    /// empty clears it, a form without the field leaves it alone.
+    #[serde(default)]
+    email: Option<String>,
 }
 
 pub(super) async fn update(
@@ -278,6 +316,19 @@ pub(super) async fn update(
     if id == user.id && role != user.role {
         return Ok(back(jar, "error", crate::i18n::t("users.err_own_role")));
     }
+    // An address, when the feature is on and the form has the field.
+    let email = form
+        .email
+        .as_deref()
+        .map(str::trim)
+        .filter(|_| core.cfg.features.sign_in_codes)
+        .map(str::to_string);
+    if let Some(email) = &email
+        && !email.is_empty()
+        && !crate::mail::is_address(email)
+    {
+        return Ok(back(jar, "error", crate::i18n::t("sign_in_code.err_email")));
+    }
     // Promoting is as good as adding an administrator.
     let promoting = role == Role::Admin
         && core
@@ -291,7 +342,15 @@ pub(super) async fn update(
         return Ok(back(jar, "error", msg));
     }
     let result = core
-        .with_conn(move |c| db_users::update_profile(c, id, &display_name, role))
+        .with_conn(move |c| {
+            let result = db_users::update_profile(c, id, &display_name, role)?;
+            if result.is_ok()
+                && let Some(email) = &email
+            {
+                db_codes::set_email(c, id, Some(email))?;
+            }
+            Ok(result)
+        })
         .await?;
     match result {
         Ok(()) => {

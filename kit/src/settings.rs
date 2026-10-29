@@ -97,6 +97,12 @@ const RESERVED: &[&str] = &[
     settings::BASE_URL,
     settings::TIMEZONE,
     settings::LANGUAGE,
+    settings::SMTP_HOST,
+    settings::SMTP_PORT,
+    settings::SMTP_SECURITY,
+    settings::SMTP_USERNAME,
+    settings::SMTP_PASSWORD,
+    settings::SMTP_FROM,
 ];
 
 /// A titled group of product fields on the General page.

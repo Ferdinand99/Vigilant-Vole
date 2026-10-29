@@ -18,6 +18,7 @@ pub mod db;
 pub mod docs;
 pub mod http;
 pub mod i18n;
+pub mod mail;
 pub mod mcp;
 pub mod net;
 pub mod notify;

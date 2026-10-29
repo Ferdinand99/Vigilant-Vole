@@ -4,6 +4,9 @@
 //!   and the product's own fields
 //! - `POST /settings/general`: validate and save; errors re-render the page
 //!   with 422
+//! - `POST /settings/general/smtp-test`: with
+//!   [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes),
+//!   sends a test email through the instance's mail settings
 
 use askama::Template;
 use axum::Form;
@@ -13,9 +16,10 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::SignedCookieJar;
 
 use crate::auth::CurrentUser;
-use crate::db::{settings as db_settings, users as db_users};
+use crate::db::{settings as db_settings, sign_in_codes as db_codes, users as db_users};
 use crate::http::{ApiResult, HtmlTemplate};
 use crate::i18n::{Lang, Tr as _};
+use crate::mail::{self, Smtp};
 use crate::page::{PageCtx, flash};
 use crate::settings::{FieldKind, GeneralSettings, SettingField, SiteSettings, normalize_base_url};
 use crate::state::Core;
@@ -99,6 +103,61 @@ impl FieldView {
     }
 }
 
+/// The instance's mail settings as the page shows them
+/// ([`crate::mail`]; only with
+/// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)).
+struct SmtpView {
+    host: String,
+    port: String,
+    security: String,
+    username: String,
+    from: String,
+    /// A password is saved (it is never shown).
+    password_set: bool,
+    /// The saved password can't be opened with this instance's key.
+    password_unreadable: bool,
+    host_error: String,
+    port_error: String,
+    username_error: String,
+    from_error: String,
+    /// Where the test email goes by default: the admin's own address.
+    test_to: String,
+}
+
+impl SmtpView {
+    fn new(smtp: &Smtp, key: &axum_extra::extract::cookie::Key, test_to: String) -> Self {
+        Self {
+            host: smtp.host.clone(),
+            port: smtp.port.clone(),
+            security: smtp.security.clone(),
+            username: smtp.username.clone(),
+            from: smtp.from.clone(),
+            password_set: smtp.has_password(),
+            password_unreadable: !smtp.password_readable(key),
+            host_error: String::new(),
+            port_error: String::new(),
+            username_error: String::new(),
+            from_error: String::new(),
+            test_to,
+        }
+    }
+
+    fn selected(&self, security: &str) -> bool {
+        self.security == security
+    }
+
+    fn has_errors(&self) -> bool {
+        [
+            &self.host_error,
+            &self.port_error,
+            &self.username_error,
+            &self.from_error,
+        ]
+        .iter()
+        .any(|e| !e.is_empty())
+    }
+}
+
 struct SectionView {
     /// For the heading's id (`sec-<id>`): the first field's key.
     id: &'static str,
@@ -120,6 +179,9 @@ struct GeneralTemplate {
     base_url_error: String,
     timezone_error: String,
     sections: Vec<SectionView>,
+    /// The mail settings, with
+    /// [`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes).
+    smtp: Option<SmtpView>,
 }
 
 impl GeneralTemplate {
@@ -135,6 +197,7 @@ impl GeneralTemplate {
         ]
         .iter()
         .any(|e| !e.is_empty())
+            || self.smtp.as_ref().is_some_and(SmtpView::has_errors)
             || self
                 .sections
                 .iter()
@@ -150,17 +213,25 @@ fn page_settings(core: &Core) -> Option<&'static GeneralSettings> {
 /// The page with the stored values.
 async fn template(
     core: &Core,
+    user: &CurrentUser,
     ctx: PageCtx,
     general: &'static GeneralSettings,
 ) -> ApiResult<GeneralTemplate> {
-    let (site, values) = core
+    let codes = core.cfg.features.sign_in_codes;
+    let uid = user.id;
+    let (site, values, smtp) = core
         .with_conn(move |c| {
             let site = SiteSettings::load(c)?;
             let values = general
                 .fields()
                 .map(|f| f.load(c))
                 .collect::<rusqlite::Result<Vec<_>>>()?;
-            Ok((site, values))
+            let smtp = if codes {
+                Some((Smtp::load(c)?, db_codes::email(c, uid)?.unwrap_or_default()))
+            } else {
+                None
+            };
+            Ok((site, values, smtp))
         })
         .await?;
     let mut values = values.into_iter();
@@ -189,6 +260,7 @@ async fn template(
         base_url_error: String::new(),
         timezone_error: String::new(),
         sections,
+        smtp: smtp.map(|(smtp, email)| SmtpView::new(&smtp, &core.session_key, email)),
     })
 }
 
@@ -218,7 +290,7 @@ pub(super) async fn page(
         return Err(crate::http::ApiError::NotFound);
     };
     let (ctx, jar) = context(&core, &user, &jar).await;
-    let page = template(&core, ctx, general).await?;
+    let page = template(&core, &user, ctx, general).await?;
     Ok((jar, HtmlTemplate(page)).into_response())
 }
 
@@ -238,7 +310,7 @@ pub(super) async fn save(
             .map(|(_, v)| v.as_str())
     };
     let (ctx, jar) = context(&core, &user, &jar).await;
-    let mut page = template(&core, ctx, general).await?;
+    let mut page = template(&core, &user, ctx, general).await?;
 
     let site_name = value(db_settings::SITE_NAME)
         .unwrap_or("")
@@ -287,6 +359,38 @@ pub(super) async fn save(
             }
         }
     }
+    // The mail settings: what is typed stays on the page, the saved
+    // password never is.
+    let mut mail_to_store = None;
+    if let Some(view) = page.smtp.as_mut() {
+        let form = mail::Form {
+            host: value("smtp_host").unwrap_or("").to_string(),
+            port: value("smtp_port").unwrap_or("").to_string(),
+            security: value("smtp_security").unwrap_or("").to_string(),
+            username: value("smtp_username").unwrap_or("").to_string(),
+            password: value("smtp_password").unwrap_or("").to_string(),
+            clear_password: value("smtp_password_clear").is_some_and(db_settings::parse_bool),
+            from: value("smtp_from").unwrap_or("").to_string(),
+        };
+        view.host = form.host.trim().to_string();
+        view.port = form.port.trim().to_string();
+        if mail::SECURITIES.contains(&form.security.as_str()) {
+            view.security = form.security.clone();
+        }
+        view.username = form.username.trim().to_string();
+        view.from = form.from.trim().to_string();
+        let saved = core.with_conn(|c| Smtp::load(c)).await?;
+        match mail::parse(&form, &saved, &core.session_key) {
+            Ok(smtp) => mail_to_store = Some(smtp),
+            Err(problems) => {
+                let text = |key: Option<&'static str>| key.map(crate::i18n::t).unwrap_or_default();
+                view.host_error = text(problems.host).into();
+                view.port_error = text(problems.port).into();
+                view.username_error = text(problems.username).into();
+                view.from_error = text(problems.from).into();
+            }
+        }
+    }
     if page.has_errors() {
         return Ok((StatusCode::UNPROCESSABLE_ENTITY, jar, HtmlTemplate(page)).into_response());
     }
@@ -302,6 +406,9 @@ pub(super) async fn save(
             for (field, stored) in &product {
                 field.store(&tx, stored)?;
             }
+            if let Some(smtp) = &mail_to_store {
+                smtp.store(&tx)?;
+            }
             tx.commit()?;
             Ok(db_users::get_user(c, uid)?.and_then(|u| u.language))
         })
@@ -316,4 +423,64 @@ pub(super) async fn save(
         .unwrap_or(lang);
     let jar = flash(jar, "success", crate::i18n::t_in(next, "general.saved"));
     Ok((jar, Redirect::to("/settings/general")).into_response())
+}
+
+#[derive(serde::Deserialize)]
+pub struct TestForm {
+    #[serde(default)]
+    to: String,
+}
+
+/// Sends a test email through the saved mail settings.
+pub(super) async fn smtp_test(
+    State(core): State<Core>,
+    user: CurrentUser,
+    jar: SignedCookieJar,
+    Form(form): Form<TestForm>,
+) -> ApiResult<Response> {
+    user.require_admin()?;
+    let back = |jar: SignedCookieJar, kind: &str, message: String| {
+        (flash(jar, kind, message), Redirect::to("/settings/general")).into_response()
+    };
+    if !core.cfg.features.sign_in_codes {
+        return Err(crate::http::ApiError::NotFound);
+    }
+    let to = form.to.trim().to_string();
+    if !mail::is_address(&to) {
+        return Ok(back(
+            jar,
+            "error",
+            crate::i18n::t("sign_in_code.err_email").into(),
+        ));
+    }
+    if mail::load(&core).await?.is_none() {
+        return Ok(back(
+            jar,
+            "error",
+            crate::i18n::t("sign_in_code.smtp_not_set").into(),
+        ));
+    }
+    let site = super::sign_in::site_name(&core).await;
+    let (subject, body) = (
+        crate::i18n::tf("sign_in_code.test_subject", &[("site", &site)]),
+        crate::i18n::tf("sign_in_code.test_body", &[("site", &site)]),
+    );
+    Ok(match mail::send(&core, &to, &subject, &body).await {
+        Ok(()) => {
+            tracing::info!(user = %user.username, "test email sent");
+            back(
+                jar,
+                "success",
+                crate::i18n::tf("sign_in_code.test_sent", &[("email", &to)]),
+            )
+        }
+        Err(error) => {
+            tracing::warn!(user = %user.username, %error, "test email failed");
+            back(
+                jar,
+                "error",
+                crate::i18n::tf("sign_in_code.test_failed", &[("error", &error)]),
+            )
+        }
+    })
 }

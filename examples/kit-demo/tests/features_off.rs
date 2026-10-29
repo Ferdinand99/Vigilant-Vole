@@ -206,3 +206,79 @@ async fn invitation_links_are_off_unless_a_product_turns_them_on() {
         .unwrap();
     assert_eq!(tables, 0, "the migration is not part of the core set");
 }
+
+#[tokio::test]
+async fn sign_in_codes_are_off_unless_a_product_turns_them_on() {
+    let app = set_up().await;
+    for path in [
+        "/sign-in-code",
+        "/sign-in-code/x",
+        "/settings/general/smtp-test",
+    ] {
+        let res = app.get(path).await;
+        assert_eq!(res.status, StatusCode::NOT_FOUND, "GET {path}");
+    }
+    let form = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs([
+            ("username", "ada"),
+            ("code", "0000-0000-0000-0000-0000-0000-0000-0000"),
+            ("password", PASSWORD),
+            ("confirm", PASSWORD),
+            ("current_password", PASSWORD),
+            ("to", "ada@example.com"),
+        ])
+        .finish();
+    for path in [
+        "/sign-in-code",
+        "/settings/users/1/sign-in-code",
+        "/settings/general/smtp-test",
+    ] {
+        let req = Request::post(path)
+            .header(header::ORIGIN, "http://demo.test")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(form.clone()))
+            .unwrap();
+        let (res, _) = app.send(req, true).await;
+        assert_eq!(res.status, StatusCode::NOT_FOUND, "POST {path}");
+    }
+    // Nothing on the pages that would show it.
+    let login = app
+        .send(Request::get("/login").body(Body::empty()).unwrap(), false)
+        .await
+        .0;
+    assert!(
+        !login.body.contains("/sign-in-code"),
+        "the sign-in page links it"
+    );
+    let users = app.get("/settings/users").await.body;
+    for needle in ["sign-in-code", "Reset sign-in", "Email address"] {
+        assert!(!users.contains(needle), "the Users page shows {needle}");
+    }
+    let general = app.get("/settings/general").await;
+    assert_eq!(general.status, StatusCode::OK);
+    for needle in ["smtp_host", "Email (SMTP)", "smtp-test"] {
+        assert!(!general.body.contains(needle), "General shows {needle}");
+    }
+    // An edit that names an address changes nothing.
+    let req = Request::post("/settings/users/1")
+        .header(header::ORIGIN, "http://demo.test")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(
+            "display_name=Ada&role=admin&email=ada%40example.com",
+        ))
+        .unwrap();
+    let (res, _) = app.send(req, true).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    let tables: i64 = app
+        .core
+        .with_conn(|c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('sign_in_codes', 'user_emails')",
+                [],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(tables, 0, "the migration is not part of the core set");
+}

@@ -359,6 +359,9 @@ struct LoginTemplate {
     /// offers them (`static/passkeys.js` shows the button only on that
     /// origin).
     passkey_origin: Option<String>,
+    /// A link to `/sign-in-code`
+    /// ([`KitFeatures::sign_in_codes`](crate::config::KitFeatures::sign_in_codes)).
+    sign_in_codes: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -390,6 +393,7 @@ fn login_page(
         username,
         next,
         passkey_origin,
+        sign_in_codes: crate::config::get().features.sign_in_codes,
     };
     (status, HtmlTemplate(page)).into_response()
 }
@@ -422,6 +426,7 @@ pub(super) async fn login_form(
         passkey_origin: super::passkeys::relying_party(&core)
             .await
             .map(|rp| rp.origin),
+        sign_in_codes: core.cfg.features.sign_in_codes,
     };
     Ok((jar, HtmlTemplate(page)).into_response())
 }
@@ -819,6 +824,7 @@ mod tests {
             username: String::new(),
             next: "/".into(),
             passkey_origin: None,
+            sign_in_codes: false,
         }
         .render()
         .unwrap();

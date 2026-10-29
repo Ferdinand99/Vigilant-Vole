@@ -22,6 +22,23 @@
 </section>
 {%- endif %}
 
+{%- if let Some(c) = new_code %}
+<section class="section" aria-labelledby="code-created-title">
+  {% call m::section_head(tr("sign_in_code.created"), "", "code-created-title") %}{% endcall %}
+  {{ m::callout("warning", tr("sign_in_code.copy_now"), tr("sec.shown_once")) }}
+  <div class="card stack-sm">
+    {{ m::copy_field("created-sign-in-code", c.code) }}
+    <p class="help">{{ tr1("sign_in_code.code_help_admin", "name", c.username) }}</p>
+    <p class="help"><code>{{ c.url }}</code></p>
+    {%- if let Some(to) = c.emailed_to %}
+    <p class="help">{{ tr1("sign_in_code.mailed", "email", to) }}</p>
+    {%- else if c.mail_failed %}
+    <p class="help">{{ tr("sign_in_code.mail_failed") }}</p>
+    {%- endif %}
+  </div>
+</section>
+{%- endif %}
+
 {%- if invites && !pending.is_empty() %}
 <section class="section" aria-labelledby="pending-invites-title">
   {% call m::section_head(tr("invite.pending"), "", "pending-invites-title") %}{% endcall %}

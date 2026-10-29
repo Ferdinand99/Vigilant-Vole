@@ -21,6 +21,9 @@
   {%- if let Some(origin) = passkey_origin %}
   <button type="button" class="btn btn-secondary btn-lg btn-block" data-passkey-signin data-origin="{{ origin }}" data-msg-cancelled="{{ tr("sec.pk_cancelled") }}" data-msg-unsupported="{{ tr("sec.pk_unsupported") }}" data-msg-failed="{{ tr("login.passkey_failed") }}" hidden>{{ m::icon("key") }}<span>{{ tr("login.passkey") }}</span></button>
   {%- endif %}
+  {%- if sign_in_codes %}
+  <p class="auth-foot"><a href="/sign-in-code">{{ tr("sign_in_code.link") }}</a></p>
+  {%- endif %}
 </form>
 {% endblock %}
 
