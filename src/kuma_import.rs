@@ -221,6 +221,19 @@ struct Tables {
     remote_browsers: Vec<Row>,
 }
 
+/// Most rows read from one Kuma table (or one list of a JSON backup). A real
+/// setup has hundreds; the cap keeps a crafted file from filling memory.
+const MAX_ROWS: usize = 20_000;
+
+/// Largest JSON backup read (the whole text, then its parsed tree, are held
+/// in memory). A database is read row by row and may be larger: it also holds
+/// every heartbeat.
+const MAX_JSON_BYTES: u64 = 64 * 1024 * 1024;
+
+fn too_many(what: &str) -> String {
+    format!("This backup has more than {MAX_ROWS} {what}; it is too large to import.")
+}
+
 fn read_table(conn: &Connection, table: &str) -> rusqlite::Result<Vec<Row>> {
     let exists: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
@@ -230,7 +243,7 @@ fn read_table(conn: &Connection, table: &str) -> rusqlite::Result<Vec<Row>> {
     if !exists {
         return Ok(Vec::new());
     }
-    let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\""))?;
+    let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\" LIMIT {}", MAX_ROWS + 1))?;
     let names: Vec<String> = stmt.column_names().iter().map(|n| n.to_string()).collect();
     let rows = stmt.query_map([], |r| {
         let mut row = Map::new();
@@ -256,7 +269,13 @@ pub fn read_sqlite(path: &Path) -> Result<KumaImport, String> {
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|e| format!("Can’t open the database: {e}"))?;
-    let load = |t: &str| read_table(&conn, t).map_err(|e| format!("Can’t read the {t} table: {e}"));
+    let load = |t: &str| {
+        let rows = read_table(&conn, t).map_err(|e| format!("Can’t read the {t} table: {e}"))?;
+        if rows.len() > MAX_ROWS {
+            return Err(too_many(&format!("rows in the {t} table")));
+        }
+        Ok(rows)
+    };
     let monitors = load("monitor")?;
     let has_monitor_table: bool = conn
         .query_row(
@@ -295,6 +314,15 @@ pub fn read_json(text: &str) -> Result<KumaImport, String> {
     let obj = root
         .as_object()
         .ok_or("This isn’t an Uptime Kuma backup.")?;
+    for key in ["monitorList", "notificationList"] {
+        if obj
+            .get(key)
+            .and_then(Value::as_array)
+            .is_some_and(|a| a.len() > MAX_ROWS)
+        {
+            return Err(too_many(&format!("entries in {key}")));
+        }
+    }
     let list = |key: &str| -> Vec<Row> {
         obj.get(key)
             .and_then(Value::as_array)
@@ -386,6 +414,13 @@ pub fn read_file(path: &Path) -> Result<KumaImport, String> {
     if is_sqlite(&head[..n]) {
         read_sqlite(path)
     } else {
+        let size = std::fs::metadata(path).map_or(0, |m| m.len());
+        if size > MAX_JSON_BYTES {
+            return Err(format!(
+                "This file is larger than {} MB; a JSON backup that big can’t be imported.",
+                MAX_JSON_BYTES / (1024 * 1024)
+            ));
+        }
         let text = std::fs::read_to_string(path)
             .map_err(|_| "This is neither an SQLite database nor a JSON backup.".to_string())?;
         read_json(&text)

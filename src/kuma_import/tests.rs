@@ -405,6 +405,38 @@ fn files_are_sniffed_by_content() {
 }
 
 #[test]
+fn an_oversized_backup_is_refused_before_it_is_converted() {
+    let list = vec!["{\"id\":1,\"name\":\"x\",\"type\":\"push\"}"; MAX_ROWS + 1].join(",");
+    let err = read_json(&format!("{{\"monitorList\":[{list}]}}"))
+        .err()
+        .unwrap();
+    assert!(err.contains("too large"), "{err}");
+    let list = ["{\"id\":1,\"name\":\"x\",\"type\":\"push\"}"; 3].join(",");
+    assert!(read_json(&format!("{{\"monitorList\":[{list}]}}")).is_ok());
+
+    let dir = std::env::temp_dir().join(format!("vv-kuma-big-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("big.json");
+    let file = std::fs::File::create(&path).unwrap();
+    file.set_len(MAX_JSON_BYTES + 1).unwrap();
+    let err = read_file(&path).err().unwrap();
+    assert!(err.contains("larger than"), "{err}");
+
+    let db = dir.join("many.db");
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    conn.execute_batch(KUMA_SCHEMA).unwrap();
+    conn.execute_batch(&format!(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i <= {MAX_ROWS})
+         INSERT INTO monitor (id, name, type) SELECT i, 'm' || i, 'push' FROM n;"
+    ))
+    .unwrap();
+    drop(conn);
+    let err = read_sqlite(&db).err().unwrap();
+    assert!(err.contains("monitor table"), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn kuma_auth_methods_map_to_ours() {
     let json = r##"{
       "version": "2.0.0",

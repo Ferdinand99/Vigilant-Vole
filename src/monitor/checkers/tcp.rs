@@ -53,6 +53,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_metadata_address_is_refused() {
+        let out = check(&monitor(MonitorType::Tcp, "169.254.169.254:80")).await;
+        assert_eq!(out.status, HeartbeatStatus::Down);
+        let msg = out.message.unwrap();
+        assert!(
+            msg.starts_with("Refused: the address is not allowed"),
+            "{msg}"
+        );
+    }
+
+    #[tokio::test]
     async fn closed_port_is_down() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();

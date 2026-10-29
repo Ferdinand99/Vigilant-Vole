@@ -782,14 +782,25 @@ pub fn validate_target(kind: MonitorType, target: &str) -> Result<String, String
             }
             Ok(t.to_string())
         }
-        MonitorType::Websocket => checkers::websocket::parse_ws_url(t)
-            .map(|_| t.to_string())
-            .map_err(|e| first_line(&e)),
+        MonitorType::Websocket => {
+            let url = checkers::websocket::parse_ws_url(t).map_err(|e| first_line(&e))?;
+            // Link-local and cloud metadata addresses are never checked.
+            if url
+                .host_str()
+                .is_some_and(|h| crate::kit::net::check_host(h).is_err())
+            {
+                return Err(crate::i18n::t("validation.target_forbidden").into());
+            }
+            Ok(t.to_string())
+        }
         MonitorType::Tcp => {
             host_like(t)?;
-            checkers::util::split_host_port(t, None)
-                .map(|_| t.to_string())
-                .map_err(|_| crate::i18n::t("validation.host_port").to_string())
+            let (host, _) = checkers::util::split_host_port(t, None)
+                .map_err(|_| crate::i18n::t("validation.host_port").to_string())?;
+            if crate::kit::net::check_host(&host).is_err() {
+                return Err(crate::i18n::t("validation.target_forbidden").into());
+            }
+            Ok(t.to_string())
         }
         MonitorType::Ntp => {
             host_like(t)?;
@@ -1833,6 +1844,11 @@ mod tests {
             (MonitorType::Keyword, "https://[fd00:ec2::254]/", false),
             (MonitorType::JsonQuery, "http://[fe80::1]:8080/x", false),
             (MonitorType::RealBrowser, "http://169.254.0.1/", false),
+            (MonitorType::Tcp, "169.254.169.254:80", false),
+            (MonitorType::Tcp, "[fe80::1]:22", false),
+            (MonitorType::Tcp, "10.0.0.1:22", true),
+            (MonitorType::Websocket, "ws://169.254.169.254/", false),
+            (MonitorType::Websocket, "ws://10.0.0.1/", true),
             (MonitorType::Http, "http://10.0.0.1:8080/", true),
             (MonitorType::Http, "http://localhost:3001/", true),
         ];

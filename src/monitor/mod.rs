@@ -985,19 +985,29 @@ impl Scheduler {
                 let results = join_all(
                     channels
                         .iter()
-                        .map(|c| notification::send(&http, &key, c, &event)),
+                        .map(|c| notification::send_outcome(&http, &key, c, &event)),
                 )
                 .await;
                 for (channel, result) in channels.iter().zip(results) {
-                    metrics::record_notification(&channel.kind, result.is_ok());
+                    if delivery_counts(&result) {
+                        metrics::record_notification(&channel.kind, result.is_ok());
+                    }
                     match result {
-                        Ok(()) => tracing::info!(
+                        Ok(notification::Outcome::Sent) => tracing::info!(
                             monitor_id,
                             channel_id = channel.id,
                             channel_kind = %channel.kind,
                             event = notice.kind.as_str(),
                             escalation = notice.escalation,
                             "notification sent"
+                        ),
+                        Ok(notification::Outcome::NothingToSend) => tracing::info!(
+                            monitor_id,
+                            channel_id = channel.id,
+                            channel_kind = %channel.kind,
+                            event = notice.kind.as_str(),
+                            escalation = notice.escalation,
+                            "no devices registered, nothing sent"
                         ),
                         Err(err) => tracing::warn!(
                             monitor_id,
@@ -1013,6 +1023,13 @@ impl Scheduler {
         };
         tokio::spawn(task.instrument(tracing::info_span!("notify", monitor_id)));
     }
+}
+
+/// Whether a delivery result counts in the sent/failed metrics: a channel
+/// that had nobody to send to (a Hedgerow app channel with no device
+/// registered) neither sent nor failed.
+fn delivery_counts(result: &Result<notification::Outcome, String>) -> bool {
+    !matches!(result, Ok(notification::Outcome::NothingToSend))
 }
 
 /// Run the checker on its own task (a panic becomes a `down` result instead of

@@ -154,24 +154,43 @@ pub async fn resolve(host: &str, port: u16) -> Result<SocketAddr, String> {
     resolve_all(host, port).await.map(|addrs| addrs[0])
 }
 
+/// The message of a destination that is never checked: link-local, cloud
+/// metadata, unspecified or multicast (the same rule as for HTTP checks).
+fn refused() -> String {
+    format!("Refused: {}", crate::kit::net::Forbidden)
+}
+
 /// Resolve `host:port` to every socket address, in the resolver's order
-/// (never empty on success).
+/// (never empty on success). Addresses that are link-local, cloud metadata,
+/// unspecified or multicast are refused, as they are for HTTP checks: a
+/// literal one fails at once, and a name keeps only its other addresses (it
+/// fails when none is left).
 pub async fn resolve_all(host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
     if let Ok(ip) = host.parse::<IpAddr>() {
+        if crate::kit::net::is_forbidden(ip) {
+            return Err(refused());
+        }
         return Ok(vec![SocketAddr::new(ip, port)]);
     }
     match tokio::net::lookup_host((host, port)).await {
         Ok(addrs) => {
             let mut list: Vec<SocketAddr> = Vec::new();
+            let mut found = false;
             for addr in addrs {
+                found = true;
+                if crate::kit::net::is_forbidden(addr.ip()) {
+                    continue;
+                }
                 if !list.contains(&addr) {
                     list.push(addr);
                 }
             }
-            if list.is_empty() {
-                Err(format!("Could not resolve \"{host}\": no addresses"))
-            } else {
+            if !list.is_empty() {
                 Ok(list)
+            } else if found {
+                Err(refused())
+            } else {
+                Err(format!("Could not resolve \"{host}\": no addresses"))
             }
         }
         Err(err) => Err(format!(
@@ -367,6 +386,21 @@ mod tests {
         let (addr, err) = connect_any(&[dead, other]).await.unwrap_err();
         assert_eq!(addr, other, "the last error is reported");
         assert_eq!(tidy_io_error(&err), "Connection refused");
+    }
+
+    #[tokio::test]
+    async fn link_local_and_metadata_addresses_are_refused() {
+        for host in ["169.254.169.254", "fe80::1", "0.0.0.0", "224.0.0.1"] {
+            let err = resolve_all(host, 80).await.unwrap_err();
+            assert!(
+                err.starts_with("Refused: the address is not allowed"),
+                "{host}: {err}"
+            );
+        }
+        // Private and loopback addresses are what monitors are for.
+        assert!(resolve_all("10.0.0.1", 80).await.is_ok());
+        assert!(resolve_all("127.0.0.1", 80).await.is_ok());
+        assert!(resolve_all("::1", 80).await.is_ok());
     }
 
     #[tokio::test]
