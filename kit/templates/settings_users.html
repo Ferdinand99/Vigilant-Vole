@@ -6,7 +6,43 @@
   {%- if !external %}
   <button type="button" class="btn btn-primary" data-sheet-open="#new-user" commandfor="new-user" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("users.new") }}</span></button>
   {%- endif %}
+  {%- if invites %}
+  <button type="button" class="btn btn-secondary" data-sheet-open="#invite-user" commandfor="invite-user" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("invite.button") }}</span></button>
+  {%- endif %}
 {% endcall %}
+
+{%- if let Some(link) = new_invite %}
+<section class="section" aria-labelledby="invite-created-title">
+  {% call m::section_head(tr("invite.created"), "", "invite-created-title") %}{% endcall %}
+  {{ m::callout("warning", tr("invite.copy_now"), tr("sec.shown_once")) }}
+  <div class="card stack-sm">
+    {{ m::copy_field("created-invite", link) }}
+    <p class="help">{{ tr("invite.link_help") }}</p>
+  </div>
+</section>
+{%- endif %}
+
+{%- if invites && !pending.is_empty() %}
+<section class="section" aria-labelledby="pending-invites-title">
+  {% call m::section_head(tr("invite.pending"), "", "pending-invites-title") %}{% endcall %}
+  <ul class="list" role="list">
+    {%- for inv in pending %}
+    <li class="list-row" id="invite-{{ inv.id }}">
+      <span class="list-main">
+        <span class="list-title">{% if inv.display_name.is_empty() %}{{ tr("invite.unnamed") }}{% else %}{{ inv.display_name }}{% endif %}</span>
+        <span class="list-sub">{{ tr("detail.expires") }} {{ m::time_ago(inv.expires_at) }}{% if let Some(by) = inv.created_by_name %} · {{ by }}{% endif %}</span>
+      </span>
+      <span class="list-trail cluster">
+        <span class="badge{% if inv.role.is_admin() %} badge-brand{% endif %}">{{ inv.role.label() }}</span>
+        <form method="post" action="/settings/invites/{{ inv.id }}/revoke" data-confirm="{{ tr("invite.revoke_q") }}" data-confirm-message="{{ tr("invite.revoke_msg") }}" data-confirm-label="{{ tr("invite.revoke") }}">
+          <button class="btn btn-danger btn-sm" type="submit">{{ tr("invite.revoke") }}</button>
+        </form>
+      </span>
+    </li>
+    {%- endfor %}
+  </ul>
+</section>
+{%- endif %}
 
 <section class="section" aria-labelledby="users-title">
   {% call m::section_head(tr("users.people"), "", "users-title") %}{% endcall %}
@@ -64,6 +100,45 @@
 </dialog>
 {%- endif %}
 
+{%- if invites %}
+<dialog class="sheet" id="invite-user" aria-labelledby="invite-user-title">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="invite-user-title">{{ tr("invite.new") }}</h2>
+    <button type="button" class="btn btn-icon btn-plain btn-sm" data-sheet-close commandfor="invite-user" command="close" aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+  </header>
+  <div class="sheet-body">
+    <form id="invite-user-form" class="form" method="post" action="/settings/invites">
+      <p class="help">{{ tr("invite.help") }}</p>
+      <div class="field">
+        <label class="label" for="iu-display">{{ tr("users.display_name") }} <span class="label-optional">{{ tr("common.optional") }}</span></label>
+        <input id="iu-display" name="display_name" type="text" maxlength="80" autocomplete="off" placeholder="Ada Lovelace…">
+      </div>
+      <div class="field">
+        <span class="label" id="iu-role-label">{{ tr("users.role") }}</span>
+        <div class="segmented segmented-block" role="radiogroup" aria-labelledby="iu-role-label">
+          {%- for r in roles %}
+          <label><input type="radio" name="role" value="{{ r.as_str() }}"{% if r.as_str() == "viewer" %} checked{% endif %}><span>{{ r.label() }}</span></label>
+          {%- endfor %}
+        </div>
+      </div>
+      {%- if external %}
+      {{ m::reauth_confirm(reauth.fresh, &reauth.url) }}
+      {%- else %}
+      <div class="field">
+        <label class="label" for="iu-current-password">{{ tr("sec.your_password") }}</label>
+        <input id="iu-current-password" name="current_password" type="password" required maxlength="1024" autocomplete="current-password" aria-describedby="iu-current-password-help">
+        <p class="help" id="iu-current-password-help">{{ tr("invite.password_help") }}</p>
+      </div>
+      {%- endif %}
+    </form>
+  </div>
+  <footer class="sheet-foot">
+    <button type="button" class="btn btn-secondary" data-sheet-close commandfor="invite-user" command="close">{{ tr("common.cancel") }}</button>
+    <button type="submit" class="btn btn-primary" form="invite-user-form">{{ tr("invite.create") }}</button>
+  </footer>
+</dialog>
+{%- endif %}
 {%- for u in users %}
 {% include "partials/user_sheets.html" %}
 {%- endfor %}

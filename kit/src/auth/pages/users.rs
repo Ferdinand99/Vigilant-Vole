@@ -21,6 +21,7 @@ use serde::Deserialize;
 
 use crate::auth::{self, CurrentUser, Role, reauth};
 use crate::db::api_tokens as db_tokens;
+use crate::db::invites as db_invites;
 use crate::db::passkeys as db_passkeys;
 use crate::db::users::{self as db_users, User, UserChangeError};
 use crate::http::{ApiResult, HtmlTemplate};
@@ -80,6 +81,14 @@ struct UsersTemplate {
     /// The kit sets no passwords (`CredentialMode::External`): no new user
     /// with a temporary password, no password reset.
     external: bool,
+    /// Invitation links are on ([`KitFeatures::invites`]).
+    ///
+    /// [`KitFeatures::invites`]: crate::config::KitFeatures::invites
+    invites: bool,
+    /// The pending invitations.
+    pending: Vec<db_invites::Invite>,
+    /// The link of the invitation created by this request (shown once).
+    new_invite: Option<String>,
 }
 
 pub(super) async fn list(
@@ -88,24 +97,46 @@ pub(super) async fn list(
     jar: SignedCookieJar,
 ) -> ApiResult<Response> {
     user.require_admin()?;
-    let (users, passkeys) = core
-        .with_conn(|c| Ok((db_users::list_users(c)?, db_passkeys::counts_by_user(c)?)))
+    render(&core, &user, jar, None).await
+}
+
+/// The Users page; `new_invite` is the link of an invitation just created.
+pub(super) async fn render(
+    core: &Core,
+    user: &CurrentUser,
+    jar: SignedCookieJar,
+    new_invite: Option<String>,
+) -> ApiResult<Response> {
+    let invites = core.cfg.features.invites;
+    let (users, passkeys, pending) = core
+        .with_conn(move |c| {
+            Ok((
+                db_users::list_users(c)?,
+                db_passkeys::counts_by_user(c)?,
+                if invites {
+                    db_invites::list_pending(c)?
+                } else {
+                    Vec::new()
+                },
+            ))
+        })
         .await?;
     let rows = users
         .into_iter()
         .map(|u| UserRow::from_user(u, user.id, &passkeys))
         .collect();
     let (ctx, jar) = PageCtx::build(
-        &core,
-        Some(&user),
+        core,
+        Some(user),
         &jar,
         crate::i18n::t("nav.users"),
         "settings",
         "users",
     )
     .await;
-    let reauth = reauth::View::new(&jar, &user, "/settings/users");
-    Ok((
+    let reauth = reauth::View::new(&jar, user, "/settings/users");
+    let secret = new_invite.is_some();
+    let mut response = (
         jar,
         HtmlTemplate(UsersTemplate {
             ctx,
@@ -113,9 +144,20 @@ pub(super) async fn list(
             roles: Role::all(),
             external: reauth.external,
             reauth,
+            invites,
+            pending,
+            new_invite,
         }),
     )
-        .into_response())
+        .into_response();
+    if secret {
+        // The page holds a link that works once: keep it out of caches.
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-store"),
+        );
+    }
+    Ok(response)
 }
 
 fn back(jar: SignedCookieJar, kind: &str, message: impl Into<String>) -> Response {

@@ -73,6 +73,26 @@ fn no_fixups(_: &mut Connection) -> Result<(), MigrationError> {
     Ok(())
 }
 
+/// The core migrations plus the invitations' ([`KitFeatures::invites`]).
+static INVITES_CORE: &[(&str, &str)] = &[
+    migrate::CORE_TABLES,
+    migrate::TOKEN_SCOPES,
+    migrate::PASSKEYS,
+    migrate::SEALED_SECRETS,
+    migrate::SEALED_TOTP,
+    migrate::PUSH,
+    migrate::INVITES,
+];
+
+static MIGRATIONS_INVITES: MigrationSet = MigrationSet {
+    core: INVITES_CORE,
+    adopt_core: None,
+    migrations,
+    fk_off_marker: "-- kd:foreign_keys=off",
+    baseline: None,
+    after: no_fixups,
+};
+
 static MIGRATIONS: MigrationSet = MigrationSet {
     core: migrate::CORE,
     adopt_core: None,
@@ -342,6 +362,32 @@ pub static KIT_EXTERNAL: KitConfig = KitConfig {
     ..KIT
 };
 
+/// The demo with invitation links (`tests/invites.rs`).
+pub static KIT_INVITES: KitConfig = KitConfig {
+    features: &KitFeatures {
+        invites: true,
+        ..KitFeatures::DEFAULT
+    },
+    migrations: &MIGRATIONS_INVITES,
+    ..KIT
+};
+
+/// The demo with invitation links for a product that signs people in on its
+/// own pages (`tests/invites_external.rs`).
+pub static KIT_INVITES_EXTERNAL: KitConfig = KitConfig {
+    features: &KitFeatures {
+        credentials: CredentialMode::External(&ExternalCredentials {
+            login_path: "/vault/login",
+            setup_path: "/vault/setup",
+            password_path: "/vault/password",
+            reauth_path: "/vault/reauth",
+        }),
+        invites: true,
+        ..KitFeatures::DEFAULT
+    },
+    migrations: &MIGRATIONS_INVITES,
+    ..KIT
+};
 /// Installs [`KIT`]; call before anything else (tests too).
 pub fn install() {
     vole_kit::config::install(&KIT);

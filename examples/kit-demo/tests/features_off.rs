@@ -159,3 +159,50 @@ async fn a_bearer_token_is_not_accepted() {
     let res = app.get("/api/v1/notes").await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.body);
 }
+
+#[tokio::test]
+async fn invitation_links_are_off_unless_a_product_turns_them_on() {
+    let app = set_up().await;
+    let token = "a".repeat(43);
+    for path in [
+        format!("/invite/{token}"),
+        "/invite/short".to_string(),
+        "/invite".to_string(),
+    ] {
+        let res = app.get(&path).await;
+        assert_eq!(res.status, StatusCode::NOT_FOUND, "GET {path}");
+    }
+    let form = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs([("role", "viewer"), ("current_password", PASSWORD)])
+        .finish();
+    for path in [
+        format!("/invite/{token}"),
+        "/settings/invites".to_string(),
+        "/settings/invites/1/revoke".to_string(),
+    ] {
+        let req = Request::post(&path)
+            .header(header::ORIGIN, "http://demo.test")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(form.clone()))
+            .unwrap();
+        let (res, _) = app.send(req, true).await;
+        assert_eq!(res.status, StatusCode::NOT_FOUND, "POST {path}");
+    }
+    // Nothing on the Users page, and no table.
+    let body = app.get("/settings/users").await.body;
+    for needle in ["invite-user", "/settings/invites", "Pending invitations"] {
+        assert!(!body.contains(needle), "the Users page shows {needle}");
+    }
+    let tables: i64 = app
+        .core
+        .with_conn(|c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'invites'",
+                [],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(tables, 0, "the migration is not part of the core set");
+}

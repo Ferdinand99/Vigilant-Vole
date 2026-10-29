@@ -7,6 +7,7 @@
 //! - [`reauth`]: the fresh-confirmation grant of `CredentialMode::External`
 //! - [`totp`]: TOTP 2FA (enrolment, verification with replay protection, recovery codes)
 //! - [`webauthn`]: passkeys, the WebAuthn registration and sign-in ceremonies
+//! - [`invites`]: invitation links for new users (`KitFeatures::invites`)
 //! - [`tokens`]: API tokens (generation, hashing, header parsing)
 //! - [`guard`]: the middleware and helpers that need the database
 //!   (`require_auth`, `csrf_guard`, `session_user`, `authenticate_token`)
@@ -25,6 +26,7 @@ pub mod csrf;
 #[cfg(test)]
 mod flow_tests;
 pub mod guard;
+pub mod invites;
 pub mod pages;
 pub mod rate_limit;
 pub mod reauth;
