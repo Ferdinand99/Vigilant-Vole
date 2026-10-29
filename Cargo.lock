@@ -3868,7 +3868,7 @@ dependencies = [
 
 [[package]]
 name = "vole-kit"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "argon2",
  "askama",
@@ -3907,7 +3907,7 @@ dependencies = [
 
 [[package]]
 name = "vole-kit-build"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "walkdir"
