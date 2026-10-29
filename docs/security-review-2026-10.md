@@ -40,12 +40,12 @@ No finding was rated Critical. One was rated High, and only for Wise Wren as it 
 | VK-05 | Medium | First-run `/setup` open to the first visitor when no token is set | Fixed in #62 |
 | VK-06 | Low-Medium | Stateless sessions: logout and some security changes do not revoke | Partly fixed in #62 (2FA and passkey changes sign other devices out). Open: server-side sessions |
 | VK-07 | Low-Medium | HTTPS awareness hangs on `TRUST_PROXY`; thin cookie hardening | Partly fixed in #62 (`Secure` from the public URL, flash cookie, HSTS, startup warning). Open: `__Host-` cookie prefix |
-| VK-08 | Low-Medium | SSE streams authorised once; lifetime and cap optional | Open in the kit (still optional). Vigilant Vole and Wise Wren bound their streams already; Keen Kestrel fixed its own in its PR #42 |
+| VK-08 | Low-Medium | SSE streams authorised once; lifetime and cap optional | Lifetime fixed in #77 (a stream ends after one hour unless the product sets another). The cap stays the product's choice: Vigilant Vole and Wise Wren bound their streams already; Keen Kestrel fixed its own in its PR #42 |
 | VK-09 | Low-Medium | Re-authentication throttles are non-atomic | Fixed in #62 |
 | VK-10 | Low | Persistence-grade actions need no re-authentication | Fixed in #65 (vole-kit 0.6.0) |
 | VK-11 | Low | `session.key` as the single root of trust | Partly fixed in #62 (created 0600 with `create_new`, a damaged file stops the start). Open: row-bound AAD, key id and rotation |
 | VK-12 | Low | TOTP secrets and pre-migration backups in plaintext | Fixed in #65 |
-| VK-13 | Low | CSRF origin check ignores the scheme | Open |
+| VK-13 | Low | CSRF origin check ignores the scheme | Fixed in #77 (with a public URL set, the same host named with the other scheme is refused) |
 | VK-14 | Low | Markdown and mention injection into notification messages | Partly fixed in #62 (Discord `allowed_mentions`). Open: Markdown escaping for the other providers |
 | VK-15 | Low/Info | Miscellaneous | Partly fixed in #62 (segment-aware scope paths, the software authenticator is built for tests only). The rest is open or informational |
 
@@ -59,7 +59,7 @@ text shows the status and at most 80 characters of the answer. The SMTP host fol
 | ID | Severity | Title | Status |
 |---|---|---|---|
 | VV-01 | Medium | An editor could run JavaScript on the app origin through a status page's analytics script URL | Fixed in #68 |
-| VV-02 | Medium | Monitors are an SSRF read primitive for editors; response text reflected | Fixed in #68 for HTTP, keyword, JSON, OAuth token and FiveM monitors. Open: TCP and websocket monitors, and checks that go through a proxy |
+| VV-02 | Medium | Monitors are an SSRF read primitive for editors; response text reflected | Fixed in #68 for HTTP, keyword, JSON, OAuth token and FiveM monitors, and in #77 for TCP, websocket and the other TCP-based monitors. Open: checks that go through a proxy |
 | VV-03 | Low-Medium | Credentials embedded in a monitor URL or proxy URL shown to viewers | Fixed in #68 |
 | VV-04 | Low | Redirects forwarded custom header secrets to other hosts | Fixed in #68 |
 | VV-05 | Low-Medium | A compromised agent token could flood results and flip monitors | Fixed in #68 |
@@ -69,7 +69,7 @@ text shows the status and at most 80 characters of the answer. The SMTP host fol
 | VV-09 | Low | MCP: untrusted text, weakly annotated write tools | Fixed in #68 |
 | VV-10 | Low | Subscription form: pending room could be kept full; "Full" answered like success | Fixed in #68 |
 | VV-11 | Low | Backup snapshot and database written with default permissions | Fixed in #68 |
-| VV-12 | Info | Smaller notes | Partly done in #68 (`Vary: Host` on the feed, the `:ro` Docker socket wording). Open: see below |
+| VV-12 | Info | Smaller notes | Partly done in #68 (`Vary: Host` on the feed, the `:ro` Docker socket wording) and #77 (size caps on the Kuma import). Open: see below |
 
 ## Accepted and open items
 
@@ -79,9 +79,8 @@ text shows the status and at most 80 characters of the answer. The SMTP host fol
   is documented as trusted with the network.
 - **Monitors reach the LAN (VV-02).** Accepted: monitoring internal services is the purpose of the product. Response
   text is no longer quoted in messages, and the boundary is written down in the README.
-- **TCP and websocket monitors, and proxied checks (VV-02).** Open. These are not restricted against metadata
-  addresses; a check through a proxy is only checked for literal addresses and redirects, because the proxy
-  resolves the name.
+- **Proxied checks (VV-02).** Open. A check through a proxy is only checked for literal addresses and redirects,
+  because the proxy resolves the name. TCP and websocket monitors are restricted since #77.
 - **Account throttle redesign (VK-03).** Open. A patient attacker who knows a username can keep that account in
   backoff for the password path. Passkeys and API tokens are not affected. A trusted-proxy list is also not built.
 - **Server-side sessions (VK-06).** Open. Logout only removes the browser's cookie, and a stolen cookie lives up to 30
@@ -91,11 +90,13 @@ text shows the status and at most 80 characters of the answer. The SMTP host fol
   no key id or rotation path. Exploiting the first needs write access to the database.
 - **Scheme check in the CSRF origin check (VK-13).** Open. Residual risk is small because browsers keep `SameSite`
   cookies off cross-scheme posts.
-- **VK-08, kit streams.** Open in the kit; each product bounds its own streams.
+- **VK-08, kit streams.** The kit ends a stream after one hour by default since #77; the cap on open streams is
+  still each product's own.
 - **VK-14, Markdown in non-Discord providers; rest of VK-15.** Open, low.
 - **VV-12 remainder.** Open: framable unlock and subscribe pages, the admin UI answering on every custom-domain
-  hostname (a front proxy that allows only `/`, `/status/*` and `/static/*` is the suggested workaround), and size
-  caps on the Kuma import.
+  hostname (a front proxy that allows only `/`, `/status/*` and `/static/*` is the suggested workaround). The size
+  caps on the Kuma import are done in #77 (a JSON backup over 64 MiB and more than 20,000 rows in a table or list
+  are refused).
 - **Analytics default (VV-07).** Built-in page analytics remains on by default; the review suggested making it
   opt-in.
 
@@ -144,6 +145,8 @@ hardening, vole-kit 0.5.1) and [0.14.0](https://github.com/Ferdinand99/Vigilant-
   found`, and JSON checks describe text by length. Redirects are capped at 5 whatever is stored. A monitor with a
   literal link-local or metadata address cannot be saved, and existing ones go down with "Refused: ...". A monitor
   with custom headers does not follow a redirect to another host or from https to http.
+- **TCP and websocket monitors** (and the other TCP-based service monitors) follow the same rule since #77: a
+  literal link-local or metadata address cannot be saved, and an existing monitor goes down with "Refused: ...".
 - **Editors** can no longer choose a status page's analytics script URL or turn on *Check from remote agents too*,
   and no longer see `user:pass@` in monitor URLs through the API (they still see it in the edit form). The
   third-party analytics script is never served to signed-in users.
