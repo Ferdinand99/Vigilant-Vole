@@ -189,7 +189,9 @@
       </span>
     </li>
   </ul>
+  {%- if kit_features().api_tokens %}
   <p class="section-foot">{{ tr("sec.tokens_unaffected") }} <a href="/settings/tokens">{{ tr("nav.api_tokens") }}</a>.</p>
+  {%- endif %}
 </section>
 
 {%- if totp_enabled %}

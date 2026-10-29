@@ -94,6 +94,66 @@ pub struct KitConfig {
     /// public URL, time zone, language and the product's own fields).
     /// `None` when the product has no such page, or its own.
     pub general: Option<&'static crate::settings::GeneralSettings>,
+    /// Which optional parts of the kit this product has.
+    /// [`KitFeatures::DEFAULT`] is the kit as it has always been.
+    pub features: &'static KitFeatures,
+}
+
+/// The optional parts of the kit a product switches on or off
+/// ([`KitConfig::features`]). Start from [`Self::DEFAULT`] and change what
+/// differs: `&KitFeatures { api_tokens: false, ..KitFeatures::DEFAULT }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KitFeatures {
+    /// API tokens: the Tokens page (`/settings/tokens`), its menu entry and
+    /// tab, and sign-in with `Authorization` tokens. Off, the routes are
+    /// 404 and `require_auth` answers 401 to any token.
+    pub api_tokens: bool,
+    /// The API reference (`/api-docs`, `/api-docs.md`, `/llms.txt` and the
+    /// OpenAPI document) and its menu entry. Off, the routes are 404. The
+    /// product still passes a [`KitConfig::docs`].
+    pub api_docs: bool,
+    /// How the HTML pages take passwords.
+    pub credentials: CredentialMode,
+    /// Invitation links for new users.
+    pub invites: bool,
+    /// One-time sign-in codes.
+    pub sign_in_codes: bool,
+}
+
+impl KitFeatures {
+    /// What every product gets unless it says otherwise: tokens and the API
+    /// reference on, passwords in the kit's forms, no invitations and no
+    /// sign-in codes.
+    pub const DEFAULT: KitFeatures = KitFeatures {
+        api_tokens: true,
+        api_docs: true,
+        credentials: CredentialMode::Plain,
+        invites: false,
+        sign_in_codes: false,
+    };
+}
+
+impl Default for KitFeatures {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// How the kit's pages handle passwords ([`KitFeatures::credentials`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialMode {
+    /// The kit's own forms: a plain password, hashed with Argon2 on the
+    /// server.
+    Plain,
+    /// The product checks credentials itself.
+    External(&'static ExternalCredentials),
+}
+
+/// What a product with [`CredentialMode::External`] provides.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ExternalCredentials {
+    /// The product's own sign-in page.
+    pub login_path: &'static str,
 }
 
 /// A permission a product adds to API tokens ([`KitConfig::token_scopes`]),
@@ -268,6 +328,16 @@ fn missing() -> &'static KitConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_features_are_the_kit_as_it_was() {
+        let f = KitFeatures::DEFAULT;
+        assert!(f.api_tokens && f.api_docs);
+        assert_eq!(f.credentials, CredentialMode::Plain);
+        assert!(!f.invites && !f.sign_in_codes);
+        assert_eq!(KitFeatures::default(), f);
+        assert_eq!(*crate::testing::CONFIG.features, f);
+    }
 
     #[test]
     fn installing_the_same_config_again_is_harmless() {

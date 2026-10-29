@@ -4,7 +4,9 @@
 {% block content %}
 {% call m::page_header(tr("docs.title"), subtitle) %}
   <a class="btn btn-secondary" href="{{ openapi_path }}" download="{{ slug }}-openapi.json">{{ m::icon("download") }}<span>OpenAPI 3.1</span></a>
+  {%- if kit_features().api_tokens %}
   <a class="btn btn-primary" href="/settings/tokens">{{ m::icon("key") }}<span>{{ tr("docs.create_token") }}</span></a>
+  {%- endif %}
 {% endcall %}
 
 <section class="card ai-strip" aria-labelledby="ai-strip-text">

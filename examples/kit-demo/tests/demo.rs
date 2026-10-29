@@ -361,6 +361,10 @@ async fn the_kits_pages_carry_the_demos_name() {
         assert_eq!(res.status, StatusCode::OK, "{path}: {}", res.body);
         assert_demo_branded(path, &res.body);
     }
+    // With the default features the user menu offers both.
+    let home = app.get("/").await.body;
+    assert!(home.contains(r#"href="/settings/tokens""#));
+    assert!(home.contains(r#"href="/api-docs""#));
     let docs = app.get("/api-docs").await.body;
     assert!(docs.contains(r#"download="kit-demo-openapi.json""#));
     assert!(docs.contains("Bearer kd_…"));

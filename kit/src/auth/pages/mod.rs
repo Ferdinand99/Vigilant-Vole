@@ -53,7 +53,9 @@ where
         .route("/logout", post(sign_in::logout))
 }
 
-/// Users, API tokens, Security, the API reference and, with
+/// Users, API tokens (with [`KitFeatures::api_tokens`](crate::config::KitFeatures::api_tokens)),
+/// Security, the API reference (with
+/// [`KitFeatures::api_docs`](crate::config::KitFeatures::api_docs)) and, with
 /// [`KitConfig::general`](crate::config::KitConfig::general), General
 /// (`/settings/general`). Mount it behind
 /// [`require_auth`](super::guard::require_auth): the handlers take the
@@ -64,13 +66,13 @@ where
     Core: FromRef<S>,
     Key: FromRef<S>,
 {
-    let spec = crate::docs::spec();
-    let router = if crate::config::get().general.is_some() {
+    let cfg = crate::config::get();
+    let router = if cfg.general.is_some() {
         Router::new().route("/settings/general", get(general::page).post(general::save))
     } else {
         Router::new()
     };
-    router
+    let router = router
         .route("/settings/users", get(users::list).post(users::create))
         .route("/settings/users/{id}", post(users::update))
         .route("/settings/users/{id}/password", post(users::reset_password))
@@ -85,8 +87,6 @@ where
         .route("/settings/users/{id}/enable", post(users::enable))
         .route("/settings/users/{id}/disable", post(users::disable))
         .route("/settings/users/{id}/delete", post(users::delete))
-        .route("/settings/tokens", get(tokens::list).post(tokens::create))
-        .route("/settings/tokens/{id}", delete(tokens::revoke))
         .route("/settings/security", get(security::security_page))
         .route("/settings/security/profile", post(security::save_profile))
         .route(
@@ -120,9 +120,21 @@ where
         .route(
             "/settings/security/passkeys/{id}/delete",
             post(passkeys::delete),
-        )
-        .route("/api-docs", get(docs::page))
-        .route("/api-docs.md", get(docs::markdown_doc))
-        .route("/llms.txt", get(docs::llms_txt))
-        .route(spec.openapi_path, get(docs::openapi))
+        );
+    let router = if cfg.features.api_tokens {
+        router
+            .route("/settings/tokens", get(tokens::list).post(tokens::create))
+            .route("/settings/tokens/{id}", delete(tokens::revoke))
+    } else {
+        router
+    };
+    if cfg.features.api_docs {
+        router
+            .route("/api-docs", get(docs::page))
+            .route("/api-docs.md", get(docs::markdown_doc))
+            .route("/llms.txt", get(docs::llms_txt))
+            .route(crate::docs::spec().openapi_path, get(docs::openapi))
+    } else {
+        router
+    }
 }

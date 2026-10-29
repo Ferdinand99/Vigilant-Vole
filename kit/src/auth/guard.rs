@@ -123,10 +123,16 @@ pub async fn session_user(core: &Core, jar: &SignedCookieJar) -> ApiResult<Optio
 /// product scope without
 /// [`implies_read`](crate::config::ExtraScope::implies_read)); callers that
 /// serve reads check [`CurrentUser::can_read`], as `require_auth` does.
+///
+/// A product without [`KitFeatures::api_tokens`](crate::config::KitFeatures::api_tokens)
+/// has no tokens: every one resolves to nobody.
 pub async fn authenticate_token_detailed(
     core: &Core,
     token: &str,
 ) -> ApiResult<Option<(CurrentUser, AuthMethod)>> {
+    if !core.cfg.features.api_tokens {
+        return Ok(None);
+    }
     if !tokens::is_well_formed(token) {
         return Ok(None);
     }

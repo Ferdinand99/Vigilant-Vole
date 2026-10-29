@@ -40,7 +40,7 @@ use sha2::Digest as _;
 use tokio::sync::broadcast;
 use vole_kit::auth::{CurrentUser, ExtraScope, Role, guard, pages};
 use vole_kit::components::{BarRow, CodeLine, LineChart, share};
-use vole_kit::config::KitConfig;
+use vole_kit::config::{KitConfig, KitFeatures};
 use vole_kit::db::migrate::{self, MigrateOptions, MigrationError, MigrationSet};
 use vole_kit::db::{PoolOptions, build_pool_with, migrate_with};
 use vole_kit::docs::{Credential, DocsSpec, HeaderScheme, RATE_LIMITED, r};
@@ -313,6 +313,18 @@ pub static KIT: KitConfig = KitConfig {
         },
     ],
     general: Some(&GENERAL),
+    features: &KitFeatures::DEFAULT,
+};
+
+/// The demo without API tokens and API reference, to prove a product can
+/// switch them off (`tests/features_off.rs`).
+pub static KIT_NO_API: KitConfig = KitConfig {
+    features: &KitFeatures {
+        api_tokens: false,
+        api_docs: false,
+        ..KitFeatures::DEFAULT
+    },
+    ..KIT
 };
 
 /// Installs [`KIT`]; call before anything else (tests too).
@@ -334,7 +346,15 @@ pub struct Demo {
 
 /// Opens (and migrates) both databases in `data_dir` and returns the state.
 pub async fn start(data_dir: &Path) -> Result<Demo, migrate::UpgradeError> {
-    install();
+    start_with(data_dir, &KIT).await
+}
+
+/// [`start`] with another configuration of the demo ([`KIT_NO_API`]).
+pub async fn start_with(
+    data_dir: &Path,
+    config: &'static KitConfig,
+) -> Result<Demo, migrate::UpgradeError> {
+    vole_kit::config::install(config);
     std::fs::create_dir_all(data_dir).expect("data dir");
     let pool = vole_kit::db::build_pool(&data_dir.join("kit-demo.db"));
     migrate::migrate(&pool, &data_dir.join("backups")).await?;
@@ -344,7 +364,7 @@ pub async fn start(data_dir: &Path) -> Result<Demo, migrate::UpgradeError> {
             pool,
             vole_kit::auth::load_or_create_key(data_dir),
             reqwest::Client::new(),
-            &KIT,
+            config,
         ),
         store,
         changes: broadcast::channel(64).0,

@@ -179,6 +179,7 @@ pub static KIT: KitConfig = KitConfig {
     // Our General page is our own (`api::settings`): it has fields the
     // kit's doesn't (retention, public badges, agent confirmation).
     general: None,
+    features: &crate::kit::config::KitFeatures::DEFAULT,
 };
 
 /// Installs [`KIT`] as the kit's configuration. Runs at start-up (`main`,

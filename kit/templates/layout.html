@@ -58,8 +58,12 @@
           </div>
           <hr class="menu-sep">
           <a class="menu-item" href="/settings/security">{{ m::icon("shield") }}{{ tr("nav.security") }}</a>
+          {%- if kit_features().api_tokens %}
           <a class="menu-item" href="/settings/tokens">{{ m::icon("key") }}{{ tr("nav.api_tokens") }}</a>
+          {%- endif %}
+          {%- if kit_features().api_docs %}
           <a class="menu-item" href="/api-docs">{{ m::icon("code") }}{{ tr("nav.api_docs") }}</a>
+          {%- endif %}
           <hr class="menu-sep">
           <p class="menu-label" id="theme-label">{{ tr("nav.appearance") }}</p>
           <div class="theme-picker">

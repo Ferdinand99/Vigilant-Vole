@@ -208,6 +208,9 @@ impl PageCtx {
 
     /// Whether the signed-in user sees `tab`.
     pub fn can_see(&self, tab: &SettingsTab) -> bool {
+        if tab.id == SettingsTab::TOKENS.id && !crate::config::get().features.api_tokens {
+            return false;
+        }
         match tab.access {
             TabAccess::Everyone => true,
             TabAccess::Editors => self.can_edit(),
