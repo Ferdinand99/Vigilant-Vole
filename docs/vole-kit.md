@@ -731,22 +731,50 @@ The product's page at `reauth_path` confirms the signed-in user in its own
 way and finishes with
 
 ```rust
-let jar = vole_kit::auth::reauth::grant(jar, user.id, session_version, secure_cookies(&headers));
+let jar = vole_kit::auth::reauth::grant(jar, &core.session_key, secure_cookies(&headers));
 (jar, Redirect::to(&session::sanitize_next(next)))
 ```
 
-The grant is the cookie `<prefix>_reauth` (the session cookie's name with
-`_session` replaced: `vv_session` gives `vv_reauth`), signed with the
-session key, `r1.<user id>.<session version>.<issued at>`. It lasts five
-minutes (`reauth::TTL_SECS`) and is not used up by a change, so a few
-changes in a row take one confirmation. It is `HttpOnly`,
-`SameSite=Strict`, `Path=/` and `Secure` over https. It counts only for the
-user and the session version it was issued for; signing out everywhere (which
-moves the version) ends it, and so do signing out and `login_jar`. The
-version of the signed-in session is `resolve_session`'s
-`SessionClaims::version`. `reauth::is_fresh(jar, user_id, session_version)`
-tells whether one is held, for the product's own sensitive routes;
-`reauth::grant_at` and `is_fresh_at` take the time, for tests.
+`grant` binds the grant to the session cookie in `jar` (also one that
+`login_jar` just added in the same response), so call it for the session the
+user is in; with no session in the jar it gives nothing, and the pages keep
+asking. The grant is the cookie `<prefix>_reauth` (the session cookie's name
+with `_session` replaced: `vv_session` gives `vv_reauth`). It is signed with
+the session key like the other cookies, and its value is also sealed for this
+one purpose (`crypto::Sealer`, purpose `reauth-grant`, a key derived from the
+session key as for the kit's secrets at rest): inside is
+`r2.<user id>.<session version>.<session issued at>.<granted at>`.
+
+* **Purpose.** A cookie's signature does not cover its name, so any other
+  value the session key has signed could be put under the grant's name. A
+  product that signs text a visitor chose (a remembered user name, an
+  invitation code) would otherwise hand out grants. Only a value sealed for
+  `reauth-grant` counts. A product should still never sign text a visitor
+  chose and send it back as a cookie value.
+* **Session.** It counts only for the user, the session version and the
+  session it was given in (the session cookie's `issued at`, which a sign-in
+  sets and nothing moves). A grant from another device's sign-in is no good
+  here, signing out everywhere (which moves the version) ends it, and so do
+  signing out and `login_jar`.
+* **Time.** It lasts five minutes (`reauth::TTL_SECS`), is `HttpOnly`,
+  `SameSite=Strict`, `Path=/`, and `Secure` over https.
+* **Used up.** Three changes use the grant up: adding a passkey, making
+  someone an administrator, creating a write token. When one succeeds the kit
+  clears the cookie, and the next such change needs a new confirmation (a
+  refused change does not use it). The other changes (new recovery codes,
+  two-factor off, removing a passkey, never-expiring read tokens, resetting
+  someone's two-factor authentication) keep to the five minutes, so a few in a
+  row take one confirmation. Clearing removes the cookie from the browser; a
+  copy somebody kept stays valid until it runs out.
+* **Several cookies.** If a browser sends more than one `<prefix>_reauth`
+  (another Path, or one tossed from a sibling subdomain), the kit keeps the
+  first that verifies and really is a grant, and drops the others from the
+  request, so a stale one cannot shadow the real one.
+
+`reauth::is_fresh(jar, &core.session_key)` tells whether one is held for the
+session in `jar`, for the product's own sensitive routes; `reauth::clear(jar)`
+uses it up. `reauth::grant_at` and `is_fresh_at` (any time, any session) exist
+only for tests, with the `test-support` feature.
 
 ### What a product uses from the kit
 
@@ -757,7 +785,8 @@ tells whether one is held, for the product's own sensitive routes;
   throttles as the kit's own sign-in.
 * `auth::pages::check_setup_token(core, headers, peer, given)`: the setup
   token check of the kit's own setup page (a wrong token counts against the
-  address, `SetupTokenError` says why it was refused). Call it first on the
+  address, or against one shared key when there is none: `peer = None` is
+  throttled all the same; `SetupTokenError` says why it was refused). Call it first on the
   product's setup page.
 * `auth::pages::insert_first_admin(core, username, password_hash, site_name,
   timezone)`: creates the first admin, the site name and the time zone in
@@ -765,7 +794,7 @@ tells whether one is held, for the product's own sensitive routes;
   opaque to the kit. A product that keeps the credential elsewhere stores a
   marker such as `"!external"`: it is not a hash, so `verify_password` never
   matches it.
-* `auth::reauth::grant` and `is_fresh`, above.
+* `auth::reauth::grant`, `is_fresh` and `clear`, above.
 
 ## Invitation links
 

@@ -111,11 +111,11 @@ async fn vault_reauth(
     jar: SignedCookieJar,
     headers: HeaderMap,
 ) -> Response {
-    let (user, claims) = guard::resolve_session(&core, &jar)
+    guard::resolve_session(&core, &jar)
         .await
         .unwrap()
         .expect("signed in");
-    let jar = reauth::grant(jar, user.id, claims.version, secure_cookies(&headers));
+    let jar = reauth::grant(jar, &core.session_key, secure_cookies(&headers));
     (jar, Redirect::to("/settings/users")).into_response()
 }
 

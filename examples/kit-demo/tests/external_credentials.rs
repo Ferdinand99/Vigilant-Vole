@@ -20,12 +20,13 @@ use axum::extract::{ConnectInfo, Query, State};
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
-use axum_extra::extract::cookie::SignedCookieJar;
+use axum_extra::extract::cookie::{Cookie, Key, SignedCookieJar};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 use vole_kit::auth::guard::{self, PeerAddr, login_jar, secure_cookies};
 use vole_kit::auth::pages::{check_setup_token, insert_first_admin};
+use vole_kit::auth::session::SessionClaims;
 use vole_kit::auth::{Role, reauth, session};
 use vole_kit::db;
 use vole_kit::state::Core;
@@ -96,11 +97,11 @@ async fn vault_reauth(
     headers: HeaderMap,
     Query(q): Query<Q>,
 ) -> Response {
-    let (user, claims) = guard::resolve_session(&core, &jar)
+    guard::resolve_session(&core, &jar)
         .await
         .unwrap()
         .expect("signed in");
-    let jar = reauth::grant(jar, user.id, claims.version, secure_cookies(&headers));
+    let jar = reauth::grant(jar, &core.session_key, secure_cookies(&headers));
     let next = session::sanitize_next(q.next.as_deref());
     (jar, Redirect::to(&next)).into_response()
 }
@@ -278,12 +279,46 @@ impl App {
             .unwrap();
     }
 
-    /// The value of a grant cookie issued at `issued_at` for another
-    /// user or session, as the browser would send it back.
-    fn forged_grant(&self, user_id: i64, version: i64, issued_at: i64) -> String {
-        let jar = SignedCookieJar::new(self.core.session_key.clone());
-        let jar = reauth::grant_at(jar, user_id, version, issued_at, false);
+    /// The claims of this browser's session cookie.
+    fn session_claims(&self) -> SessionClaims {
+        let mut headers = HeaderMap::new();
+        let cookie = format!("kd_session={}", self.cookies["kd_session"]);
+        headers.insert(header::COOKIE, HeaderValue::from_str(&cookie).unwrap());
+        let jar = SignedCookieJar::from_headers(&headers, self.core.session_key.clone());
+        SessionClaims::decode(jar.get("kd_session").expect("a valid session").value()).unwrap()
+    }
+
+    /// The value of a grant cookie given at `granted_at` for the session
+    /// `session`, sealed and signed with `key`, as the browser would send it
+    /// back.
+    fn grant_value(key: &Key, session: &SessionClaims, granted_at: i64) -> String {
+        let jar = SignedCookieJar::new(key.clone());
+        let jar = reauth::grant_at(jar, key, session, granted_at, false);
         let res = (jar, ()).into_response();
+        let line = res.headers().get(header::SET_COOKIE).unwrap();
+        let pair = line.to_str().unwrap().split(';').next().unwrap();
+        pair.split_once('=').unwrap().1.to_string()
+    }
+
+    /// The value of a grant cookie given at `granted_at` for another user or
+    /// session version of this browser's session.
+    fn forged_grant(&self, user_id: i64, version: i64, granted_at: i64) -> String {
+        let session = SessionClaims {
+            user_id,
+            version,
+            ..self.session_claims()
+        };
+        Self::grant_value(&self.core.session_key, &session, granted_at)
+    }
+
+    /// `value`, signed by the kit's key as any cookie of a product could be.
+    fn signed_value(&self, name: &str, value: &str) -> String {
+        let jar = SignedCookieJar::new(self.core.session_key.clone());
+        let res = (
+            jar.add(Cookie::new(name.to_string(), value.to_string())),
+            (),
+        )
+            .into_response();
         let line = res.headers().get(header::SET_COOKIE).unwrap();
         let pair = line.to_str().unwrap().split(';').next().unwrap();
         pair.split_once('=').unwrap().1.to_string()
@@ -560,14 +595,25 @@ async fn a_fresh_grant_is_accepted_for_five_minutes() {
     let res = app.post("/settings/tokens", App::NEW_TOKEN).await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.body);
     assert_eq!(app.token_count().await, 1);
-    // It is not used up: more changes within the time are fine.
-    let res = app.post("/settings/tokens", App::NEW_TOKEN).await;
+    // A write token uses the grant up (see the test for that); a read-only
+    // one that expires does not need it, and does not use it.
+    app.get("/vault/reauth?next=/settings/tokens").await;
+    let res = app
+        .post(
+            "/settings/tokens",
+            &[("name", "ro"), ("scope", "read"), ("expires", "30")],
+        )
+        .await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.body);
-    assert_eq!(app.token_count().await, 2);
-    // Another sensitive change takes the same grant.
-    let res = app.post("/settings/security/2fa/recovery", &[]).await;
-    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
-    assert!(res.body.contains(r#"id="recovery-codes""#), "{}", res.body);
+    assert!(app.cookies.contains_key("kd_reauth"), "not used up");
+    // The other sensitive changes are not used up: within the time, any
+    // number of them take the same grant.
+    for _ in 0..2 {
+        let res = app.post("/settings/security/2fa/recovery", &[]).await;
+        assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+        assert!(res.body.contains(r#"id="recovery-codes""#), "{}", res.body);
+        assert!(app.cookies.contains_key("kd_reauth"), "still there");
+    }
 }
 
 #[tokio::test]
@@ -602,11 +648,61 @@ async fn an_expired_grant_another_user_and_another_session_are_refused() {
     app.post("/settings/tokens", App::NEW_TOKEN).await;
     assert_eq!(app.token_count().await, 1, "another session version");
 
+    // A grant given in an earlier session of the same user (same version,
+    // another sign-in): it is bound to the session it was given in.
+    let real = app.session_claims();
+    for issued_at in [real.issued_at - 1, real.issued_at + 1, 0] {
+        let session = SessionClaims { issued_at, ..real };
+        let value = App::grant_value(&app.core.session_key, &session, now());
+        app.cookies.insert("kd_reauth".into(), value);
+        app.post("/settings/tokens", App::NEW_TOKEN).await;
+        assert_eq!(app.token_count().await, 1, "a session begun at {issued_at}");
+    }
+
     // A value the kit did not sign.
     app.cookies
         .insert("kd_reauth".into(), format!("r1.1.{version}.{}", now()));
     app.post("/settings/tokens", App::NEW_TOKEN).await;
     assert_eq!(app.token_count().await, 1, "unsigned");
+
+    // A value the kit's key signed for something else, in the grant's
+    // shape (old and new), put under the grant's name: it is not a grant.
+    // (A product that signs text a visitor chose could hand one out.)
+    let (iat, at) = (real.issued_at, now());
+    let sealed_elsewhere = {
+        let sealer = vole_kit::crypto::Sealer::new(&app.core.session_key, "push-relay");
+        sealer.seal(&format!("r2.1.{version}.{iat}.{at}"))
+    };
+    for shape in [
+        format!("r1.1.{version}.{at}"),
+        format!("r2.1.{version}.{iat}.{at}"),
+        format!("reauth.r2.1.{version}.{iat}.{at}"),
+        sealed_elsewhere,
+    ] {
+        let value = app.signed_value("kd_remember", &shape);
+        app.cookies.insert("kd_reauth".into(), value);
+        app.post("/settings/tokens", App::NEW_TOKEN).await;
+        assert_eq!(app.token_count().await, 1, "{shape}");
+    }
+}
+
+#[tokio::test]
+async fn a_stale_grant_cookie_in_front_does_not_shadow_the_real_one() {
+    let mut app = App::set_up().await;
+    app.get("/vault/reauth").await;
+    let good = app.cookies["kd_reauth"].clone();
+    // Two cookies of the name reach the server (another Path, or one tossed
+    // from a sibling subdomain): a foreign one first, then a duplicate of
+    // the real one, then a second real one.
+    let foreign = App::grant_value(&Key::generate(), &app.session_claims(), now());
+    let junk = app.signed_value("kd_reauth", "r1.1.1.1");
+    app.cookies.insert(
+        "kd_reauth".into(),
+        format!("{foreign}; kd_reauth={junk}; kd_reauth={good}; kd_reauth={good}"),
+    );
+    let res = app.post("/settings/tokens", App::NEW_TOKEN).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    assert_eq!(app.token_count().await, 1, "the real grant counted");
 }
 
 #[tokio::test]
@@ -668,6 +764,106 @@ async fn logging_out_or_in_clears_the_grant() {
 }
 
 // ---------------------------------------------------------------------------
+// Used up
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_write_token_uses_the_grant_up() {
+    let mut app = App::set_up().await;
+    app.get("/vault/reauth").await;
+    let res = app.post("/settings/tokens", App::NEW_TOKEN).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    assert_eq!(app.token_count().await, 1);
+    // The grant is cleared with the response, and the page asks again.
+    let cleared = res.set_cookies("kd_reauth");
+    assert_eq!(cleared.len(), 1, "{:?}", res.headers);
+    assert!(cleared[0].starts_with("kd_reauth=;"), "{}", cleared[0]);
+    assert!(!app.cookies.contains_key("kd_reauth"));
+    assert!(res.body.contains("/vault/reauth"), "{}", res.body);
+
+    // A second one needs a new grant.
+    app.post("/settings/tokens", App::NEW_TOKEN).await;
+    assert_eq!(app.token_count().await, 1, "no grant");
+    app.get("/vault/reauth").await;
+    let res = app.post("/settings/tokens", App::NEW_TOKEN).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    assert_eq!(app.token_count().await, 2);
+    assert!(!app.cookies.contains_key("kd_reauth"));
+
+    // A refused one does not use it up.
+    app.get("/vault/reauth").await;
+    let mut bad = App::NEW_TOKEN.to_vec();
+    bad[0] = ("name", "");
+    app.post("/settings/tokens", &bad).await;
+    assert_eq!(app.token_count().await, 2);
+    assert!(app.cookies.contains_key("kd_reauth"), "nothing was done");
+}
+
+#[tokio::test]
+async fn making_an_administrator_uses_the_grant_up() {
+    let mut app = App::set_up().await;
+    app.core
+        .with_conn(|c| {
+            db::users::insert_user(c, "bob", "!external", Role::Viewer)?;
+            db::users::insert_user(c, "carol", "!external", Role::Viewer)
+        })
+        .await
+        .unwrap();
+    let role = |app: &App, id: i64| {
+        let core = app.core.clone();
+        async move {
+            core.with_conn(move |c| db::users::get_user(c, id))
+                .await
+                .unwrap()
+                .unwrap()
+                .role
+        }
+    };
+    let promote = |id: i64| {
+        (
+            format!("/settings/users/{id}"),
+            [("display_name", "x"), ("role", "admin")],
+        )
+    };
+
+    // Without a grant nobody is promoted.
+    let (path, form) = promote(2);
+    app.post(&path, &form).await;
+    assert_eq!(role(&app, 2).await, Role::Viewer);
+
+    app.get("/vault/reauth").await;
+    let res = app.post(&path, &form).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert_eq!(role(&app, 2).await, Role::Admin);
+    assert!(!res.set_cookies("kd_reauth").is_empty(), "cleared");
+    assert!(!app.cookies.contains_key("kd_reauth"));
+
+    // The next one needs a new grant.
+    let (path, form) = promote(3);
+    app.post(&path, &form).await;
+    assert_eq!(role(&app, 3).await, Role::Viewer, "the grant was used up");
+    app.get("/vault/reauth").await;
+    app.post(&path, &form).await;
+    assert_eq!(role(&app, 3).await, Role::Admin);
+
+    // Changes that make nobody an administrator keep it: renaming one, or
+    // setting someone back to viewer.
+    app.get("/vault/reauth").await;
+    app.post(
+        "/settings/users/2",
+        &[("display_name", "Bob"), ("role", "admin")],
+    )
+    .await;
+    app.post(
+        "/settings/users/3",
+        &[("display_name", "C"), ("role", "viewer")],
+    )
+    .await;
+    assert_eq!(role(&app, 3).await, Role::Viewer);
+    assert!(app.cookies.contains_key("kd_reauth"), "kept");
+}
+
+// ---------------------------------------------------------------------------
 // Passkeys
 // ---------------------------------------------------------------------------
 
@@ -712,6 +908,17 @@ async fn passkey_sign_in_stays_and_adding_one_needs_the_grant() {
         },
     });
     let res = app.post_json("/settings/security/passkeys", &body).await;
+    assert_eq!(res.status, StatusCode::OK, "{}", res.body);
+    // Adding it used the grant up: another needs a new confirmation.
+    assert!(!app.cookies.contains_key("kd_reauth"));
+    let res = app
+        .post("/settings/security/passkeys/options", &[("name", "")])
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN, "{}", res.body);
+    app.get("/vault/reauth").await;
+    let res = app
+        .post("/settings/security/passkeys/options", &[("name", "")])
+        .await;
     assert_eq!(res.status, StatusCode::OK, "{}", res.body);
 
     // Signed out, the passkey gives a session on its own.

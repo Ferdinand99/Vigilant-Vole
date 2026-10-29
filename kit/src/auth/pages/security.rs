@@ -130,7 +130,7 @@ async fn security_template(
         passkey_origin: super::passkeys::relying_party(core)
             .await
             .map(|rp| rp.origin),
-        reauth: reauth::View::new(jar, user, "/settings/security"),
+        reauth: reauth::View::new(jar, &core.session_key, user, "/settings/security"),
         password_path: super::external::paths().map(|ext| ext.password_path),
     })
 }
@@ -185,7 +185,7 @@ pub(super) async fn confirm_password(
     password: String,
 ) -> ApiResult<Result<(), String>> {
     if super::external::paths().is_some() {
-        return Ok(if reauth::is_fresh_for(jar, user) {
+        return Ok(if reauth::is_fresh_for(jar, &core.session_key, user) {
             Ok(())
         } else {
             Err(crate::i18n::t("sec.confirm_its_you_help").into())

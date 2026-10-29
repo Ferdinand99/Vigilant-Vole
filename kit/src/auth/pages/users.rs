@@ -134,7 +134,7 @@ pub(super) async fn render(
         "users",
     )
     .await;
-    let reauth = reauth::View::new(&jar, user, "/settings/users");
+    let reauth = reauth::View::new(&jar, &core.session_key, user, "/settings/users");
     let secret = new_invite.is_some();
     let mut response = (
         jar,
@@ -279,17 +279,16 @@ pub(super) async fn update(
         return Ok(back(jar, "error", crate::i18n::t("users.err_own_role")));
     }
     // Promoting is as good as adding an administrator.
-    if role == Role::Admin {
-        let promoting = core
+    let promoting = role == Role::Admin
+        && core
             .with_conn(move |c| db_users::get_user(c, id))
             .await?
             .is_some_and(|target| target.role != Role::Admin);
-        if promoting
-            && let Err(msg) =
-                super::security::require_password(&core, &user, &jar, form.current_password).await?
-        {
-            return Ok(back(jar, "error", msg));
-        }
+    if promoting
+        && let Err(msg) =
+            super::security::require_password(&core, &user, &jar, form.current_password).await?
+    {
+        return Ok(back(jar, "error", msg));
     }
     let result = core
         .with_conn(move |c| db_users::update_profile(c, id, &display_name, role))
@@ -297,6 +296,9 @@ pub(super) async fn update(
     match result {
         Ok(()) => {
             tracing::info!(admin = %user.username, user_id = id, role = %role, "user updated");
+            // An administrator made outlasts a stolen session: the
+            // confirmation is used up.
+            let jar = if promoting { reauth::spend(jar) } else { jar };
             Ok(back(jar, "success", crate::i18n::t("users.saved")))
         }
         Err(err) => Ok(back(jar, "error", change_message(err))),

@@ -372,6 +372,12 @@ pub async fn csrf_guard(State(core): State<Core>, mut request: Request, next: Ne
     // This layer wraps every route, so it is also where duplicate session cookies are
     // collapsed before any extractor reads them.
     dedupe_session_cookie(request.headers_mut(), &core.session_key);
+    if matches!(
+        crate::config::get().features.credentials,
+        crate::config::CredentialMode::External(_)
+    ) {
+        dedupe_reauth_cookie(request.headers_mut(), &core.session_key);
+    }
     session::warn_if_proxied_without_trust(request.headers());
     // Every few seconds at most: whether the public URL is https decides
     // if cookies are `Secure` (read through `Core::base_url`).
@@ -406,7 +412,30 @@ pub async fn csrf_guard(State(core): State<Core>, mut request: Request, next: Ne
 /// The cookie jar keeps only the first one it sees, so a stale cookie would shadow every
 /// fresh login. Keep the first value whose signature verifies and drop the others.
 fn dedupe_session_cookie(headers: &mut HeaderMap, key: &axum_extra::extract::cookie::Key) {
-    let prefix = format!("{}=", session_cookie());
+    dedupe_cookie(headers, key, session_cookie(), |_| true);
+}
+
+/// The same for the re-auth grant ([`reauth`](super::reauth)) of a product
+/// with `CredentialMode::External`: a stale or foreign `<prefix>_reauth`
+/// (another Path, or a sibling subdomain tossing one) would otherwise shadow
+/// the real grant, and re-authentication would silently fail. The first
+/// value that verifies and really is a grant stays; the others are dropped
+/// from the request.
+fn dedupe_reauth_cookie(headers: &mut HeaderMap, key: &axum_extra::extract::cookie::Key) {
+    dedupe_cookie(headers, key, super::reauth::cookie_name(), |value| {
+        super::reauth::is_grant(key, value)
+    });
+}
+
+/// Keeps, of several cookies called `name`, the first whose signature
+/// verifies and whose value `accepts`, and drops the others from the request.
+fn dedupe_cookie(
+    headers: &mut HeaderMap,
+    key: &axum_extra::extract::cookie::Key,
+    name: &str,
+    accepts: impl Fn(&str) -> bool,
+) {
+    let prefix = format!("{name}=");
     let pairs: Vec<String> = headers
         .get_all(header::COOKIE)
         .iter()
@@ -428,8 +457,8 @@ fn dedupe_session_cookie(headers: &mut HeaderMap, key: &axum_extra::extract::coo
             let mut single = HeaderMap::new();
             single.insert(header::COOKIE, value);
             SignedCookieJar::from_headers(&single, key.clone())
-                .get(session_cookie())
-                .is_some()
+                .get(name)
+                .is_some_and(|c| accepts(c.value()))
         })
         .cloned();
     let merged: Vec<String> = valid
@@ -448,7 +477,9 @@ mod dedupe_tests {
     use axum::response::IntoResponse;
     use axum_extra::extract::cookie::{Cookie, Key, SignedCookieJar};
 
-    use super::{dedupe_session_cookie, session_cookie};
+    use super::{dedupe_reauth_cookie, dedupe_session_cookie, session_cookie};
+    use crate::auth::reauth;
+    use crate::auth::session::SessionClaims;
 
     fn signed_pair(key: &Key, value: &str) -> String {
         let response = SignedCookieJar::new(key.clone())
@@ -494,6 +525,83 @@ mod dedupe_tests {
         let mut headers = HeaderMap::new();
         headers.insert(header::COOKIE, HeaderValue::from_str(&raw).unwrap());
         dedupe_session_cookie(&mut headers, &key);
+        assert_eq!(headers[header::COOKIE].to_str().unwrap(), raw);
+    }
+
+    /// The `name=value` pair of a grant for the session `issued_at`, sealed
+    /// and signed with `key`, as a browser sends it back.
+    fn grant_pair(key: &Key, issued_at: i64) -> String {
+        let jar = reauth::grant_at(
+            SignedCookieJar::new(key.clone()),
+            key,
+            &SessionClaims::new(1, 1, issued_at),
+            2_000_000_000,
+            false,
+        );
+        let response = jar.into_response();
+        let set = response.headers()[header::SET_COOKIE].to_str().unwrap();
+        set.split(';').next().unwrap().to_string()
+    }
+
+    fn reauth_values(headers: &HeaderMap, key: &Key) -> (usize, Option<String>) {
+        let raw = headers[header::COOKIE].to_str().unwrap();
+        let count = raw
+            .split("; ")
+            .filter(|p| p.starts_with(&format!("{}=", reauth::cookie_name())))
+            .count();
+        let jar = SignedCookieJar::from_headers(headers, key.clone());
+        let first = jar
+            .get(reauth::cookie_name())
+            .map(|c| c.value().to_string());
+        (count, first)
+    }
+
+    #[test]
+    fn duplicate_reauth_cookies_keep_the_first_valid_grant_only() {
+        let key = Key::generate();
+        let first = grant_pair(&key, 100);
+        let second = grant_pair(&key, 200);
+        // A value of another key, and one the key signed that is no grant.
+        let foreign = grant_pair(&Key::generate(), 100);
+        let not_a_grant = {
+            let jar = SignedCookieJar::new(key.clone())
+                .add(Cookie::new(reauth::cookie_name(), "r1.1.1.1".to_string()));
+            let response = jar.into_response();
+            let set = response.headers()[header::SET_COOKIE].to_str().unwrap();
+            set.split(';').next().unwrap().to_string()
+        };
+        let mut headers = HeaderMap::new();
+        let raw = format!("{foreign}; vv_flash=x; {not_a_grant}; {first}; {second}");
+        headers.insert(header::COOKIE, HeaderValue::from_str(&raw).unwrap());
+
+        dedupe_reauth_cookie(&mut headers, &key);
+
+        let (count, value) = reauth_values(&headers, &key);
+        assert_eq!(count, 1, "{headers:?}");
+        let expected = first.split_once('=').unwrap().1;
+        assert!(value.is_some_and(|v| reauth::is_grant(&key, &v)));
+        assert!(headers[header::COOKIE].to_str().unwrap().contains(expected));
+        assert!(
+            !headers[header::COOKIE]
+                .to_str()
+                .unwrap()
+                .contains(second.split_once('=').unwrap().1)
+        );
+        assert!(
+            headers[header::COOKIE]
+                .to_str()
+                .unwrap()
+                .contains("vv_flash=x")
+        );
+    }
+
+    #[test]
+    fn a_single_reauth_cookie_is_left_alone() {
+        let key = Key::generate();
+        let raw = format!("{}; other=1", grant_pair(&key, 100));
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, HeaderValue::from_str(&raw).unwrap());
+        dedupe_reauth_cookie(&mut headers, &key);
         assert_eq!(headers[header::COOKIE].to_str().unwrap(), raw);
     }
 }
