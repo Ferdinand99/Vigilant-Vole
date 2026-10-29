@@ -11,7 +11,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
-use crate::auth::{CurrentUser, tokens};
+use crate::auth::{CurrentUser, reauth, tokens};
 use crate::db::api_tokens::{self as db_tokens, ApiToken, TokenScope};
 use crate::http::{ApiError, ApiResult, HtmlTemplate};
 use crate::i18n::Tr as _;
@@ -90,6 +90,8 @@ struct TokensTemplate {
     metrics_path: Option<&'static str>,
     /// The product's token scopes, offered after "Read and write".
     extra_scopes: Vec<ScopeChoice>,
+    /// Where the new token sheet asks for the password.
+    reauth: reauth::View,
 }
 
 /// One product scope in the new token sheet.
@@ -155,6 +157,7 @@ async fn render(
         None => (None, String::new()),
     };
     let page = TokensTemplate {
+        reauth: reauth::View::new(&jar, user, "/settings/tokens"),
         ctx,
         tokens: mine.into_iter().map(TokenRow::from).collect(),
         others,
@@ -237,7 +240,7 @@ pub(super) async fn create(
     };
     if needs_reauth(scope, expires_in)
         && let Err(msg) =
-            super::security::require_password(&core, &user, form.current_password).await?
+            super::security::require_password(&core, &user, &jar, form.current_password).await?
     {
         return Ok(back(jar, "error", &msg));
     }
@@ -335,6 +338,11 @@ mod tests {
             example_path: "/api/v1/monitors",
             metrics_path: Some("/metrics"),
             extra_scopes: Vec::new(),
+            reauth: crate::auth::reauth::View {
+                external: false,
+                fresh: true,
+                url: String::new(),
+            },
         };
         let html = page.render().expect("template renders");
         assert_eq!(

@@ -282,6 +282,8 @@ pk_exists = "Questa passkey è già salvata per il tuo account."
 pk_failed = "Impossibile salvare la passkey. Riprova."
 reauth_needed = "Inserisci la tua password per confermare questa modifica."
 your_password = "La tua password"
+confirm_its_you = "Conferma che sei tu"
+confirm_its_you_help = "Conferma che sei tu per effettuare questa modifica."
 revoke_tokens = "Revoca anche i miei token API"
 revoke_tokens_help = "Gli script che li usano smetteranno di funzionare finché non ne crei di nuovi."
 

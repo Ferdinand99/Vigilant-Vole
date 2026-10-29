@@ -3,7 +3,9 @@
 
 {% block settings_content %}
 {% call m::page_header(tr("nav.users"), tr("users.sub")) %}
+  {%- if !external %}
   <button type="button" class="btn btn-primary" data-sheet-open="#new-user" commandfor="new-user" command="show-modal">{{ m::icon("plus") }}<span>{{ tr("users.new") }}</span></button>
+  {%- endif %}
 {% endcall %}
 
 <section class="section" aria-labelledby="users-title">
@@ -16,6 +18,7 @@
   <p class="section-foot">{{ tr("users.roles_help") }}</p>
 </section>
 
+{% if !external -%}
 <dialog class="sheet" id="new-user" aria-labelledby="new-user-title">
   <div class="sheet-grabber" aria-hidden="true"></div>
   <header class="sheet-head">
@@ -59,6 +62,7 @@
     <button type="submit" class="btn btn-primary" form="new-user-form">{{ tr("users.add") }}</button>
   </footer>
 </dialog>
+{%- endif %}
 
 {%- for u in users %}
 {% include "partials/user_sheets.html" %}

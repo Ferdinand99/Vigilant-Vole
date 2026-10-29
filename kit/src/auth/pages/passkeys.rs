@@ -327,13 +327,14 @@ pub struct AddForm {
 pub(super) async fn register_options(
     State(core): State<Core>,
     user: CurrentUser,
+    jar: SignedCookieJar,
     Form(form): Form<AddForm>,
 ) -> ApiResult<Response> {
     let Some(rp) = relying_party(&core).await else {
         return Ok(unavailable());
     };
     // A fresh confirmation, as for the other sensitive changes here.
-    if let Err(msg) = super::security::confirm_password(&core, &user, form.password).await? {
+    if let Err(msg) = super::security::confirm_password(&core, &user, &jar, form.password).await? {
         return Ok(json_error(StatusCode::FORBIDDEN, msg));
     }
     let id = user.id;
@@ -576,7 +577,8 @@ pub(super) async fn delete(
 ) -> ApiResult<Response> {
     // Removing a passkey changes how the account can be reached: a fresh
     // confirmation, as for adding one.
-    if let Err(msg) = super::security::require_password(&core, &user, form.current_password).await?
+    if let Err(msg) =
+        super::security::require_password(&core, &user, &jar, form.current_password).await?
     {
         return Ok(back(jar, "error", &msg));
     }

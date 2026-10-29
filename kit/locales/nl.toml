@@ -273,6 +273,8 @@ pk_exists = "Deze toegangssleutel is al opgeslagen voor je account."
 pk_failed = "De toegangssleutel kon niet worden opgeslagen. Probeer het opnieuw."
 reauth_needed = "Voer je wachtwoord in om deze wijziging te bevestigen."
 your_password = "Je wachtwoord"
+confirm_its_you = "Bevestig dat jij het bent"
+confirm_its_you_help = "Bevestig dat jij het bent om deze wijziging door te voeren."
 revoke_tokens = "Trek ook mijn API-tokens in"
 revoke_tokens_help = "Scripts die ze gebruiken werken niet meer totdat je nieuwe maakt."
 

@@ -66,6 +66,9 @@ pub async fn has_users(core: &Core) -> ApiResult<bool> {
 }
 
 /// Adds a fresh session cookie for `user` (and drops any pending-2FA cookie).
+/// A product with `CredentialMode::External` also drops an earlier
+/// [re-auth grant](super::reauth), so a new session starts unconfirmed; grant
+/// again after this call if the sign-in itself confirmed the user.
 pub fn login_jar(
     jar: SignedCookieJar,
     user_id: i64,
@@ -73,8 +76,13 @@ pub fn login_jar(
     secure: bool,
 ) -> SignedCookieJar {
     let claims = SessionClaims::new(user_id, session_version, session::now_unix());
-    jar.add(session::session_cookie(&claims, secure))
-        .remove(session::removal_cookie(pending_2fa_cookie()))
+    let jar = jar
+        .add(session::session_cookie(&claims, secure))
+        .remove(session::removal_cookie(pending_2fa_cookie()));
+    match crate::config::get().features.credentials {
+        crate::config::CredentialMode::Plain => jar,
+        crate::config::CredentialMode::External(_) => super::reauth::clear(jar),
+    }
 }
 
 /// Resolves the session cookie: claims must be well-formed, not idle-expired,

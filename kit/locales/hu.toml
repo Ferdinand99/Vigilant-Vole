@@ -273,6 +273,8 @@ pk_exists = "Ez az azonosítókulcs már el van mentve a fiókjához."
 pk_failed = "Az azonosítókulcsot nem sikerült menteni. Próbálja újra."
 reauth_needed = "A módosítás megerősítéséhez adja meg a jelszavát."
 your_password = "Az Ön jelszava"
+confirm_its_you = "Erősítse meg, hogy Ön az"
+confirm_its_you_help = "A módosításhoz erősítse meg, hogy Ön az."
 revoke_tokens = "A saját API-tokenek visszavonása is"
 revoke_tokens_help = "Az ezeket használó szkriptek leállnak, amíg újakat nem hoz létre."
 

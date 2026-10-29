@@ -273,6 +273,8 @@ pk_exists = "Tämä pääsyavain on jo tallennettu tilillesi."
 pk_failed = "Pääsyavainta ei voitu tallentaa. Yritä uudelleen."
 reauth_needed = "Vahvista muutos antamalla salasanasi."
 your_password = "Salasanasi"
+confirm_its_you = "Vahvista, että se olet sinä"
+confirm_its_you_help = "Vahvista, että se olet sinä, jotta voit tehdä muutoksen."
 revoke_tokens = "Peru myös omat API-tunnukseni"
 revoke_tokens_help = "Niitä käyttävät skriptit lakkaavat toimimasta, kunnes luot uudet."
 

@@ -15,7 +15,7 @@ use axum_extra::extract::cookie::SignedCookieJar;
 use serde::Deserialize;
 
 use crate::auth::guard::{login_jar, secure_cookies};
-use crate::auth::{self, CurrentUser, totp};
+use crate::auth::{self, CurrentUser, reauth, totp};
 use crate::db::api_tokens as db_tokens;
 use crate::db::passkeys as db_passkeys;
 use crate::db::users as db_users;
@@ -59,11 +59,17 @@ struct SecurityTemplate {
     passkeys: Vec<PasskeyRow>,
     /// The public URL's origin, when passkeys can work there.
     passkey_origin: Option<String>,
+    /// Where the page asks for the password (see `CredentialMode`).
+    reauth: reauth::View,
+    /// Where the product changes the password
+    /// (`CredentialMode::External`), else `None`: the form is here.
+    password_path: Option<&'static str>,
 }
 
 async fn security_template(
     core: &Core,
     user: &CurrentUser,
+    jar: &SignedCookieJar,
     ctx: PageCtx,
     new_codes: Vec<String>,
 ) -> ApiResult<SecurityTemplate> {
@@ -124,6 +130,8 @@ async fn security_template(
         passkey_origin: super::passkeys::relying_party(core)
             .await
             .map(|rp| rp.origin),
+        reauth: reauth::View::new(jar, user, "/settings/security"),
+        password_path: super::external::paths().map(|ext| ext.password_path),
     })
 }
 
@@ -142,7 +150,7 @@ async fn render_security(
         "security",
     )
     .await;
-    let page = security_template(core, user, ctx, new_codes).await?;
+    let page = security_template(core, user, &jar, ctx, new_codes).await?;
     Ok((jar, HtmlTemplate(page)).into_response())
 }
 
@@ -166,11 +174,23 @@ fn back_to_security(jar: SignedCookieJar, kind: &str, message: &str) -> Response
 /// session can't be used to brute-force the password. The attempt is counted
 /// before the (slow) check, as at sign-in, so a burst of parallel guesses
 /// can't all get past the throttle before the first failure is recorded.
+///
+/// With `CredentialMode::External` there is no password to ask for: the
+/// user must hold a fresh [`reauth`] grant (in `jar`, the request's) and
+/// `password` is ignored.
 pub(super) async fn confirm_password(
     core: &Core,
     user: &CurrentUser,
+    jar: &SignedCookieJar,
     password: String,
 ) -> ApiResult<Result<(), String>> {
+    if super::external::paths().is_some() {
+        return Ok(if reauth::is_fresh_for(jar, user) {
+            Ok(())
+        } else {
+            Err(crate::i18n::t("sec.confirm_its_you_help").into())
+        });
+    }
     let key = format!("reauth:{}", user.id);
     if let Err(wait) = core.limits.account.reserve(&key, Instant::now()) {
         let secs = wait.as_secs().max(1).to_string();
@@ -202,12 +222,13 @@ pub(super) async fn confirm_password(
 pub(super) async fn require_password(
     core: &Core,
     user: &CurrentUser,
+    jar: &SignedCookieJar,
     password: String,
 ) -> ApiResult<Result<(), String>> {
-    if password.is_empty() {
+    if super::external::paths().is_none() && password.is_empty() {
         return Ok(Err(crate::i18n::t("sec.reauth_needed").into()));
     }
-    confirm_password(core, user, password).await
+    confirm_password(core, user, jar, password).await
 }
 
 /// After a change to how the user signs in (two-factor on or off, a passkey
@@ -298,7 +319,7 @@ pub(super) async fn change_password(
     headers: HeaderMap,
     Form(form): Form<PasswordForm>,
 ) -> ApiResult<Response> {
-    if let Err(msg) = confirm_password(&core, &user, form.current_password).await? {
+    if let Err(msg) = confirm_password(&core, &user, &jar, form.current_password).await? {
         return Ok(back_to_security(jar, "error", &msg));
     }
     if let Some(problem) = auth::password_problem(&form.new_password, &user.username) {
@@ -483,7 +504,7 @@ pub(super) async fn totp_disable(
     headers: HeaderMap,
     Form(form): Form<DisableForm>,
 ) -> ApiResult<Response> {
-    if let Err(msg) = confirm_password(&core, &user, form.password).await? {
+    if let Err(msg) = confirm_password(&core, &user, &jar, form.password).await? {
         return Ok(back_to_security(jar, "error", &msg));
     }
     let key = format!("2fa:{}", user.id);
@@ -529,7 +550,7 @@ pub(super) async fn totp_new_recovery_codes(
     jar: SignedCookieJar,
     Form(form): Form<PasswordOnlyForm>,
 ) -> ApiResult<Response> {
-    if let Err(msg) = confirm_password(&core, &user, form.password).await? {
+    if let Err(msg) = confirm_password(&core, &user, &jar, form.password).await? {
         return Ok(back_to_security(jar, "error", &msg));
     }
     let id = user.id;

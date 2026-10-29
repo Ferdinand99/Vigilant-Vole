@@ -264,6 +264,8 @@ pk_exists = "此通行密钥已保存到你的账户。"
 pk_failed = "无法保存通行密钥。请重试。"
 reauth_needed = "请输入密码以确认此更改。"
 your_password = "你的密码"
+confirm_its_you = "确认是你本人"
+confirm_its_you_help = "请确认是你本人，以进行此更改。"
 revoke_tokens = "同时撤销我的 API 令牌"
 revoke_tokens_help = "使用这些令牌的脚本会停止工作，直到你创建新的令牌。"
 

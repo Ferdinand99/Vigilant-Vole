@@ -274,6 +274,8 @@ pk_exists = "Denne adgangsnøgle er allerede gemt på din konto."
 pk_failed = "Adgangsnøglen kunne ikke gemmes. Prøv igen."
 reauth_needed = "Indtast din adgangskode for at bekræfte ændringen."
 your_password = "Din adgangskode"
+confirm_its_you = "Bekræft, at det er dig"
+confirm_its_you_help = "Bekræft, at det er dig, for at foretage ændringen."
 revoke_tokens = "Tilbagekald også mine API-tokens"
 revoke_tokens_help = "Scripts, der bruger dem, holder op med at virke, indtil du opretter nye."
 

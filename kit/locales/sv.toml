@@ -273,6 +273,8 @@ pk_exists = "Den här lösennyckeln är redan sparad för ditt konto."
 pk_failed = "Lösennyckeln kunde inte sparas. Försök igen."
 reauth_needed = "Ange ditt lösenord för att bekräfta ändringen."
 your_password = "Ditt lösenord"
+confirm_its_you = "Bekräfta att det är du"
+confirm_its_you_help = "Bekräfta att det är du för att göra ändringen."
 revoke_tokens = "Återkalla även mina API-token"
 revoke_tokens_help = "Skript som använder dem slutar fungera tills du skapar nya."
 

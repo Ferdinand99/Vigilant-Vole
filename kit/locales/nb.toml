@@ -274,6 +274,8 @@ pk_exists = "Denne passnøkkelen er allerede lagret på kontoen din."
 pk_failed = "Passnøkkelen kunne ikke lagres. Prøv igjen."
 reauth_needed = "Skriv inn passordet ditt for å bekrefte endringen."
 your_password = "Passordet ditt"
+confirm_its_you = "Bekreft at det er deg"
+confirm_its_you_help = "Bekreft at det er deg for å gjøre denne endringen."
 revoke_tokens = "Trekk tilbake API-tokenene mine også"
 revoke_tokens_help = "Skript som bruker dem slutter å virke til du lager nye."
 

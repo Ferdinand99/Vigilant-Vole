@@ -291,6 +291,8 @@ pk_exists = "Tento přístupový klíč už je k vašemu účtu uložen."
 pk_failed = "Přístupový klíč se nepodařilo uložit. Zkuste to znovu."
 reauth_needed = "Zadejte své heslo a potvrďte tuto změnu."
 your_password = "Vaše heslo"
+confirm_its_you = "Potvrďte, že jste to vy"
+confirm_its_you_help = "Potvrďte, že jste to vy, abyste mohli tuto změnu provést."
 revoke_tokens = "Zrušit také platnost mých API tokenů"
 revoke_tokens_help = "Skripty, které je používají, přestanou fungovat, dokud nevytvoříte nové."
 

@@ -13,7 +13,7 @@
   </span>
   <div class="menu" id="user-menu-{{ u.id }}" popover>
     <button class="menu-item" type="button" data-sheet-open="#edit-user-{{ u.id }}" commandfor="edit-user-{{ u.id }}" command="show-modal">{{ m::icon("pencil") }}{{ tr("common.edit") }}</button>
-    {%- if !u.is_self %}
+    {%- if !u.is_self && !external %}
     <button class="menu-item" type="button" data-sheet-open="#reset-pw-{{ u.id }}" commandfor="reset-pw-{{ u.id }}" command="show-modal">{{ m::icon("key") }}{{ tr("users.reset_password") }}</button>
     {%- endif %}
     {%- if u.totp_enabled %}
