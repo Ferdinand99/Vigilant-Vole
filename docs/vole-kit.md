@@ -98,7 +98,7 @@ kit`). It also keeps its older paths (`crate::auth`, `crate::i18n`,
 | `crypto` | sealing small secrets at rest under the instance key: `seal`, `open`, `is_sealed`, `Sealer`, `OpenError`, `PREFIX` (see "Sealed secrets") |
 | `state` | `Core` (pool, session key, HTTP client, config, sign-in throttles), `Core::new` and `with_conn` |
 | `i18n` | languages, catalogs (core + product), plurals, number/date formats, `Tr` (template helpers, `kit_ui()`, `product_name()`), `Accept-Language`, the request language middleware |
-| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `PUSH`, `migrate_with` + `MigrateOptions`) |
+| `db` | pools (`build_pool`, `build_pool_with` + `PoolOptions`), `interact`, `settings` (key/value + core keys), `users`, `role`, `api_tokens` (with product scopes), `passkeys` (credentials and challenges), `migrate` (runner, `MigrationSet`, `CORE`, `CORE_TABLES`, `TOKEN_SCOPES`, `PASSKEYS`, `SEALED_SECRETS`, `SEALED_TOTP`, `PUSH`, `INVITES`, `migrate_with` + `MigrateOptions`) |
 | `auth` | sessions, CSRF policy, rate limiting (`SignInLimits`), TOTP, API tokens, password rules, `CurrentUser` (`Scopes`, `has_scope`, `may_act_as`), `ExtraScope`; `webauthn`: passkey ceremonies (`RelyingParty`, `verify_registration`, `verify_assertion`, the test authenticator `soft`); `guard`: `require_auth`, `csrf_guard`, token and session resolution; `reauth`: the fresh-confirmation grant of external credentials; `pages`: the shared pages and their routers |
 | `settings` | `SiteSettings` (site name, public URL, time zone, language), `set_site_language`, `normalize_base_url`, and the General page's description (`GeneralSettings`, `SettingsSection`, `SettingField`, `FieldKind`) |
 | `http` | `ApiError`, security headers/CSP and `HeaderPolicy`, `HtmlTemplate`, static files (`assets`), `healthz`, `toast_trigger`; `rest`: the JSON API conventions (error envelope, extractors, cursor paging, ETags, `session_write_allowed`/`session_write_guard`); `ratelimit`: token buckets, `429` with `Retry-After`; `live`: live updates over server-sent events |
@@ -173,7 +173,7 @@ No test can forget it.
 | `webhook` | how the webhook provider names what alerts are about: the default body's fields, the body template's placeholders, the URL field's example (`notify::webhook::Wording`; `Wording::NEUTRAL` says `subject` and `duration`) | `subject: "monitor"`, `duration: "downtime"`, `url_example: "https://example.com/hooks/vigilant…"` |
 | `token_scopes` | the product's own API token scopes (see "API token scopes") | `&[]` |
 | `general` | the kit's General page with the product's fields (see "General settings"); `None` for none or the product's own | `None` (its own page) |
-| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials` (`CredentialMode::Plain`, or `External` for a product that signs people in on its own pages: see "External credentials"), `invites`, `sign_in_codes`. `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
+| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials` (`CredentialMode::Plain`, or `External` for a product that signs people in on its own pages: see "External credentials"), `invites` (invitation links: see "Invitation links"), `sign_in_codes`. `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
 
 `DocsSpec` holds the routes, the OpenAPI texts, the error example and the
 `curl` placeholders. It also holds the product's Markdown sections and, for
@@ -476,11 +476,13 @@ No code change is needed. What users and operators notice:
 the product's state (anything `Core` and `Key` can be taken from):
 
 * `public_router()`: `/setup`, `/login`, `/login/2fa`, `/login/passkey`
-  (and `/options`), `/logout`.
+  (and `/options`), `/logout`, and with `KitFeatures::invites`
+  `/invite/{token}`.
 * `router()` must sit behind `require_auth`. It serves:
   * `/settings/general` (admins), only with `KitConfig::general`;
   * `/settings/users` (create, edit, password, 2FA reset, passkey reset,
-    enable, disable, delete);
+    enable, disable, delete; with `KitFeatures::invites` also `/settings/invites`
+    and `/settings/invites/{id}/revoke`);
   * `/settings/tokens` (list, create with the product's scopes, revoke);
   * `/settings/security` (profile and language, password, other sessions,
     2FA set-up/cancel/enable/disable/recovery codes, passkeys:
@@ -764,6 +766,111 @@ tells whether one is held, for the product's own sensitive routes;
   marker such as `"!external"`: it is not a hash, so `verify_password` never
   matches it.
 * `auth::reauth::grant` and `is_fresh`, above.
+
+## Invitation links
+
+A product that wants people to create their own accounts, instead of an
+admin handing out temporary passwords, turns on invitation links:
+
+```rust
+features: &KitFeatures { invites: true, ..KitFeatures::DEFAULT },
+migrations: &MigrationSet {
+    core: &[CORE_TABLES, PASSKEYS, /* ... */ INVITES],
+    ..
+},
+```
+
+They are off by default and change nothing for a product that leaves them
+off: the routes are `404`, the Users page shows nothing, and the table does
+not exist. The `INVITES` migration (`kit/migrations/0007_invites.sql`, the
+table `invites`) is **not** part of `CORE`, so a product that uses
+`CORE` as it is (Keen Kestrel, Wise Wren) keeps its schema. `config::check`
+refuses to start a product with `invites: true` whose `MigrationSet::core`
+lacks `INVITES` (the same rule as `TOKEN_SCOPES` for token scopes).
+
+### What an admin does
+
+The Users page (admins only) gets an "Invite" button. The sheet asks for the
+role, an optional display name and the admin's own password (with
+`CredentialMode::External` the usual "Confirm it’s you" link, so a stolen
+session can't hand out accounts, whatever the role). It then shows the link
+once, in a copy field:
+
+```
+{public URL}/invite/{token}
+```
+
+The base is the site's public URL when one is set, otherwise the address the
+admin is using. The token is 32 random bytes written in base62 (43 characters,
+256 bits); only its SHA-256 is stored (`invites.token_hash`, 32 bytes), so a
+database copy holds no usable link. The page is sent with `Cache-Control:
+no-store`.
+
+A link works once and for seven days (`auth::invites::LIFETIME_DAYS`). The
+page lists the pending invitations (display name, role, expiry, who made
+them), each with Revoke. At most 50 can be pending
+(`auth::invites::MAX_PENDING`). Used, revoked and long-expired rows are
+removed 30 days after they finished.
+
+### What the invitee does
+
+`GET /invite/{token}` shows a form with user name, display name (prefilled
+with the admin's suggestion), password and confirmation, with the usual
+password rules ("Password rules"). `POST` creates the user with the
+invitation's role and marks the invitation used in **one transaction**, then
+signs the new user in (`login_jar`) and goes to `/`. A taken user name or a
+refused password shows the form again and keeps the link alive. The POST is
+throttled per address with the sign-in IP limiter (key `invite:<ip>`): a
+token that doesn't work counts as a failure, a valid token with a form to
+correct does not.
+
+An expired, used, revoked and unknown token (and one of the wrong shape) all
+get the same page: `404`, "This invitation is no longer valid.", with the
+same headers. The token is looked up by its hash, so no comparison of secrets
+takes place, and nothing tells which of the four it was. Of two people racing
+for one link, exactly one gets an account: the claim is a single `UPDATE`
+inside an immediate transaction.
+
+### With external credentials
+
+With `CredentialMode::External` the kit never sees a password, so
+`GET /invite/{token}` checks the token and answers `303` to
+`{setup_path}?invite={token}` (an invalid token gets the generic page), and
+`POST /invite/{token}` is `404`. The product's setup page does the rest with
+`vole_kit::auth::invites`:
+
+* `lookup(core, token) -> ApiResult<Option<Invite>>`: the pending invitation
+  (`role`, `display_name`, `expires_at` ...), `None` for any token that is
+  not pending.
+* `accept(core, token, username, display_name, password_hash) ->
+  ApiResult<Result<i64, AcceptError>>`: creates the user with the
+  invitation's role and uses the invitation up in one transaction, and
+  returns the new user's id. `AcceptError::Invalid` (not pending any more) or
+  `UsernameTaken` (the invitation stays pending). `password_hash` is opaque
+  to the kit, like for `insert_first_admin` (`"!external"`). Check the user
+  name with `auth::username_problem` first. Sign the user in with
+  `guard::login_jar`.
+* `create_user(core, username, display_name, role, password_hash) ->
+  ApiResult<Option<i64>>` and `consume(core, token, user_id) ->
+  ApiResult<Result<(), NotPending>>`: the two halves, for a product that
+  creates the account its own way. `consume` is one statement that fails when
+  the invitation was used, revoked or has expired in the meantime; the
+  product then removes the account it just made (`accept` has no such
+  window). `create_user` is `None` when the user name is taken
+  (case-insensitively).
+* `generate()`, `hash(token)`, `is_well_formed(token)`, `TOKEN_LEN`.
+
+The same functions exist on a bare connection in `db::invites` (`insert`,
+`find_pending`, `consume`, `accept`, `revoke`, `list_pending`), for a product
+that works inside its own transaction.
+
+### Tests
+
+The unit tests are in `db::invites` and `auth::invites`. The features can't
+share a test binary with the default configuration (the kit's configuration
+is installed once per process), so the end-to-end tests are the kit-demo
+binaries `tests/invites.rs` (the kit's own sign-in), `tests/invites_external.rs`
+(`External`) and, for the feature off, `tests/features_off.rs`.
 
 ## Passkeys
 
@@ -1293,6 +1400,10 @@ The kit has its own migration set, `vole_kit::db::migrate::CORE`:
   a product that lists its core set by hand adds it to offer the `hedgerow`
   channel. Leaving it out after it ran makes the database look newer
   (refused), as for any migration.
+* `INVITES`, `kit/migrations/0007_invites.sql`, creates `invites` (see
+  "Invitation links"). Not part of `migrate::CORE`: a product that turns
+  `KitFeatures::invites` on adds it to its core set (`config::check` demands
+  it); the others keep their schema.
 
 Core migrations are recorded in `schema_migrations` under `kit/…` names, so
 they can't clash with a product's file names.

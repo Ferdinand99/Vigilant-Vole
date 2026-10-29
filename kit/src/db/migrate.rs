@@ -73,6 +73,16 @@ pub const PUSH: (&str, &str) = (
     include_str!("../../migrations/0006_push.sql"),
 );
 
+/// `invites`: invitation links
+/// ([`KitFeatures::invites`](crate::config::KitFeatures::invites)). Not part
+/// of [`CORE`]: a product that turns the feature on lists it in its
+/// [`MigrationSet::core`] ([`crate::config::install`] checks); the others
+/// keep their schema as it was.
+pub const INVITES: (&str, &str) = (
+    "kit/0007_invites.sql",
+    include_str!("../../migrations/0007_invites.sql"),
+);
+
 /// The kit's core migrations, `(name, sql)` in order: every product's
 /// default for [`MigrationSet::core`]. The names start with `kit/` so they
 /// never collide with a product's file names.

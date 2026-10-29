@@ -15,6 +15,7 @@ pub use migrate::{
 };
 
 pub mod api_tokens;
+pub mod invites;
 pub mod migrate;
 pub mod passkeys;
 pub mod role;

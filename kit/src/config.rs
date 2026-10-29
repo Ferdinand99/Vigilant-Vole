@@ -114,7 +114,13 @@ pub struct KitFeatures {
     pub api_docs: bool,
     /// How the HTML pages take passwords.
     pub credentials: CredentialMode,
-    /// Invitation links for new users.
+    /// Invitation links for new users: an admin creates a link on the Users
+    /// page (`/invite/{token}`), good for seven days and one use. Needs the
+    /// [`INVITES`](crate::db::migrate::INVITES) migration in
+    /// [`MigrationSet::core`](crate::db::migrate::MigrationSet::core). With
+    /// [`CredentialMode::External`] the link leads to the product's setup
+    /// page and the product accepts the invitation
+    /// ([`auth::invites`](crate::auth::invites)). Off, the routes are 404.
     pub invites: bool,
     /// One-time sign-in codes.
     pub sign_in_codes: bool,
@@ -330,6 +336,12 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
             "passkeys need the core migration {passkeys} in MigrationSet::core"
         ));
     }
+    let invites = crate::db::migrate::INVITES.0;
+    if config.features.invites && !config.migrations.core.iter().any(|(n, _)| *n == invites) {
+        problems.push(format!(
+            "invitations need the core migration {invites} in MigrationSet::core"
+        ));
+    }
     if let CredentialMode::External(ext) = config.features.credentials {
         for (what, path) in [
             ("login_path", ext.login_path),
@@ -434,6 +446,46 @@ mod tests {
         for what in ["login_path", "setup_path", "password_path", "reauth_path"] {
             assert!(problems.contains(what), "{what}: {problems}");
         }
+    }
+
+    #[test]
+    fn invitations_need_their_migration() {
+        static ON: KitFeatures = KitFeatures {
+            invites: true,
+            ..KitFeatures::DEFAULT
+        };
+        static WITHOUT: KitConfig = KitConfig {
+            features: &ON,
+            ..crate::testing::CONFIG
+        };
+        let problems = check(&WITHOUT).unwrap_err();
+        assert!(problems.contains("kit/0007_invites.sql"), "{problems}");
+        static LIST: &[(&str, &str)] = &[
+            crate::db::migrate::CORE_TABLES,
+            crate::db::migrate::PASSKEYS,
+            crate::db::migrate::INVITES,
+        ];
+        static SET: crate::db::migrate::MigrationSet = crate::db::migrate::MigrationSet {
+            core: LIST,
+            adopt_core: None,
+            migrations: Vec::new,
+            fk_off_marker: "",
+            baseline: None,
+            after: |_| Ok(()),
+        };
+        static WITH: KitConfig = KitConfig {
+            features: &ON,
+            migrations: &SET,
+            ..crate::testing::CONFIG
+        };
+        assert_eq!(check(&WITH), Ok(()));
+        // The feature off needs nothing, and CORE does not carry it.
+        assert_eq!(check(&crate::testing::CONFIG), Ok(()));
+        assert!(
+            !crate::db::migrate::CORE
+                .iter()
+                .any(|(n, _)| *n == crate::db::migrate::INVITES.0)
+        );
     }
 
     #[test]

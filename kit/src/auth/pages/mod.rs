@@ -12,6 +12,7 @@
 
 mod external;
 mod general;
+mod invite;
 mod passkeys;
 mod security;
 mod sign_in;
@@ -34,7 +35,10 @@ use crate::state::Core;
 ///
 /// With [`CredentialMode::External`] `/setup` and `/login` only point to the
 /// product's own pages (`POST /login` is 404); the second factor, the
-/// passkey sign-in and sign-out stay.
+/// passkey sign-in and sign-out stay. With
+/// [`KitFeatures::invites`](crate::config::KitFeatures::invites) there is
+/// also `/invite/{token}`, where an invited person creates their account
+/// (in that mode it leads on to the product's setup page).
 pub fn public_router<S>() -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
@@ -55,6 +59,13 @@ where
             .route("/setup", get(external::setup).post(external::setup))
             .route("/login", get(external::login).post(external::gone)),
     };
+    // Invitation links: the invitee's page (in `External` mode it leads on
+    // to the product's setup page).
+    let router = if crate::config::get().features.invites {
+        router.route("/invite/{token}", get(invite::form).post(invite::submit))
+    } else {
+        router
+    };
     router
         .route(
             "/login/2fa",
@@ -65,7 +76,8 @@ where
         .route("/logout", post(sign_in::logout))
 }
 
-/// Users, API tokens (with [`KitFeatures::api_tokens`](crate::config::KitFeatures::api_tokens)),
+/// Users (and, with [`KitFeatures::invites`](crate::config::KitFeatures::invites),
+/// their invitations), API tokens (with [`KitFeatures::api_tokens`](crate::config::KitFeatures::api_tokens)),
 /// Security, the API reference (with
 /// [`KitFeatures::api_docs`](crate::config::KitFeatures::api_docs)) and, with
 /// [`KitConfig::general`](crate::config::KitConfig::general), General
@@ -141,6 +153,13 @@ where
             "/settings/security/passkeys/{id}/delete",
             post(passkeys::delete),
         );
+    let router = if cfg.features.invites {
+        router
+            .route("/settings/invites", post(invite::create))
+            .route("/settings/invites/{id}/revoke", post(invite::revoke))
+    } else {
+        router
+    };
     let router = if cfg.features.api_tokens {
         router
             .route("/settings/tokens", get(tokens::list).post(tokens::create))
