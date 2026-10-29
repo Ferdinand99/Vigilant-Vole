@@ -8,6 +8,7 @@
 //! settings: whom it reaches is the app installs that registered.
 
 use super::schema::{Category, ProviderSchema, Transport};
+use crate::notify::Outcome;
 use crate::notify::alert::Alert;
 
 pub const SCHEMA: ProviderSchema = ProviderSchema {
@@ -30,7 +31,7 @@ pub const SCHEMA: ProviderSchema = ProviderSchema {
 /// The kit can't refuse the second channel when it is saved, since a channel
 /// is only a row in the product's table and the provider's check sees one
 /// config at a time.
-pub async fn send(event: &Alert) -> Result<(), String> {
+pub async fn send(event: &Alert) -> Result<Outcome, String> {
     match crate::push::relay::current() {
         Some(ctx) => crate::push::relay::deliver_once(&ctx, event).await,
         None => Err(crate::i18n::t("notif.hedgerow.err_not_ready").to_string()),

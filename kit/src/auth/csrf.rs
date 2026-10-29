@@ -145,10 +145,15 @@ fn source_matches(
     {
         allowed.push(host);
     }
-    if let Some((base_scheme, base)) = base_url.and_then(origin_authority)
-        && base_scheme == scheme
-    {
-        allowed.push(base);
+    if let Some((base_scheme, base)) = base_url.and_then(origin_authority) {
+        if base_scheme == scheme {
+            allowed.push(base);
+        } else if base == source {
+            // The public site, named with the other scheme (`http://` for an
+            // `https://` public URL): the same host, another origin, and the
+            // `Host` header can't tell the two apart.
+            return false;
+        }
     }
     allowed.contains(&source)
 }
@@ -238,6 +243,40 @@ mod tests {
         assert!(post(
             "/login",
             &h(&[("host", "vole.local"), ("origin", "http://vole.local:80")])
+        ));
+    }
+
+    #[test]
+    fn the_public_site_under_the_other_scheme_is_cross_origin() {
+        let headers = h(&[("host", "vole.example"), ("origin", "http://vole.example")]);
+        assert!(
+            post("/login", &headers),
+            "no public URL, nothing to compare"
+        );
+        assert!(!is_allowed(
+            &Method::POST,
+            "/login",
+            &headers,
+            false,
+            Some("https://vole.example")
+        ));
+        assert!(is_allowed(
+            &Method::POST,
+            "/login",
+            &h(&[("host", "vole.example"), ("origin", "https://vole.example")]),
+            false,
+            Some("https://vole.example")
+        ));
+        // Another name for the same server (a LAN address) is unaffected.
+        assert!(is_allowed(
+            &Method::POST,
+            "/login",
+            &h(&[
+                ("host", "10.0.0.5:3001"),
+                ("origin", "http://10.0.0.5:3001")
+            ]),
+            false,
+            Some("https://vole.example")
         ));
     }
 

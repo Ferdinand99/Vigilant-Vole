@@ -64,7 +64,21 @@ async fn connect(
     } else {
         None
     };
-    tokio_tungstenite::connect_async_tls_with_config(request, Some(ws_config()), true, connector)
+    // Connect here, not in the library: the address is resolved once, through
+    // the same refusal of link-local and metadata addresses as every other
+    // check, and the handshake runs on that connection.
+    let host = url
+        .host_str()
+        .ok_or(WsError::Url(tungstenite::error::UrlError::NoHostName))?;
+    let port = url.port_or_known_default().unwrap_or(80);
+    let addrs = util::resolve_all(host.trim_matches(['[', ']']), port)
+        .await
+        .map_err(|e| WsError::Io(std::io::Error::other(e)))?;
+    let (tcp, _) = util::connect_any(&addrs)
+        .await
+        .map_err(|(_, e)| WsError::Io(e))?;
+    let _ = tcp.set_nodelay(true);
+    tokio_tungstenite::client_async_tls_with_config(request, tcp, Some(ws_config()), connector)
         .await
 }
 
@@ -246,6 +260,18 @@ mod tests {
         let out = check(&monitor(MonitorType::Websocket, &format!("ws://{addr}/"))).await;
         assert_eq!(out.status, HeartbeatStatus::Down);
         assert!(out.message.unwrap().starts_with("Connection failed"));
+    }
+
+    #[tokio::test]
+    async fn a_metadata_address_is_refused() {
+        let out = check(&monitor(
+            MonitorType::Websocket,
+            "ws://169.254.169.254/latest/meta-data",
+        ))
+        .await;
+        assert_eq!(out.status, HeartbeatStatus::Down);
+        let msg = out.message.unwrap();
+        assert!(msg.contains("Refused: the address is not allowed"), "{msg}");
     }
 
     #[tokio::test]

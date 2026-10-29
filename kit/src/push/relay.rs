@@ -39,6 +39,7 @@ use sha2::{Digest, Sha256};
 use super::{devices, events};
 use crate::crypto::Sealer;
 use crate::db::{self, settings};
+use crate::notify::Outcome;
 use crate::notify::alert::{Alert, AlertKind};
 use crate::notify::http as out;
 use crate::state::Core;
@@ -138,7 +139,7 @@ pub struct Context {
 
 /// One alert's delivery, shared by every caller with the same alert.
 struct Delivery {
-    result: Shared<BoxFuture<'static, Result<(), String>>>,
+    result: Shared<BoxFuture<'static, Result<Outcome, String>>>,
     /// When it started.
     started: Instant,
     /// When it succeeded; `None` while it runs.
@@ -162,7 +163,7 @@ impl Context {
         let started = Instant::now()
             .checked_sub(age)
             .expect("a long-running test host");
-        let result = futures_util::future::pending::<Result<(), String>>()
+        let result = futures_util::future::pending::<Result<Outcome, String>>()
             .boxed()
             .shared();
         lock(&self.deliveries).insert(
@@ -802,7 +803,7 @@ pub const UNPROVEN_BATCH: usize = 5;
 /// several `hedgerow` channels fire it: the second caller waits for the
 /// first and gets the same result. A success is remembered for two minutes,
 /// a failure is not (a product's retry goes through).
-pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
+pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<Outcome, String> {
     let key = format!(
         "{:?}|{}|{:?}|{}|{}",
         event.kind,
@@ -821,7 +822,9 @@ pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<(), Strin
             Some(d) => d.result.clone(),
             None => {
                 let (me, alert) = (ctx.clone(), event.clone());
-                let result = async move { deliver(&me, &alert).await }.boxed().shared();
+                let result = async move { deliver_outcome(&me, &alert).await }
+                    .boxed()
+                    .shared();
                 deliveries.insert(
                     key.clone(),
                     Delivery {
@@ -837,7 +840,7 @@ pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<(), Strin
     let result = shared.await;
     let mut deliveries = lock(&ctx.deliveries);
     match (&result, deliveries.get_mut(&key)) {
-        (Ok(()), Some(d)) => {
+        (Ok(_), Some(d)) => {
             d.done.get_or_insert_with(Instant::now);
         }
         (Err(_), _) => {
@@ -859,6 +862,13 @@ pub async fn deliver_once(ctx: &Arc<Context>, event: &Alert) -> Result<(), Strin
 /// requests, which have already been sent. With no proven handle at all, the
 /// unproven ones count like any other.
 pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
+    deliver_outcome(ctx, event).await.map(|_| ())
+}
+
+/// [`deliver`] that says whether anything was sent: with no device
+/// registered it answers [`Outcome::NothingToSend`] (an alert) instead of
+/// pretending a push went out.
+pub async fn deliver_outcome(ctx: &Arc<Context>, event: &Alert) -> Result<Outcome, String> {
     if ctx.is_suspended() {
         return Err(Failure::Suspended.message());
     }
@@ -877,7 +887,7 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
         return if event.kind == AlertKind::Test {
             Err(crate::i18n::t("notif.hedgerow.err_no_devices").to_string())
         } else {
-            Ok(())
+            Ok(Outcome::NothingToSend)
         };
     }
     let proven: Vec<String> = list.iter().filter(|d| d.1).map(|d| d.0.clone()).collect();
@@ -1011,7 +1021,7 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
     }
 
     if !tally.accepted.is_empty() {
-        return Ok(());
+        return Ok(Outcome::Sent);
     }
     if let Some(failure) = tally.failure {
         return Err(failure.message());
@@ -1025,5 +1035,5 @@ pub async fn deliver(ctx: &Arc<Context>, event: &Alert) -> Result<(), String> {
     }
     // Everything was gone, already sent, not supported or unproven and
     // failing: nothing a retry would change.
-    Ok(())
+    Ok(Outcome::Sent)
 }

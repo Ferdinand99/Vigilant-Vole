@@ -54,6 +54,12 @@ use tokio::time::Instant;
 /// How often an idle stream sends a comment, so proxies keep it open.
 pub const KEEP_ALIVE: Duration = Duration::from_secs(15);
 
+/// How long a stream lives unless [`Changes::lifetime`] says otherwise. A
+/// stream is authorised once, when it opens; ending it after an hour makes
+/// the browser's `EventSource` reconnect, which authorises it again (a
+/// signed-out or demoted user loses the stream).
+pub const DEFAULT_LIFETIME: Duration = Duration::from_secs(60 * 60);
+
 /// The quiet period [`Changes`] waits by default.
 pub const DEFAULT_QUIET: Duration = Duration::from_millis(500);
 
@@ -86,7 +92,7 @@ impl<T: Clone, F: Fn(&T) -> bool> Changes<T, F> {
             rx,
             wanted,
             quiet: DEFAULT_QUIET,
-            deadline: None,
+            deadline: Some(Instant::now() + DEFAULT_LIFETIME),
         }
     }
 
@@ -102,8 +108,9 @@ impl<T: Clone, F: Fn(&T) -> bool> Changes<T, F> {
         self.quiet = quiet;
     }
 
-    /// Ends the stream after `lifetime`: the browser's `EventSource`
-    /// reconnects, which runs the route's authentication again.
+    /// Ends the stream after `lifetime` ([`DEFAULT_LIFETIME`] unless set):
+    /// the browser's `EventSource` reconnects, which runs the route's
+    /// authentication again.
     pub fn lifetime(mut self, lifetime: Duration) -> Self {
         self.deadline = Some(Instant::now() + lifetime);
         self
@@ -320,6 +327,27 @@ mod tests {
         assert!(woke.is_err(), "other projects don't wake it");
         tx.send(7).unwrap();
         assert!(changes.next().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_stream_has_a_lifetime_without_asking_for_one() {
+        let (_tx, rx) = broadcast::channel::<()>(4);
+        let changes = Changes::all(rx);
+        let deadline = changes.deadline.expect("a default lifetime");
+        let left = deadline.saturating_duration_since(Instant::now());
+        assert!(
+            left > DEFAULT_LIFETIME - Duration::from_secs(60),
+            "{left:?}"
+        );
+        assert!(left <= DEFAULT_LIFETIME);
+        let (_tx, rx) = broadcast::channel::<()>(4);
+        let short =
+            Changes::new(rx, any_change::<()> as fn(&()) -> bool).lifetime(Duration::from_secs(5));
+        let left = short
+            .deadline
+            .unwrap()
+            .saturating_duration_since(Instant::now());
+        assert!(left <= Duration::from_secs(5), "{left:?}");
     }
 
     #[tokio::test]

@@ -23,6 +23,7 @@ use super::{api, devices, events};
 use crate::auth::{CurrentUser, Role, TokenScope, guard, tokens};
 use crate::crypto::{OpenError, Sealer};
 use crate::db::{self, api_tokens, settings, users};
+use crate::notify::Outcome;
 use crate::notify::alert::{AlertKind, NotificationChannel};
 use crate::notify::tests::event;
 use crate::state::Core;
@@ -882,6 +883,33 @@ async fn no_devices_is_fine_for_an_alert_and_a_hint_for_a_test() {
     let err = w.deliver(AlertKind::Test).await.unwrap_err();
     assert!(err.contains("Hedgerow"), "{err}");
     assert_eq!(w.relay.challenges(), 0, "no devices, no registration");
+}
+
+#[tokio::test]
+async fn an_alert_with_no_devices_reports_that_nothing_was_sent() {
+    let w = World::new().await;
+    let alert = event(AlertKind::Problem);
+    assert_eq!(
+        relay::deliver_outcome(&w.ctx, &alert).await,
+        Ok(Outcome::NothingToSend)
+    );
+    assert_eq!(
+        relay::deliver_once(&w.ctx, &alert).await,
+        Ok(Outcome::NothingToSend)
+    );
+    assert!(w.relay.pushes().is_empty(), "nothing went to the relay");
+}
+
+#[tokio::test]
+async fn an_alert_with_a_device_reports_that_it_was_sent() {
+    let w = World::new().await;
+    w.add_devices(1).await;
+    let alert = event(AlertKind::Problem);
+    assert_eq!(
+        relay::deliver_outcome(&w.ctx, &alert).await,
+        Ok(Outcome::Sent)
+    );
+    assert_eq!(w.relay.pushes().len(), 1);
 }
 
 #[tokio::test]

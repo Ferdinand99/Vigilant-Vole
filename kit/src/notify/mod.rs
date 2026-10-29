@@ -137,6 +137,21 @@ pub fn redacted_config(channel: &NotificationChannel) -> Value {
     schema::redact(provider(&channel.kind), &config)
 }
 
+/// What a delivery that did not fail amounted to.
+///
+/// Only the Hedgerow app channel can end in [`Outcome::NothingToSend`]: it
+/// reaches the devices registered with the server, and with none registered
+/// there is nothing to retry and nothing was sent. Every other provider hands
+/// the message to its service, so a success is [`Outcome::Sent`]. A caller
+/// that logs or counts deliveries should tell the two apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The message was handed to the provider.
+    Sent,
+    /// The channel had nobody to send to (no devices registered).
+    NothingToSend,
+}
+
 /// Deliver one event to one channel.
 pub async fn send(
     http: &reqwest::Client,
@@ -173,7 +188,9 @@ pub async fn send_config_in(
     event: &Alert,
     lang: crate::i18n::Lang,
 ) -> Result<(), String> {
-    crate::i18n::scope(lang, send_config_in_scope(http, kind, config, event)).await
+    crate::i18n::scope(lang, send_config_in_scope(http, kind, config, event))
+        .await
+        .map(|_| ())
 }
 
 /// Builds the alert with `alert` in `lang` and sends it to `kind` with
@@ -198,6 +215,20 @@ pub async fn send_in(
     lang: crate::i18n::Lang,
     alert: impl FnOnce() -> Alert,
 ) -> Result<(), String> {
+    send_in_outcome(http, kind, config, lang, alert)
+        .await
+        .map(|_| ())
+}
+
+/// [`send_in`] that also says whether anything was sent ([`Outcome`]), for a
+/// caller that logs or counts deliveries.
+pub async fn send_in_outcome(
+    http: &reqwest::Client,
+    kind: &str,
+    config: &Value,
+    lang: crate::i18n::Lang,
+    alert: impl FnOnce() -> Alert,
+) -> Result<Outcome, String> {
     crate::i18n::scope(lang, async {
         let alert = alert();
         send_config_in_scope(http, kind, config, &alert).await
@@ -210,7 +241,7 @@ async fn send_config_in_scope(
     kind: &str,
     config: &Value,
     event: &Alert,
-) -> Result<(), String> {
+) -> Result<Outcome, String> {
     let schema = provider(kind).ok_or_else(|| format!("unsupported channel kind '{kind}'"))?;
     // A sealed secret here wasn't opened, or couldn't be (another instance
     // key): never send the sealed text to the provider.
@@ -227,9 +258,11 @@ async fn send_config_in_scope(
     let result = match schema.transport {
         Transport::Http(build) => {
             let requests = build(config, event).map_err(|e| http::scrub(&e, &secrets))?;
-            http::execute_all(http, &requests, &secrets).await
+            http::execute_all(http, &requests, &secrets)
+                .await
+                .map(|()| Outcome::Sent)
         }
-        Transport::Smtp => email::send(config, event).await,
+        Transport::Smtp => email::send(config, event).await.map(|()| Outcome::Sent),
         Transport::Relay => hedgerow::send(event).await,
     };
     result.map_err(|e| http::scrub(&e, &secrets))

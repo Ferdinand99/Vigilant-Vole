@@ -82,6 +82,14 @@ async fn monitor_events(db: &TestDb, id: i64) -> Vec<events::MonitorEvent> {
         .unwrap()
 }
 
+#[test]
+fn a_channel_with_nobody_to_send_to_counts_neither_as_sent_nor_failed() {
+    use crate::notification::Outcome;
+    assert!(delivery_counts(&Ok(Outcome::Sent)));
+    assert!(delivery_counts(&Err("failed".to_string())));
+    assert!(!delivery_counts(&Ok(Outcome::NothingToSend)));
+}
+
 #[tokio::test]
 async fn push_results_drive_state_and_outage_events() {
     let db = test_db().await;

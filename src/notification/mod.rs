@@ -93,10 +93,23 @@ pub async fn send(
     channel: &NotificationChannel,
     event: &NotificationEvent,
 ) -> Result<(), String> {
+    send_outcome(http, key, channel, event).await.map(|_| ())
+}
+
+/// [`send`] that also says whether anything was sent: a Hedgerow app channel
+/// with no device registered succeeds without sending anything
+/// ([`Outcome::NothingToSend`]), and the monitor loop must not log or count
+/// that as a delivery.
+pub async fn send_outcome(
+    http: &reqwest::Client,
+    key: &Key,
+    channel: &NotificationChannel,
+    event: &NotificationEvent,
+) -> Result<Outcome, String> {
     let channel = sealed::open_channel(key, channel)?;
     let config: Value = serde_json::from_str(&channel.config)
         .map_err(|e| format!("invalid channel config: {e}"))?;
-    send_config(http, &channel.kind, &config, event).await
+    send_config_outcome(http, &channel.kind, &config, event).await
 }
 
 /// A stored channel's config with its secrets opened (see
@@ -119,6 +132,17 @@ pub async fn send_config(
     config: &Value,
     event: &NotificationEvent,
 ) -> Result<(), String> {
+    send_config_outcome(http, kind, config, event)
+        .await
+        .map(|_| ())
+}
+
+async fn send_config_outcome(
+    http: &reqwest::Client,
+    kind: &str,
+    config: &Value,
+    event: &NotificationEvent,
+) -> Result<Outcome, String> {
     // Messages use the request's language ("Send test") or, from background
     // jobs, the site default (Settings → General → Language). The alert's
     // texts are written in that language, so it is chosen first.
@@ -129,7 +153,7 @@ pub async fn send_config(
         target: message::public_target(&event.target),
         ..event.clone()
     };
-    kit::send_in(http, kind, config, lang, || message::alert(&event)).await
+    kit::send_in_outcome(http, kind, config, lang, || message::alert(&event)).await
 }
 
 /// Deliver one event to every channel concurrently; failures are logged.
