@@ -317,6 +317,10 @@ pub trait Tr {
     fn kit_ui(&self) -> &'static crate::page::Ui {
         crate::config::get().ui
     }
+    /// The product's optional parts (API tokens, API reference ...).
+    fn kit_features(&self) -> &'static crate::config::KitFeatures {
+        crate::config::get().features
+    }
     /// The product's name ("Vigilant Vole").
     fn product_name(&self) -> &'static str {
         crate::config::get().product

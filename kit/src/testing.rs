@@ -223,4 +223,5 @@ pub static CONFIG: KitConfig = KitConfig {
     },
     token_scopes: &[],
     general: None,
+    features: &crate::config::KitFeatures::DEFAULT,
 };
