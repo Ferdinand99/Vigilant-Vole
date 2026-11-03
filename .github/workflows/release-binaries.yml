@@ -76,6 +76,7 @@ jobs:
           sparse-checkout: |
             deploy/package-release.sh
             LICENSE
+            THIRD-PARTY-NOTICES
           sparse-checkout-cone-mode: false
 
       - uses: docker/setup-buildx-action@v4
@@ -117,13 +118,25 @@ jobs:
           fi
 
       # Archive timestamps = the tagged commit's time, so a rebuild of the same
-      # binary gives the same archive.
+      # binary gives the same archive. THIRD-PARTY-NOTICES is the file at the
+      # tagged commit; a tag from before the file existed gets the current one.
       - name: Package
         run: |
+          if [[ -s src/THIRD-PARTY-NOTICES ]]; then
+            export NOTICES_FILE="$PWD/src/THIRD-PARTY-NOTICES"
+          else
+            export NOTICES_FILE="$PWD/tools/THIRD-PARTY-NOTICES"
+          fi
           SOURCE_DATE_EPOCH="$(git -C src log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
           bash tools/deploy/package-release.sh ./vigilant-vole "${{ matrix.target }}" "$TAG" dist
           ls -l dist
+          # The archive must really hold the licence texts.
+          for archive in dist/*.tar.gz; do
+            tar -tzf "$archive" | grep -qx "vigilant-vole-${{ matrix.target }}/THIRD-PARTY-NOTICES"
+            tar -tzf "$archive" | grep -qx "vigilant-vole-${{ matrix.target }}/LICENSE"
+            tar -xzOf "$archive" "vigilant-vole-${{ matrix.target }}/THIRD-PARTY-NOTICES" | cmp - "$NOTICES_FILE"
+          done
 
       - uses: actions/upload-artifact@v7
         with:

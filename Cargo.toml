@@ -46,6 +46,7 @@ webpki-root-certs = "1"
 name = "vigilant-vole"
 version = "0.16.0"
 edition = "2024"
+publish = false
 
 [dependencies]
 # The shared product kit (auth, i18n, db, HTTP, docs, MCP, notifications).
