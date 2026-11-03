@@ -599,6 +599,10 @@ Ideas, not promises:
 - [ ] More interface languages (contributions welcome — see `locales/`)
 - [ ] NTLM HTTP authentication
 
+## Support
+
+Hedgerow is built in spare time and is free to use. If you find it useful, you can support it through [GitHub Sponsors](https://github.com/sponsors/Ferdinand99) or [Ko-fi](https://ko-fi.com/ferdinand99). Thank you.
+
 ## 📄 License
 
 [GNU AGPL-3.0-only](LICENSE) © [Ferdinand99](https://github.com/Ferdinand99)
