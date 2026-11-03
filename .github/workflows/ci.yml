@@ -116,7 +116,7 @@ jobs:
       - name: The release archive carries the licence texts
         run: |
           printf '#!/bin/sh\necho stand-in\n' > "$RUNNER_TEMP/vigilant-vole"
-          deploy/package-release.sh "$RUNNER_TEMP/vigilant-vole" x86_64-unknown-linux-musl v0.0.0 "$RUNNER_TEMP/dist"
+          bash deploy/package-release.sh "$RUNNER_TEMP/vigilant-vole" x86_64-unknown-linux-musl v0.0.0 "$RUNNER_TEMP/dist"
           mkdir "$RUNNER_TEMP/unpacked"
           tar -xzf "$RUNNER_TEMP/dist/vigilant-vole-x86_64-unknown-linux-musl.tar.gz" -C "$RUNNER_TEMP/unpacked"
           cmp THIRD-PARTY-NOTICES "$RUNNER_TEMP/unpacked/vigilant-vole-x86_64-unknown-linux-musl/THIRD-PARTY-NOTICES"

@@ -21,7 +21,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # One report for the server binary (the manifest at the root also covers vole-kit, which it uses).
-cargo about generate --config about.toml --locked --fail --format json   --manifest-path Cargo.toml --output-file "$tmp/app.json"
+cargo about generate --config about.toml --locked --fail --format json \
+  --manifest-path Cargo.toml --output-file "$tmp/app.json"
 
 if [ "${1:-}" = "--check" ]; then
   node scripts/third-party-notices.mjs --rust "$tmp/app.json" --check
