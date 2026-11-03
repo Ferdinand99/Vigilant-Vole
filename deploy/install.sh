@@ -34,6 +34,7 @@
 #
 # Layout:
 #   /opt/vigilant-vole/vigilant-vole        binary (+ /usr/local/bin/vigilant-vole)
+#   /opt/vigilant-vole/LICENSE, THIRD-PARTY-NOTICES   licence texts from the release archive
 #   /var/lib/vigilant-vole                  data: database, session key, backups
 #   /etc/vigilant-vole/vigilant-vole.env    server settings (kept on update)
 #   /etc/vigilant-vole/agent.env            agent settings (mode 0600)
@@ -451,6 +452,14 @@ place_binary() {
   install -m 0755 -o root -g root "$1" "$APP_DIR/.vigilant-vole.new"
   mv -f "$APP_DIR/.vigilant-vole.new" "$BIN"
   ln -sfn "$BIN" "$BIN_LINK"
+  # The licence texts of the archive stay next to the binary (the third-party notices are part of
+  # what the licences of the libraries inside it ask for).
+  local file
+  for file in LICENSE THIRD-PARTY-NOTICES; do
+    if [[ -f "$(dirname "$1")/$file" ]]; then
+      install -m 0644 -o root -g root "$(dirname "$1")/$file" "$APP_DIR/$file"
+    fi
+  done
 }
 
 ensure_user() {

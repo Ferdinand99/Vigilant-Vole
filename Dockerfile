@@ -53,7 +53,7 @@ LABEL org.opencontainers.image.title="Vigilant Vole" \
       org.opencontainers.image.url="https://github.com/Ferdinand99/Vigilant-Vole" \
       org.opencontainers.image.source="https://github.com/Ferdinand99/Vigilant-Vole" \
       org.opencontainers.image.documentation="https://github.com/Ferdinand99/Vigilant-Vole#readme" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"
@@ -69,6 +69,9 @@ RUN apk add --no-cache ca-certificates tzdata su-exec \
     && chown vole:vole /data
 
 COPY --from=builder /usr/local/bin/vigilant-vole /usr/local/bin/vigilant-vole
+# The licence texts travel with the binary: the AGPL text and the licences of the Rust crates and
+# the front-end files inside it (made by scripts/notices.sh, checked in CI).
+COPY --chmod=644 LICENSE THIRD-PARTY-NOTICES /usr/share/doc/vigilant-vole/
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 ENV DATA_DIR=/data \

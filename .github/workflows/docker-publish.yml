@@ -5,7 +5,7 @@
 #                    -> ghcr.io/<owner>/vigilant-vole:X.Y.Z, :X.Y, :X, :latest
 #   push tag vX.Y.Z  -> same as a release (for tags pushed by hand)
 #   push to main     -> ghcr.io/<owner>/vigilant-vole:edge
-#   pull request     -> build only (amd64), nothing is pushed
+#   pull request     -> build only (amd64), nothing is pushed; the image is checked for its licence texts
 #   manual run       -> same as the ref it runs on
 name: Docker image
 
@@ -98,6 +98,8 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          # A pull request build is loaded into the local Docker so the next step can look inside it.
+          tags: ${{ github.event_name == 'pull_request' && 'vigilant-vole:notices-check' || '' }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
@@ -105,7 +107,19 @@ jobs:
             CREATED=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
           cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
-          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) }}
+          outputs: ${{ github.event_name == 'pull_request' && 'type=docker' || format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) }}
+
+      # The licence texts must be inside the image a user gets, and be the files of this commit.
+      - name: The image carries the licence texts
+        if: steps.gate.outputs.skip != 'true' && github.event_name == 'pull_request'
+        run: |
+          id="$(docker create vigilant-vole:notices-check)"
+          docker cp "$id:/usr/share/doc/vigilant-vole/THIRD-PARTY-NOTICES" "$RUNNER_TEMP/THIRD-PARTY-NOTICES"
+          docker cp "$id:/usr/share/doc/vigilant-vole/LICENSE" "$RUNNER_TEMP/LICENSE"
+          docker rm "$id" > /dev/null
+          cmp THIRD-PARTY-NOTICES "$RUNNER_TEMP/THIRD-PARTY-NOTICES"
+          cmp LICENSE "$RUNNER_TEMP/LICENSE"
+          echo "ok: the image holds /usr/share/doc/vigilant-vole/THIRD-PARTY-NOTICES and LICENSE"
 
       - name: Export digest
         if: steps.gate.outputs.skip != 'true' && github.event_name != 'pull_request'

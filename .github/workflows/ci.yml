@@ -69,3 +69,56 @@ jobs:
 
       - name: Backup and restore drills
         run: cargo test --test backup_restore
+
+  # THIRD-PARTY-NOTICES lists the licence texts of the Rust crates and front-end files in the
+  # binary. It is made from the dependencies (scripts/notices.sh), so a changed dependency makes it
+  # stale: this job fails then. It also fails when a dependency has a licence that is not on the
+  # allowlist in about.toml, or no licence text at all. The release archive is packed here with a
+  # stand-in binary to show that it carries the file; the Docker image is checked in the Docker
+  # image workflow.
+  notices:
+    name: Third-party notices (up to date, licences allowed)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@1.99
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Pinned version and pinned checksum. Keep the version equal to want_version in
+      # scripts/notices.sh.
+      - name: Install cargo-about
+        env:
+          CARGO_ABOUT_VERSION: "0.9.3"
+          CARGO_ABOUT_SHA256: "3ad1e94ea1e63d69d1961f4fb15ccbbe9575d906111f96d2cb4dce6df48f71b4"
+        run: |
+          name="cargo-about-${CARGO_ABOUT_VERSION}-x86_64-unknown-linux-musl"
+          curl -fsSL -o "$RUNNER_TEMP/cargo-about.tar.gz" \
+            "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/${name}.tar.gz"
+          echo "${CARGO_ABOUT_SHA256}  $RUNNER_TEMP/cargo-about.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/cargo-about.tar.gz" -C "$HOME/.local/bin" --strip-components=1 "${name}/cargo-about"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Tests of the notices scripts
+        run: node --test "scripts/*.test.mjs"
+
+      # --fail is what makes an unreadable licence stop the check; this test proves it.
+      - name: cargo-about stops on a crate with an unreadable licence
+        run: scripts/test-notices-fail.sh
+
+      - name: THIRD-PARTY-NOTICES is up to date
+        run: scripts/notices.sh --check
+
+      - name: The release archive carries the licence texts
+        run: |
+          printf '#!/bin/sh\necho stand-in\n' > "$RUNNER_TEMP/vigilant-vole"
+          bash deploy/package-release.sh "$RUNNER_TEMP/vigilant-vole" x86_64-unknown-linux-musl v0.0.0 "$RUNNER_TEMP/dist"
+          mkdir "$RUNNER_TEMP/unpacked"
+          tar -xzf "$RUNNER_TEMP/dist/vigilant-vole-x86_64-unknown-linux-musl.tar.gz" -C "$RUNNER_TEMP/unpacked"
+          cmp THIRD-PARTY-NOTICES "$RUNNER_TEMP/unpacked/vigilant-vole-x86_64-unknown-linux-musl/THIRD-PARTY-NOTICES"
+          cmp LICENSE "$RUNNER_TEMP/unpacked/vigilant-vole-x86_64-unknown-linux-musl/LICENSE"
+          echo "ok: the archive holds THIRD-PARTY-NOTICES and LICENSE"

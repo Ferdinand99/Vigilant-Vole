@@ -7,7 +7,10 @@
 #     -> dist/vigilant-vole-x86_64-unknown-linux-musl.tar.gz
 #
 # The archive holds one directory, vigilant-vole-<target>/, with the binary,
-# LICENSE and a short README. Asset names carry no version, so
+# LICENSE, THIRD-PARTY-NOTICES (the licences of the Rust crates and front-end files inside
+# the binary) and a short README. THIRD-PARTY-NOTICES comes from the repository, or from the
+# file named in NOTICES_FILE (the release workflow passes the one at the tagged commit).
+# Asset names carry no version, so
 # releases/latest/download/<asset> always points at the newest build.
 # Used by .github/workflows/release-binaries.yml; run it locally the same way.
 set -euo pipefail
@@ -24,7 +27,10 @@ out_dir="$4"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 name="vigilant-vole-${target}"
 
+notices="${NOTICES_FILE:-$repo_root/THIRD-PARTY-NOTICES}"
+
 [[ -f "$binary" ]] || { echo "binary not found: $binary" >&2; exit 66; }
+[[ -s "$notices" ]] || { echo "THIRD-PARTY-NOTICES not found: $notices" >&2; exit 66; }
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -32,6 +38,7 @@ mkdir -p "$work/$name" "$out_dir"
 
 install -m 0755 "$binary" "$work/$name/vigilant-vole"
 install -m 0644 "$repo_root/LICENSE" "$work/$name/LICENSE"
+install -m 0644 "$notices" "$work/$name/THIRD-PARTY-NOTICES"
 cat >"$work/$name/README.md" <<EOF
 # Vigilant Vole ${version}
 
@@ -60,7 +67,8 @@ Ping monitors need unprivileged ICMP (net.ipv4.ping_group_range) or CAP_NET_RAW.
 
 Documentation: https://github.com/Ferdinand99/Vigilant-Vole#readme
 Linux guide:   https://github.com/Ferdinand99/Vigilant-Vole/blob/main/docs/install-linux.md
-License: MIT (see LICENSE)
+License: AGPL-3.0-only (see LICENSE). The licences of the third-party software inside
+the binary are in THIRD-PARTY-NOTICES.
 EOF
 
 # Stable metadata so the same binary gives the same archive.

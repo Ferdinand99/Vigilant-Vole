@@ -602,3 +602,5 @@ Ideas, not promises:
 ## 📄 License
 
 [GNU AGPL-3.0-only](LICENSE) © [Ferdinand99](https://github.com/Ferdinand99)
+
+The licence texts of the Rust crates and web files inside the binary are in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES). The Docker image carries the file as `/usr/share/doc/vigilant-vole/THIRD-PARTY-NOTICES` (next to `LICENSE`), and every release archive holds it next to the binary. The file is made by `scripts/notices.sh` (cargo-about, pinned) and CI fails when it is out of date or when a dependency has a licence that is not on the allowlist in `about.toml`. After changing a dependency, run `scripts/notices.sh` and commit the result.

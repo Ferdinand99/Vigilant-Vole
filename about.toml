@@ -1,0 +1,72 @@
+# cargo-about configuration, used by scripts/notices.sh to make THIRD-PARTY-NOTICES.
+#
+# `accepted` is the allowlist of licences for everything that ships. A dependency with any other
+# licence fails the notices check in CI, for Rust crates (cargo-about) and for npm packages
+# (scripts/third-party-notices.mjs reads this same list). Keep it equal to [licenses].allow in
+# deny.toml (a unit test checks that). Strong copyleft is not on it, and nothing with an
+# advertising clause that is incompatible with the AGPL (the OpenSSL licence was taken off).
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "Unlicense",
+    "0BSD",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+]
+
+# The systems the binaries and the image are built for (static musl builds for the release
+# archives and the Docker image), so that a crate used on only one of them is listed.
+targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+]
+
+# Build scripts and test code are not in the binaries.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# The project's own crates (AGPL-3.0-only, publish = false).
+private = { ignore = true }
+
+# ---------------------------------------------------------------------------------------------
+# Clarifications. Crate-specific entries must come last in this file.
+#
+# cargo-about finds no licence text for the crates below, or does not recognise the one they have,
+# and then writes the bare SPDX template ("Copyright (c) <year> <copyright holders>"). That is not
+# a copyright notice, so each of these crates gets the real file instead: a file inside the
+# published crate (`files`) or the file in its upstream repository at the commit the crate was
+# published from (`git`, the commit is in the crate's .cargo_vcs_info.json). The checksum is the
+# SHA-256 of that file; when a new version of a crate changes the file, the checksum no longer
+# matches, the clarification stops working, and the notices check fails until someone looks.
+#
+# Crates that have no copyright notice anywhere are in notices-extra.json.
+# scripts/third-party-notices.mjs fails on any text that still has a placeholder.
+
+# aws-lc-rs 1.18.2: the LICENSE file of the crate names the owner and holds both licence texts.
+[aws-lc-rs.clarify]
+license = "ISC AND (Apache-2.0 OR ISC)"
+
+[[aws-lc-rs.clarify.files]]
+path = 'LICENSE'
+license = 'ISC AND (Apache-2.0 OR ISC)'
+checksum = 'b50b376e7d24a0598488b730c3034ffcd0b58dd36c0913a24b9903a3cfd04bf7'
+
+# aws-lc-sys 0.46.0: the LICENSE file of the crate lists the code from other projects that the C
+# library contains (Google, the OpenSSL project, mlkem-native, fiat-crypto, Jitter Entropy, ...)
+# with their copyright lines, and holds the full texts of the licences.
+[aws-lc-sys.clarify]
+license = "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)"
+
+[[aws-lc-sys.clarify.files]]
+path = 'LICENSE'
+license = 'ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)'
+checksum = '728536b4160e051f86d7c9c388f704866b3d512cd7df97ac3516c65279523c4e'
