@@ -1615,6 +1615,13 @@ pre .k {
     color: var(--text);
   }
 }
+.footer p + p {
+  margin-top: var(--sp-2);
+}
+.sibling a {
+  color: inherit;
+  font-weight: 500;
+}
 
 /* 404 */
 .notfound {
