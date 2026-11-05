@@ -1196,7 +1196,7 @@ limitations under the License.
 --- Apache-2.0, BSD-3-Clause, ISC, MIT ---
 
 Used by:
-  aws-lc-sys 0.46.0 (https://github.com/aws/aws-lc-rs)
+  aws-lc-sys 0.47.0 (https://github.com/aws/aws-lc-rs)
 
 AWS Libcrypto (AWS-LC)
 
@@ -1753,7 +1753,7 @@ insights.
 --- ISC ---
 
 Used by:
-  aws-lc-rs 1.18.2 (https://github.com/aws/aws-lc-rs)
+  aws-lc-rs 1.19.0 (https://github.com/aws/aws-lc-rs)
 
 SPDX-License-Identifier: ISC AND (Apache-2.0 OR ISC)
 
