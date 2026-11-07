@@ -83,7 +83,7 @@ impl Live {
 }
 
 /// `2026-10-20 14:05:00` (UTC) → `2026-10-20T14:05:00Z`.
-fn rfc3339(db: &str) -> Option<String> {
+pub(super) fn rfc3339(db: &str) -> Option<String> {
     crate::maintenance::parse_db_ts(db).map(|t| t.strftime("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
