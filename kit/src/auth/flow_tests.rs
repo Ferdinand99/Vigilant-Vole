@@ -363,6 +363,77 @@ async fn a_reused_user_id_does_not_inherit_the_old_cookie() {
 }
 
 // ---------------------------------------------------------------------------
+// Signed-in pages and the shared tab
+// ---------------------------------------------------------------------------
+
+fn cache_control(res: &Res) -> Option<&str> {
+    res.headers
+        .get(header::CACHE_CONTROL)
+        .and_then(|v| v.to_str().ok())
+}
+
+#[tokio::test]
+async fn signed_in_pages_are_never_cached_but_sign_in_pages_are_left_alone() {
+    let (app, mut ada) = App::set_up().await;
+    // A page behind the guard (its handler sets no Cache-Control itself), and
+    // the same page requested by htmx, which the guard marks the same way.
+    let page = app.get(&mut ada, "/settings/security").await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert_eq!(cache_control(&page), Some("no-store"));
+    let htmx = app
+        .send(
+            &mut ada,
+            Request::get("/settings/security")
+                .header("hx-request", "true")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(htmx.status, StatusCode::OK);
+    assert_eq!(cache_control(&htmx), Some("no-store"));
+    // Not HTML: not touched.
+    let ping = app.get(&mut ada, "/api/v1/ping").await;
+    assert_eq!(ping.status, StatusCode::OK);
+    assert_eq!(cache_control(&ping), None);
+    // The sign-in page is public and carries no user data.
+    let login = app.get(&mut Browser::default(), "/login").await;
+    assert_eq!(login.status, StatusCode::OK);
+    assert_eq!(cache_control(&login), None);
+    // The page after a refused request is not a signed-in page either.
+    let refused = app.get(&mut Browser::default(), "/settings/security").await;
+    assert_eq!(refused.status, StatusCode::SEE_OTHER);
+    assert_eq!(cache_control(&refused), None);
+}
+
+#[tokio::test]
+async fn signing_out_leaves_the_sign_in_page_that_drops_the_history_cache() {
+    let (app, mut ada) = App::set_up().await;
+    // The signed-in layout keeps htmx's history cache and reloads on a miss
+    // (after sign-out Back finds the cache empty and must not show a
+    // half page); it must not clear it.
+    let page = app.get(&mut ada, "/settings/security").await;
+    assert!(page.body.contains(r#""refreshOnHistoryMiss": true"#));
+    assert!(!page.body.contains("data-clear-history"));
+
+    let out = app.post(&mut ada, "/logout", &[]).await;
+    assert_eq!(
+        (out.status, out.location()),
+        (StatusCode::SEE_OTHER, "/login")
+    );
+    assert!(!app.signed_in(&mut ada).await);
+    // The page it lands on carries the hook that app.js acts on.
+    let login = app.get(&mut ada, "/login").await;
+    assert_eq!(login.status, StatusCode::OK);
+    assert!(
+        login
+            .body
+            .contains("<body class=\"auth-body\" data-clear-history>")
+    );
+    assert!(login.body.contains("/static/app.js"));
+    assert!(login.body.contains(r#""refreshOnHistoryMiss": true"#));
+}
+
+// ---------------------------------------------------------------------------
 // VK-05
 // ---------------------------------------------------------------------------
 

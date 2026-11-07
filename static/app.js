@@ -3,6 +3,25 @@
    progressive enhancement: pages work without it, this makes them feel native.
    Public API on window.VV: confirm, toast, announce, openSheet, closeSheet,
    spring, init. Hooks are data-* attributes, documented in docs/design-system.md. */
+/* history-clear:start
+   Signed-out pages (<body data-clear-history>, set by the sign-in layout) drop
+   htmx's history cache. htmx 2 keeps snapshots of the pages it navigated away
+   from in sessionStorage ("htmx-history-cache"), and they outlive the
+   session: after a sign-out in a shared tab, Back would show the previous
+   user's Settings, tokens and users. No inline script is allowed (CSP), so the
+   sign-in pages do this from here. */
+(function () {
+  "use strict";
+  var body = document.body;
+  if (!body || !body.hasAttribute("data-clear-history")) return;
+  try {
+    window.sessionStorage.removeItem("htmx-history-cache");
+  } catch (e) {
+    /* storage blocked: there is nothing cached to leak either */
+  }
+})();
+/* history-clear:end */
+
 (function () {
   "use strict";
 

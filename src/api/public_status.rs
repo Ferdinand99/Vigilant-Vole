@@ -1142,6 +1142,9 @@ fn page_response(view: PublicView) -> Response {
         page.description.clone()
     };
     let protected = page.is_protected();
+    // A page only a signed-in user may see (a preview of a draft) or that
+    // shows one (the edit link) must not be shown again after sign-out.
+    let private = protected || view.preview || view.can_edit || view.signed_in;
     // Third-party analytics only on the real, published page (not previews)
     // and never for a signed-in user: the page runs on the app's origin
     // there, and whoever picks the script URL must not get to run code next
@@ -1174,7 +1177,7 @@ fn page_response(view: PublicView) -> Response {
     let h = resp.headers_mut();
     h.insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static(if protected {
+        HeaderValue::from_static(if private {
             "private, no-store"
         } else {
             "no-cache"
@@ -1221,7 +1224,7 @@ async fn fragment(
         )
             .into_response());
     }
-    let protected = v.page.is_protected();
+    let private = v.page.is_protected() || v.preview || v.can_edit || v.signed_in;
     let shared = !v.can_edit && !v.preview;
     let rendered = v.rendered.clone();
     let mut resp = match render_once(&rendered.fragment, shared, || LiveFragment { v }.render()) {
@@ -1230,7 +1233,7 @@ async fn fragment(
     };
     resp.headers_mut().insert(
         header::CACHE_CONTROL,
-        HeaderValue::from_static(if protected {
+        HeaderValue::from_static(if private {
             "private, no-store"
         } else {
             "no-cache"
@@ -2235,9 +2238,32 @@ mod router_tests {
         assert!(body.contains("Draft preview"));
         assert!(body.contains("/status-pages/"));
         assert_eq!(headers.get("x-robots-tag"), Some("noindex"));
+        // A draft shown to a signed-in editor is not cached for the next person.
+        assert_eq!(headers.get("cache-control"), Some("private, no-store"));
+        let (status, headers, _) = get(&t, "/status/acme/fragment", None, Some(&cookie)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(headers.get("cache-control"), Some("private, no-store"));
         // The JSON API never previews.
         let (status, _, _) = get(&t, "/api/status-page/acme", None, Some(&cookie)).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn signed_in_views_of_a_published_page_are_not_cached_but_visitors_keep_no_cache() {
+        let t = app().await;
+        seed(&t, true, None).await;
+        let cookie = login(&t, "ed", Role::Editor).await;
+        for path in ["/status/acme", "/status/acme/fragment"] {
+            let (status, headers, _) = get(&t, path, None, Some(&cookie)).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+            assert_eq!(
+                headers.get("cache-control"),
+                Some("private, no-store"),
+                "{path}"
+            );
+            let (_, headers, _) = get(&t, path, None, None).await;
+            assert_eq!(headers.get("cache-control"), Some("no-cache"), "{path}");
+        }
     }
 
     #[tokio::test]
