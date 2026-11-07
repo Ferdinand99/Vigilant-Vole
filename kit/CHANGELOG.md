@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.8.0...vole-kit-v0.8.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **kit:** drop signed-in pages from the browser caches on sign-out ([#94](https://github.com/Ferdinand99/Vigilant-Vole/issues/94)) ([8796cad](https://github.com/Ferdinand99/Vigilant-Vole/commit/8796cad7866c09ec333cc5aab74b02d3ad61f6e8))
+
 ## [0.8.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.7.0...vole-kit-v0.8.0) (2026-10-29)
 
 
