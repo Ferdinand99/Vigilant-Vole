@@ -3922,7 +3922,7 @@ content-type: application/json
                     "pct": 99.87,
                     "pct_24h": 100.0
                   },
-                  "version": "<VERSION>"
+                  "version": "1.2.3"
                 }
               }
             },
