@@ -81,6 +81,27 @@ fn with_policy(mut res: Response, policy: HeaderPolicy) -> Response {
     res
 }
 
+/// Marks an HTML response from a signed-in session `Cache-Control: no-store`,
+/// so neither the browser's back/forward cache nor its HTTP cache can show the
+/// page again after the user signs out (the next person in a shared tab would
+/// see it on Back). A handler's own `Cache-Control` is kept, and anything that
+/// is not HTML (JSON, downloads, images) is left alone.
+/// [`require_auth`](crate::auth::guard::require_auth) applies it to every
+/// protected page; public pages and static files never go through it.
+pub fn no_store_html(mut res: Response) -> Response {
+    let is_html = res
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("text/html"));
+    if is_html {
+        res.headers_mut()
+            .entry(header::CACHE_CONTROL)
+            .or_insert(HeaderValue::from_static("no-store"));
+    }
+    res
+}
+
 /// Content-Security-Policy for the app. Scripts only from our own files (no
 /// inline scripts or handlers anywhere; the i18n strings are a JSON data
 /// block). Inline styles stay allowed for `style=` attributes and custom CSS.
@@ -214,6 +235,51 @@ mod tests {
 
     fn value<'a>(h: &'a HeaderMap, name: &str) -> Option<&'a str> {
         h.get(name).and_then(|v| v.to_str().ok())
+    }
+
+    #[tokio::test]
+    async fn no_store_only_for_html_and_never_over_a_handlers_own_value() {
+        let app = Router::new()
+            .route(
+                "/html",
+                get(|| async { ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], "<p>") }),
+            )
+            .route(
+                "/json",
+                get(|| async { ([(header::CONTENT_TYPE, "application/json")], "{}") }),
+            )
+            .route(
+                "/own",
+                get(|| async {
+                    (
+                        [
+                            (header::CONTENT_TYPE, "text/html"),
+                            (header::CACHE_CONTROL, "private, max-age=5"),
+                        ],
+                        "<p>",
+                    )
+                }),
+            )
+            .layer(map_response(|res| async { no_store_html(res) }));
+        let get = |path: &'static str| {
+            let app = app.clone();
+            async move {
+                app.oneshot(Request::get(path).body(Body::empty()).unwrap())
+                    .await
+                    .unwrap()
+                    .headers()
+                    .clone()
+            }
+        };
+        assert_eq!(
+            value(&get("/html").await, "cache-control"),
+            Some("no-store")
+        );
+        assert_eq!(value(&get("/json").await, "cache-control"), None);
+        assert_eq!(
+            value(&get("/own").await, "cache-control"),
+            Some("private, max-age=5")
+        );
     }
 
     #[tokio::test]

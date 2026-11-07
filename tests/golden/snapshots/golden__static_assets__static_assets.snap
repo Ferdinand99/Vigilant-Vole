@@ -2,7 +2,7 @@
 source: tests/golden/static_assets.rs
 expression: out
 ---
-/static/app.js | text/javascript; charset=utf-8 | 67751 bytes | sha256 04cbc5633d05f26b
+/static/app.js | text/javascript; charset=utf-8 | 68507 bytes | sha256 0b3f3695c2ec1df1
 /static/apple-touch-icon.png | image/png | 10430 bytes | sha256 525ff0bc4b808836
 /static/favicon.svg | image/svg+xml | 10987 bytes | sha256 cd07a7af5853f694
 /static/fonts/Inter-LICENSE.txt | text/plain; charset=utf-8 | 4380 bytes | sha256 262481e844521b32

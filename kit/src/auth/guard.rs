@@ -331,6 +331,8 @@ pub async fn require_auth(
             // A user's own language wins over the site default.
             let lang = lang.unwrap_or_else(crate::i18n::current);
             let response = crate::i18n::scope(lang, next.run(request)).await;
+            // A signed-in page must not be served again once the user is out.
+            let response = crate::http::headers::no_store_html(response);
             let now = session::now_unix();
             // Slide the idle timer, unless the handler just issued a new
             // session cookie itself (e.g. after a password change).

@@ -1842,6 +1842,29 @@ Router::new()
 
 Vigilant Vole marks nothing, so its headers are the same.
 
+### Signed-in pages and the shared tab
+
+After a sign-out in a shared browser tab, the next person must not get the
+previous user's pages from Back. Three parts of the kit see to it:
+
+* `guard::require_auth` sends `Cache-Control: no-store` on every HTML response
+  of a signed-in session (`headers::no_store_html`; a `Cache-Control` the
+  handler set is kept; JSON, downloads and images are left alone). Neither
+  the back/forward cache nor the HTTP cache can show such a page again.
+  Public pages (a status page), the sign-in pages and static files are not
+  behind the guard and stay as they were.
+* htmx 2 keeps snapshots of the pages it left in `sessionStorage`
+  (`htmx-history-cache`). The sign-in layout (`auth_layout.html`) sets
+  `<body data-clear-history>`, and `app.js` drops the cache when it loads on
+  such a page, so signing out (which lands on `/login`) or an expired session
+  empties it. No inline script is needed, so the CSP is unchanged.
+* The signed-in and sign-in layouts set `refreshOnHistoryMiss`, so a Back that
+  finds the cache empty reloads the page (which the guard sends to `/login`)
+  instead of asking for a fragment.
+
+A product with its own sign-in layout puts `data-clear-history` on its
+`<body>` and loads the kit's `app.js`.
+
 ### Live updates
 
 `http::live` has the parts of a live view over server-sent events (htmx's

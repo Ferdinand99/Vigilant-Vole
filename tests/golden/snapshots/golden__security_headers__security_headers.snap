@@ -4,6 +4,7 @@ expression: out
 ---
 == app page (signed in): GET /
 status: 200
+cache-control: no-store
 content-length: <n>
 content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 content-type: text/html; charset=utf-8
@@ -43,6 +44,7 @@ x-frame-options: DENY
 
 == htmx request: GET / [hx-request: true]
 status: 200
+cache-control: no-store
 content-length: <n>
 content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 content-type: text/html; charset=utf-8
