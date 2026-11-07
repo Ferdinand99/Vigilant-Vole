@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.16.0...v0.17.0) (2026-11-07)
+
+
+### Features
+
+* **api:** summary endpoint with 30-day uptime ([#95](https://github.com/Ferdinand99/Vigilant-Vole/issues/95)) ([8e274ce](https://github.com/Ferdinand99/Vigilant-Vole/commit/8e274ceac80bf3262211ad1a4547aa9f57c9b808))
+
+
+### Bug Fixes
+
+* **kit:** drop signed-in pages from the browser caches on sign-out ([#94](https://github.com/Ferdinand99/Vigilant-Vole/issues/94)) ([8796cad](https://github.com/Ferdinand99/Vigilant-Vole/commit/8796cad7866c09ec333cc5aab74b02d3ad61f6e8))
+
 ## [0.16.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.15.1...v0.16.0) (2026-10-29)
 
 
