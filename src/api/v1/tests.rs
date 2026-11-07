@@ -22,6 +22,7 @@ use crate::db::users as db_users;
 use crate::monitor::Scheduler;
 
 mod push;
+mod summary;
 
 const PASSWORD: &str = "correct horse battery";
 static PASSWORD_HASH: LazyLock<String> =
