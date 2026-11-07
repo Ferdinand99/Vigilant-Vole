@@ -1309,7 +1309,7 @@ curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/summary"
 Example response:
 
 ```json
-{"version": "<VERSION>", "monitors": {"total": 31, "up": 28, "down": 1, "pending": 1, "maintenance": 0, "paused": 1, "unknown": 0}, "uptime": {"days": 30, "pct": 99.87, "pct_24h": 100.0, "monitors_counted": 30}, "down": [{"id": 7, "name": "Website", "since": "2026-11-07T08:01:00Z", "message": "timeout"}]}
+{"version": "1.2.3", "monitors": {"total": 31, "up": 28, "down": 1, "pending": 1, "maintenance": 0, "paused": 1, "unknown": 0}, "uptime": {"days": 30, "pct": 99.87, "pct_24h": 100.0, "monitors_counted": 30}, "down": [{"id": 7, "name": "Website", "since": "2026-11-07T08:01:00Z", "message": "timeout"}]}
 ```
 
 ### GET /api/v1/agents
