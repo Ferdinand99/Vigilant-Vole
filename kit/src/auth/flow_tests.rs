@@ -363,7 +363,7 @@ async fn a_reused_user_id_does_not_inherit_the_old_cookie() {
 }
 
 // ---------------------------------------------------------------------------
-// VK-05
+// Signed-in pages and the shared tab
 // ---------------------------------------------------------------------------
 
 fn cache_control(res: &Res) -> Option<&str> {
@@ -375,21 +375,22 @@ fn cache_control(res: &Res) -> Option<&str> {
 #[tokio::test]
 async fn signed_in_pages_are_never_cached_but_sign_in_pages_are_left_alone() {
     let (app, mut ada) = App::set_up().await;
-    // A page behind the guard, and the partial an htmx request gets.
+    // A page behind the guard (its handler sets no Cache-Control itself), and
+    // the same page requested by htmx, which the guard marks the same way.
     let page = app.get(&mut ada, "/settings/security").await;
     assert_eq!(page.status, StatusCode::OK);
     assert_eq!(cache_control(&page), Some("no-store"));
-    let partial = app
+    let htmx = app
         .send(
             &mut ada,
-            Request::get("/settings/tokens")
+            Request::get("/settings/security")
                 .header("hx-request", "true")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await;
-    assert_eq!(partial.status, StatusCode::OK);
-    assert_eq!(cache_control(&partial), Some("no-store"));
+    assert_eq!(htmx.status, StatusCode::OK);
+    assert_eq!(cache_control(&htmx), Some("no-store"));
     // Not HTML: not touched.
     let ping = app.get(&mut ada, "/api/v1/ping").await;
     assert_eq!(ping.status, StatusCode::OK);
@@ -431,6 +432,10 @@ async fn signing_out_leaves_the_sign_in_page_that_drops_the_history_cache() {
     assert!(login.body.contains("/static/app.js"));
     assert!(login.body.contains(r#""refreshOnHistoryMiss": true"#));
 }
+
+// ---------------------------------------------------------------------------
+// VK-05
+// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn setup_needs_the_made_up_token_unless_opened() {

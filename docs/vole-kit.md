@@ -1865,6 +1865,15 @@ previous user's pages from Back. Three parts of the kit see to it:
 A product with its own sign-in layout puts `data-clear-history` on its
 `<body>` and loads the kit's `app.js`.
 
+Limitation with `CredentialMode::External`: `/login` redirects to the
+product's own sign-in page, so no `auth_layout.html` page loads after a
+sign-out and nothing clears the history cache. That product clears
+`htmx-history-cache` itself on the page it lands on after sign-out (the
+`data-clear-history` body attribute does this when the page loads the kit's
+`app.js`), or sets `hx-history="false"` on the pages that hold private data.
+The `no-store` header and `refreshOnHistoryMiss` apply to it as to any other
+product.
+
 ### Live updates
 
 `http::live` has the parts of a live view over server-sent events (htmx's

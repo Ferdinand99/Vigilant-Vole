@@ -51,5 +51,12 @@ describe("history-clear block in static/app.js", () => {
       },
     };
     run({ body: { hasAttribute: () => true }, storage: blocked });
+    // Reading window.sessionStorage itself can throw (storage blocked by the browser).
+    const window = {
+      get sessionStorage() {
+        throw new Error("SecurityError");
+      },
+    };
+    runInNewContext(block[0], { window, document: { body: { hasAttribute: () => true } } });
   });
 });

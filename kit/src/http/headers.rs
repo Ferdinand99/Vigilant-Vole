@@ -93,7 +93,11 @@ pub fn no_store_html(mut res: Response) -> Response {
         .headers()
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("text/html"));
+        .is_some_and(|v| {
+            v.trim_start()
+                .get(..9)
+                .is_some_and(|p| p.eq_ignore_ascii_case("text/html"))
+        });
     if is_html {
         res.headers_mut()
             .entry(header::CACHE_CONTROL)
