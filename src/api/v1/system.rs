@@ -14,7 +14,7 @@ use crate::api::AppState;
 use crate::auth::{AuthMethod, CurrentUser};
 use crate::config_io::{self, Document, Mode, SettingsDoc};
 use crate::db::agents as db_agents;
-use crate::db::models::HeartbeatStatus;
+use crate::db::models::{HeartbeatStatus, MonitorType};
 use crate::db::{heartbeats as db_heartbeats, monitors as db_monitors, rollups};
 
 pub fn router() -> Router<AppState> {
@@ -107,10 +107,8 @@ async fn summary(
     Params(q): Params<SummaryQuery>,
 ) -> V1Result<Response> {
     let days = q.days.unwrap_or(30);
-    if !(1..=90).contains(&days) {
-        return Err(V1Error::bad_request(
-            "days must be a whole number from 1 to 90.",
-        ));
+    if !(1..=365).contains(&days) {
+        return Err(V1Error::field("days", "Use 1 to 365 days."));
     }
     let v = state.with_conn(move |c| build_summary(c, days)).await?;
     Ok(json_ok(&headers, &v))
@@ -122,7 +120,13 @@ fn mean_pct(sum: f64, n: usize) -> Option<f64> {
 }
 
 fn build_summary(c: &rusqlite::Connection, days: i64) -> rusqlite::Result<Value> {
-    let monitors = db_monitors::list_monitors_with_latest(c)?;
+    // Groups aggregate their children (their own heartbeats are the worst of
+    // them), so counting them too would count every outage and every uptime
+    // twice. The dashboard skips them for the same reason.
+    let monitors: Vec<_> = db_monitors::list_monitors_with_latest(c)?
+        .into_iter()
+        .filter(|row| row.monitor.monitor_type != MonitorType::Group)
+        .collect();
     let covered = crate::maintenance::covered_monitors(c)?;
     let (mut up, mut down, mut pending, mut maintenance, mut paused, mut unknown) =
         (0_i64, 0_i64, 0_i64, 0_i64, 0_i64, 0_i64);

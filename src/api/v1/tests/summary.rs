@@ -177,14 +177,36 @@ async fn paused_and_maintenance_monitors_are_not_down() {
 }
 
 #[tokio::test]
-async fn days_defaults_to_30_and_accepts_1_to_90() {
+async fn days_defaults_to_30_and_accepts_1_to_365() {
     let h = harness().await;
     assert_eq!(summary(&h, &h.viewer, "").await["uptime"]["days"], 30);
-    for days in [1, 7, 90] {
+    for days in [1, 7, 90, 365] {
         let v = summary(&h, &h.viewer, &format!("?days={days}")).await;
         assert_eq!(v["uptime"]["days"], days);
     }
-    for bad in ["0", "91", "-1", "1000", "abc", "1.5", ""] {
+    // Out of range: a field error, as on /monitors/{id}/uptime.
+    for bad in ["0", "366", "-1", "1000"] {
+        let (status, body) = h
+            .json(
+                Method::GET,
+                &format!("/api/v1/summary?days={bad}"),
+                &h.viewer,
+                None,
+            )
+            .await;
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "days={bad}: {body}"
+        );
+        assert_eq!(
+            body["error"]["code"], "validation_failed",
+            "days={bad}: {body}"
+        );
+        assert!(body["error"]["fields"]["days"].is_string(), "{body}");
+    }
+    // Not a whole number: the query extractor's 400.
+    for bad in ["abc", "1.5", ""] {
         let (status, body) = h
             .json(
                 Method::GET,
@@ -195,8 +217,56 @@ async fn days_defaults_to_30_and_accepts_1_to_90() {
             .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "days={bad}: {body}");
         assert_eq!(body["error"]["code"], "bad_request", "days={bad}: {body}");
-        assert!(body["error"]["message"].is_string(), "{body}");
     }
+}
+
+#[tokio::test]
+async fn groups_are_not_counted_only_their_children() {
+    use crate::db::heartbeats as db_heartbeats;
+    use crate::db::models::HeartbeatStatus;
+    let h = harness().await;
+    let (status, g) = h
+        .json(
+            Method::POST,
+            "/api/v1/monitors",
+            &h.editor,
+            Some(json!({"name": "Prod", "monitor_type": "group"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{g}");
+    let group = g["id"].as_i64().unwrap();
+    let (status, c) = h
+        .json(
+            Method::POST,
+            "/api/v1/monitors",
+            &h.editor,
+            Some(json!({"name": "Web", "monitor_type": "push", "parent_id": group})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{c}");
+    let child = c["id"].as_i64().unwrap();
+    let ok = push_monitor(&h, "Other").await;
+    beat(&h, ok, CheckOutcome::up(5)).await;
+    beat(&h, child, CheckOutcome::down("connection refused")).await;
+    // The group records the worst of its children, as the scheduler does.
+    h.state
+        .with_conn(move |c| {
+            db_heartbeats::insert(c, group, None, HeartbeatStatus::Down, None, Some("down"))
+        })
+        .await
+        .unwrap();
+
+    let v = summary(&h, &h.viewer, "").await;
+    assert_eq!(
+        v["monitors"],
+        json!({"total": 2, "up": 1, "down": 1, "pending": 0, "maintenance": 0, "paused": 0, "unknown": 0}),
+        "{v}"
+    );
+    let down = v["down"].as_array().unwrap();
+    assert_eq!(down.len(), 1, "{v}");
+    assert_eq!(down[0]["id"], child);
+    // The group's own uptime is not in the mean.
+    assert_eq!(v["uptime"]["monitors_counted"], 2, "{v}");
 }
 
 #[tokio::test]
@@ -324,6 +394,22 @@ async fn summary_carries_an_etag_and_honours_if_none_match() {
         h.app.clone().oneshot(req).await.unwrap().status(),
         StatusCode::NOT_MODIFIED
     );
+
+    // Once the data changes the old tag no longer matches: 200, new tag.
+    beat(&h, id, CheckOutcome::down("boom")).await;
+    let req = Request::builder()
+        .uri("/api/v1/summary")
+        .header(header::AUTHORIZATION, format!("Bearer {}", h.viewer))
+        .header(header::IF_NONE_MATCH, &etag)
+        .body(ReqBody::empty())
+        .unwrap();
+    let res = h.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let fresh = res.headers()[header::ETAG].to_str().unwrap().to_string();
+    assert_ne!(fresh, etag);
+    let body: Value =
+        serde_json::from_slice(&to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["monitors"]["down"], 1);
 }
 
 #[tokio::test]

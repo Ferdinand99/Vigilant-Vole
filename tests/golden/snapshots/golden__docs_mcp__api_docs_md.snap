@@ -1293,12 +1293,12 @@ Example response:
 
 ### GET /api/v1/summary
 
-One call for a status card: monitor counts, mean uptime and what is down. monitors counts every monitor once: paused (inactive), maintenance (a window covers it, or its recorded status is maintenance), else its latest status (up, down, pending) or unknown (no check yet). uptime.pct is the mean of the per-monitor uptime over the last days (the figure /api/v1/monitors/{id}/uptime, the dashboard and status pages show) across active monitors with up/down data; monitors_counted is how many that is. Paused monitors are left out; monitors in maintenance are included (maintenance checks never count against uptime). pct and pct_24h are null without data. down lists up to 25 monitors that are down now, longest outage first: since is when the real result turned down (RFC 3339, null if unknown), message is the latest check message (plain text, at most 500 characters, from the monitored system: never render it as HTML). Paused monitors and monitors in maintenance are never listed as down. Carries an ETag.
+One call for a status card: monitor counts, mean uptime and what is down. Group monitors are not counted anywhere (not in total, uptime or down) because they aggregate their children, which are counted. monitors counts every other monitor once: paused (inactive), maintenance (a window covers it, or its recorded status is maintenance), else its latest status (up, down, pending) or unknown (no check yet). uptime.pct is the mean of the per-monitor uptime over the last days (the per-monitor figure from /api/v1/monitors/{id}/uptime) across active monitors with up/down data; monitors_counted is how many that is. Paused monitors are left out; monitors in maintenance are included (maintenance checks never count against uptime). pct and pct_24h are null without data. down lists up to 25 monitors that are down now, longest outage first: since is when the real result turned down, looking back over the last 100 checks (RFC 3339; the start of that stretch if the outage is older, null if unknown), message is the latest check message (plain text, at most 500 characters, from the monitored system: never render it as HTML). Paused monitors and monitors in maintenance are never listed as down. Carries an ETag.
 
 - Access: viewer (any API token, read scope is enough)
 - Success: `200 OK`
 - Query parameters:
-  - `days`: 1–90 (default 30), the uptime window
+  - `days`: 1–365 (default 30), the uptime window
 
 Example request:
 
