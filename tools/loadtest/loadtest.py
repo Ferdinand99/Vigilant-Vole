@@ -223,7 +223,8 @@ class Harness:
                 raise RuntimeError(f"setup failed: {r.status} {(await r.text())[:300]}")
         await self.login()
         async with self.ui.post(
-            "/settings/tokens", data={"name": "loadtest", "scope": "write", "expires": "never"}
+            "/settings/tokens",
+            data={"name": "loadtest", "scope": "write", "expires": "never", "current_password": ADMIN_PASSWORD},
         ) as r:
             m = re.search(r"vv_[A-Za-z0-9_\-]{16,}", await r.text())
             if not m:
