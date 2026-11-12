@@ -244,7 +244,7 @@ fn read_table(conn: &Connection, table: &str) -> rusqlite::Result<Vec<Row>> {
         return Ok(Vec::new());
     }
     let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\" LIMIT {}", MAX_ROWS + 1))?;
-    let names: Vec<String> = stmt.column_names().iter().map(|n| n.to_string()).collect();
+    let names: Vec<String> = stmt.column_names().map(|n| n.to_string()).collect();
     let rows = stmt.query_map([], |r| {
         let mut row = Map::new();
         for (idx, name) in names.iter().enumerate() {

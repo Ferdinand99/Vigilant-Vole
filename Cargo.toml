@@ -15,7 +15,10 @@ aws-lc-rs = "1.18.1"
 base64 = "0.23.1"
 # CBOR of WebAuthn attestation objects and COSE keys (passkeys).
 ciborium = "0.2.2"
-deadpool-sqlite = "0.14.0"
+# Fork of deadpool-sqlite that supports rusqlite 0.41 (bundled SQLite 3.54.1, RUSTSEC-2026-0459).
+# Upstream deadpool-sqlite 0.14.0 needs rusqlite 0.40. Pinned to a commit; switch back to the
+# crates.io release once it supports rusqlite 0.41 or newer, and drop the git source from deny.toml.
+deadpool-sqlite = { git = "https://github.com/Ferdinand99/deadpool", rev = "cb9ab33940fd64254660d61c85a1fc68d0f4a3b7" }
 futures-util = "0.3.34"
 hex = "0.4.3"
 jiff = { version = "0.2.38", features = ["serde"] }
@@ -26,7 +29,7 @@ rcgen = { version = "0.14.7", default-features = false, features = ["crypto", "p
 regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "form", "query", "stream", "socks", "http2", "charset", "gzip"] }
 rust-embed = { version = "8.12.0", features = ["include-exclude"] }
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
 rustls-native-certs = "0.8.4"
 serde = { version = "1.0.229", features = ["derive"] }

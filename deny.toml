@@ -34,3 +34,12 @@ confidence-threshold = 0.9
 
 [licenses.private]
 ignore = true
+
+[sources]
+# Crates come from crates.io, with one exception: deadpool-sqlite from a fork that supports
+# rusqlite 0.41 (see the comment at deadpool-sqlite in Cargo.toml). Remove the exception when the
+# crates.io release supports it.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = ["https://github.com/Ferdinand99/deadpool"]
