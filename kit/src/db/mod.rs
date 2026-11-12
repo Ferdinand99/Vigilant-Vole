@@ -227,6 +227,17 @@ mod tests {
         PathBuf::from(format!("{}-wal", db.display()))
     }
 
+    /// SQLite before 3.54.0 has the flaw of RUSTSEC-2026-0459. The bundled copy comes from
+    /// libsqlite3-sys, which rusqlite pins, so a downgrade of rusqlite must fail here.
+    #[test]
+    fn the_bundled_sqlite_has_the_rustsec_2026_0459_fix() {
+        assert!(
+            rusqlite::version_number() >= 3_054_000,
+            "bundled SQLite is {}, 3.54.0 or newer is needed",
+            rusqlite::version()
+        );
+    }
+
     fn no_fixups(_: &mut Connection) -> Result<(), MigrationError> {
         Ok(())
     }
