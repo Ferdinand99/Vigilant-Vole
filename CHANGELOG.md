@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.17.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.17.0...v0.17.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **kit:** bundle SQLite 3.54.1 by moving to rusqlite 0.41 ([#102](https://github.com/Ferdinand99/Vigilant-Vole/issues/102)) ([85653cf](https://github.com/Ferdinand99/Vigilant-Vole/commit/85653cfa30960601fe56028aabcd547d471be680))
+* **kit:** keep the add-channel sheet footer when Notifications is opened from the settings tabs ([#104](https://github.com/Ferdinand99/Vigilant-Vole/issues/104)) ([6b7a13c](https://github.com/Ferdinand99/Vigilant-Vole/commit/6b7a13c67479b3599b9dfb780ab9f5b259da4f50))
+* **loadtest:** confirm the password when the harness creates its write token ([#100](https://github.com/Ferdinand99/Vigilant-Vole/issues/100)) ([a5764ff](https://github.com/Ferdinand99/Vigilant-Vole/commit/a5764ff39b1140b04ad7ca322f52a873da13f1cf))
+
 ## [0.17.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.16.0...v0.17.0) (2026-11-07)
 
 
