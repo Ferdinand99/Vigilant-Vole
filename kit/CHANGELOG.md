@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.8.1...vole-kit-v0.8.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **kit:** bundle SQLite 3.54.1 by moving to rusqlite 0.41 ([#102](https://github.com/Ferdinand99/Vigilant-Vole/issues/102)) ([85653cf](https://github.com/Ferdinand99/Vigilant-Vole/commit/85653cfa30960601fe56028aabcd547d471be680))
+* **kit:** keep the add-channel sheet footer when Notifications is opened from the settings tabs ([#104](https://github.com/Ferdinand99/Vigilant-Vole/issues/104)) ([6b7a13c](https://github.com/Ferdinand99/Vigilant-Vole/commit/6b7a13c67479b3599b9dfb780ab9f5b259da4f50))
+
 ## [0.8.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.8.0...vole-kit-v0.8.1) (2026-11-07)
 
 
