@@ -2071,7 +2071,7 @@ DEALINGS IN THE SOFTWARE.
 --- MIT ---
 
 Used by:
-  aes 0.9.3 (https://github.com/RustCrypto/block-ciphers)
+  aes 0.9.4 (https://github.com/RustCrypto/block-ciphers)
 
 Copyright (c) 2018-2024 The RustCrypto Project Developers
 Copyright (c) 2018 Artyom Pavlov
@@ -2106,8 +2106,8 @@ DEALINGS IN THE SOFTWARE.
 Used by:
   aho-corasick 1.1.5 (https://github.com/BurntSushi/aho-corasick)
   globset 0.4.20 (https://github.com/BurntSushi/ripgrep/tree/master/crates/globset)
-  jiff 0.2.38 (https://github.com/BurntSushi/jiff)
-  jiff-core 0.1.1 (https://github.com/BurntSushi/jiff)
+  jiff 0.2.43 (https://github.com/BurntSushi/jiff)
+  jiff-core 0.1.5 (https://github.com/BurntSushi/jiff)
   memchr 2.8.3 (https://github.com/BurntSushi/memchr)
   walkdir 2.5.0 (https://github.com/BurntSushi/walkdir)
 
