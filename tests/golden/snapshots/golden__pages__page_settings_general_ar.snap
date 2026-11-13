@@ -13,7 +13,7 @@ content-type: text/html; charset=utf-8
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0d">
-  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "refreshOnHistoryMiss": true}'>
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "allowNestedOobSwaps": false, "refreshOnHistoryMiss": true}'>
   <title>عام · Golden Vole</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">

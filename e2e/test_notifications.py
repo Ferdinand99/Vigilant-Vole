@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import App
@@ -70,3 +71,37 @@ def test_webhook_channel_test_and_down_up_alerts(
     up = webhook.wait_for(for_monitor("up"))
     assert up["json"]["downtime_seconds"] is not None and up["json"]["downtime_seconds"] >= 0
     assert up["json"]["monitor"] == "Alerting burrow"
+
+
+@pytest.mark.smoke
+def test_add_channel_sheet_keeps_its_footer_after_tab_navigation(app: App, admin_page: Page) -> None:
+    """Reaching Notifications through the settings tabs (a boosted swap, not a page load) must still give the
+    "Add channel" sheet its footer: Cancel on the service list, "Send test" and "Add channel" on a service's form.
+    Regression for #90: htmx swapped the sheet's out-of-band footer into a target that did not exist yet and
+    dropped it, leaving the sheet without any buttons."""
+    page = admin_page
+    page.goto("/settings")
+    page.locator('.settings-nav a[href="/settings/notifications"]').click()
+    expect(page).to_have_url(re.compile(r"/settings/notifications$"))
+
+    page.get_by_role("button", name="Add channel").first.click()
+    sheet = page.locator("#add-channel")
+    expect(sheet).to_be_visible()
+    expect(sheet.locator("#provider-grid")).to_be_visible()
+    expect(sheet.get_by_role("button", name="Cancel")).to_be_visible()
+
+    sheet.locator("label.choice").filter(has=page.locator('input[value="webhook"]')).click()
+    expect(sheet.locator("#f-c_url")).to_be_visible()
+    expect(sheet.get_by_role("button", name="Send test")).to_be_visible()
+    submit = sheet.get_by_role("button", name="Add channel")
+    expect(submit).to_be_visible()
+    expect(sheet.locator("#channel-sheet-foot")).to_have_count(1)
+
+    # The footer follows the step back to the service list and forward again.
+    sheet.get_by_role("button", name="All services").click()
+    expect(sheet.locator("#provider-grid")).to_be_visible()
+    expect(sheet.get_by_role("button", name="Send test")).to_have_count(0)
+    expect(sheet.get_by_role("button", name="Cancel")).to_be_visible()
+
+    sheet.get_by_role("button", name="Cancel").click()
+    expect(sheet).to_be_hidden()
