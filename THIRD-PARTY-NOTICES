@@ -3480,7 +3480,7 @@ DEALINGS IN THE SOFTWARE.
 --- MIT ---
 
 Used by:
-  email-encoding 0.4.2 (https://github.com/lettre/email-encoding)
+  email-encoding 0.4.3 (https://github.com/lettre/email-encoding)
 
 MIT License
 
@@ -4565,7 +4565,7 @@ DEALINGS IN THE SOFTWARE.
 --- MIT ---
 
 Used by:
-  lettre 0.11.23 (https://github.com/lettre/lettre)
+  lettre 0.11.24 (https://github.com/lettre/lettre)
 
 Copyright (c) 2014-2024 Alexis Mousset <contact@amousset.me>
 Copyright (c) 2019-2025 Paolo Barbolini <paolo@paolo565.org>
