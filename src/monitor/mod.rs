@@ -899,14 +899,7 @@ impl Scheduler {
         let recorded: Vec<_> = children.iter().map(|(n, s, _)| (n.clone(), *s)).collect();
         let real: Vec<_> = children.iter().map(|(n, _, r)| (n.clone(), *r)).collect();
         let (status, message) = alerting::aggregate_group(&recorded)?;
-        // A group whose children are all in maintenance is in maintenance
-        // itself, also as far as its real status goes: what the children
-        // really find (an update stops them) is not the group's result.
-        let real = if status == HeartbeatStatus::Maintenance {
-            Some(HeartbeatStatus::Maintenance)
-        } else {
-            alerting::aggregate_group(&real).map(|(s, _)| s)
-        };
+        let real = alerting::group_real_status(status, &real);
 
         let existing = lock(&self.inner.runtimes).get(&group_id).cloned();
         if let Some(runtime) = existing {

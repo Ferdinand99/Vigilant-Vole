@@ -2814,6 +2814,43 @@ async fn group_with_all_children_in_maintenance_reads_as_maintenance_not_down() 
     );
     let since = g["raw_status_since"].as_str().unwrap();
     assert!(since.len() == 20 && since.ends_with('Z'), "{since}");
+    // Rows stored by versions that kept the children's real result for the
+    // group read as maintenance too, in the monitor and in its history.
+    h.state
+        .with_conn(move |c| {
+            c.execute(
+                "UPDATE heartbeats SET raw_status = 'down' WHERE monitor_id = ?1 AND status = 'maintenance'",
+                [group],
+            )
+        })
+        .await
+        .unwrap();
+    let g = get(group).await;
+    assert_eq!(g["raw_status"], "maintenance", "{g}");
+    let group_beats = async || {
+        let (status, beats) = h
+            .json(
+                Method::GET,
+                &format!("/api/v1/monitors/{group}/heartbeats"),
+                &h.viewer,
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{beats}");
+        beats["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| (b["status"].clone(), b["raw_status"].clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        group_beats().await,
+        [
+            (json!("maintenance"), json!("maintenance")),
+            (json!("up"), json!("up"))
+        ]
+    );
     // The children keep showing their real result.
     let ca = get(a).await;
     assert_eq!(
@@ -2874,6 +2911,15 @@ async fn group_with_all_children_in_maintenance_reads_as_maintenance_not_down() 
     assert_eq!(
         (&g["status"], &g["raw_status"]),
         (&json!("up"), &json!("up"))
+    );
+
+    assert_eq!(
+        group_beats().await,
+        [
+            (json!("up"), json!("up")),
+            (json!("maintenance"), json!("maintenance")),
+            (json!("up"), json!("up"))
+        ]
     );
 
     // History: no outage for the group, and the maintenance time is not

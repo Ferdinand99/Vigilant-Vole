@@ -172,7 +172,7 @@ fn build_summary(c: &rusqlite::Connection, days: i64) -> rusqlite::Result<Value>
     }
     let mut down_list = Vec::with_capacity(down_ids.len());
     for (id, name) in down_ids {
-        let raw = db_heartbeats::raw_run(c, id)?;
+        let raw = db_heartbeats::raw_run(c, id, false)?;
         let since = raw
             .as_ref()
             .and_then(|r| r.since.as_deref())

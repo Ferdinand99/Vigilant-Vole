@@ -1611,7 +1611,7 @@ content-type: application/json
             "sessionCookie": []
           }
         ],
-        "summary": "Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance by older versions.",
+        "summary": "Check history, newest first (local checks only). During maintenance status is maintenance and raw_status is what the check found (up, down or pending); otherwise they are equal. raw_status is null for checks recorded during maintenance by older versions. For a group whose children are all in maintenance, raw_status is maintenance; read its children for their real results.",
         "tags": [
           "Monitors"
         ],

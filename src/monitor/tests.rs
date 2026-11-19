@@ -390,6 +390,78 @@ async fn group_with_some_children_in_maintenance_aggregates_the_others() {
 }
 
 #[tokio::test]
+async fn a_nested_group_in_maintenance_counts_as_maintenance_in_its_parent() {
+    use HeartbeatStatus::{Down, Maintenance};
+    let db = test_db().await;
+    let (s, _rx) = scheduler(&db);
+    let top = insert(
+        &db,
+        NewMonitor {
+            name: "top".into(),
+            monitor_type: MonitorType::Group,
+            ..NewMonitor::default()
+        },
+    )
+    .await;
+    let mid = insert(
+        &db,
+        NewMonitor {
+            name: "mid".into(),
+            monitor_type: MonitorType::Group,
+            parent_id: Some(top),
+            ..NewMonitor::default()
+        },
+    )
+    .await;
+    let mut leaves = Vec::new();
+    for name in ["a", "b"] {
+        leaves.push(
+            insert(
+                &db,
+                NewMonitor {
+                    parent_id: Some(mid),
+                    ..push_monitor(name)
+                },
+            )
+            .await,
+        );
+    }
+    for k in &leaves {
+        child_beat(&db, *k, Maintenance, Some(Down)).await;
+    }
+    // Only child of the top group: it is in maintenance as well.
+    s.reload(mid).await;
+    assert_eq!(statuses(&db, mid).await, ["maintenance"]);
+    assert_eq!(
+        beats(&db, top).await,
+        [(
+            "maintenance".to_string(),
+            None,
+            Some("All monitors in maintenance".to_string())
+        )]
+    );
+
+    // With a healthy sibling the top group aggregates only that one.
+    let other = insert(
+        &db,
+        NewMonitor {
+            parent_id: Some(top),
+            ..push_monitor("x")
+        },
+    )
+    .await;
+    s.ingest_external(other, CheckOutcome::up(1), None).await;
+    assert_eq!(
+        beats(&db, top).await.last().cloned(),
+        Some((
+            "up".to_string(),
+            Some("up".to_string()),
+            Some("1 up, 1 in maintenance".to_string())
+        ))
+    );
+}
+
+#[tokio::test]
 async fn group_with_only_paused_children_records_nothing() {
     let db = test_db().await;
     let (s, _rx) = scheduler(&db);

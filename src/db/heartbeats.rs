@@ -103,9 +103,33 @@ pub struct RawRun {
     pub message: Option<String>,
 }
 
+/// Message of a group heartbeat recorded while every child is in maintenance.
+pub const ALL_IN_MAINTENANCE: &str = "All monitors in maintenance";
+
+/// Reads a group's heartbeats recorded while all its children were in
+/// maintenance as `raw_status: maintenance`: the group has no check of its
+/// own, and what its children really found meanwhile (an update stops them)
+/// is not its result. Read-time only: versions before this stored the
+/// children's real aggregate (`down`) for such rows, and the column cannot
+/// hold `maintenance`. Rows of a group in a window of its own, recorded
+/// before its children have checked, keep their stored real result.
+pub fn group_maintenance_as_raw(beats: &mut [Heartbeat]) {
+    for h in beats {
+        if h.status == HeartbeatStatus::Maintenance
+            && h.message.as_deref() == Some(ALL_IN_MAINTENANCE)
+        {
+            h.raw_status = Some(HeartbeatStatus::Maintenance);
+        }
+    }
+}
+
 /// The current real result of a monitor (see [`RawRun`]); `None` without
-/// local heartbeats.
-pub fn raw_run(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Option<RawRun>> {
+/// local heartbeats. `is_group`: see [`group_maintenance_as_raw`].
+pub fn raw_run(
+    conn: &Connection,
+    monitor_id: i64,
+    is_group: bool,
+) -> rusqlite::Result<Option<RawRun>> {
     let mut stmt = conn.prepare_cached(&format!(
         "SELECT {COLUMNS} FROM heartbeats WHERE monitor_id = ?1 AND agent_id IS NULL
          ORDER BY checked_at DESC, id DESC LIMIT ?2"
@@ -113,22 +137,8 @@ pub fn raw_run(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Option<Ra
     let mut beats = stmt
         .query_map(params![monitor_id, RAW_RUN_CHECKS], row_to_heartbeat)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    // A group in maintenance has no check of its own: its real status is
-    // that maintenance, never what its children found meanwhile.
-    let is_group = conn
-        .query_row(
-            "SELECT monitor_type = 'group' FROM monitors WHERE id = ?1",
-            params![monitor_id],
-            |r| r.get::<_, bool>(0),
-        )
-        .optional()?
-        .unwrap_or(false);
     if is_group {
-        for h in &mut beats {
-            if h.status == HeartbeatStatus::Maintenance {
-                h.raw_status = Some(HeartbeatStatus::Maintenance);
-            }
-        }
+        group_maintenance_as_raw(&mut beats);
     }
     let Some(latest) = beats.first() else {
         return Ok(None);
@@ -348,7 +358,7 @@ mod tests {
         // Recorded by a version that stored the children's real result.
         at(1, Maintenance, Some(Down), "All monitors in maintenance");
         at(2, Maintenance, None, "All monitors in maintenance");
-        let run = raw_run(&conn, group).unwrap().unwrap();
+        let run = raw_run(&conn, group, true).unwrap().unwrap();
         assert_eq!(
             (run.status, run.since.as_deref(), run.message.as_deref()),
             (
@@ -358,7 +368,7 @@ mod tests {
             )
         );
         at(3, Up, Some(Up), "All 2 monitors up");
-        let run = raw_run(&conn, group).unwrap().unwrap();
+        let run = raw_run(&conn, group, true).unwrap().unwrap();
         assert_eq!(
             (run.status, run.since.as_deref()),
             (Some(Up), Some("2026-01-01 00:03:00"))
@@ -366,10 +376,32 @@ mod tests {
     }
 
     #[test]
+    fn only_group_rows_recorded_with_all_children_in_maintenance_read_as_maintenance() {
+        use HeartbeatStatus::{Down, Maintenance, Up};
+        let (conn, id) = setup();
+        let beat = |status, raw, message: &str| {
+            insert_with_raw(&conn, id, status, raw, None, Some(message)).unwrap();
+        };
+        // A group in a window of its own before its children have checked.
+        beat(Maintenance, Some(Down), "1 of 2 down: b");
+        beat(Maintenance, Some(Down), ALL_IN_MAINTENANCE);
+        beat(Maintenance, None, ALL_IN_MAINTENANCE);
+        beat(Up, Some(Up), ALL_IN_MAINTENANCE);
+        let mut rows = list_page(&conn, id, None, 10).unwrap();
+        rows.reverse();
+        group_maintenance_as_raw(&mut rows);
+        let raws: Vec<_> = rows.iter().map(|h| h.raw_status).collect();
+        assert_eq!(
+            raws,
+            [Some(Down), Some(Maintenance), Some(Maintenance), Some(Up)]
+        );
+    }
+
+    #[test]
     fn raw_run_follows_the_real_result_through_maintenance() {
         use HeartbeatStatus::{Down, Maintenance, Up};
         let (conn, id) = setup();
-        assert_eq!(raw_run(&conn, id).unwrap(), None);
+        assert_eq!(raw_run(&conn, id, false).unwrap(), None);
         let at = |minute: i64, status: HeartbeatStatus, raw: Option<HeartbeatStatus>| {
             let hb = insert_with_raw(&conn, id, status, raw, None, Some("m")).unwrap();
             conn.execute(
@@ -382,7 +414,7 @@ mod tests {
         at(1, Maintenance, Some(Down));
         at(2, Maintenance, Some(Up));
         at(3, Maintenance, Some(Up));
-        let run = raw_run(&conn, id).unwrap().unwrap();
+        let run = raw_run(&conn, id, false).unwrap().unwrap();
         assert_eq!(
             (run.status, run.since.as_deref()),
             (Some(Up), Some("2026-01-01 00:02:00"))
@@ -398,7 +430,7 @@ mod tests {
         );
         // Rows from before raw_status: equal to status, unknown in maintenance.
         insert_at(&conn, id, None, "maintenance", None, "2026-01-01 00:04:00");
-        let run = raw_run(&conn, id).unwrap().unwrap();
+        let run = raw_run(&conn, id, false).unwrap().unwrap();
         assert_eq!((run.status, run.since), (None, None));
         insert_at(&conn, id, None, "up", None, "2026-01-01 00:05:00");
         assert_eq!(
