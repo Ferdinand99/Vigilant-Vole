@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.8.2...vole-kit-v0.9.0) (2026-11-19)
+
+
+### Features
+
+* live status boards for Discord and Fluxer ([#107](https://github.com/Ferdinand99/Vigilant-Vole/issues/107)) ([7fa7f26](https://github.com/Ferdinand99/Vigilant-Vole/commit/7fa7f26da64195aecb1b333b13d843a6f7dde941))
+
 ## [0.8.2](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.8.1...vole-kit-v0.8.2) (2026-11-13)
 
 
