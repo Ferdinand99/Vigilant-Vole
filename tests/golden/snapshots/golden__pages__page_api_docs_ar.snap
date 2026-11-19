@@ -171,7 +171,7 @@ content-type: text/html; charset=utf-8
       <li class="list-row list-row-wrap" id="get--api-v1-monitors">
         <span class="list-main">
           <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/monitors</code></span>
-          <span class="list-sub">List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.</span>
+          <span class="list-sub">List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending, maintenance for a group whose children are all in maintenance, or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.</span>
         </span>
         <span class="list-trail"><span class="badge status-up">viewer</span></span>
         <div class="list-full">
