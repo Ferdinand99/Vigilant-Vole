@@ -270,6 +270,50 @@ async fn groups_are_not_counted_only_their_children() {
 }
 
 #[tokio::test]
+async fn a_group_with_old_maintenance_rows_never_shows_up_as_down() {
+    use crate::db::heartbeats as db_heartbeats;
+    use crate::db::models::HeartbeatStatus::{Down, Maintenance};
+    let h = harness().await;
+    let (status, g) = h
+        .json(
+            Method::POST,
+            "/api/v1/monitors",
+            &h.editor,
+            Some(json!({"name": "Prod", "monitor_type": "group"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{g}");
+    let group = g["id"].as_i64().unwrap();
+    // Rows stored by an earlier version: the children's real result next to
+    // the group's maintenance.
+    h.state
+        .with_conn(move |c| {
+            db_heartbeats::insert_with_raw(
+                c,
+                group,
+                Maintenance,
+                Some(Down),
+                None,
+                Some("All monitors in maintenance"),
+            )
+        })
+        .await
+        .unwrap();
+    let v = summary(&h, &h.viewer, "").await;
+    assert_eq!(v["monitors"]["down"], 0, "{v}");
+    assert_eq!(v["down"], json!([]), "{v}");
+    let (_, m) = h
+        .json(
+            Method::GET,
+            &format!("/api/v1/monitors/{group}"),
+            &h.viewer,
+            None,
+        )
+        .await;
+    assert_eq!(m["raw_status"], "maintenance", "{m}");
+}
+
+#[tokio::test]
 async fn a_down_monitor_shows_since_and_the_longest_outage_comes_first() {
     let h = harness().await;
     let first = push_monitor(&h, "First").await;

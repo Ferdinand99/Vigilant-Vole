@@ -148,7 +148,7 @@ fn build_summary(c: &rusqlite::Connection, days: i64) -> rusqlite::Result<Value>
                 Some(HeartbeatStatus::Up) => up += 1,
                 Some(HeartbeatStatus::Down) => {
                     down += 1;
-                    down_ids.push((m.id, m.name.clone()));
+                    down_ids.push((m.id, m.name.clone(), m.monitor_type == MonitorType::Group));
                 }
                 Some(HeartbeatStatus::Pending) => pending += 1,
                 Some(HeartbeatStatus::Maintenance) => maintenance += 1,
@@ -171,8 +171,8 @@ fn build_summary(c: &rusqlite::Connection, days: i64) -> rusqlite::Result<Value>
         }
     }
     let mut down_list = Vec::with_capacity(down_ids.len());
-    for (id, name) in down_ids {
-        let raw = db_heartbeats::raw_run(c, id, false)?;
+    for (id, name, is_group) in down_ids {
+        let raw = db_heartbeats::raw_run(c, id, is_group)?;
         let since = raw
             .as_ref()
             .and_then(|r| r.since.as_deref())
