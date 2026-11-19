@@ -18,6 +18,7 @@ pub mod error {
     //! Moved to [`crate::kit::http::rest`].
     pub use crate::kit::http::rest::{V1Error, V1Result};
 }
+mod live_boards;
 mod maintenance;
 mod monitors;
 mod pages;
@@ -51,6 +52,7 @@ pub fn router() -> Router<AppState> {
         .merge(resources::router())
         .merge(pages::router())
         .merge(remote_browsers::router())
+        .merge(live_boards::router())
         .merge(maintenance::router())
         .merge(system::router())
         .merge(config::router())

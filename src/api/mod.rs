@@ -14,6 +14,7 @@ pub mod error {
     pub use crate::kit::http::error::*;
 }
 pub mod events;
+pub mod live_boards;
 pub mod maintenance;
 pub mod metrics;
 pub mod monitors;
@@ -125,6 +126,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(agents::router())
         .merge(metrics::router())
         .merge(remote_browsers::router())
+        .merge(live_boards::router())
         .merge(v1::router())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),

@@ -96,6 +96,7 @@ fresh instance:
 | `monitors` | `key` (defaults to `name`) |
 | `status_pages` | `slug` |
 | `maintenance` | `title` |
+| `live_boards` | `name` |
 
 Keys are compared case-insensitively. Monitors created by an import get `source: config` with their key as
 `external_id`, so renaming such a monitor in the document (same `key`) updates it instead of creating a new one —
@@ -122,6 +123,7 @@ settings: { … }               # every section is optional
 tags: [ … ]
 notification_channels: [ … ]
 remote_browsers: [ … ]
+live_boards: [ … ]            # Discord and Fluxer live status boards
 monitors: [ … ]
 status_pages: [ … ]
 maintenance: [ … ]
@@ -213,6 +215,36 @@ remote_browsers:
 
 In `replace` mode, remote browsers the document doesn't list are deleted; their monitors fall back to the
 default one.
+
+### `live_boards`
+
+Discord and Fluxer live status boards (Settings → Notifications → Live status boards; see
+[live-status-boards.md](live-status-boards.md)). A board follows a status page (`status_page`: its slug) or lists
+monitors and groups (`items`: their keys, in order).
+
+| Key | Type | Notes |
+|---|---|---|
+| `name` | string | Required, unique, up to 80 characters. |
+| `platform` | string | `discord` (default) or `fluxer`. |
+| `status_page` | string | Slug of a published status page without a password. Leave out for a board of `items`. |
+| `items` | list | Monitor keys (groups too), in order, for a board without a status page. |
+| `show_uptime_24h`, `show_uptime_30d`, `show_incidents` | boolean | Default `true`. |
+| `show_response` | boolean | Default `false`. |
+| `title`, `description`, `color`, `mention`, `lang` | string | `color` is empty (follow the status), a name (`green`, `red`, `yellow`, `blue`, `purple`, `gray`) or `#rrggbb`; `mention` is a role ID (digits). |
+| `refresh_seconds` | number | 60 to 86400, default 300. |
+| `notify_down` | boolean | Post a separate message when a monitor goes down. Default `false`. |
+| `webhook` | string | **Never exported.** Read on import only: a board that is new needs it; for a board that exists, leaving it out (or masked) keeps the saved one. |
+
+```yaml
+live_boards:
+  - name: Sylo status
+    platform: discord
+    status_page: sylo
+    refresh_seconds: 300
+```
+
+Boards the document does not list are kept, also in `replace` mode: deleting a board also deletes its messages in the
+channel, which an import cannot do. Delete them in Settings or with the API.
 
 ### `monitors`
 

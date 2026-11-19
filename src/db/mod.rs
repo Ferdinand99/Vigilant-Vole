@@ -9,6 +9,7 @@ pub mod agents;
 pub mod events;
 pub mod heartbeats;
 pub mod incidents;
+pub mod live_boards;
 pub mod maintenance;
 pub mod models;
 pub mod monitors;

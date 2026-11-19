@@ -47,7 +47,9 @@ use crate::db::{
 use crate::notification::{self, SECRET_MASK, schema};
 
 mod browsers;
+mod live_boards;
 pub use browsers::RemoteBrowserDoc;
+pub use live_boards::LiveBoardDoc;
 
 /// Current document format version.
 pub const DOC_VERSION: u32 = 1;
@@ -82,6 +84,9 @@ pub struct Document {
     pub status_pages: Option<Vec<StatusPageDoc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maintenance: Option<Vec<MaintenanceDoc>>,
+    /// Live status boards (Discord and Fluxer). A webhook address is never exported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_boards: Option<Vec<LiveBoardDoc>>,
 }
 
 fn doc_version() -> u32 {
@@ -821,6 +826,10 @@ pub fn export(conn: &Connection, key: &Key, include_secrets: bool) -> rusqlite::
         monitors: Some(monitor_docs),
         status_pages: Some(page_docs),
         maintenance: Some(maintenance_docs),
+        live_boards: {
+            let boards = live_boards::export(conn, &keys, &page_slugs)?;
+            (!boards.is_empty()).then_some(boards)
+        },
     })
 }
 
@@ -1031,6 +1040,7 @@ pub const KIND_MONITOR: &str = "monitor";
 pub const KIND_PAGE: &str = "status_page";
 pub const KIND_MAINTENANCE: &str = "maintenance";
 pub const KIND_BROWSER: &str = "remote_browser";
+pub const KIND_BOARD: &str = "live_board";
 
 // ===========================================================================
 // Prepared operations (resolved ids; negative ids are placeholders for
@@ -1116,6 +1126,7 @@ struct Ops {
     delete_channels: Vec<i64>,
     delete_tags: Vec<i64>,
     browsers: Vec<browsers::BrowserOp>,
+    boards: Vec<live_boards::BoardOp>,
     delete_browsers: Vec<i64>,
 }
 
@@ -1168,6 +1179,7 @@ struct Current {
     pages: Vec<db_pages::StatusPage>,
     windows: Vec<db_maint::MaintenanceWindow>,
     browsers: Vec<crate::db::remote_browsers::RemoteBrowser>,
+    boards: Vec<crate::db::live_boards::Board>,
     /// `(id, name, active)` of every remote agent (referenced by name).
     agents: Vec<(i64, String, bool)>,
 }
@@ -1185,6 +1197,7 @@ impl Current {
             pages: db_pages::list(conn)?.into_iter().map(|s| s.page).collect(),
             windows: db_maint::list(conn)?,
             browsers: crate::db::remote_browsers::list(conn)?,
+            boards: crate::db::live_boards::list(conn)?,
             agents: crate::db::agents::list_agent_names(conn)?,
         })
     }
@@ -1458,6 +1471,18 @@ fn prepare(
             }
         }
     }
+
+    live_boards::plan(
+        conn,
+        secrets,
+        &cur.boards,
+        doc.live_boards.as_deref(),
+        mode,
+        &page_ids,
+        &monitor_ids,
+        &mut plan,
+        &mut ops.boards,
+    )?;
 
     Ok((plan, ops))
 }
@@ -3116,6 +3141,7 @@ fn execute(conn: &Connection, ops: Ops) -> rusqlite::Result<Applied> {
             }
         }
     }
+    live_boards::execute(conn, &ops.boards, &ids)?;
     if !ops.monitors.is_empty() || !ops.delete_monitors.is_empty() {
         // Group membership changes affect maintenance coverage too.
         applied.maintenance_changed = true;
@@ -3456,6 +3482,9 @@ pub fn sections_present(doc: &Document) -> BTreeMap<&'static str, usize> {
     }
     if let Some(v) = &doc.maintenance {
         m.insert("maintenance", v.len());
+    }
+    if let Some(v) = &doc.live_boards {
+        m.insert("live_boards", v.len());
     }
     m
 }

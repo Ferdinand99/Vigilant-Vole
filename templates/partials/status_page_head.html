@@ -12,6 +12,7 @@
     </div>
     <div class="page-actions">
       <a class="btn btn-secondary" href="/status/{{ page.slug }}" target="_blank" rel="noopener">{{ m::icon("external") }}<span>{% if page.published %}{{ tr("sp.view_page") }}{% else %}{{ tr("sp.preview") }}{% endif %}</span></a>
+      <a class="btn btn-secondary" href="/settings/notifications/boards/new?page={{ page.id }}">{{ m::icon("megaphone") }}<span>{{ tr("live.page_link") }}</span></a>
       {%- if tab != "incidents" && tab != "subscribers" %}
       <button type="button" class="btn btn-secondary" data-sheet-open="#sp-badges" commandfor="sp-badges" command="show-modal">{{ m::icon("tag") }}<span>{{ tr("sp.badges") }}</span></button>
       {%- endif %}

@@ -615,7 +615,7 @@ fn page_tags(conn: &Connection, page_id: i64) -> rusqlite::Result<HashMap<i64, V
     Ok(map)
 }
 
-fn latest_local(
+pub(crate) fn latest_local(
     conn: &Connection,
     monitor_id: i64,
 ) -> rusqlite::Result<(Option<HeartbeatStatus>, Option<i64>)> {
@@ -703,7 +703,7 @@ fn render_markdown(mut view: PublicView) -> PublicView {
 }
 
 /// The database half of [`load_view`]: everything except rendered Markdown.
-fn load_view_data(
+pub(crate) fn load_view_data(
     conn: &Connection,
     page: StatusPage,
     now: Timestamp,

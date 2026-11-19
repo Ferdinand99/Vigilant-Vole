@@ -23,6 +23,9 @@ CREATE INDEX idx_incidents_page ON incidents (status_page_id, created_at);
 -- index idx_incidents_page_resolved (on incidents)
 CREATE INDEX idx_incidents_page_resolved ON incidents (status_page_id, resolved_at);
 
+-- index idx_live_boards_page (on live_boards)
+CREATE INDEX idx_live_boards_page ON live_boards(status_page_id);
+
 -- index idx_maintenance_monitors_monitor (on maintenance_monitors)
 CREATE INDEX idx_maintenance_monitors_monitor ON maintenance_monitors (monitor_id);
 
@@ -143,6 +146,51 @@ CREATE TABLE incidents (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     resolved_at TEXT
+);
+
+-- table live_board_items (on live_board_items)
+CREATE TABLE live_board_items (
+    board_id INTEGER NOT NULL REFERENCES live_boards(id) ON DELETE CASCADE,
+    monitor_id INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (board_id, monitor_id)
+);
+
+-- table live_board_messages (on live_board_messages)
+CREATE TABLE live_board_messages (
+    board_id INTEGER NOT NULL REFERENCES live_boards(id) ON DELETE CASCADE,
+    slot INTEGER NOT NULL,
+    message_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (board_id, slot)
+);
+
+-- table live_boards (on live_boards)
+CREATE TABLE live_boards (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    webhook_url TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'discord' CHECK (platform IN ('discord', 'fluxer')),
+    source TEXT NOT NULL CHECK (source IN ('page', 'items')),
+    status_page_id INTEGER REFERENCES status_pages(id) ON DELETE SET NULL,
+    show_uptime_24h INTEGER NOT NULL DEFAULT 1 CHECK (show_uptime_24h IN (0, 1)),
+    show_uptime_30d INTEGER NOT NULL DEFAULT 1 CHECK (show_uptime_30d IN (0, 1)),
+    show_response INTEGER NOT NULL DEFAULT 0 CHECK (show_response IN (0, 1)),
+    show_incidents INTEGER NOT NULL DEFAULT 1 CHECK (show_incidents IN (0, 1)),
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL DEFAULT '',
+    refresh_seconds INTEGER NOT NULL DEFAULT 300 CHECK (refresh_seconds >= 60),
+    notify_down INTEGER NOT NULL DEFAULT 0 CHECK (notify_down IN (0, 1)),
+    mention TEXT NOT NULL DEFAULT '',
+    lang TEXT NOT NULL DEFAULT 'en',
+    state TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'paused')),
+    failures INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    last_ok_at TEXT,
+    known_down TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- table maintenance_monitors (on maintenance_monitors)
@@ -550,6 +598,44 @@ incidents
   8 resolved_at TEXT 0 - 0
   index idx_incidents_page unique=0 origin=c partial=0
   index idx_incidents_page_resolved unique=0 origin=c partial=0
+live_board_items
+  0 board_id INTEGER 1 - 1
+  1 monitor_id INTEGER 1 - 2
+  2 position INTEGER 1 0 0
+  index sqlite_autoindex_live_board_items_1 unique=1 origin=pk partial=0
+live_board_messages
+  0 board_id INTEGER 1 - 1
+  1 slot INTEGER 1 - 2
+  2 message_id TEXT 1 - 0
+  3 content_hash TEXT 1 '' 0
+  index sqlite_autoindex_live_board_messages_1 unique=1 origin=pk partial=0
+live_boards
+  0 id INTEGER 0 - 1
+  1 name TEXT 1 - 0
+  2 webhook_url TEXT 1 - 0
+  3 platform TEXT 1 'discord' 0
+  4 source TEXT 1 - 0
+  5 status_page_id INTEGER 0 - 0
+  6 show_uptime_24h INTEGER 1 1 0
+  7 show_uptime_30d INTEGER 1 1 0
+  8 show_response INTEGER 1 0 0
+  9 show_incidents INTEGER 1 1 0
+  10 title TEXT 1 '' 0
+  11 description TEXT 1 '' 0
+  12 color TEXT 1 '' 0
+  13 refresh_seconds INTEGER 1 300 0
+  14 notify_down INTEGER 1 0 0
+  15 mention TEXT 1 '' 0
+  16 lang TEXT 1 'en' 0
+  17 state TEXT 1 'active' 0
+  18 failures INTEGER 1 0 0
+  19 last_error TEXT 0 - 0
+  20 last_ok_at TEXT 0 - 0
+  21 known_down TEXT 1 '[]' 0
+  22 created_at TEXT 1 datetime('now') 0
+  23 updated_at TEXT 1 datetime('now') 0
+  index idx_live_boards_page unique=0 origin=c partial=0
+  index sqlite_autoindex_live_boards_1 unique=1 origin=u partial=0
 maintenance_monitors
   0 maintenance_id INTEGER 1 - 1
   1 monitor_id INTEGER 1 - 2

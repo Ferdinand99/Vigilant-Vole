@@ -1039,6 +1039,7 @@ fn convert(t: Tables, source: &str) -> KumaImport {
         monitors: Some(monitor_docs.into_iter().map(|(_, _, d)| d).collect()),
         status_pages: Some(page_docs),
         maintenance: Some(window_docs),
+        live_boards: None,
     };
     out
 }

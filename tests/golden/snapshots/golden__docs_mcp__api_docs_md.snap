@@ -900,6 +900,158 @@ Example response:
 {"ok": true, "product": "HeadlessChrome/156.0.8078.36", "protocol_version": "1.3"}
 ```
 
+## Endpoints: Live status boards
+
+### GET /api/v1/live-boards
+
+List the live status boards: messages in a Discord or Fluxer channel that are edited in place to show a status page or some monitors. The webhook address is never returned (`webhook_set` says whether there is one).
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/live-boards"
+```
+
+Example response:
+
+```json
+{"data": [{"id": 1, "name": "Sylo status", "platform": "discord", "webhook_set": true, "source": "page", "status_page_id": 3, "items": [], "show_uptime_24h": true, "show_uptime_30d": true, "show_response": false, "show_incidents": true, "title": "", "description": "", "color": "", "refresh_seconds": 300, "notify_down": false, "mention": "", "lang": "en", "state": "active", "failures": 0, "last_error": null, "last_ok_at": "2026-11-19 10:00:00"}], "next_cursor": null}
+```
+
+### POST /api/v1/live-boards
+
+Create a board. `platform` is `discord` (webhook on discord.com) or `fluxer` (webhook on a Fluxer instance, which has to answer `/.well-known/fluxer`). `source` is `page` (with `status_page_id`: a published status page without a password) or `items` (with `items`: monitor and group ids, in order). The webhook is stored encrypted and is never shown again.
+
+- Access: editor (write token of an editor or admin)
+- Success: `201 Created`
+- Body: JSON object; fields used in the example: `mention` (string), `name` (string), `notify_down` (boolean), `platform` (string), `refresh_seconds` (integer), `source` (string), `status_page_id` (integer), `webhook` (string)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/live-boards" -d '{"name": "Sylo status", "platform": "discord", "webhook": "https://discord.com/api/webhooks/…", "source": "page", "status_page_id": 3, "refresh_seconds": 300, "notify_down": true, "mention": "123456789012345678"}'
+```
+
+### GET /api/v1/live-boards/{id}
+
+Get one board (without its webhook address).
+
+- Access: viewer (any API token, read scope is enough)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/live-boards/1"
+```
+
+### PUT /api/v1/live-boards/{id}
+
+Change a board. Leaving `webhook` out keeps the saved one; a new one moves the board to that channel and removes its messages from the old one.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/live-boards/1"
+```
+
+### PATCH /api/v1/live-boards/{id}
+
+Change some settings of a board.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+- Body: JSON object; fields used in the example: `refresh_seconds` (integer), `show_response` (boolean)
+
+Example request:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $VV_TOKEN" -H "Content-Type: application/json" "$VV_URL/api/v1/live-boards/1" -d '{"refresh_seconds": 120, "show_response": true}'
+```
+
+### DELETE /api/v1/live-boards/{id}
+
+Delete a board and, as far as that works, its messages in the channel.
+
+- Access: editor (write token of an editor or admin)
+- Success: `204 No Content`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/live-boards/1"
+```
+
+### POST /api/v1/live-boards/{id}/test
+
+Post a short test message to the board's webhook and delete it again (502 with the reason when that fails).
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/live-boards/1/test"
+```
+
+Example response:
+
+```json
+{"ok": true}
+```
+
+### POST /api/v1/live-boards/{id}/refresh
+
+Refresh the board's messages now (502 with the reason when the platform refuses, 429 while the channel is rate limited).
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/live-boards/1/refresh"
+```
+
+Example response:
+
+```json
+{"ok": true}
+```
+
+### POST /api/v1/live-boards/{id}/retry
+
+Start a paused board again (a board pauses after repeated failures or when its webhook is refused) and refresh it now.
+
+- Access: editor (write token of an editor or admin)
+- Success: `200 OK`
+- Path parameters: `id` (integer)
+
+Example request:
+
+```bash
+curl -X POST -H "Authorization: Bearer $VV_TOKEN" "$VV_URL/api/v1/live-boards/1/retry"
+```
+
+Example response:
+
+```json
+{"ok": true}
+```
+
 ## Endpoints: Status pages
 
 ### GET /api/v1/status-pages

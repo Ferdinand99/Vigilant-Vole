@@ -518,6 +518,452 @@ content-type: application/json
         "x-access": "viewer"
       }
     },
+    "/api/v1/live-boards": {
+      "get": {
+        "operationId": "get--api-v1-live-boards",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "color": "",
+                      "description": "",
+                      "failures": 0,
+                      "id": 1,
+                      "items": [],
+                      "lang": "en",
+                      "last_error": null,
+                      "last_ok_at": "2026-11-19 10:00:00",
+                      "mention": "",
+                      "name": "Sylo status",
+                      "notify_down": false,
+                      "platform": "discord",
+                      "refresh_seconds": 300,
+                      "show_incidents": true,
+                      "show_response": false,
+                      "show_uptime_24h": true,
+                      "show_uptime_30d": true,
+                      "source": "page",
+                      "state": "active",
+                      "status_page_id": 3,
+                      "title": "",
+                      "webhook_set": true
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the live status boards: messages in a Discord or Fluxer channel that are edited in place to show a status page or some monitors. The webhook address is never returned (`webhook_set` says whether there is one).",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "viewer"
+      },
+      "post": {
+        "operationId": "post--api-v1-live-boards",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "mention": "123456789012345678",
+                "name": "Sylo status",
+                "notify_down": true,
+                "platform": "discord",
+                "refresh_seconds": 300,
+                "source": "page",
+                "status_page_id": 3,
+                "webhook": "https://discord.com/api/webhooks/…"
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a board. `platform` is `discord` (webhook on discord.com) or `fluxer` (webhook on a Fluxer instance, which has to answer `/.well-known/fluxer`). `source` is `page` (with `status_page_id`: a published status page without a password) or `items` (with `items`: monitor and group ids, in order). The webhook is stored encrypted and is never shown again.",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/live-boards/{id}": {
+      "delete": {
+        "operationId": "delete--api-v1-live-boards-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Delete a board and, as far as that works, its messages in the channel.",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "editor"
+      },
+      "get": {
+        "operationId": "get--api-v1-live-boards-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get one board (without its webhook address).",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "viewer"
+      },
+      "patch": {
+        "operationId": "patch--api-v1-live-boards-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "refresh_seconds": 120,
+                "show_response": true
+              },
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change some settings of a board.",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "editor"
+      },
+      "put": {
+        "operationId": "put--api-v1-live-boards-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change a board. Leaving `webhook` out keeps the saved one; a new one moves the board to that channel and removes its messages from the old one.",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/live-boards/{id}/refresh": {
+      "post": {
+        "operationId": "post--api-v1-live-boards-id-refresh",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Refresh the board's messages now (502 with the reason when the platform refuses, 429 while the channel is rate limited).",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/live-boards/{id}/retry": {
+      "post": {
+        "operationId": "post--api-v1-live-boards-id-retry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Start a paused board again (a board pauses after repeated failures or when its webhook is refused) and refresh it now.",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "editor"
+      }
+    },
+    "/api/v1/live-boards/{id}/test": {
+      "post": {
+        "operationId": "post--api-v1-live-boards-id-test",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Post a short test message to the board's webhook and delete it again (502 with the reason when that fails).",
+        "tags": [
+          "Live status boards"
+        ],
+        "x-access": "editor"
+      }
+    },
     "/api/v1/maintenance": {
       "get": {
         "operationId": "get--api-v1-maintenance",
@@ -4283,6 +4729,9 @@ content-type: application/json
     },
     {
       "name": "Remote browsers"
+    },
+    {
+      "name": "Live status boards"
     },
     {
       "name": "Status pages"

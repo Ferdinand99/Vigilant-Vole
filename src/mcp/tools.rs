@@ -174,6 +174,7 @@ fn reaches_outside(name: &str) -> bool {
             | "update_monitor"
             | "bulk_edit"
             | "check_now"
+            | "refresh_live_board"
             | "create_incident"
             | "update_incident"
             | "start_maintenance"
@@ -285,6 +286,23 @@ static TOOLS: LazyLock<Vec<Tool>> = LazyLock::new(|| {
             description: "Maintenance windows with their schedule, current state (active, scheduled, paused, ended) and the monitors they cover.",
             write: false,
             schema: object(json!({}), &[]),
+        },
+        Tool {
+            name: "list_live_boards",
+            title: "List live status boards",
+            description: "The live status boards: messages in a Discord or Fluxer channel that are edited in place to show a status page or some monitors (id, name, platform, source, options, state, last error, last update). The webhook address is never part of the answer.",
+            write: false,
+            schema: object(json!({}), &[]),
+        },
+        Tool {
+            name: "refresh_live_board",
+            title: "Refresh a live status board",
+            description: "Update a live status board's messages in its channel right now (also starts a paused board again). Fails with the platform's reason when it refuses, and while the channel is rate limited.",
+            write: true,
+            schema: object(
+                json!({"id": id_prop("The board's id (from list_live_boards).")}),
+                &["id"],
+            ),
         },
         Tool {
             name: "create_monitor",
@@ -657,6 +675,15 @@ async fn run(ctx: &Ctx, name: &str, args: &Args) -> Result<Value, ToolError> {
         "list_status_pages" => ctx.get("/api/v1/status-pages").await,
         "list_incidents" => list_incidents(ctx, args).await,
         "list_maintenance" => ctx.get("/api/v1/maintenance").await,
+        "list_live_boards" => ctx.get("/api/v1/live-boards").await,
+        "refresh_live_board" => {
+            ctx.api(
+                Method::POST,
+                &format!("/api/v1/live-boards/{}/refresh", id_arg(args, "id")?),
+                None,
+            )
+            .await
+        }
         "create_monitor" => {
             for key in ["name", "monitor_type"] {
                 if opt_str(args, key)?.is_none_or(|s| s.trim().is_empty()) {

@@ -109,6 +109,7 @@ content-type: text/html; charset=utf-8
   <a class="chip" href="#tags">Tags <span class="badge">5</span></a>
   <a class="chip" href="#notifications">Notifications <span class="badge">7</span></a>
   <a class="chip" href="#remote-browsers">Remote browsers <span class="badge">7</span></a>
+  <a class="chip" href="#live-status-boards">Live status boards <span class="badge">9</span></a>
   <a class="chip" href="#status-pages">Status pages <span class="badge">19</span></a>
   <a class="chip" href="#maintenance">Maintenance <span class="badge">5</span></a>
   <a class="chip" href="#system">System <span class="badge">7</span></a>
@@ -901,6 +902,135 @@ content-type: text/html; charset=utf-8
             <div class="disclosure-body stack-sm">
               <p class="t-footnote muted">الاستجابة</p>
               <pre class="code"><code>{&#34;ok&#34;: true, &#34;product&#34;: &#34;HeadlessChrome/156.0.8078.36&#34;, &#34;protocol_version&#34;: &#34;1.3&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+<section class="section" id="live-status-boards" aria-labelledby="live-status-boards-title">
+  <div class="section-head">
+  <div>
+    <h2 class="section-title" id="live-status-boards-title">Live status boards</h2>
+  </div>
+  <div class="toolbar"></div>
+</div>
+  <div class="card card-flush">
+    <ul class="list" role="list">
+      <li class="list-row list-row-wrap" id="get--api-v1-live-boards">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/live-boards</code></span>
+          <span class="list-sub">List the live status boards: messages in a Discord or Fluxer channel that are edited in place to show a status page or some monitors. The webhook address is never returned (`webhook_set` says whether there is one).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;data&#34;: [{&#34;id&#34;: 1, &#34;name&#34;: &#34;Sylo status&#34;, &#34;platform&#34;: &#34;discord&#34;, &#34;webhook_set&#34;: true, &#34;source&#34;: &#34;page&#34;, &#34;status_page_id&#34;: 3, &#34;items&#34;: [], &#34;show_uptime_24h&#34;: true, &#34;show_uptime_30d&#34;: true, &#34;show_response&#34;: false, &#34;show_incidents&#34;: true, &#34;title&#34;: &#34;&#34;, &#34;description&#34;: &#34;&#34;, &#34;color&#34;: &#34;&#34;, &#34;refresh_seconds&#34;: 300, &#34;notify_down&#34;: false, &#34;mention&#34;: &#34;&#34;, &#34;lang&#34;: &#34;en&#34;, &#34;state&#34;: &#34;active&#34;, &#34;failures&#34;: 0, &#34;last_error&#34;: null, &#34;last_ok_at&#34;: &#34;<DATETIME>&#34;}], &#34;next_cursor&#34;: null}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-live-boards">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/live-boards</code></span>
+          <span class="list-sub">Create a board. `platform` is `discord` (webhook on discord.com) or `fluxer` (webhook on a Fluxer instance, which has to answer `/.well-known/fluxer`). `source` is `page` (with `status_page_id`: a published status page without a password) or `items` (with `items`: monitor and group ids, in order). The webhook is stored encrypted and is never shown again.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;name&#34;: &#34;Sylo status&#34;, &#34;platform&#34;: &#34;discord&#34;, &#34;webhook&#34;: &#34;https://discord.com/api/webhooks/…&#34;, &#34;source&#34;: &#34;page&#34;, &#34;status_page_id&#34;: 3, &#34;refresh_seconds&#34;: 300, &#34;notify_down&#34;: true, &#34;mention&#34;: &#34;123456789012345678&#34;}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="get--api-v1-live-boards-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">GET</span> <code class="break">/api/v1/live-boards/{id}</code></span>
+          <span class="list-sub">Get one board (without its webhook address).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-up">viewer</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="put--api-v1-live-boards-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PUT</span> <code class="break">/api/v1/live-boards/{id}</code></span>
+          <span class="list-sub">Change a board. Leaving `webhook` out keeps the saved one; a new one moves the board to that channel and removes its messages from the old one.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="patch--api-v1-live-boards-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">PATCH</span> <code class="break">/api/v1/live-boards/{id}</code></span>
+          <span class="list-sub">Change some settings of a board.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الطلب</p>
+              <pre class="code"><code>{&#34;refresh_seconds&#34;: 120, &#34;show_response&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="delete--api-v1-live-boards-id">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">DELETE</span> <code class="break">/api/v1/live-boards/{id}</code></span>
+          <span class="list-sub">Delete a board and, as far as that works, its messages in the channel.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-live-boards-id-test">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/live-boards/{id}/test</code></span>
+          <span class="list-sub">Post a short test message to the board&#39;s webhook and delete it again (502 with the reason when that fails).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;ok&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-live-boards-id-refresh">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/live-boards/{id}/refresh</code></span>
+          <span class="list-sub">Refresh the board&#39;s messages now (502 with the reason when the platform refuses, 429 while the channel is rate limited).</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;ok&#34;: true}</code></pre>
+            </div>
+          </details>
+        </div>
+      </li>
+      <li class="list-row list-row-wrap" id="post--api-v1-live-boards-id-retry">
+        <span class="list-main">
+          <span class="list-title"><span class="badge mono">POST</span> <code class="break">/api/v1/live-boards/{id}/retry</code></span>
+          <span class="list-sub">Start a paused board again (a board pauses after repeated failures or when its webhook is refused) and refresh it now.</span>
+        </span>
+        <span class="list-trail"><span class="badge status-pending">editor</span></span>
+        <div class="list-full">
+          <details class="disclosure">
+            <summary>التفاصيل <span class="disclosure-sub">أمثلة</span><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-down"></use></svg></summary>
+            <div class="disclosure-body stack-sm">
+              <p class="t-footnote muted">الاستجابة</p>
+              <pre class="code"><code>{&#34;ok&#34;: true}</code></pre>
             </div>
           </details>
         </div>
