@@ -165,6 +165,21 @@ const OWN_ROUTES: &[RouteDoc] = &[
     r("DELETE", "/api/v1/remote-browsers/{id}", "admin", "Remote browsers", "Remove a remote browser; monitors that used it fall back to the default one."),
     r("POST", "/api/v1/remote-browsers/{id}/test", "admin", "Remote browsers", "Connect and ask the browser for its version.")
         .res(r#"{"ok": true, "product": "HeadlessChrome/156.0.8078.36", "protocol_version": "1.3"}"#),
+    // -- Live status boards --
+    r("GET", "/api/v1/live-boards", "viewer", "Live status boards", "List the live status boards: messages in a Discord or Fluxer channel that are edited in place to show a status page or some monitors. The webhook address is never returned (`webhook_set` says whether there is one).")
+        .res(r#"{"data": [{"id": 1, "name": "Sylo status", "platform": "discord", "webhook_set": true, "source": "page", "status_page_id": 3, "items": [], "show_uptime_24h": true, "show_uptime_30d": true, "show_response": false, "show_incidents": true, "title": "", "description": "", "color": "", "refresh_seconds": 300, "notify_down": false, "mention": "", "lang": "en", "state": "active", "failures": 0, "last_error": null, "last_ok_at": "2026-11-19 10:00:00"}], "next_cursor": null}"#),
+    r("POST", "/api/v1/live-boards", "editor", "Live status boards", "Create a board. `platform` is `discord` (webhook on discord.com) or `fluxer` (webhook on a Fluxer instance, which has to answer `/.well-known/fluxer`). `source` is `page` (with `status_page_id`: a published status page without a password) or `items` (with `items`: monitor and group ids, in order). The webhook is stored encrypted and is never shown again.")
+        .req(r#"{"name": "Sylo status", "platform": "discord", "webhook": "https://discord.com/api/webhooks/…", "source": "page", "status_page_id": 3, "refresh_seconds": 300, "notify_down": true, "mention": "123456789012345678"}"#),
+    r("GET", "/api/v1/live-boards/{id}", "viewer", "Live status boards", "Get one board (without its webhook address)."),
+    r("PUT", "/api/v1/live-boards/{id}", "editor", "Live status boards", "Change a board. Leaving `webhook` out keeps the saved one; a new one moves the board to that channel and removes its messages from the old one."),
+    r("PATCH", "/api/v1/live-boards/{id}", "editor", "Live status boards", "Change some settings of a board.").req(r#"{"refresh_seconds": 120, "show_response": true}"#),
+    r("DELETE", "/api/v1/live-boards/{id}", "editor", "Live status boards", "Delete a board and, as far as that works, its messages in the channel."),
+    r("POST", "/api/v1/live-boards/{id}/test", "editor", "Live status boards", "Post a short test message to the board's webhook and delete it again (502 with the reason when that fails).")
+        .res(r#"{"ok": true}"#),
+    r("POST", "/api/v1/live-boards/{id}/refresh", "editor", "Live status boards", "Refresh the board's messages now (502 with the reason when the platform refuses, 429 while the channel is rate limited).")
+        .res(r#"{"ok": true}"#),
+    r("POST", "/api/v1/live-boards/{id}/retry", "editor", "Live status boards", "Start a paused board again (a board pauses after repeated failures or when its webhook is refused) and refresh it now.")
+        .res(r#"{"ok": true}"#),
     // -- Status pages --
     r("GET", "/api/v1/status-pages", "viewer", "Status pages", "List status pages."),
     r("POST", "/api/v1/status-pages", "editor", "Status pages", "Create a status page (slug defaults to the title).")

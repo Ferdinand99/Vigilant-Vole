@@ -1,0 +1,192 @@
+{% extends "kit/settings_layout.html" %}
+{% import "kit/macros.html" as m %}
+
+{% block settings_content %}
+{% call m::page_header(tr("live.title"), tr("live.sub"), "/settings/notifications", tr("nav.notifications")) %}
+  {{ m::link_button("/settings/notifications/boards/new", tr("live.add"), "primary", "plus") }}
+{% endcall %}
+
+{%- if let Some(f) = form %}
+<section class="section" aria-labelledby="lb-form-title">
+  {% call m::section_head(f.title(), "", "lb-form-title") %}{% endcall %}
+  <form id="lb-form" class="form form-narrow" method="post" action="{{ f.action() }}">
+    {%- if let Some(id) = f.id %}<input type="hidden" name="id" value="{{ id }}">{% endif %}
+
+    <section class="form-section" aria-labelledby="lb-sec-dest">
+      <h2 class="form-section-title" id="lb-sec-dest">{{ tr("live.sec_destination") }}</h2>
+      <div class="card">
+        {{ m::field_text("name", tr("common.name"), value=&f.input.name, placeholder=tr("live.name_placeholder"), required=true, error=f.err("name")) }}
+        <div class="field{% if !f.err("platform").is_empty() %} is-invalid{% endif %}">
+          <span class="label" id="lb-platform-label">{{ tr("live.platform") }}</span>
+          <div class="segmented segmented-block" role="radiogroup" aria-labelledby="lb-platform-label">
+            <label><input type="radio" name="platform" value="discord"{% if !f.is_fluxer() %} checked{% endif %}><span>Discord</span></label>
+            <label><input type="radio" name="platform" value="fluxer"{% if f.is_fluxer() %} checked{% endif %}><span>Fluxer</span></label>
+          </div>
+          {%- if !f.err("platform").is_empty() %}<p class="field-error">{{ f.err("platform") }}</p>{% endif %}
+        </div>
+        <div data-show-when="platform=discord">
+          {{ m::field_text("webhook", tr("live.webhook"), kind="password", placeholder="https://discord.com/api/webhooks/…", help=tr("live.webhook_help"), required=!f.has_webhook, error=f.err("webhook"), sfx="-discord") }}
+        </div>
+        <div data-show-when="platform=fluxer">
+          {{ m::field_text("webhook", tr("live.webhook"), kind="password", placeholder="https://chat.example.org/api/webhooks/…", help=tr("live.webhook_help"), required=!f.has_webhook, error=f.err("webhook"), sfx="-fluxer") }}
+        </div>
+        <div id="lb-form-test" aria-live="polite"></div>
+        <div>
+          <button type="button" class="btn btn-secondary btn-sm" hx-post="/settings/notifications/boards/test" hx-include="#lb-form" hx-target="#lb-form-test">{{ m::icon("plug") }}<span>{{ tr("live.test") }}</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="form-section" aria-labelledby="lb-sec-source">
+      <h2 class="form-section-title" id="lb-sec-source">{{ tr("live.sec_source") }}</h2>
+      <div class="card">
+        <div class="field{% if !f.err("source").is_empty() %} is-invalid{% endif %}">
+          <span class="label" id="lb-source-label">{{ tr("live.source") }}</span>
+          <div class="segmented segmented-block" role="radiogroup" aria-labelledby="lb-source-label">
+            <label><input type="radio" name="source" value="page"{% if f.is_page() %} checked{% endif %}><span>{{ tr("live.source_page") }}</span></label>
+            <label><input type="radio" name="source" value="items"{% if !f.is_page() %} checked{% endif %}><span>{{ tr("live.source_items") }}</span></label>
+          </div>
+        </div>
+        <div class="field{% if !f.err("status_page_id").is_empty() %} is-invalid{% endif %}" data-show-when="source=page">
+          <label class="label" for="f-status_page_id">{{ tr("live.page") }}</label>
+          <select id="f-status_page_id" name="status_page_id">
+            <option value="">{{ tr("common.none") }}</option>
+            {%- for p in f.pages %}
+            <option value="{{ p.id }}"{% if p.selected %} selected{% endif %}>{{ p.title }}</option>
+            {%- endfor %}
+          </select>
+          {%- if !f.err("status_page_id").is_empty() %}<p class="field-error">{{ f.err("status_page_id") }}</p>{% endif %}
+        </div>
+        <div class="field{% if !f.err("items").is_empty() %} is-invalid{% endif %}" data-show-when="source=items">
+          <span class="label" id="lb-items-label">{{ tr("live.items") }}</span>
+          <ul class="list" role="list" aria-labelledby="lb-items-label">
+            {%- for it in f.items %}
+            <li>
+              <label class="list-row">
+                <input type="checkbox" name="items" value="{{ it.id }}"{% if it.checked %} checked{% endif %}>
+                <span class="list-main">
+                  <span class="list-title">{{ it.name }}</span>
+                  {%- if !it.sub.is_empty() %}<span class="list-sub">{{ it.sub }}</span>{% endif %}
+                </span>
+              </label>
+            </li>
+            {%- endfor %}
+          </ul>
+          {%- if !f.err("items").is_empty() %}<p class="field-error">{{ f.err("items") }}</p>{% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="form-section" aria-labelledby="lb-sec-details">
+      <h2 class="form-section-title" id="lb-sec-details">{{ tr("live.sec_details") }}</h2>
+      <div class="card">
+        {{ m::switch("show_uptime_24h", tr("live.opt_24h"), f.input.show_uptime_24h) }}
+        {{ m::switch("show_uptime_30d", tr("live.opt_30d"), f.input.show_uptime_30d) }}
+        {{ m::switch("show_response", tr("live.opt_response"), f.input.show_response) }}
+        {{ m::switch("show_incidents", tr("live.opt_incidents"), f.input.show_incidents) }}
+      </div>
+      <div class="card">
+        {{ m::field_text("title", tr("live.board_title"), value=&f.input.title, error=f.err("title")) }}
+        {{ m::field_textarea("description", tr("common.description"), &f.input.description, 3) }}
+        {%- if !f.err("description").is_empty() %}<p class="field-error">{{ f.err("description") }}</p>{% endif %}
+        <div class="field-row">
+          <div class="field">
+            <label class="label" for="f-color">{{ tr("live.color") }}</label>
+            <select id="f-color" name="color">
+              <option value=""{% if f.color_is("") %} selected{% endif %}>{{ tr("live.color_auto") }}</option>
+              <option value="green"{% if f.color_is("green") %} selected{% endif %}>{{ tr("color.green") }}</option>
+              <option value="red"{% if f.color_is("red") %} selected{% endif %}>{{ tr("color.red") }}</option>
+              <option value="yellow"{% if f.color_is("yellow") %} selected{% endif %}>{{ tr("color.yellow") }}</option>
+              <option value="blue"{% if f.color_is("blue") %} selected{% endif %}>{{ tr("color.blue") }}</option>
+              <option value="purple"{% if f.color_is("purple") %} selected{% endif %}>{{ tr("color.purple") }}</option>
+              <option value="gray"{% if f.color_is("gray") %} selected{% endif %}>{{ tr("color.gray") }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" for="f-lang">{{ tr("live.language") }}</label>
+            <select id="f-lang" name="lang">
+              {%- for l in f.languages %}
+              <option value="{{ l.code }}"{% if l.selected %} selected{% endif %}>{{ l.label }}</option>
+              {%- endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field{% if !f.err("refresh_seconds").is_empty() %} is-invalid{% endif %}">
+          <label class="label" for="f-refresh_seconds">{{ tr("live.refresh") }}</label>
+          <div class="input-group">
+            <input id="f-refresh_seconds" name="refresh_seconds" type="number" inputmode="numeric" autocomplete="off" value="{{ f.input.refresh_seconds }}" min="60" max="86400" step="1" aria-describedby="f-refresh_seconds-help">
+            <span class="input-addon" aria-hidden="true">{{ tr("common.sec") }}</span>
+          </div>
+          <p class="help" id="f-refresh_seconds-help">{{ tr("live.refresh_help") }}</p>
+          {%- if !f.err("refresh_seconds").is_empty() %}<p class="field-error">{{ f.err("refresh_seconds") }}</p>{% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="form-section" aria-labelledby="lb-sec-alert">
+      <h2 class="form-section-title" id="lb-sec-alert">{{ tr("live.sec_alert") }}</h2>
+      <div class="card">
+        {{ m::switch("notify_down", tr("live.notify_down"), f.input.notify_down) }}
+        {{ m::field_text("mention", tr("live.mention"), value=&f.input.mention, placeholder="123456789012345678", help=tr("live.mention_help"), error=f.err("mention")) }}
+      </div>
+    </section>
+
+    <div class="form-actions">
+      {{ m::link_button("/settings/notifications/boards", tr("common.cancel"), "secondary") }}
+      {{ m::button(f.submit_label()) }}
+    </div>
+  </form>
+</section>
+{%- endif %}
+
+<section class="section" aria-labelledby="lb-title">
+  {% call m::section_head(tr("live.list"), "", "lb-title") %}{% endcall %}
+  {%- if boards.is_empty() %}
+  <div class="empty-card">
+    {{ m::empty_state("megaphone", tr("live.empty_title"), tr("live.empty_text"), "/settings/notifications/boards/new", tr("live.add")) }}
+  </div>
+  {%- else %}
+  <div class="card card-flush">
+    <div class="table-wrap">
+      <table class="table table-stack">
+        <thead><tr><th>{{ tr("common.name") }}</th><th>{{ tr("live.col_status") }}</th><th><span class="vh">{{ tr("common.actions") }}</span></th></tr></thead>
+        <tbody>
+          {%- for b in boards %}
+          <tr id="lb-{{ b.id }}">
+            <td class="td-primary">
+              <span class="stack-xs">
+                <span>{{ b.name }} <span class="badge">{{ b.platform }}</span></span>
+                <span class="muted t-footnote">{{ b.source }}</span>
+                {%- if let Some(e) = b.error %}<span class="t-footnote status-text status-down">{{ e }}</span>{% endif %}
+              </span>
+            </td>
+            <td data-label="{{ tr("live.col_status") }}">
+              <span class="stack-xs">
+                <span class="pill status-{{ b.class }}">{{ b.state }}</span>
+                {%- if let Some(at) = b.last_ok %}<span class="muted t-footnote">{{ tr("live.last_ok") }} {{ m::time_ago(at) }}</span>{% endif %}
+              </span>
+            </td>
+            <td class="td-actions">
+              <button type="button" class="btn btn-icon btn-plain" popovertarget="lb-menu-{{ b.id }}" aria-label="{{ tr1("detail.more_actions_for", "name", b.name) }}">{{ m::icon("more") }}</button>
+              <div class="menu" id="lb-menu-{{ b.id }}" popover>
+                {%- if b.paused %}
+                <button class="menu-item" type="button" hx-post="/settings/notifications/boards/{{ b.id }}/retry">{{ m::icon("refresh") }}{{ tr("live.retry") }}</button>
+                {%- else %}
+                <button class="menu-item" type="button" hx-post="/settings/notifications/boards/{{ b.id }}/refresh">{{ m::icon("refresh") }}{{ tr("live.refresh_now") }}</button>
+                {%- endif %}
+                <a class="menu-item" href="/settings/notifications/boards/{{ b.id }}/edit">{{ m::icon("pencil") }}{{ tr("common.edit") }}</a>
+                <hr class="menu-sep">
+                <button class="menu-item menu-item-danger" type="button" hx-delete="/settings/notifications/boards/{{ b.id }}"
+                  hx-target="#lb-{{ b.id }}" hx-swap="outerHTML" hx-confirm="{{ tr1("live.delete_q", "name", b.name) }}"
+                  data-confirm-message="{{ tr("live.delete_msg") }}">{{ m::icon("trash") }}{{ tr("common.delete") }}</button>
+              </div>
+            </td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {%- endif %}
+</section>
+{% endblock %}

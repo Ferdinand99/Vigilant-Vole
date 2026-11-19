@@ -59,6 +59,7 @@ Single binary. Single Docker container. One volume. Inspired by [Uptime Kuma](ht
 - **Maintenance windows** — manual, one-off, daily, weekly, every N days, days of the month (including “last day”) or a **cron expression** (any time zone, across midnight and DST changes); monitors record *maintenance* and stay quiet
 
 **AI assistants**
+- **Live status boards** — keep one message in a Discord or Fluxer channel up to date with a status page or some monitors: it is posted once through the channel's webhook and edited in place when something changes (rate limits, message limits, privacy and the Fluxer instance checks are handled; the webhook is stored encrypted) — see [docs/live-status-boards.md](docs/live-status-boards.md)
 - **MCP server** — connect your own Claude Code, Claude Desktop or any MCP client (`POST /mcp`, Streamable HTTP, or the `vigilant-vole mcp` stdio bridge) with an API token: a read token to ask what's down and why, a write token to pause monitors, post incident updates or start maintenance. Vigilant Vole never calls an AI itself; secrets are masked and nothing can delete data — see [docs/mcp.md](docs/mcp.md)
 
 **Alerting**
@@ -401,7 +402,7 @@ curl -H "Authorization: Bearer vv_…" -H "Content-Type: application/json" \
 curl -H "Authorization: Bearer vv_…" -X POST https://status.example.com/api/v1/monitors/7/pause
 ```
 
-Covers monitors (CRUD, pause/resume, check now, heartbeats, uptime, events, tags), tags, notification channels (+ test), status pages, sections and incidents, maintenance, settings and config. More in [docs/api.md](docs/api.md).
+Covers monitors (CRUD, pause/resume, check now, heartbeats, uptime, events, tags), tags, notification channels (+ test), live status boards, status pages, sections and incidents, maintenance, settings and config. More in [docs/api.md](docs/api.md).
 
 ## 📝 Config as code
 

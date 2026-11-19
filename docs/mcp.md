@@ -54,6 +54,7 @@ Read tools (any token):
 | `why_is_it_down` | One call for diagnosis: status, ongoing outage and its start, last events, last checks with their error messages, certificate and domain expiry |
 | `list_status_pages`, `list_incidents` | Status pages and their incidents (optionally only open ones) |
 | `list_maintenance` | Maintenance windows, schedule and state |
+| `list_live_boards` | The live status boards (Discord and Fluxer): source, options, state and last error. The webhook address is never part of the answer |
 
 Editing tools (write token held by an editor or admin):
 
@@ -64,6 +65,7 @@ Editing tools (write token held by an editor or admin):
 | `bulk_edit` | `POST /api/v1/monitors/bulk` semantics: `ids` or a `filter`, and `set` |
 | `create_incident`, `update_incident` | Post an incident; change it; add a timeline update (`investigating`, `identified`, `monitoring`, `resolved`) |
 | `start_maintenance`, `end_maintenance` | A manual window over some monitors, on until ended |
+| `refresh_live_board` | Update a live status board's messages now (also starts a paused board again) |
 
 Resources: `vigilant-vole://api-reference` (this server's REST API reference as Markdown, the same text as
 **Copy for AI** on the API page) and `vigilant-vole://monitor/{id}`.

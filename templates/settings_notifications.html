@@ -3,6 +3,7 @@
 
 {% block settings_content %}
 {% call m::page_header(tr("nav.notifications"), tr("notif.sub")) %}
+  <a class="btn btn-secondary" href="/settings/notifications/boards">{{ m::icon("megaphone") }}<span>{{ tr("live.title") }}</span></a>
   {%- if can_edit %}
   <button type="button" class="btn btn-primary" data-sheet-open="#add-channel" commandfor="add-channel" command="show-modal"
     hx-get="/settings/notifications/providers" hx-target="#channel-sheet-body" hx-swap="outerHTML">{{ m::icon("plus") }}<span>{{ tr("notif.add_channel") }}</span></button>

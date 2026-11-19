@@ -21,6 +21,7 @@ use crate::db::api_tokens::{self as db_tokens, TokenScope};
 use crate::db::users as db_users;
 use crate::monitor::Scheduler;
 
+mod live_boards;
 mod push;
 mod summary;
 

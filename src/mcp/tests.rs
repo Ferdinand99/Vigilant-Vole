@@ -531,6 +531,7 @@ async fn read_tokens_see_only_read_tools_and_cannot_call_write_tools() {
         "list_status_pages",
         "list_incidents",
         "list_maintenance",
+        "list_live_boards",
     ] {
         assert!(
             read.contains(&name.to_string()),
@@ -548,6 +549,7 @@ async fn read_tokens_see_only_read_tools_and_cannot_call_write_tools() {
         "update_incident",
         "start_maintenance",
         "end_maintenance",
+        "refresh_live_board",
     ] {
         assert!(
             !read.contains(&name.to_string()) && !viewer.contains(&name.to_string()),

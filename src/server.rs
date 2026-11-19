@@ -103,6 +103,8 @@ pub async fn run(config: Config) {
     monitor::retention::spawn(state.clone());
     discovery::spawn(state.clone());
     maintenance::spawn(state.clone());
+    // Live status boards: keep their channel messages up to date.
+    crate::live_status::runner::spawn(state.clone());
     // GitOps: merge `VV_CONFIG_FILE` (if set) into the database on startup.
     crate::config_io::spawn_startup_import(state.clone());
 

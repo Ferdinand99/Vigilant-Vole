@@ -626,7 +626,7 @@ fn a_fresh_database_adopts_the_core_set_after_our_migrations() {
             "kit/0005_sealed_totp.sql",
             "kit/0004_sealed_secrets.sql",
             "kit/0003_passkeys.sql",
-            "0107_status_page_domain_only.sql"
+            "0108_live_status_boards.sql"
         ]
     );
     assert!(!ran.contains(&"kit/0001_core.sql".to_string()), "{ran:?}");
@@ -678,8 +678,32 @@ fn the_core_row_does_not_hide_a_newer_migration() {
     let err = apply_migrations(&mut conn).unwrap_err();
     assert!(
         matches!(&err, super::MigrationError::NewerSchema { schema, known, .. }
-            if schema == "0110_from_the_future" && known == "0107_status_page_domain_only"),
+            if schema == "0110_from_the_future" && known == "0108_live_status_boards"),
         "{err:?}"
+    );
+}
+
+#[test]
+fn live_boards_upgrade_adds_empty_tables_and_keeps_everything() {
+    let mut conn = migrated_before("0108");
+    conn.execute_batch(
+        "INSERT INTO status_pages (id, slug, title) VALUES (1, 'acme', 'Acme');
+         INSERT INTO monitors (id, name, monitor_type, target) VALUES (1, 'Web', 'http', 'https://acme.test');",
+    )
+    .unwrap();
+    super::apply_migrations(&mut conn).unwrap();
+    assert!(applied(&conn).contains(&"0108_live_status_boards.sql".to_string()));
+    for table in ["live_boards", "live_board_items", "live_board_messages"] {
+        let n: i64 = conn
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "{table}");
+    }
+    assert!(crate::db::status_pages::get(&conn, 1).unwrap().is_some());
+    assert!(
+        crate::db::monitors::get_monitor(&conn, 1)
+            .unwrap()
+            .is_some()
     );
 }
 
