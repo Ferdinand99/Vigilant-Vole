@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.18.0...v0.18.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **deps:** bump lettre to 0.11.24 for the SMTP advisories ([#111](https://github.com/Ferdinand99/Vigilant-Vole/issues/111)) ([e207449](https://github.com/Ferdinand99/Vigilant-Vole/commit/e207449a6b02f8a25f65ad1d75578d7ddcc0d634))
+
 ## [0.18.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.17.1...v0.18.0) (2026-11-19)
 
 
