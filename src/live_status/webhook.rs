@@ -174,7 +174,8 @@ impl Target {
         let prefix_text = prefix.iter().fold(String::new(), |acc, s| acc + "/" + s);
         match platform {
             Platform::Discord => {
-                if !relaxed && !DISCORD_HOSTS.contains(&host.as_str()) {
+                if !relaxed && (!DISCORD_HOSTS.contains(&host.as_str()) || parsed.port().is_some())
+                {
                     return Err(UrlError::Host);
                 }
                 let ok = matches!(prefix, ["api"] | ["api", _])
@@ -187,7 +188,13 @@ impl Target {
                 // A Fluxer instance is named, never addressed by IP, and
                 // never `localhost`.
                 let literal = host.parse::<std::net::IpAddr>().is_ok() || host.starts_with('[');
-                if !relaxed && (literal || !host.contains('.') || host == "localhost") {
+                if !relaxed
+                    && (literal
+                        || !host.contains('.')
+                        || host.ends_with('.')
+                        || host == "localhost"
+                        || host.ends_with(".localhost"))
+                {
                     return Err(UrlError::Host);
                 }
                 if prefix
@@ -212,6 +219,11 @@ impl Target {
             host,
             port,
         })
+    }
+
+    /// What a rate limit belongs to: this webhook of this API.
+    fn bucket_key(&self) -> String {
+        format!("{}|{}", self.api_base(), self.id)
     }
 
     /// `{origin}{prefix}` (what Fluxer's `api_public` is compared to).
@@ -275,10 +287,13 @@ struct Answer {
 
 /// The webhook client. One per process ([`client`]); tests build their own.
 pub struct Client {
-    /// Tests only: allow plain `http` and loopback addresses, skip the
-    /// public-address rule.
+    /// Tests only: allow plain `http` and any host when parsing.
     relaxed: bool,
-    /// Webhook id → when its rate limit lifts.
+    /// How a Fluxer host name is turned into addresses.
+    resolver: Resolver,
+    /// Whether every resolved address has to be public (always, outside tests).
+    public_only: bool,
+    /// Webhook (API base and id) → when its rate limit lifts.
     buckets: Mutex<HashMap<String, Instant>>,
     /// API base → when it was last confirmed to be a Fluxer instance.
     confirmed: Mutex<HashMap<String, Instant>>,
@@ -286,7 +301,19 @@ pub struct Client {
     discord: reqwest::Client,
 }
 
-static CLIENT: LazyLock<Client> = LazyLock::new(|| Client::new(false));
+/// Where a Fluxer host's addresses come from.
+enum Resolver {
+    /// The system resolver.
+    System,
+    /// Tests: a fixed answer, whatever the name.
+    #[cfg(test)]
+    Fixed(Vec<SocketAddr>),
+    /// Tests: no pinning at all, connect to what the URL says.
+    #[cfg(test)]
+    Direct,
+}
+
+static CLIENT: LazyLock<Client> = LazyLock::new(|| Client::new(false, Resolver::System, true));
 
 /// The process-wide client.
 pub fn client() -> &'static Client {
@@ -302,9 +329,11 @@ fn base_builder() -> reqwest::ClientBuilder {
 }
 
 impl Client {
-    fn new(relaxed: bool) -> Client {
+    fn new(relaxed: bool, resolver: Resolver, public_only: bool) -> Client {
         Client {
             relaxed,
+            resolver,
+            public_only,
             buckets: Mutex::default(),
             confirmed: Mutex::default(),
             discord: base_builder().build().expect("failed to build HTTP client"),
@@ -314,7 +343,14 @@ impl Client {
     /// A client that talks to loopback servers over plain `http`.
     #[cfg(test)]
     pub fn for_tests() -> Client {
-        Client::new(true)
+        Client::new(true, Resolver::Direct, false)
+    }
+
+    /// A test client whose Fluxer host names all resolve to `addrs`, with
+    /// or without the public-address rule: the real request path.
+    #[cfg(test)]
+    pub fn for_tests_resolving(addrs: Vec<SocketAddr>, public_only: bool) -> Client {
+        Client::new(true, Resolver::Fixed(addrs), public_only)
     }
 
     /// Parses `url` the way this client accepts it.
@@ -330,10 +366,18 @@ impl Client {
         if t.platform == Platform::Discord {
             return Ok(self.discord.clone());
         }
-        let addrs = if self.relaxed {
-            Vec::new()
-        } else {
-            resolve_public(&t.host, t.port).await?
+        let addrs = match &self.resolver {
+            Resolver::System => {
+                let found: Vec<SocketAddr> = tokio::net::lookup_host((t.host.as_str(), t.port))
+                    .await
+                    .map_err(|_| Failure::Transient("could not resolve the host name".into()))?
+                    .collect();
+                check_public(found, self.public_only)?
+            }
+            #[cfg(test)]
+            Resolver::Fixed(addrs) => check_public(addrs.clone(), self.public_only)?,
+            #[cfg(test)]
+            Resolver::Direct => Vec::new(),
         };
         let mut builder = base_builder().no_proxy();
         if !addrs.is_empty() {
@@ -410,7 +454,7 @@ impl Client {
     ) -> Result<Answer, Failure> {
         let mut retried = false;
         loop {
-            self.wait_for_bucket(&t.id).await?;
+            self.wait_for_bucket(&t.bucket_key()).await?;
             let client = self.client_for(t).await?;
             let mut req = client.request(method.clone(), &url);
             if let Some(body) = body {
@@ -422,7 +466,7 @@ impl Client {
                 .map_err(|e| Failure::Transient(format!("request failed ({})", describe(&e))))?;
             let status = resp.status().as_u16();
             let headers = resp.headers().clone();
-            self.note_headers(&t.id, &headers);
+            self.note_headers(&t.bucket_key(), &headers);
             let bytes = read_capped(resp, 256 * 1024).await.unwrap_or_default();
             let json: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
             if status == 429 {
@@ -432,7 +476,7 @@ impl Client {
                     tokio::time::sleep(wait).await;
                     continue;
                 }
-                self.hold(&t.id, wait);
+                self.hold(&t.bucket_key(), wait);
                 return Err(Failure::RateLimited(wait));
             }
             return Ok(Answer { status, body: json });
@@ -474,11 +518,12 @@ impl Client {
                 .get(name)
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.trim().parse::<f64>().ok())
+                .filter(|v| v.is_finite())
         };
         if number("x-ratelimit-remaining").is_some_and(|r| r < 1.0)
             && let Some(after) = number("x-ratelimit-reset-after")
         {
-            self.hold(id, Duration::from_secs_f64(after.clamp(0.0, 120.0)));
+            self.hold(id, secs(after, 0.0, 120.0));
         }
     }
 
@@ -495,8 +540,9 @@ impl Client {
                 .body
                 .get("id")
                 .and_then(Value::as_str)
+                .filter(|id| is_digits(id, 30))
                 .map(str::to_string)
-                .ok_or_else(|| Failure::Transient("the answer had no message id".into())),
+                .ok_or_else(|| Failure::Transient("the answer had no valid message id".into())),
             _ => Err(failure_for(t, &answer)),
         }
     }
@@ -606,7 +652,7 @@ async fn read_capped(resp: reqwest::Response, max: usize) -> Result<Vec<u8>, ()>
 /// Seconds a 429 asks us to wait (`retry_after` in the body, else the
 /// `Retry-After` header), at least a short pause.
 fn retry_after(headers: &reqwest::header::HeaderMap, body: &Value) -> Duration {
-    let secs = body
+    let value = body
         .get("retry_after")
         .and_then(Value::as_f64)
         .or_else(|| {
@@ -615,20 +661,30 @@ fn retry_after(headers: &reqwest::header::HeaderMap, body: &Value) -> Duration {
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.trim().parse::<f64>().ok())
         })
+        .filter(|v| v.is_finite())
         .unwrap_or(1.0);
-    Duration::from_secs_f64(secs.clamp(0.1, 3600.0))
+    secs(value, 0.1, 3600.0)
 }
 
-/// Resolves `host` and returns its addresses, only if every one is public.
-async fn resolve_public(host: &str, port: u16) -> Result<Vec<SocketAddr>, Failure> {
-    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
-        .await
-        .map_err(|_| Failure::Transient("could not resolve the host name".into()))?
-        .collect();
+/// A duration of `value` seconds within `min` to `max`. Never panics: a
+/// value that is not finite is `min`.
+fn secs(value: f64, min: f64, max: f64) -> Duration {
+    let v = if value.is_finite() {
+        value.clamp(min, max)
+    } else {
+        min
+    };
+    Duration::try_from_secs_f64(v).unwrap_or(Duration::from_secs_f64(min))
+}
+
+/// The addresses a name resolved to, only if every one is public (when
+/// `public_only`): a name that also points inside can't be used to reach
+/// internal services.
+fn check_public(addrs: Vec<SocketAddr>, public_only: bool) -> Result<Vec<SocketAddr>, Failure> {
     if addrs.is_empty() {
         return Err(Failure::Transient("the host name has no address".into()));
     }
-    if addrs.iter().any(|a| !crate::kit::net::is_public(a.ip())) {
+    if public_only && addrs.iter().any(|a| !crate::kit::net::is_public(a.ip())) {
         return Err(Failure::Permanent(
             "the host does not resolve to a public address".into(),
         ));
@@ -728,6 +784,28 @@ mod tests {
                 "{path}"
             );
         }
+        // Other ways to write a loopback address, a trailing dot, another port, other scripts.
+        for host in [
+            "2130706433",
+            "0x7f.1",
+            "0177.0.0.1",
+            "[::ffff:127.0.0.1]",
+            "[::ffff:7f00:1]",
+            "localhost.",
+            "discord.com.",
+            "discord.com:8443",
+            "discord.com:80",
+            "d{456}scord.com",
+            "xn--dscord-3ve.com",
+            "discord{ff0e}com.evil.test",
+        ] {
+            assert!(
+                discord(&format!("https://{host}/api/webhooks/{ID}/tok")).is_err(),
+                "{host}"
+            );
+        }
+        // An explicit default port is the same address.
+        assert!(discord(&format!("https://discord.com:443/api/webhooks/{ID}/tok")).is_ok());
         assert_eq!(discord("not a url"), Err(UrlError::Invalid));
         assert_eq!(discord(""), Err(UrlError::Invalid));
     }
@@ -749,7 +827,19 @@ mod tests {
             "https://chat.example.org:8443"
         );
         // Never an address, `localhost` or a name without a dot.
-        for host in ["127.0.0.1", "10.0.0.5", "[::1]", "localhost", "intranet"] {
+        for host in [
+            "127.0.0.1",
+            "10.0.0.5",
+            "[::1]",
+            "localhost",
+            "localhost.",
+            "app.localhost",
+            "intranet",
+            "2130706433",
+            "0x7f.1",
+            "[::ffff:127.0.0.1]",
+            "chat.example.org.",
+        ] {
             assert_eq!(
                 f(&format!("https://{host}/api/webhooks/{ID}/tok")),
                 Err(UrlError::Host),
@@ -857,11 +947,59 @@ mod network_tests {
 
     #[tokio::test]
     async fn names_that_resolve_to_loopback_or_private_addresses_are_refused() {
-        // `localhost` resolves to 127.0.0.1 / ::1 on every machine.
+        let addr = |s: &str| -> SocketAddr { s.parse().unwrap() };
+        for bad in [
+            vec![addr("127.0.0.1:443")],
+            vec![addr("10.0.0.5:443")],
+            vec![addr("169.254.169.254:443")],
+            vec![addr("[::1]:443")],
+            vec![addr("[::ffff:127.0.0.1]:443")],
+            // One public answer does not excuse a private one.
+            vec![addr("93.184.216.34:443"), addr("192.168.1.1:443")],
+        ] {
+            assert!(
+                matches!(check_public(bad.clone(), true), Err(Failure::Permanent(_))),
+                "{bad:?}"
+            );
+        }
+        assert!(check_public(vec![addr("93.184.216.34:443")], true).is_ok());
         assert!(matches!(
-            resolve_public("localhost", 443).await,
-            Err(Failure::Permanent(_))
+            check_public(vec![], true),
+            Err(Failure::Transient(_))
         ));
+    }
+
+    #[test]
+    fn rate_limit_numbers_that_are_not_finite_never_panic() {
+        for bad in ["nan", "NaN", "inf", "-inf", "infinity", "1e999"] {
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("retry-after", bad.parse().unwrap());
+            let wait = retry_after(&headers, &Value::Null);
+            assert!(
+                wait >= Duration::from_millis(100) && wait <= Duration::from_secs(3600),
+                "{bad}: {wait:?}"
+            );
+            // A body number that is not finite can't be sent as JSON, but a string is ignored.
+            assert!(
+                retry_after(
+                    &reqwest::header::HeaderMap::new(),
+                    &serde_json::json!({"retry_after": bad})
+                ) >= Duration::from_millis(100)
+            );
+
+            let client = Client::for_tests();
+            let mut h = reqwest::header::HeaderMap::new();
+            h.insert("x-ratelimit-remaining", "0".parse().unwrap());
+            h.insert("x-ratelimit-reset-after", bad.parse().unwrap());
+            client.note_headers("k", &h);
+            let mut h = reqwest::header::HeaderMap::new();
+            h.insert("x-ratelimit-remaining", bad.parse().unwrap());
+            h.insert("x-ratelimit-reset-after", "1".parse().unwrap());
+            client.note_headers("k", &h);
+        }
+        assert_eq!(secs(f64::NAN, 0.1, 5.0), Duration::from_millis(100));
+        assert_eq!(secs(f64::INFINITY, 0.1, 5.0), Duration::from_millis(100));
+        assert_eq!(secs(1e300, 0.1, 5.0), Duration::from_secs(5));
     }
 
     #[tokio::test]

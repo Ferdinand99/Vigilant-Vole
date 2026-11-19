@@ -288,6 +288,48 @@ async fn config_exports_leave_the_webhook_out_and_imports_keep_it() {
         .unwrap();
     assert_eq!(before, after);
 
+    // The same document with the webhook in it (as a GitOps file would carry
+    // it) is just as unchanged: the saved sealed value stays, so nothing is
+    // re-posted on every start.
+    let mut with_webhook: Value = serde_json::from_slice(
+        &to_bytes(
+            h.call(Method::GET, "/api/v1/config?format=json", &h.admin, None)
+                .await
+                .into_body(),
+            usize::MAX,
+        )
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    with_webhook["live_boards"][0]["webhook"] = json!(WEBHOOK);
+    let (status, v) = h
+        .json(Method::POST, "/api/v1/config", &h.admin, Some(with_webhook))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    let boards_plan: Vec<&Value> = v["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|i| i["kind"] == "live_board")
+        .collect();
+    assert!(
+        boards_plan.iter().all(|i| i["action"] == "unchanged"),
+        "{v}"
+    );
+    let after_again: String = h
+        .state
+        .with_conn(move |c| {
+            c.query_row(
+                "SELECT webhook_url FROM live_boards WHERE id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(before, after_again);
+
     // A board that is new needs its webhook in the document.
     let doc = json!({"live_boards": [{"name": "Other", "items": ["API"]}]});
     let (status, v) = h

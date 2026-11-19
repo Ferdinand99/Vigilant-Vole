@@ -508,6 +508,8 @@ async fn update(
     }
     // A new webhook is another channel: the old messages are removed (as far
     // as that works) and the board starts over there.
+    // (Nothing refreshes the board in between.)
+    let lock = runner::lock(&state, id).await;
     let moved = new.webhook_url != current.webhook_url;
     if moved {
         runner::delete_messages(&state, crate::live_status::webhook::client(), &current).await;
@@ -520,6 +522,7 @@ async fn update(
             boards::update(c, id, &new)
         })
         .await?;
+    drop(lock);
     tracing::info!(board_id = id, user = %user.username, "live status board changed");
     runner::kick(&state, id);
     let jar = flash(jar, "success", crate::i18n::t("live.saved"));
@@ -544,6 +547,7 @@ async fn remove(
         .with_conn(move |c| boards::get(c, id))
         .await?
         .ok_or(ApiError::NotFound)?;
+    let _lock = runner::lock(&state, id).await;
     runner::delete_messages(&state, crate::live_status::webhook::client(), &board).await;
     state.with_conn(move |c| boards::delete(c, id)).await?;
     tracing::info!(board_id = id, user = %user.username, "live status board removed");

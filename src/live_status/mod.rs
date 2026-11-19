@@ -33,7 +33,7 @@ use webhook::Platform;
 pub type Errors = BTreeMap<&'static str, String>;
 
 /// What a form, the API or an import submits.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Input {
     pub name: String,
     /// `discord` | `fluxer`.
@@ -56,6 +56,20 @@ pub struct Input {
     pub notify_down: bool,
     pub mention: String,
     pub lang: String,
+}
+
+/// Like the derived `Debug`, but the webhook address is never printed.
+impl std::fmt::Debug for Input {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Input")
+            .field("name", &self.name)
+            .field("platform", &self.platform)
+            .field("webhook", &self.webhook.as_ref().map(|_| SECRET_MASK))
+            .field("source", &self.source)
+            .field("status_page_id", &self.status_page_id)
+            .field("items", &self.items)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Input {
@@ -146,7 +160,18 @@ pub fn validate(
         (Some(url), _) => {
             if let Some(platform) = platform {
                 match webhook::client().parse(platform, url) {
-                    Ok(_) => sealed_webhook = crate::kit::notify::sealed::seal_value(key, url),
+                    Ok(_) => {
+                        // The address it already has: keep its sealed value (sealing is
+                        // randomised), so that nothing looks changed.
+                        let same = editing.and_then(|b| {
+                            crate::kit::notify::sealed::open_value(key, &b.webhook_url)
+                                .ok()
+                                .filter(|opened| opened == url)
+                                .map(|_| b.webhook_url.clone())
+                        });
+                        sealed_webhook = same
+                            .unwrap_or_else(|| crate::kit::notify::sealed::seal_value(key, url));
+                    }
                     Err(why) => err(&mut e, "webhook", why.message_key()),
                 }
             }

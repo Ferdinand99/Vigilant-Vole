@@ -102,7 +102,7 @@ async fn show(
 
 /// What a client may send; every field optional so that `PATCH` changes only
 /// what it names.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Default, Deserialize)]
 struct BoardIn {
     name: Option<String>,
     platform: Option<String>,
@@ -121,6 +121,16 @@ struct BoardIn {
     notify_down: Option<bool>,
     mention: Option<String>,
     lang: Option<String>,
+}
+
+/// The webhook address is never printed.
+impl std::fmt::Debug for BoardIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoardIn")
+            .field("name", &self.name)
+            .field("webhook", &self.webhook.as_ref().map(|_| "••••••"))
+            .finish_non_exhaustive()
+    }
 }
 
 impl BoardIn {
@@ -224,6 +234,7 @@ async fn update(
         return Err(invalid(Errors::from([("webhook", message)])));
     }
     // Another webhook is another channel: remove the old messages first.
+    let lock = runner::lock(&state, id).await;
     let moved = new.webhook_url != current.webhook_url;
     if moved {
         runner::delete_messages(&state, crate::live_status::webhook::client(), &current).await;
@@ -238,6 +249,7 @@ async fn update(
         })
         .await?
         .ok_or_else(V1Error::not_found)?;
+    drop(lock);
     runner::kick(&state, id);
     Ok(json_ok(&HeaderMap::new(), &saved))
 }
@@ -253,6 +265,7 @@ async fn remove(
         .await?
         .ok_or_else(V1Error::not_found)?;
     // Its messages go with it, as far as that works.
+    let _lock = runner::lock(&state, id).await;
     runner::delete_messages(&state, crate::live_status::webhook::client(), &board).await;
     state.with_conn(move |c| boards::delete(c, id)).await?;
     Ok(no_content())

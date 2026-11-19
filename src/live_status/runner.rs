@@ -79,6 +79,46 @@ impl Guard {
     }
 }
 
+/// Holds a board's refresh slot, so that nothing refreshes it meanwhile.
+pub struct Exclusive(#[allow(dead_code)] Option<Guard>);
+
+/// Waits (up to half a minute) for a running refresh of the board to end
+/// and keeps others from starting until the result is dropped. Take it
+/// around "delete its messages, then change or delete the board": a refresh
+/// that ran in between could post into the old channel again.
+pub async fn lock(state: &AppState, id: i64) -> Exclusive {
+    for _ in 0..60 {
+        if let Some(g) = Guard::take(state, id) {
+            return Exclusive(Some(g));
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    Exclusive(None)
+}
+
+/// What the board looked like when it was last refreshed ([`view::fingerprint`]).
+static FINGERPRINTS: LazyLock<Mutex<HashMap<RunKey, String>>> = LazyLock::new(Mutex::default);
+
+fn fingerprint_of(key: &RunKey) -> Option<String> {
+    FINGERPRINTS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(key)
+        .cloned()
+}
+
+fn remember_fingerprint(key: RunKey, fp: Option<String>) {
+    let mut map = FINGERPRINTS.lock().unwrap_or_else(PoisonError::into_inner);
+    match fp {
+        Some(fp) => {
+            map.insert(key, fp);
+        }
+        None => {
+            map.remove(&key);
+        }
+    }
+}
+
 impl Drop for Guard {
     fn drop(&mut self) {
         RUNNING
@@ -174,14 +214,29 @@ pub async fn run_board(state: &AppState, client: &Client, id: i64, mode: Mode) -
         return Outcome::Skipped;
     }
 
+    // A change-driven refresh starts with a cheap look: when nothing that
+    // decides the messages has changed, the view is not even built.
+    let key = (state.config.data_dir.clone(), id);
+    let (b, now) = (board.clone(), Timestamp::now());
+    let fp = db(state, move |c| Ok(view::fingerprint(c, &b, now).ok()))
+        .await
+        .unwrap_or(None);
+    if mode == Mode::Change && fp.is_some() && fp == fingerprint_of(&key) {
+        return Outcome::Skipped;
+    }
+
     let outcome = refresh(state, client, &board, stored, mode).await;
     match &outcome {
         Ok(()) => {
+            remember_fingerprint(key, fp);
             let _ = db(state, move |c| boards::record_ok(c, id)).await;
             Outcome::Ok
         }
         Err(Failure::RateLimited(wait)) => Outcome::Deferred(*wait),
-        Err(f) => fail(state, id, f.message(), f.is_permanent()).await,
+        Err(f) => {
+            remember_fingerprint(key, None);
+            fail(state, id, f.message(), f.is_permanent()).await
+        }
     }
 }
 
@@ -413,6 +468,9 @@ struct Times {
     not_before: Option<Instant>,
 }
 
+/// Refreshes the background job runs at once.
+static PERMITS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
 static TIMES: LazyLock<Mutex<HashMap<i64, Times>>> = LazyLock::new(Mutex::default);
 
 fn times<R>(f: impl FnOnce(&mut HashMap<i64, Times>) -> R) -> R {
@@ -478,6 +536,8 @@ pub fn spawn(state: AppState) {
                 let state = state.clone();
                 let id = board.id;
                 tokio::spawn(async move {
+                    // A few refreshes at a time, so many boards can't flood the database.
+                    let _permit = PERMITS.acquire().await;
                     let outcome = run_board(&state, super::webhook::client(), id, mode).await;
                     if let Outcome::Deferred(wait) = outcome {
                         times(|t| {

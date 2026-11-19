@@ -367,10 +367,11 @@ pub fn set_known_down(conn: &Connection, id: i64, down: &[i64]) -> rusqlite::Res
     Ok(())
 }
 
-/// A refresh worked: clears the failure count and the error.
+/// A refresh worked: clears the failure count and the error, and starts a
+/// paused board again (a refresh somebody asked for that works proves it can).
 pub fn record_ok(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     conn.execute(
-        "UPDATE live_boards SET failures = 0, last_error = NULL, last_ok_at = datetime('now') WHERE id = ?1",
+        "UPDATE live_boards SET state = 'active', failures = 0, last_error = NULL, last_ok_at = datetime('now') WHERE id = ?1",
         params![id],
     )?;
     Ok(())
@@ -479,6 +480,11 @@ mod tests {
         let b = get(&conn, id).unwrap().unwrap();
         assert!(b.is_paused());
         assert_eq!(b.last_error.as_deref(), Some("boom"));
+        // A refresh that works also starts a paused board again.
+        record_ok(&conn, id).unwrap();
+        let b = get(&conn, id).unwrap().unwrap();
+        assert!(!b.is_paused());
+        assert!(record_failure(&conn, id, "boom", true).unwrap());
         assert!(retry(&conn, id).unwrap());
         let b = get(&conn, id).unwrap().unwrap();
         assert!(!b.is_paused());

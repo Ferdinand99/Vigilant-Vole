@@ -40,6 +40,8 @@ struct Fake {
     rate_limits: Vec<f64>,
     /// Every create answers this (status, body).
     fail_create: Option<(u16, Value)>,
+    /// Creates answer this message id instead of a number.
+    id_override: Option<String>,
 }
 
 type Shared = Arc<Mutex<Fake>>;
@@ -65,7 +67,10 @@ async fn create(
         );
     }
     f.next += 1;
-    let id = (1000 + f.next).to_string();
+    let id = f
+        .id_override
+        .clone()
+        .unwrap_or_else(|| (1000 + f.next).to_string());
     f.messages.insert(id.clone(), body);
     if q.get("wait").map(String::as_str) == Some("true") {
         (StatusCode::OK, Json(json!({"id": id})))
@@ -282,9 +287,13 @@ async fn a_board_posts_once_and_then_edits_that_message_in_place() {
     assert_eq!(log(&fake), vec![format!("PATCH {first_id}")]);
     assert_eq!(messages(&state, id).await[0].message_id, first_id);
 
-    // A change-driven refresh with nothing changed sends nothing.
+    // A change-driven refresh with nothing changed sends nothing (and stops
+    // before it builds the view).
     clear_log(&fake);
-    assert_eq!(run(&state, &client, id, Mode::Change).await, Outcome::Ok);
+    assert_eq!(
+        run(&state, &client, id, Mode::Change).await,
+        Outcome::Skipped
+    );
     assert!(log(&fake).is_empty(), "{:?}", log(&fake));
 
     // Something changed: one edit, the message id stays.
@@ -711,6 +720,28 @@ async fn validation_seals_the_webhook_and_keeps_it_on_edit() {
         assert_eq!(kept.webhook_url, b.webhook_url);
     }
 
+    // Sending the very same address again keeps the sealed value too (sealing
+    // is randomised, so a fresh seal would look like a new webhook).
+    let mut input = Input::from_board(&b, vec![1]);
+    input.webhook = valid_input().webhook;
+    let (k, b2) = (key.clone(), b.clone());
+    let again = state
+        .with_conn(move |c| validate(c, &k, Some(&b2), &input))
+        .await
+        .unwrap()
+        .expect("valid");
+    assert_eq!(again.webhook_url, b.webhook_url);
+    // Another address is another webhook.
+    let mut input = Input::from_board(&b, vec![1]);
+    input.webhook = Some("https://discord.com/api/webhooks/987654321/otherTOKEN".into());
+    let (k, b2) = (key.clone(), b.clone());
+    let other_hook = state
+        .with_conn(move |c| validate(c, &k, Some(&b2), &input))
+        .await
+        .unwrap()
+        .expect("valid");
+    assert_ne!(other_hook.webhook_url, b.webhook_url);
+
     // Under another instance key the saved webhook can't be kept.
     let other = axum_extra::extract::cookie::Key::generate();
     let input = Input::from_board(&b, vec![1]);
@@ -816,4 +847,205 @@ async fn the_webhook_never_appears_in_the_error_a_board_shows() {
         }
         other => panic!("{other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// The real request path: pinning and the public-address rule
+// ---------------------------------------------------------------------------
+
+/// A fake Fluxer instance reached through a host *name* that no resolver
+/// knows: only a pinned connection can reach it. Returns the server, its
+/// socket address and a webhook URL on the name.
+async fn named_fluxer() -> (Shared, std::net::SocketAddr, String) {
+    let f = fake("/api", true).await;
+    let addr: std::net::SocketAddr = f
+        .lock()
+        .unwrap()
+        .base
+        .trim_start_matches("http://")
+        .parse()
+        .unwrap();
+    let base = format!("http://chat.example.test:{}", addr.port());
+    f.lock().unwrap().base = base.clone();
+    let url = format!("{base}/api/webhooks/123456789/{TOKEN}");
+    (f, addr, url)
+}
+
+#[tokio::test]
+async fn a_name_that_resolves_to_a_private_address_is_refused_before_any_request() {
+    let (f, addr, url) = named_fluxer().await;
+    let payload = json!({"embeds": [{"title": "x"}]});
+    for answers in [
+        // Loopback, private, link-local and metadata addresses.
+        vec![addr],
+        vec!["10.0.0.5:80".parse().unwrap()],
+        vec!["169.254.169.254:80".parse().unwrap()],
+        vec!["[::1]:80".parse().unwrap()],
+        // One public answer does not excuse a private one.
+        vec!["93.184.216.34:80".parse().unwrap(), addr],
+    ] {
+        let client = Client::for_tests_resolving(answers.clone(), true);
+        let target = client.parse(webhook::Platform::Fluxer, &url).unwrap();
+        let err = client.create(&target, &payload).await.unwrap_err();
+        assert!(
+            matches!(&err, webhook::Failure::Permanent(m) if m.contains("public")),
+            "{answers:?}: {err:?}"
+        );
+        assert!(!err.message().contains(TOKEN));
+        // Not even the discovery document was asked for.
+        assert!(log(&f).is_empty(), "{answers:?}: {:?}", log(&f));
+    }
+}
+
+#[tokio::test]
+async fn the_connection_goes_to_the_addresses_that_were_checked() {
+    let (f, addr, url) = named_fluxer().await;
+    // The name has no DNS record anywhere: the request reaches the server
+    // only because the client connects to the address it was handed.
+    let client = Client::for_tests_resolving(vec![addr], false);
+    let target = client.parse(webhook::Platform::Fluxer, &url).unwrap();
+    let id = client
+        .create(&target, &json!({"embeds": [{"title": "x"}]}))
+        .await
+        .unwrap();
+    assert_eq!(log(&f), vec!["GET discovery", "POST"]);
+    client.delete(&target, &id).await.unwrap();
+
+    // Without the answer nothing can connect: the name does not resolve.
+    let client = Client::for_tests();
+    let target = client.parse(webhook::Platform::Fluxer, &url).unwrap();
+    assert!(
+        client
+            .create(&target, &json!({"embeds": []}))
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn a_message_id_that_is_not_a_snowflake_is_not_used() {
+    let fake = fake("/api", false).await;
+    let client = Client::for_tests();
+    let target = client
+        .parse(webhook::Platform::Discord, &hook_url(&fake))
+        .unwrap();
+    let payload = json!({"embeds": [{"title": "x"}]});
+    for bad in ["../../x", "12 34", "", "1?x=2", "abc", &"1".repeat(40)] {
+        fake.lock().unwrap().id_override = Some(bad.to_string());
+        let err = client.create(&target, &payload).await.unwrap_err();
+        assert!(
+            matches!(err, webhook::Failure::Transient(_)),
+            "{bad}: {err:?}"
+        );
+    }
+    fake.lock().unwrap().id_override = Some("1234567890".into());
+    assert_eq!(
+        client.create(&target, &payload).await.unwrap(),
+        "1234567890"
+    );
+}
+
+#[tokio::test]
+async fn a_change_run_builds_nothing_for_boards_whose_monitors_did_not_change() {
+    let fake = fake("/api", false).await;
+    let state = state().await;
+    let monitors = add_monitors(&state, 3, 3).await;
+    let a = add_board(
+        &state,
+        base_board(&state, &hook_url(&fake), "discord", monitors[..2].to_vec()),
+    )
+    .await;
+    let mut other = base_board(&state, &hook_url(&fake), "discord", vec![monitors[2]]);
+    other.name = "Other".into();
+    let b = add_board(&state, other).await;
+    let client = Client::for_tests();
+    assert_eq!(run(&state, &client, a, Mode::Manual).await, Outcome::Ok);
+    assert_eq!(run(&state, &client, b, Mode::Manual).await, Outcome::Ok);
+
+    // Checks that come back the same (the common case: every heartbeat of
+    // the instance fires the change signal) cost nothing: no view, no PATCH.
+    for m in &monitors {
+        let m = *m;
+        state
+            .with_conn(move |c| {
+                c.execute(
+                    "INSERT INTO heartbeats (monitor_id, status, response_time_ms, checked_at) VALUES (?1, 'up', 95, datetime('now', '+1 second'))",
+                    params![m],
+                )
+            })
+            .await
+            .unwrap();
+    }
+    clear_log(&fake);
+    assert_eq!(
+        run(&state, &client, a, Mode::Change).await,
+        Outcome::Skipped
+    );
+    assert_eq!(
+        run(&state, &client, b, Mode::Change).await,
+        Outcome::Skipped
+    );
+    assert!(log(&fake).is_empty(), "{:?}", log(&fake));
+
+    // One monitor goes down: only the board that shows it is rebuilt.
+    set_down(&state, monitors[2]).await;
+    assert_eq!(
+        run(&state, &client, a, Mode::Change).await,
+        Outcome::Skipped
+    );
+    assert_eq!(run(&state, &client, b, Mode::Change).await, Outcome::Ok);
+    assert_eq!(log(&fake).len(), 1, "{:?}", log(&fake));
+    // And again: nothing new.
+    assert_eq!(
+        run(&state, &client, b, Mode::Change).await,
+        Outcome::Skipped
+    );
+
+    // The interval still refreshes everything, and a failed refresh forgets
+    // the fingerprint so that the next change run tries again.
+    clear_log(&fake);
+    assert_eq!(run(&state, &client, a, Mode::Interval).await, Outcome::Ok);
+    assert_eq!(log(&fake).len(), 1);
+    let gone: Vec<String> = messages(&state, a)
+        .await
+        .into_iter()
+        .map(|m| m.message_id)
+        .collect();
+    fake.lock().unwrap().deleted.extend(gone);
+    fake.lock().unwrap().fail_create = Some((500, json!({"message": "oops"})));
+    assert!(matches!(
+        run(&state, &client, a, Mode::Interval).await,
+        Outcome::Failed { .. }
+    ));
+    fake.lock().unwrap().fail_create = None;
+    assert_eq!(run(&state, &client, a, Mode::Change).await, Outcome::Ok);
+}
+
+#[tokio::test]
+async fn editing_a_board_makes_its_next_change_run_rebuild_it() {
+    let fake = fake("/api", false).await;
+    let state = state().await;
+    let monitors = add_monitors(&state, 2, 3).await;
+    let id = add_board(
+        &state,
+        base_board(&state, &hook_url(&fake), "discord", monitors.clone()),
+    )
+    .await;
+    let client = Client::for_tests();
+    run(&state, &client, id, Mode::Manual).await;
+    assert_eq!(
+        run(&state, &client, id, Mode::Change).await,
+        Outcome::Skipped
+    );
+    // Settings changed (updated_at moves on): the message has to follow.
+    state
+        .with_conn(move |c| {
+            c.execute(
+                "UPDATE live_boards SET title = 'New', updated_at = datetime('now', '+5 seconds') WHERE id = ?1",
+                params![id],
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(run(&state, &client, id, Mode::Change).await, Outcome::Ok);
 }

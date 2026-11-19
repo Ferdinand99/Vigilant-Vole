@@ -93,5 +93,10 @@ address is used only when
 - **MCP:** `list_live_boards` (read) and `refresh_live_board` (write); see [mcp.md](mcp.md).
 - **Config as code:** the `live_boards` section; see [config-as-code.md](config-as-code.md#live_boards). Exports never
   contain a webhook address.
-- **Backup and restore** include the boards, with their webhook addresses sealed like any other secret: restoring on an
-  instance with another `session.key` asks you to enter the webhooks again.
+- **Backup and restore.** A backup carries the boards (settings, picked monitors, the ids of the messages they keep), but the
+  webhook addresses stay sealed with this instance's key (`session.key`), unlike the secrets of notification channels,
+  which a download opens so that they survive a move. Restoring on the same instance changes nothing. Restoring on another
+  instance, or with another `session.key`, pauses every board with the error "enter it again": edit each board and paste
+  its webhook address once. The boards that were running keep the messages they have in their channels.
+- **Applying the same address again** (an API update that repeats the webhook, or a config file that carries it and is merged on
+  every start) changes nothing: the board keeps its messages and no message is posted again.

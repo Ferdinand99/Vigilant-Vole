@@ -32,7 +32,7 @@ fn discord() -> String {
     "discord".into()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LiveBoardDoc {
     pub name: String,
@@ -71,6 +71,17 @@ pub struct LiveBoardDoc {
     pub mention: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub lang: String,
+}
+
+/// The webhook address is never printed.
+impl std::fmt::Debug for LiveBoardDoc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiveBoardDoc")
+            .field("name", &self.name)
+            .field("platform", &self.platform)
+            .field("webhook", &self.webhook.as_ref().map(|_| "••••••"))
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone)]

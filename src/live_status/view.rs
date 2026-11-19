@@ -113,6 +113,72 @@ fn row(
     })
 }
 
+/// A cheap summary of what decides whether a board's message has to change:
+/// the board's settings, the status of each monitor it shows (and its name),
+/// and the open incidents and active maintenance. The figures (uptime,
+/// response time) are left out: they move with every check and are refreshed
+/// on the board's interval. Equal fingerprints mean "nothing to send", so a
+/// change-driven refresh can stop before it builds the whole view.
+pub fn fingerprint(conn: &Connection, board: &Board, now: Timestamp) -> Result<String, LoadError> {
+    use sha2::{Digest as _, Sha256};
+    let mut parts: Vec<String> = vec![board.updated_at.clone(), board.source.clone()];
+    let mut ids: Vec<i64> = Vec::new();
+    match (board.source.as_str(), board.status_page_id) {
+        ("page", Some(page_id)) => {
+            let page = db_pages::get(conn, page_id)?.ok_or(LoadError::PageGone)?;
+            if !page.published || page.password_hash.is_some() {
+                return Err(LoadError::PageNotPublic);
+            }
+            parts.push(format!(
+                "page:{}:{}:{}:{}",
+                page.updated_at, page.show_uptime, page.show_response, page.title
+            ));
+            for i in crate::db::incidents::list_pinned_open(conn, page_id)? {
+                parts.push(format!("incident:{}:{}:{}", i.id, i.updated_at, i.severity));
+            }
+            for w in db_maint::list_for_status_page(conn, page_id)? {
+                if maintenance::window_state(&Schedule::from_window(&w), now) == WindowState::Active
+                {
+                    parts.push(format!("window:{}:{}", w.id, w.title));
+                }
+            }
+            ids = db_pages::monitor_ids(conn, page_id)?;
+        }
+        ("page", None) => return Err(LoadError::PageGone),
+        _ => {
+            for id in crate::db::live_boards::items(conn, board.id)? {
+                ids.push(id);
+                ids.extend(db_monitors::descendant_ids(conn, id)?);
+            }
+            for w in db_maint::list_enabled(conn)? {
+                if maintenance::window_state(&Schedule::from_window(&w), now) == WindowState::Active
+                {
+                    parts.push(format!("window:{}:{}", w.id, w.title));
+                }
+            }
+        }
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    let covered = maintenance::covered_monitors(conn)?;
+    for id in ids {
+        let row: Option<(String, bool)> = conn
+            .query_row(
+                "SELECT name, active FROM monitors WHERE id = ?1",
+                rusqlite::params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        let Some((name, active)) = row else {
+            continue;
+        };
+        let (hb, _) = ps::latest_local(conn, id)?;
+        let status = PublicStatus::from_heartbeat(hb, active, covered.contains(&id));
+        parts.push(format!("{id}:{name}:{}", status.class()));
+    }
+    Ok(hex::encode(Sha256::digest(parts.join("\n").as_bytes())))
+}
+
 fn rfc3339(now: Timestamp) -> String {
     maintenance::fmt_db_ts(now).replacen(' ', "T", 1) + "Z"
 }
