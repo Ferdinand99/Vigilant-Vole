@@ -91,7 +91,8 @@ pub const COLUMNS: &str =
 const RAW_RUN_CHECKS: i64 = 100;
 
 /// A monitor's current real result: the newest local heartbeat's
-/// `raw_status` and `message`, and when that real status began.
+/// `raw_status` and `message`, and when that real status began. A group in
+/// maintenance has `maintenance` as its real status.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawRun {
     pub status: Option<HeartbeatStatus>,
@@ -109,9 +110,26 @@ pub fn raw_run(conn: &Connection, monitor_id: i64) -> rusqlite::Result<Option<Ra
         "SELECT {COLUMNS} FROM heartbeats WHERE monitor_id = ?1 AND agent_id IS NULL
          ORDER BY checked_at DESC, id DESC LIMIT ?2"
     ))?;
-    let beats = stmt
+    let mut beats = stmt
         .query_map(params![monitor_id, RAW_RUN_CHECKS], row_to_heartbeat)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    // A group in maintenance has no check of its own: its real status is
+    // that maintenance, never what its children found meanwhile.
+    let is_group = conn
+        .query_row(
+            "SELECT monitor_type = 'group' FROM monitors WHERE id = ?1",
+            params![monitor_id],
+            |r| r.get::<_, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if is_group {
+        for h in &mut beats {
+            if h.status == HeartbeatStatus::Maintenance {
+                h.raw_status = Some(HeartbeatStatus::Maintenance);
+            }
+        }
+    }
     let Some(latest) = beats.first() else {
         return Ok(None);
     };
@@ -302,6 +320,48 @@ mod tests {
         assert_eq!(
             latest_local(&conn, id).unwrap().unwrap().response_time_ms,
             Some(24)
+        );
+    }
+
+    #[test]
+    fn a_group_in_maintenance_has_maintenance_as_its_real_status() {
+        use HeartbeatStatus::{Down, Maintenance, Up};
+        let conn = test_conn();
+        let group = monitors::insert_monitor(
+            &conn,
+            &NewMonitor {
+                name: "g".into(),
+                monitor_type: crate::db::models::MonitorType::Group,
+                ..NewMonitor::default()
+            },
+        )
+        .unwrap();
+        let at = |minute: i64, status: HeartbeatStatus, raw: Option<HeartbeatStatus>, m: &str| {
+            let hb = insert_with_raw(&conn, group, status, raw, None, Some(m)).unwrap();
+            conn.execute(
+                "UPDATE heartbeats SET checked_at = ?2 WHERE id = ?1",
+                params![hb, format!("2026-01-01 00:{minute:02}:00")],
+            )
+            .unwrap();
+        };
+        at(0, Up, Some(Up), "All 2 monitors up");
+        // Recorded by a version that stored the children's real result.
+        at(1, Maintenance, Some(Down), "All monitors in maintenance");
+        at(2, Maintenance, None, "All monitors in maintenance");
+        let run = raw_run(&conn, group).unwrap().unwrap();
+        assert_eq!(
+            (run.status, run.since.as_deref(), run.message.as_deref()),
+            (
+                Some(Maintenance),
+                Some("2026-01-01 00:01:00"),
+                Some("All monitors in maintenance")
+            )
+        );
+        at(3, Up, Some(Up), "All 2 monitors up");
+        let run = raw_run(&conn, group).unwrap().unwrap();
+        assert_eq!(
+            (run.status, run.since.as_deref()),
+            (Some(Up), Some("2026-01-01 00:03:00"))
         );
     }
 

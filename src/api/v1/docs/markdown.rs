@@ -74,7 +74,7 @@ fn conventions(out: &mut String) {
          - Times are UTC strings `YYYY-MM-DD HH:MM:SS` (except `raw_status_since`, which is RFC 3339).\n\
          - Monitors keep checking during maintenance. `status` is what they record and status pages show \
          (`maintenance` during a window); `raw_status` on monitors and heartbeats is the real result (`up`, `down`, \
-         `pending` or `null`), equal to `status` outside maintenance. Monitors also carry `maintenance` (a window \
+         `pending`, `maintenance` for a group whose children are all in maintenance, or `null`), equal to `status` outside maintenance. Monitors also carry `maintenance` (a window \
          covers them now), `raw_status_since` and `raw_message`.\n\
          - Secrets (passwords, webhook URLs, keys) are returned masked as `\"••••••\"`. Send `\"••••••\"` back (or leave \
          the field out of a PATCH) to keep the stored value.\n\

@@ -63,16 +63,19 @@ Monitors keep checking during a maintenance window. What they *record* is `maint
 pages, badges, uptime and alerting use; the real result is kept next to it for the API:
 
 - Monitors (`GET /api/v1/monitors`, `GET /api/v1/monitors/{id}`) carry `status` (the recorded status, `maintenance`
-  during a window), `maintenance` (`true` while a window covers the monitor), `raw_status` (`up`, `down`, `pending`
-  or `null`: the latest real result, also during a window), `raw_status_since` (RFC 3339, when that real status
+  during a window), `maintenance` (`true` while a window covers the monitor), `raw_status` (`up`, `down`, `pending`,
+  `maintenance` for a group whose children are all in maintenance, or `null`: the latest real result, also during a window), `raw_status_since` (RFC 3339, when that real status
   began; looked up over the last 100 checks) and `raw_message`. The `raw_*` fields are `null` for paused monitors.
 - Heartbeats (`GET …/{id}/heartbeats`, `POST …/{id}/check`) carry `raw_status` next to `status`. Outside
   maintenance they are equal; during maintenance `status` is `maintenance` and `raw_status` is the real result.
   Heartbeats recorded during maintenance before 0.9.0 have `raw_status: null`.
 - `raw_status` applies upside-down mode and agent confirmation, but not retries: one failed check during a window
   shows as `down`.
-- Group monitors aggregate their children's real results into their own `raw_status` while they are in
-  maintenance.
+- A group has no check of its own. While every active child is in maintenance, the group's `status` and `raw_status`
+  are both `maintenance`: what the children really find (for example `down` during an update) does not reach the
+  group, and it raises no outage or alert. Children in maintenance are left out of the aggregate otherwise, so
+  the group's status comes from the remaining children and `raw_status` equals `status`. A group with only paused
+  children records nothing new.
 
 ```json
 {"id": 7, "name": "Website", "status": "maintenance", "maintenance": true,

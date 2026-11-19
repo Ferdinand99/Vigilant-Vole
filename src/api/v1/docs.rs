@@ -99,7 +99,7 @@ status_pages:
 /// Every documented endpoint, in display order.
 const OWN_ROUTES: &[RouteDoc] = &[
     // -- Monitors --
-    r("GET", "/api/v1/monitors", "viewer", "Monitors", "List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.")
+    r("GET", "/api/v1/monitors", "viewer", "Monitors", "List monitors with their current status. status is what status pages show (maintenance during a window); maintenance says whether a window covers the monitor now; raw_status (up, down, pending, maintenance for a group whose children are all in maintenance, or null), raw_status_since (RFC 3339) and raw_message are the real check result, which keeps coming in during maintenance. raw_* are null for paused monitors.")
         .q(&["status: up | down | pending | maintenance | paused | unknown", "type: monitor type, e.g. http", "tag: tag name", "q: search name, target and description", LIMIT_Q, CURSOR_Q])
         .res(r#"{"data": [ …monitor… ], "next_cursor": "42"}"#),
     r("POST", "/api/v1/monitors", "editor", "Monitors", "Create a monitor. Same validation as the monitor form; unknown tag names are created. check_from_agent_id (an agent id, null = this server) lets one remote agent check it instead of this server.")
