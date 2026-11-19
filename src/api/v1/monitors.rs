@@ -72,8 +72,9 @@ pub struct Live {
 }
 
 impl Live {
-    fn load(conn: &Connection, id: i64, covered: &HashSet<i64>) -> rusqlite::Result<Self> {
-        let raw = db_heartbeats::raw_run(conn, id)?;
+    fn load(conn: &Connection, m: &Monitor, covered: &HashSet<i64>) -> rusqlite::Result<Self> {
+        let id = m.id;
+        let raw = db_heartbeats::raw_run(conn, id, m.monitor_type == MonitorType::Group)?;
         Ok(Self {
             status: db_heartbeats::latest_local(conn, id)?.map(|h| h.status),
             maintenance: covered.contains(&id),
@@ -167,7 +168,7 @@ fn load_one(conn: &Connection, id: i64, can_edit: bool) -> rusqlite::Result<Opti
     let Some(m) = db_monitors::get_monitor(conn, id)? else {
         return Ok(None);
     };
-    let live = Live::load(conn, id, &crate::maintenance::covered_monitors(conn)?)?;
+    let live = Live::load(conn, &m, &crate::maintenance::covered_monitors(conn)?)?;
     let tags = db_tags::tags_for_monitor(conn, id)?;
     let links = db_notifications::monitor_channel_links(conn, id)?;
     Ok(Some(monitor_json(&m, &live, &tags, &links, can_edit)))
@@ -285,7 +286,14 @@ async fn list(
             let covered = crate::maintenance::covered_monitors(c)?;
             let mut raw = HashMap::new();
             for row in &monitors {
-                raw.insert(row.monitor.id, db_heartbeats::raw_run(c, row.monitor.id)?);
+                raw.insert(
+                    row.monitor.id,
+                    db_heartbeats::raw_run(
+                        c,
+                        row.monitor.id,
+                        row.monitor.monitor_type == MonitorType::Group,
+                    )?,
+                );
             }
             Ok((monitors, tags, links, covered, raw))
         })
@@ -970,9 +978,9 @@ async fn heartbeats(
     let lim = limit(q.limit);
     let rows = state
         .with_conn(move |c| {
-            if db_monitors::get_monitor(c, id)?.is_none() {
+            let Some(monitor) = db_monitors::get_monitor(c, id)? else {
                 return Ok(None);
-            }
+            };
             let mut stmt = c.prepare(
                 &format!("SELECT {} FROM heartbeats
                  WHERE monitor_id = ?1 AND agent_id IS NULL
@@ -981,7 +989,11 @@ async fn heartbeats(
                  ORDER BY checked_at DESC, id DESC LIMIT ?4", db_heartbeats::COLUMNS),
             )?;
             let rows = stmt.query_map(params![id, since, cursor, lim + 1], db_heartbeats::row_to_heartbeat)?;
-            rows.collect::<rusqlite::Result<Vec<_>>>().map(Some)
+            let mut rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            if monitor.monitor_type == MonitorType::Group {
+                db_heartbeats::group_maintenance_as_raw(&mut rows);
+            }
+            Ok(Some(rows))
         })
         .await?
         .ok_or_else(V1Error::not_found)?;

@@ -273,6 +273,209 @@ async fn reloading_a_group_recomputes_it_without_a_false_cycle() {
     assert_eq!(statuses(&db, group).await, ["down"]);
 }
 
+/// A group with push children of the given names.
+async fn group_with_children(db: &TestDb, kids: &[&str]) -> (i64, Vec<i64>) {
+    let group = insert(
+        db,
+        NewMonitor {
+            name: "g".into(),
+            monitor_type: MonitorType::Group,
+            ..NewMonitor::default()
+        },
+    )
+    .await;
+    let mut ids = Vec::new();
+    for name in kids {
+        ids.push(
+            insert(
+                db,
+                NewMonitor {
+                    parent_id: Some(group),
+                    ..push_monitor(name)
+                },
+            )
+            .await,
+        );
+    }
+    (group, ids)
+}
+
+type Beat = (String, Option<String>, Option<String>);
+
+/// `(status, raw_status, message)` of a monitor's local heartbeats, oldest first.
+async fn beats(db: &TestDb, id: i64) -> Vec<Beat> {
+    db::interact(&db.pool, move |c| {
+        let mut stmt = c.prepare(
+            "SELECT status, raw_status, message FROM heartbeats
+             WHERE monitor_id = ?1 AND agent_id IS NULL ORDER BY id",
+        )?;
+        let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        rows.collect()
+    })
+    .await
+    .unwrap()
+}
+
+async fn child_beat(db: &TestDb, id: i64, status: HeartbeatStatus, raw: Option<HeartbeatStatus>) {
+    db::interact(&db.pool, move |c| {
+        db_heartbeats::insert_with_raw(c, id, status, raw, None, None)
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn group_with_all_children_in_maintenance_is_in_maintenance_not_down() {
+    use HeartbeatStatus::{Down, Maintenance, Up};
+    let db = test_db().await;
+    let (s, _rx) = scheduler(&db);
+    let (group, kids) = group_with_children(&db, &["a", "b"]).await;
+    // Both children are in maintenance while their service really is down.
+    for k in &kids {
+        child_beat(&db, *k, Maintenance, Some(Down)).await;
+    }
+    s.reload(group).await;
+    assert_eq!(
+        beats(&db, group).await,
+        [(
+            "maintenance".to_string(),
+            None,
+            Some("All monitors in maintenance".to_string())
+        )]
+    );
+    // No outage: only the maintenance event.
+    let kinds: Vec<_> = monitor_events(&db, group)
+        .await
+        .into_iter()
+        .map(|e| e.kind)
+        .collect();
+    assert_eq!(kinds, [MonitorEventKind::Maintenance]);
+
+    // The window ends and the children are up: the group is up, quietly.
+    for k in &kids {
+        child_beat(&db, *k, Up, Some(Up)).await;
+    }
+    s.reload(group).await;
+    assert_eq!(statuses(&db, group).await, ["maintenance", "up"]);
+    let events = monitor_events(&db, group).await;
+    assert!(
+        events
+            .iter()
+            .all(|e| e.kind == MonitorEventKind::Maintenance),
+        "{events:?}"
+    );
+}
+
+#[tokio::test]
+async fn group_with_some_children_in_maintenance_aggregates_the_others() {
+    use HeartbeatStatus::{Down, Maintenance, Up};
+    let db = test_db().await;
+    let (s, _rx) = scheduler(&db);
+    let (group, kids) = group_with_children(&db, &["a", "b", "c"]).await;
+    child_beat(&db, kids[0], Maintenance, Some(Down)).await;
+    child_beat(&db, kids[1], Up, Some(Up)).await;
+    child_beat(&db, kids[2], Up, Some(Up)).await;
+    s.reload(group).await;
+    assert_eq!(
+        beats(&db, group).await,
+        [(
+            "up".to_string(),
+            Some("up".to_string()),
+            Some("2 up, 1 in maintenance".to_string())
+        )]
+    );
+    child_beat(&db, kids[2], Down, Some(Down)).await;
+    s.reload(group).await;
+    assert_eq!(statuses(&db, group).await, ["up", "down"]);
+}
+
+#[tokio::test]
+async fn a_nested_group_in_maintenance_counts_as_maintenance_in_its_parent() {
+    use HeartbeatStatus::{Down, Maintenance};
+    let db = test_db().await;
+    let (s, _rx) = scheduler(&db);
+    let top = insert(
+        &db,
+        NewMonitor {
+            name: "top".into(),
+            monitor_type: MonitorType::Group,
+            ..NewMonitor::default()
+        },
+    )
+    .await;
+    let mid = insert(
+        &db,
+        NewMonitor {
+            name: "mid".into(),
+            monitor_type: MonitorType::Group,
+            parent_id: Some(top),
+            ..NewMonitor::default()
+        },
+    )
+    .await;
+    let mut leaves = Vec::new();
+    for name in ["a", "b"] {
+        leaves.push(
+            insert(
+                &db,
+                NewMonitor {
+                    parent_id: Some(mid),
+                    ..push_monitor(name)
+                },
+            )
+            .await,
+        );
+    }
+    for k in &leaves {
+        child_beat(&db, *k, Maintenance, Some(Down)).await;
+    }
+    // Only child of the top group: it is in maintenance as well.
+    s.reload(mid).await;
+    assert_eq!(statuses(&db, mid).await, ["maintenance"]);
+    assert_eq!(
+        beats(&db, top).await,
+        [(
+            "maintenance".to_string(),
+            None,
+            Some("All monitors in maintenance".to_string())
+        )]
+    );
+
+    // With a healthy sibling the top group aggregates only that one.
+    let other = insert(
+        &db,
+        NewMonitor {
+            parent_id: Some(top),
+            ..push_monitor("x")
+        },
+    )
+    .await;
+    s.ingest_external(other, CheckOutcome::up(1), None).await;
+    assert_eq!(
+        beats(&db, top).await.last().cloned(),
+        Some((
+            "up".to_string(),
+            Some("up".to_string()),
+            Some("1 up, 1 in maintenance".to_string())
+        ))
+    );
+}
+
+#[tokio::test]
+async fn group_with_only_paused_children_records_nothing() {
+    let db = test_db().await;
+    let (s, _rx) = scheduler(&db);
+    let (group, kids) = group_with_children(&db, &["a", "b"]).await;
+    for k in &kids {
+        let k = *k;
+        db::interact(&db.pool, move |c| db_monitors::set_active(c, k, false))
+            .await
+            .unwrap();
+    }
+    s.reload(group).await;
+    assert!(statuses(&db, group).await.is_empty());
+}
+
 #[tokio::test]
 async fn nested_groups_propagate_upwards() {
     let db = test_db().await;

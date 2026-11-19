@@ -541,8 +541,23 @@ pub fn aggregate_group(
     }
     Some((
         HeartbeatStatus::Maintenance,
-        "All monitors in maintenance".into(),
+        crate::db::heartbeats::ALL_IN_MAINTENANCE.into(),
     ))
+}
+
+/// The real status a group records next to `status` (its aggregate of the
+/// children's recorded statuses): the aggregate of the children's real
+/// results, except that a group whose children are all in maintenance is in
+/// maintenance for real too. What those children really find (an update
+/// stops them) is not the group's result. `None` when unknown.
+pub fn group_real_status(
+    status: HeartbeatStatus,
+    real: &[(String, Option<HeartbeatStatus>)],
+) -> Option<HeartbeatStatus> {
+    if status == HeartbeatStatus::Maintenance {
+        return Some(HeartbeatStatus::Maintenance);
+    }
+    aggregate_group(real).map(|(s, _)| s)
 }
 
 // ---------------------------------------------------------------------------
@@ -1327,6 +1342,82 @@ mod tests {
     fn group_all_maintenance_is_maintenance() {
         let c = children(&[("a", Some(Maintenance)), ("b", Some(Maintenance))]);
         assert_eq!(aggregate_group(&c).map(|g| g.0), Some(Maintenance));
+    }
+
+    #[test]
+    fn group_ignores_maintenance_children_when_others_are_down() {
+        let c = children(&[("a", Some(Maintenance)), ("b", Some(Down))]);
+        assert_eq!(aggregate_group(&c), Some((Down, "1 of 2 down: b".into())));
+        let c = children(&[("a", Some(Maintenance)), ("b", Some(Pending))]);
+        assert_eq!(aggregate_group(&c).map(|g| g.0), Some(Pending));
+    }
+
+    #[test]
+    fn group_real_status_is_maintenance_when_all_children_are() {
+        // Children in maintenance while their service really is down.
+        let recorded = children(&[("a", Some(Maintenance)), ("b", Some(Maintenance))]);
+        let real = children(&[("a", Some(Down)), ("b", Some(Down))]);
+        let (status, _) = aggregate_group(&recorded).unwrap();
+        assert_eq!(group_real_status(status, &real), Some(Maintenance));
+    }
+
+    #[test]
+    fn group_real_status_otherwise_aggregates_the_real_results() {
+        // A group in a window of its own whose children have not recorded
+        // maintenance yet still reports what they really are.
+        let kids = children(&[("a", Some(Up)), ("b", Some(Down))]);
+        let (status, _) = aggregate_group(&kids).unwrap();
+        assert_eq!(group_real_status(status, &kids), Some(Down));
+        let kids = children(&[("a", Some(Up)), ("b", Some(Up))]);
+        assert_eq!(group_real_status(Up, &kids), Some(Up));
+        assert_eq!(group_real_status(Up, &children(&[("a", None)])), None);
+    }
+
+    /// The group aggregate while all its children are in maintenance: the
+    /// group is in maintenance (never down), nobody is told, and when the
+    /// window ends with the children up there is no recovery alert either.
+    #[test]
+    fn all_maintenance_group_never_alerts_and_recovers_silently() {
+        let c = AlertConfig::default();
+        let kids = children(&[("a", Some(Maintenance)), ("b", Some(Maintenance))]);
+        let (status, message) = aggregate_group(&kids).unwrap();
+        // What the scheduler passes: the children's real results (down while
+        // an update runs) must not leak into the group's real status.
+        let o = Observation {
+            status: Some(status),
+            message: Some(message),
+            real: Some(Maintenance),
+            ..Observation::default()
+        };
+        let mut state = up_state();
+        for i in 0..3 {
+            let d = evaluate(&state, &o, &c, at(i));
+            assert_eq!((d.status, d.raw_status), (Maintenance, None), "{d:?}");
+            assert!(d.notices().next().is_none(), "{d:?}");
+            state = d.state;
+        }
+        let kids = children(&[("a", Some(Up)), ("b", Some(Up))]);
+        let (status, message) = aggregate_group(&kids).unwrap();
+        let d = evaluate(&state, &Observation::new(status, Some(message)), &c, at(3));
+        assert_eq!((d.status, d.raw_status), (Up, Some(Up)));
+        assert!(d.notices().next().is_none(), "{d:?}");
+    }
+
+    /// A group that was down and told about it still gets its "Up" after a
+    /// maintenance window, once the children are up again.
+    #[test]
+    fn group_down_before_maintenance_recovers_with_one_up() {
+        let c = AlertConfig::default();
+        let (state, ds) = run(MonitorState::default(), &c, &[Down]);
+        assert_eq!(kinds(&ds), [(EventKind::Down, false)]);
+        let m = Observation {
+            real: Some(Maintenance),
+            ..obs(Maintenance)
+        };
+        let d = evaluate(&state, &m, &c, at(5));
+        assert!(d.notices().next().is_none());
+        let d = evaluate(&d.state, &obs(Up), &c, at(6));
+        assert_eq!(kinds(&[d]), [(EventKind::Up, false)]);
     }
 
     #[test]

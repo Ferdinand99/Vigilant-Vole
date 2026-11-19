@@ -2733,6 +2733,212 @@ async fn real_status_during_maintenance_stays_out_of_public_views() {
     assert!(!public.to_string().contains("raw_status"));
 }
 
+/// An updater puts every child of a group into maintenance and then reads the
+/// group: it must see maintenance, never the children's real "down".
+#[tokio::test]
+async fn group_with_all_children_in_maintenance_reads_as_maintenance_not_down() {
+    use crate::db::events::{self as db_events, MonitorEventKind};
+    use crate::db::models::CheckOutcome;
+    use crate::db::rollups;
+    let h = harness().await;
+    let make = async |body: Value| {
+        let (status, m) = h
+            .json(Method::POST, "/api/v1/monitors", &h.editor, Some(body))
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{m}");
+        m["id"].as_i64().unwrap()
+    };
+    let group = make(json!({"name": "Stack", "monitor_type": "group"})).await;
+    let a = make(json!({"name": "A", "monitor_type": "push", "parent_id": group})).await;
+    let b = make(json!({"name": "B", "monitor_type": "push", "parent_id": group})).await;
+    let (status, _) = h
+        .json(
+            Method::POST,
+            "/api/v1/status-pages",
+            &h.editor,
+            Some(
+                json!({"title": "Stack status", "sections": [{"name": "All", "monitor_ids": [group]}]}),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let get = async |id: i64| {
+        let (status, m) = h
+            .json(
+                Method::GET,
+                &format!("/api/v1/monitors/{id}"),
+                &h.viewer,
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{m}");
+        m
+    };
+    for id in [a, b] {
+        h.state
+            .scheduler
+            .ingest_external(id, CheckOutcome::up(5), None)
+            .await;
+    }
+    let g = get(group).await;
+    assert_eq!(
+        (&g["status"], &g["raw_status"]),
+        (&json!("up"), &json!("up"))
+    );
+
+    let window =
+        json!({"title": "Update", "strategy": "manual", "active": true, "monitor_ids": [a, b]});
+    let (status, w) = h
+        .json(Method::POST, "/api/v1/maintenance", &h.editor, Some(window))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{w}");
+    let window_id = w["id"].as_i64().unwrap();
+    // The updated services are really down while the window runs.
+    for id in [a, b] {
+        h.state
+            .scheduler
+            .ingest_external(id, CheckOutcome::down("connection refused"), None)
+            .await;
+    }
+
+    // What an external caller reads for the group.
+    let g = get(group).await;
+    assert_eq!(
+        (&g["status"], &g["raw_status"], &g["raw_message"]),
+        (
+            &json!("maintenance"),
+            &json!("maintenance"),
+            &json!("All monitors in maintenance")
+        ),
+        "{g}"
+    );
+    let since = g["raw_status_since"].as_str().unwrap();
+    assert!(since.len() == 20 && since.ends_with('Z'), "{since}");
+    // Rows stored by versions that kept the children's real result for the
+    // group read as maintenance too, in the monitor and in its history.
+    h.state
+        .with_conn(move |c| {
+            c.execute(
+                "UPDATE heartbeats SET raw_status = 'down' WHERE monitor_id = ?1 AND status = 'maintenance'",
+                [group],
+            )
+        })
+        .await
+        .unwrap();
+    let g = get(group).await;
+    assert_eq!(g["raw_status"], "maintenance", "{g}");
+    let group_beats = async || {
+        let (status, beats) = h
+            .json(
+                Method::GET,
+                &format!("/api/v1/monitors/{group}/heartbeats"),
+                &h.viewer,
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{beats}");
+        beats["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| (b["status"].clone(), b["raw_status"].clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        group_beats().await,
+        [
+            (json!("maintenance"), json!("maintenance")),
+            (json!("up"), json!("up"))
+        ]
+    );
+    // The children keep showing their real result.
+    let ca = get(a).await;
+    assert_eq!(
+        (&ca["status"], &ca["raw_status"]),
+        (&json!("maintenance"), &json!("down"))
+    );
+    // Lists (and so the MCP tools built on them) agree: not down, nowhere.
+    let (_, list) = h
+        .json(Method::GET, "/api/v1/monitors?status=down", &h.viewer, None)
+        .await;
+    assert_eq!(list["data"], json!([]), "{list}");
+    let (_, list) = h
+        .json(
+            Method::GET,
+            "/api/v1/monitors?status=maintenance",
+            &h.viewer,
+            None,
+        )
+        .await;
+    let row = list["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == group)
+        .unwrap();
+    assert_eq!(row["raw_status"], "maintenance", "{list}");
+    let (status, summary) = h
+        .json(Method::GET, "/api/v1/summary", &h.viewer, None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert_eq!(summary["monitors"]["down"], 0, "{summary}");
+    assert_eq!(summary["down"], json!([]), "{summary}");
+    let (_, public) = h
+        .json(Method::GET, "/api/status-page/stack-status", "", None)
+        .await;
+    assert_eq!(
+        public["sections"][0]["monitors"][0]["status"], "maintenance",
+        "{public}"
+    );
+
+    // The window ends with the children up: the group is up again.
+    let (status, w) = h
+        .json(
+            Method::PATCH,
+            &format!("/api/v1/maintenance/{window_id}"),
+            &h.editor,
+            Some(json!({"active": false})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{w}");
+    for id in [a, b] {
+        h.state
+            .scheduler
+            .ingest_external(id, CheckOutcome::up(5), None)
+            .await;
+    }
+    let g = get(group).await;
+    assert_eq!(
+        (&g["status"], &g["raw_status"]),
+        (&json!("up"), &json!("up"))
+    );
+
+    assert_eq!(
+        group_beats().await,
+        [
+            (json!("up"), json!("up")),
+            (json!("maintenance"), json!("maintenance")),
+            (json!("up"), json!("up"))
+        ]
+    );
+
+    // History: no outage for the group, and the maintenance time is not
+    // counted as downtime.
+    let (kinds, pct) = h
+        .state
+        .with_conn(move |c| {
+            let kinds: Vec<_> = db_events::list_for_monitor(c, group, 50)?
+                .into_iter()
+                .map(|e| e.kind)
+                .collect();
+            Ok((kinds, rollups::uptime_pct(c, group, 1)?))
+        })
+        .await
+        .unwrap();
+    assert_eq!(kinds, [MonitorEventKind::Maintenance], "{kinds:?}");
+    assert_eq!(pct, Some(100.0));
+}
+
 #[tokio::test]
 async fn bulk_edit_by_ids_and_filter() {
     let h = harness().await;
