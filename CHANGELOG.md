@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.17.1...v0.18.0) (2026-11-19)
+
+
+### Features
+
+* live status boards for Discord and Fluxer ([#107](https://github.com/Ferdinand99/Vigilant-Vole/issues/107)) ([7fa7f26](https://github.com/Ferdinand99/Vigilant-Vole/commit/7fa7f26da64195aecb1b333b13d843a6f7dde941))
+
+
+### Bug Fixes
+
+* **monitor:** report a group whose children are all in maintenance as maintenance ([#106](https://github.com/Ferdinand99/Vigilant-Vole/issues/106)) ([9ed076e](https://github.com/Ferdinand99/Vigilant-Vole/commit/9ed076e5ebdafbf23838edd963f9e3ce50a22f92))
+
 ## [0.17.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.17.0...v0.17.1) (2026-11-13)
 
 
