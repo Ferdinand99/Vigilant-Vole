@@ -986,9 +986,9 @@ Apache License
 --- Apache-2.0 ---
 
 Used by:
-  prost 0.14.4 (https://github.com/tokio-rs/prost)
-  prost-derive 0.14.4 (https://github.com/tokio-rs/prost)
-  prost-types 0.14.4 (https://github.com/tokio-rs/prost)
+  prost 0.14.6 (https://github.com/tokio-rs/prost)
+  prost-derive 0.14.6 (https://github.com/tokio-rs/prost)
+  prost-types 0.14.6 (https://github.com/tokio-rs/prost)
 
 Apache License
                         Version 2.0, January 2004
@@ -1685,7 +1685,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --- CDLA-Permissive-2.0 ---
 
 Used by:
-  webpki-root-certs 1.0.11 (https://github.com/rustls/webpki-roots)
+  webpki-root-certs 1.0.12 (https://github.com/rustls/webpki-roots)
 
 # Community Data License Agreement - Permissive - Version 2.0
 
@@ -5292,7 +5292,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 --- MIT ---
 
 Used by:
-  rand 0.10.3 (https://github.com/rust-random/rand)
+  rand 0.10.4 (https://github.com/rust-random/rand)
   rand 0.8.8 (https://github.com/rust-random/rand)
   rand_chacha 0.3.1 (https://github.com/rust-random/rand)
   rand_core 0.6.4 (https://github.com/rust-random/rand)
@@ -5412,9 +5412,9 @@ SOFTWARE.
 --- MIT ---
 
 Used by:
-  rust-embed 8.13.0 (https://pyrossh.dev/repos/rust-embed)
-  rust-embed-impl 8.13.0 (https://pyrossh.dev/repos/rust-embed)
-  rust-embed-utils 8.13.0 (https://pyrossh.dev/repos/rust-embed)
+  rust-embed 8.14.0 (https://pyrossh.dev/repos/rust-embed)
+  rust-embed-impl 8.14.0 (https://pyrossh.dev/repos/rust-embed)
+  rust-embed-utils 8.14.0 (https://pyrossh.dev/repos/rust-embed)
 
 The MIT License (MIT)
 
