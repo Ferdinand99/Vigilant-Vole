@@ -40,6 +40,25 @@ fn sealer(key: &Key) -> Sealer {
     Sealer::new(key, PURPOSE)
 }
 
+/// Seals one secret string that is not part of a channel's config (a
+/// product's own secret), for the same purpose and key as channel secrets. A value that is sealed already is returned as it is.
+pub fn seal_value(key: &Key, plain: &str) -> String {
+    if plain.is_empty() || crypto::is_sealed(plain) {
+        return plain.to_string();
+    }
+    sealer(key).seal(plain)
+}
+
+/// Opens a string sealed by [`seal_value`]. A plaintext value (never
+/// sealed) comes back unchanged; `Err` means it is sealed with another key
+/// and has to be entered again.
+pub fn open_value(key: &Key, stored: &str) -> Result<String, crypto::OpenError> {
+    if !crypto::is_sealed(stored) {
+        return Ok(stored.to_string());
+    }
+    sealer(key).open(stored)
+}
+
 /// Seals `config`'s secret values with `sealer`; values already sealed stay.
 fn seal_with(sealer: &Sealer, schema: &ProviderSchema, config: &Value) -> Value {
     let mut out = config.clone();
@@ -366,6 +385,19 @@ mod tests {
             (&json!("42"), &json!(true))
         );
         assert!(crypto::is_sealed(telegram["bot_token"].as_str().unwrap()));
+    }
+
+    #[test]
+    fn a_single_value_seals_opens_and_needs_its_key() {
+        let url = "https://discord.com/api/webhooks/1/abc";
+        let sealed = seal_value(&key(1), url);
+        assert!(crypto::is_sealed(&sealed) && !sealed.contains("abc"));
+        assert_eq!(seal_value(&key(1), &sealed), sealed);
+        assert_eq!(open_value(&key(1), &sealed).as_deref(), Ok(url));
+        // Plaintext from before sealing opens as it is; another key can't open it.
+        assert_eq!(open_value(&key(1), url).as_deref(), Ok(url));
+        assert!(open_value(&key(2), &sealed).is_err());
+        assert_eq!(seal_value(&key(1), ""), "");
     }
 
     #[test]
