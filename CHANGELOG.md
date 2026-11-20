@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.18.1...v0.18.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kit:** stop a stranger from holding back a user's sign-in code ([#114](https://github.com/Ferdinand99/Vigilant-Vole/issues/114)) ([22994c4](https://github.com/Ferdinand99/Vigilant-Vole/commit/22994c454c149faead9e86d1939c1c785f916fe8))
+
 ## [0.18.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.18.0...v0.18.1) (2026-11-19)
 
 
