@@ -1045,15 +1045,26 @@ user's right code from working:
   attempt first looks the code up (one read, the same statements whether or
   not the user exists); a code that is not pending for the account is refused
   like any wrong code (a `401`, nothing to wait for), and only a pending one
-  gets the password hashing and the write. So a flood from many networks is shed cheaply and the user still gets
-  in.
+  gets the password hashing and the write. So a flood from many networks is
+  shed cheaply and the user still gets in.
+
+An IPv4-mapped IPv6 address (`::ffff:a.b.c.d`, from a dual-stack socket or
+proxy) counts as its IPv4 address. The per-network keys can't tell the user
+from somebody who shares the user's public address (the same NAT or carrier
+NAT on IPv4, the same /64): such a person can make the user's attempts wait
+too, as with any limit per address. With `<PREFIX>_TRUST_PROXY` on, the
+address comes from `X-Forwarded-For`, believed from any peer; turn it on only
+when the app port is reachable through the proxy alone and the proxy
+overwrites or appends `X-Forwarded-For`.
 
 They are a backoff, as at sign-in, never a hard lock (the code has 160 bits,
 so a guess is hopeless and the throttles only bound the load). A user name
 longer than a user name can be is replaced by its digest in the key, so the
 key stays small. Then, in one immediate transaction, the attempt claims the
-code and sets the password (hashed whether or not the code turns out to be
-good). The claim is a single `UPDATE` that matches the code's hash
+code and sets the password. Below the ceiling the password is hashed whether
+or not the code turns out to be good; past it a code that is not pending is
+refused before any hashing, and the faster answer says only that the name has
+had many failures, not whether it exists. The claim is a single `UPDATE` that matches the code's hash
 *and* the user it was made for, so a good code of somebody else is not used up
 and answers like any wrong one, and of two people racing for one code exactly
 one wins. Every failure (expired, used, revoked, unknown, someone else's,
@@ -2364,7 +2375,11 @@ value with the old code and seal it again (a one-time startup step like
 * **CSRF origin scheme** (VK-13), **SSE re-authorisation** (VK-08) and the
   **per-account sign-in throttle** (VK-03: a stranger's failures can still
   put a known account in backoff at the password step; one-time sign-in codes
-  no longer can, see "One-time sign-in codes").
+  no longer can, see "One-time sign-in codes"). A password has little
+  entropy, so it needs an overall bound per account that a stranger can't use
+  to refuse the user, e.g. a familiar-device signal (device cookies). A
+  ceiling that refuses is the same lockout again, and one that never refuses,
+  as for codes, is wrong for passwords.
 * **Product settings pages.** `/settings` (the redirect) stays each
   product's; a product adds its own tabs to `Ui::settings_tabs`. The kit's
   General page has no free-form product markup (only the declared field

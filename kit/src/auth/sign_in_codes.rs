@@ -162,9 +162,11 @@ fn account_key(username: &str) -> String {
 }
 
 /// A client network: an IPv4 address, or an IPv6 address by its /64, which
-/// is what one subscriber gets.
+/// is what one subscriber gets. An IPv4-mapped IPv6 address
+/// (`::ffff:a.b.c.d`, from a dual-stack socket or proxy) is its IPv4
+/// address: cut to a /64, every IPv4 client would share one network.
 fn network(ip: IpAddr) -> String {
-    match ip {
+    match ip.to_canonical() {
         IpAddr::V4(v4) => v4.to_string(),
         IpAddr::V6(v6) => {
             let s = v6.segments();
@@ -215,13 +217,15 @@ pub(crate) struct Redeemed {
 /// One attempt to redeem `code` for `username`: counted against the
 /// account from this network and against the network first (either one in
 /// backoff refuses), then the code is used up and the password (when
-/// `new_password` is given) set in one transaction. The password is hashed
-/// whether or not the code is good, so the time taken says nothing about
-/// it. A success undoes the count.
+/// `new_password` is given) set in one transaction. Below the account's
+/// overall ceiling the password is hashed whether or not the code is good,
+/// so the time taken says nothing about it. A success undoes the count.
 ///
-/// Past the account's overall ceiling (all networks together) the code is
-/// looked up first, and only a pending one goes on: a flood from many
-/// networks is refused cheaply, the right code still works.
+/// Past the ceiling (all networks together) the code is looked up first,
+/// and only a pending one goes on: a flood from many networks is refused
+/// cheaply, the right code still works. A code that is not pending is then
+/// refused before any hashing, and the faster answer says only that the
+/// name has had many failures, not whether it exists.
 pub(crate) async fn attempt(
     core: &Core,
     username: &str,
@@ -501,6 +505,13 @@ mod tests {
         assert_eq!(src("2001:db8:1:2::1"), src("2001:db8:1:2:ffff::9"));
         assert_ne!(src("2001:db8:1:2::1"), src("2001:db8:1:3::1"));
         assert_eq!(source_key(&account, None), "code:ada@-");
+        // An IPv4-mapped address is its IPv4 address, not one shared /64.
+        assert_eq!(src("::ffff:203.0.113.9"), src("203.0.113.9"));
+        assert_ne!(src("::ffff:203.0.113.9"), src("::ffff:198.51.100.7"));
+        let ip = |s: &str| ip_key(s.parse().unwrap());
+        assert_eq!(ip("::ffff:203.0.113.9"), "code:203.0.113.9");
+        assert_ne!(ip("::ffff:203.0.113.9"), ip("::ffff:198.51.100.7"));
+        assert_eq!(ip("2001:db8:1:2::1"), "code:2001:db8:1:2::/64");
     }
 
     #[test]
