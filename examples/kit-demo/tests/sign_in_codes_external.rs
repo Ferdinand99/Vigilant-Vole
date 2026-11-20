@@ -651,7 +651,8 @@ async fn redeem_is_throttled_per_account_and_per_address() {
     for _ in 0..14 {
         assert_eq!(redeem(&app.core, "bob", &wrong).await, Err(Generic));
     }
-    // The account waits: even the right code gets the same refusal.
+    // The account waits at this address: even the right code gets the same
+    // refusal.
     assert_eq!(redeem(&app.core, "bob", &good).await, Err(Generic));
     assert_eq!(app.codes_in_db().await, 1);
     let still: Option<String> = app
@@ -690,6 +691,90 @@ async fn redeem_is_throttled_per_account_and_per_address() {
         .unwrap()
         .unwrap();
     assert_eq!(token.user_id(), carol);
+}
+
+/// `redeem_from` from the address `ip`.
+async fn redeem_at(core: &Core, user: &str, code: &str, ip: &str) -> Result<i64, Generic> {
+    sign_in_codes::redeem_from(core, user, code, Some(ip.parse().unwrap()))
+        .await
+        .unwrap()
+        .map(|t| t.user_id())
+}
+
+#[tokio::test]
+async fn nobody_who_only_knows_the_name_can_hold_back_the_right_code() {
+    use std::time::Instant;
+    let (app, _admin) = App::set_up().await;
+    let bob = app.add_user("bob").await;
+    let good = app.code_for(bob).await;
+    let wrong = sign_in_codes::generate();
+    let limits = &app.core.limits;
+
+    // An attacker fails from one address until it waits, and from many more
+    // addresses (IPv4 and IPv6 networks) on top: only their own attempts
+    // wait.
+    for _ in 0..14 {
+        assert_eq!(
+            redeem_at(&app.core, "bob", &wrong, "203.0.113.66").await,
+            Err(Generic)
+        );
+    }
+    assert_eq!(
+        redeem_at(&app.core, "bob", &good, "203.0.113.66").await,
+        Err(Generic),
+        "the attacker's address waits for bob"
+    );
+    for i in 0..60 {
+        assert_eq!(
+            redeem_at(&app.core, "bob", &wrong, &format!("192.0.2.{i}")).await,
+            Err(Generic)
+        );
+        let v6 = format!("2001:db8:{i:x}::1");
+        assert_eq!(redeem_at(&app.core, "bob", &wrong, &v6).await, Err(Generic));
+    }
+    // That is past the overall ceiling for bob (all networks together) ...
+    assert!(
+        limits
+            .code_account
+            .retry_after("code:bob", Instant::now())
+            .is_some(),
+        "the ceiling is reached"
+    );
+    // ... where more wrong codes from fresh networks are still refused ...
+    for i in 0..5 {
+        let v6 = format!("2001:db8:ff{i:x}::1");
+        assert_eq!(redeem_at(&app.core, "bob", &wrong, &v6).await, Err(Generic));
+    }
+    // ... but the right code from bob's own address goes through.
+    assert_eq!(
+        redeem_at(&app.core, "bob", &good, "198.51.100.200").await,
+        Ok(bob)
+    );
+    assert_eq!(
+        redeem_at(&app.core, "bob", &good, "198.51.100.201").await,
+        Err(Generic),
+        "once"
+    );
+
+    // Bounded per network: another address of the same IPv6 /64 shares its
+    // wait for that account.
+    let carol = app.add_user("carol").await;
+    let c = app.code_for(carol).await;
+    for _ in 0..12 {
+        assert_eq!(
+            redeem_at(&app.core, "carol", &wrong, "2001:db8:aa:1::1").await,
+            Err(Generic)
+        );
+    }
+    assert_eq!(
+        redeem_at(&app.core, "carol", &c, "2001:db8:aa:1::ffff").await,
+        Err(Generic),
+        "the same /64 waits"
+    );
+    assert_eq!(
+        redeem_at(&app.core, "carol", &c, "2001:db8:aa:2::1").await,
+        Ok(carol)
+    );
 }
 
 #[tokio::test]

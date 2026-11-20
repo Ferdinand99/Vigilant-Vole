@@ -36,10 +36,26 @@
 //! // when the user has two-factor on).
 //! ```
 //!
-//! The throttles of codes are their own
-//! ([`code_account`](crate::auth::rate_limit::SignInLimits::code_account),
-//! [`code_ip`](crate::auth::rate_limit::SignInLimits::code_ip)); what the visitor types is never logged by
-//! the kit (see [`log_ref`]).
+//! The throttles of codes are their own, apart from the sign-in ones, and
+//! none of them lets somebody who only knows a user's name keep that user's
+//! right code from working:
+//!
+//! - per account *and* client network
+//!   ([`code_source`](crate::auth::rate_limit::SignInLimits::code_source),
+//!   [`CODE_ACCOUNT_POLICY`](crate::auth::rate_limit::CODE_ACCOUNT_POLICY)):
+//!   this one refuses, and only the network that failed waits;
+//! - per client network, for all names
+//!   ([`code_ip`](crate::auth::rate_limit::SignInLimits::code_ip)): one
+//!   network spraying many names waits;
+//! - per account, from all networks together
+//!   ([`code_account`](crate::auth::rate_limit::SignInLimits::code_account),
+//!   [`CODE_CEILING_POLICY`](crate::auth::rate_limit::CODE_CEILING_POLICY)):
+//!   a ceiling, ten times higher, that never refuses the right code. Past it
+//!   an attempt is looked up first, and only a code that is pending for the
+//!   account gets the whole redeem (the password hashing and the write);
+//!   any other is refused like a wrong code, at once.
+//!
+//! What the visitor types is never logged by the kit (see [`log_ref`]).
 
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -145,15 +161,31 @@ fn account_key(username: &str) -> String {
     }
 }
 
-/// The throttle key of a client address: an IPv6 address by its /64, which
-/// is what one subscriber gets.
-fn ip_key(ip: IpAddr) -> String {
-    match ip {
-        IpAddr::V4(v4) => format!("code:{v4}"),
+/// A client network: an IPv4 address, or an IPv6 address by its /64, which
+/// is what one subscriber gets. An IPv4-mapped IPv6 address
+/// (`::ffff:a.b.c.d`, from a dual-stack socket or proxy) is its IPv4
+/// address: cut to a /64, every IPv4 client would share one network.
+fn network(ip: IpAddr) -> String {
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => v4.to_string(),
         IpAddr::V6(v6) => {
             let s = v6.segments();
-            format!("code:{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+            format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
         }
+    }
+}
+
+/// The throttle key of a client address, for all names.
+fn ip_key(ip: IpAddr) -> String {
+    format!("code:{}", network(ip))
+}
+
+/// The throttle key of an account's attempts from one client network
+/// (`-` when there is no address).
+fn source_key(account: &str, ip: Option<IpAddr>) -> String {
+    match ip {
+        Some(ip) => format!("{account}@{}", network(ip)),
+        None => format!("{account}@-"),
     }
 }
 
@@ -183,10 +215,17 @@ pub(crate) struct Redeemed {
 }
 
 /// One attempt to redeem `code` for `username`: counted against the
-/// account and the address first, then the code is used up and the
-/// password (when `new_password` is given) set in one transaction. The
-/// password is hashed whether or not the code is good, so the time taken
-/// says nothing about it. A success undoes the count.
+/// account from this network and against the network first (either one in
+/// backoff refuses), then the code is used up and the password (when
+/// `new_password` is given) set in one transaction. Below the account's
+/// overall ceiling the password is hashed whether or not the code is good,
+/// so the time taken says nothing about it. A success undoes the count.
+///
+/// Past the ceiling (all networks together) the code is looked up first,
+/// and only a pending one goes on: a flood from many networks is refused
+/// cheaply, the right code still works. A code that is not pending is then
+/// refused before any hashing, and the faster answer says only that the
+/// name has had many failures, not whether it exists.
 pub(crate) async fn attempt(
     core: &Core,
     username: &str,
@@ -195,24 +234,47 @@ pub(crate) async fn attempt(
     new_password: Option<String>,
 ) -> ApiResult<Result<Redeemed, Refused>> {
     let account = account_key(username);
+    let source = source_key(&account, ip);
     let address = ip.map(ip_key);
     let now = Instant::now();
+    let limits = &core.limits;
     // Counted before the work, so a burst of parallel guesses can't all pass
     // the check before the first is recorded.
-    if let Err(wait) = core.limits.code_account.reserve(&account, now) {
+    if let Err(wait) = limits.code_source.reserve(&source, now) {
         return Ok(Err(Refused::Throttled(wait)));
     }
     if let Some(address) = &address
-        && let Err(wait) = core.limits.code_ip.reserve(address, now)
+        && let Err(wait) = limits.code_ip.reserve(address, now)
     {
-        core.limits.code_account.release(&account);
+        limits.code_source.release(&source);
         return Ok(Err(Refused::Throttled(wait)));
+    }
+    // The ceiling never refuses by itself: past it, only a code that is
+    // pending for the account gets the whole work. The lookup is the same
+    // two statements whether or not the user exists, and what it tells the
+    // visitor (that the code is good) the redeem would tell them anyway.
+    let ceiling = limits.code_account.reserve(&account, now).is_err();
+    let (username, code_hash) = (username.trim().to_string(), hash(code));
+    if ceiling {
+        let name = username.clone();
+        let pending = core
+            .with_conn(move |c| {
+                let user_id = db_users::get_user_by_username(c, &name)?.map_or(-1, |u| u.id);
+                db_codes::is_pending(c, &code_hash, user_id)
+            })
+            .await?;
+        if !pending {
+            // Counted, so the ceiling stays reached while the flood lasts,
+            // and answered like any wrong code: the user who mistyped can
+            // try again at once, there is nothing to wait for.
+            limits.code_account.record_failure(&account, now);
+            return Ok(Err(Refused::Generic));
+        }
     }
     let password_hash = match new_password {
         Some(password) => Some(crate::auth::hash_password_async(password).await?),
         None => None,
     };
-    let (username, code_hash) = (username.trim().to_string(), hash(code));
     // The same statements whether or not the user exists: the lookup is by
     // name, the code by hash, and the two meet in one UPDATE that matches
     // both.
@@ -231,9 +293,12 @@ pub(crate) async fn attempt(
         .await?;
     match redeemed {
         Some(redeemed) => {
-            core.limits.code_account.clear(&account);
+            limits.code_source.clear(&source);
+            if !ceiling {
+                limits.code_account.release(&account);
+            }
             if let Some(address) = &address {
-                core.limits.code_ip.release(address);
+                limits.code_ip.release(address);
             }
             Ok(Ok(redeemed))
         }
@@ -300,12 +365,20 @@ impl RedeemToken {
 /// product then stores its own credential ([`set_password_hash`], with the
 /// [`RedeemToken`] that comes back) and signs the user in.
 ///
-/// Attempts are throttled per account and, when `ip` is given, per client
-/// address, with throttles of their own (the sign-in ones are not touched);
-/// a throttled attempt is the same [`Generic`] failure. Pass the visitor's
-/// address ([`session::client_ip`](crate::auth::session::client_ip)); only
-/// without one (no peer address at all) is `None` right, because then the
-/// address can't be throttled, only the account.
+/// Attempts are throttled with throttles of their own (the sign-in ones are
+/// not touched); a throttled attempt is the same [`Generic`] failure. The
+/// throttle that refuses is keyed by the account *and* the client network
+/// (an IPv6 address by its /64), plus one per network for all names, so
+/// somebody who only knows the name can make their own attempts wait but
+/// not the user's: the right code from another network still works. Over
+/// all networks together the account has a much higher ceiling that sheds
+/// load (a code that is not pending is refused after a cheap lookup) and
+/// never refuses the right code; see the [module](self) documentation.
+///
+/// Pass the visitor's address
+/// ([`session::client_ip`](crate::auth::session::client_ip)); only without
+/// one (no peer address at all) is `None` right. Every attempt without an
+/// address shares one key per account, so they can hold each other back.
 pub async fn redeem_from(
     core: &Core,
     username: &str,
@@ -421,6 +494,24 @@ mod tests {
         assert_eq!(key("2001:db8:1:2::1"), key("2001:db8:1:2:ffff::9"));
         assert_ne!(key("2001:db8:1:2::1"), key("2001:db8:1:3::1"));
         assert_eq!(key("203.0.113.9"), "code:203.0.113.9");
+    }
+
+    #[test]
+    fn the_account_is_throttled_per_network_and_a_network_is_its_ipv6_prefix() {
+        let account = account_key("Ada");
+        let src = |s: &str| source_key(&account, Some(s.parse().unwrap()));
+        assert_eq!(src("203.0.113.9"), "code:ada@203.0.113.9");
+        assert_ne!(src("203.0.113.9"), src("203.0.113.10"));
+        assert_eq!(src("2001:db8:1:2::1"), src("2001:db8:1:2:ffff::9"));
+        assert_ne!(src("2001:db8:1:2::1"), src("2001:db8:1:3::1"));
+        assert_eq!(source_key(&account, None), "code:ada@-");
+        // An IPv4-mapped address is its IPv4 address, not one shared /64.
+        assert_eq!(src("::ffff:203.0.113.9"), src("203.0.113.9"));
+        assert_ne!(src("::ffff:203.0.113.9"), src("::ffff:198.51.100.7"));
+        let ip = |s: &str| ip_key(s.parse().unwrap());
+        assert_eq!(ip("::ffff:203.0.113.9"), "code:203.0.113.9");
+        assert_ne!(ip("::ffff:203.0.113.9"), ip("::ffff:198.51.100.7"));
+        assert_eq!(ip("2001:db8:1:2::1"), "code:2001:db8:1:2::/64");
     }
 
     #[test]

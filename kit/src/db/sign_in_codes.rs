@@ -98,6 +98,22 @@ pub fn redeem(
     Ok(Some(version))
 }
 
+/// Whether the code with this hash is pending for `user_id`, a user that is
+/// active: what [`redeem`] would claim, read without a write lock and
+/// without changing anything. The same statement for any `user_id`
+/// (`-1` for a name that does not exist).
+pub fn is_pending(conn: &Connection, code_hash: &[u8], user_id: i64) -> rusqlite::Result<bool> {
+    conn.query_row(
+        &format!(
+            "SELECT EXISTS (SELECT 1 FROM sign_in_codes
+               WHERE code_hash = ?1 AND user_id = ?2 AND {PENDING}
+                 AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND active = 1))"
+        ),
+        params![code_hash, user_id],
+        |r| r.get(0),
+    )
+}
+
 /// Revokes the pending codes of a user; returns how many there were.
 pub fn revoke_for_user(conn: &Connection, user_id: i64) -> rusqlite::Result<usize> {
     conn.execute(

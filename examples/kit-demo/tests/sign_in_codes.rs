@@ -737,20 +737,22 @@ async fn repeated_failures_are_throttled_per_account_and_per_address() {
     let target = app.add_user("target", None).await;
     let good = app.code_for(target).await;
 
-    // Per account: a few free guesses, then the account waits, even for the
-    // right code, and even from another address.
+    // Per account and address: a few free guesses, then that address waits
+    // for that account, even with the right code.
     let wrong = sign_in_codes::generate();
     let mut statuses = Vec::new();
-    for i in 0..14 {
-        let mut b = Browser::at(&format!("10.2.0.{i}:1"));
-        let res = app.redeem(&mut b, "target", &wrong, NEW_PASSWORD).await;
+    let mut guesser = Browser::at("10.2.0.1:1");
+    for _ in 0..14 {
+        let res = app
+            .redeem(&mut guesser, "target", &wrong, NEW_PASSWORD)
+            .await;
         statuses.push(res.status);
         if res.status == StatusCode::TOO_MANY_REQUESTS {
             assert!(res.body.contains("Too many attempts"), "{}", res.body);
         }
     }
     assert!(
-        statuses[..10]
+        statuses[..11]
             .iter()
             .all(|s| *s == StatusCode::UNAUTHORIZED),
         "{statuses:?}"
@@ -760,11 +762,25 @@ async fn repeated_failures_are_throttled_per_account_and_per_address() {
         StatusCode::TOO_MANY_REQUESTS,
         "{statuses:?}"
     );
-    let mut b = Browser::at("10.2.1.1:1");
-    let res = app.redeem(&mut b, "target", &good, NEW_PASSWORD).await;
+    let res = app
+        .redeem(&mut guesser, "target", &good, NEW_PASSWORD)
+        .await;
     assert_eq!(res.status, StatusCode::TOO_MANY_REQUESTS, "{}", res.body);
-    assert!(!b.signed_in());
+    assert!(!guesser.signed_in());
     assert!(!app.signs_in("target", NEW_PASSWORD).await);
+
+    // Somebody who only knows the name, failing from many other addresses
+    // as well, can't keep the user's right code from working.
+    for i in 0..14 {
+        let mut b = Browser::at(&format!("10.2.4.{i}:1"));
+        let res = app.redeem(&mut b, "target", &wrong, NEW_PASSWORD).await;
+        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.body);
+    }
+    let mut user = Browser::at("10.2.1.1:1");
+    let res = app.redeem(&mut user, "target", &good, NEW_PASSWORD).await;
+    assert_eq!(res.status, StatusCode::SEE_OTHER, "{}", res.body);
+    assert!(user.signed_in());
+    assert!(app.signs_in("target", NEW_PASSWORD).await);
 
     // Per address: many names from one address.
     let mut statuses = Vec::new();
@@ -1962,11 +1978,10 @@ async fn codes_and_sign_in_have_their_own_throttles_and_a_huge_name_is_just_wron
     let wrong = sign_in_codes::generate();
 
     // Guessing codes for ada does not use up ada's sign-in budget ...
-    for i in 0..14 {
-        let mut b = Browser::at(&format!("10.23.0.{i}:1"));
+    let mut b = Browser::at("10.23.0.1:1");
+    for _ in 0..14 {
         app.redeem(&mut b, "ada", &wrong, NEW_PASSWORD).await;
     }
-    let mut b = Browser::at("10.23.1.1:1");
     let res = app.redeem(&mut b, "ada", &wrong, NEW_PASSWORD).await;
     assert_eq!(
         res.status,

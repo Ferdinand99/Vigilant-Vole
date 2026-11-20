@@ -1027,16 +1027,44 @@ separate.
 code, new password and confirmation, with the usual password rules ("Password
 rules"). The code may be typed with any case, spaces or dashes, and with
 Crockford's look-alikes (`O` for `0`, `I` and `L` for `1`). On `POST` the kit
-throttles the attempt per account (key `code:<name>`) and per address (key
-`code:<ip>`, an IPv6 address by its /64) with limiters of their own
-(`SignInLimits::code_account`, `code_ip`), apart from the sign-in ones, so that
-guessing codes can't use up an account's sign-in budget nor the other way round.
-They are a backoff, as at sign-in, never a hard lock: ten free failures per
-account, then 2 s doubling up to five minutes (the code has 160 bits, so a
-guess is hopeless and the throttle only bounds the load). A user name longer
-than a user name can be is replaced by its digest in the key, so the key stays
-small. Then, in one immediate transaction, the attempt claims the code and sets
-the password (hashed whether or not the code turns out to be good). The claim is a single `UPDATE` that matches the code's hash
+throttles the attempt with limiters of their own, apart from the sign-in ones,
+so that guessing codes can't use up an account's sign-in budget nor the other
+way round. None of them lets somebody who only knows a user name keep that
+user's right code from working:
+
+* per account *and* client network (`SignInLimits::code_source`, key
+  `code:<name>@<network>`, an IPv6 address by its /64, `code:<name>@-` without
+  an address; `CODE_ACCOUNT_POLICY`): ten free failures, then 2 s doubling up
+  to five minutes. This is the one that refuses, and only the network that
+  failed waits for that account.
+* per client network for all names (`SignInLimits::code_ip`, key
+  `code:<network>`): one network spraying many names waits.
+* per account from all networks together (`SignInLimits::code_account`, key
+  `code:<name>`; `CODE_CEILING_POLICY`): a ceiling of 100 free failures, then
+  1 s doubling up to a minute, that never refuses the right code. Past it the
+  attempt first looks the code up (one read, the same statements whether or
+  not the user exists); a code that is not pending for the account is refused
+  like any wrong code (a `401`, nothing to wait for), and only a pending one
+  gets the password hashing and the write. So a flood from many networks is
+  shed cheaply and the user still gets in.
+
+An IPv4-mapped IPv6 address (`::ffff:a.b.c.d`, from a dual-stack socket or
+proxy) counts as its IPv4 address. The per-network keys can't tell the user
+from somebody who shares the user's public address (the same NAT or carrier
+NAT on IPv4, the same /64): such a person can make the user's attempts wait
+too, as with any limit per address. With `<PREFIX>_TRUST_PROXY` on, the
+address comes from `X-Forwarded-For`, believed from any peer; turn it on only
+when the app port is reachable through the proxy alone and the proxy
+overwrites or appends `X-Forwarded-For`.
+
+They are a backoff, as at sign-in, never a hard lock (the code has 160 bits,
+so a guess is hopeless and the throttles only bound the load). A user name
+longer than a user name can be is replaced by its digest in the key, so the
+key stays small. Then, in one immediate transaction, the attempt claims the
+code and sets the password. Below the ceiling the password is hashed whether
+or not the code turns out to be good; past it a code that is not pending is
+refused before any hashing, and the faster answer says only that the name has
+had many failures, not whether it exists. The claim is a single `UPDATE` that matches the code's hash
 *and* the user it was made for, so a good code of somebody else is not used up
 and answers like any wrong one, and of two people racing for one code exactly
 one wins. Every failure (expired, used, revoked, unknown, someone else's,
@@ -1069,10 +1097,13 @@ credential, and uses `vole_kit::auth::sign_in_codes`:
 * `redeem_from(core, username, code, ip: Option<IpAddr>) -> ApiResult<Result<RedeemToken, Generic>>`:
   uses the code up (once, atomically), bumps the user's `session_version` and
   deletes the user's API tokens. Pass the visitor's address
-  (`session::client_ip`): it is throttled per account and per address with the
-  code limiters; only without any peer address is `None` right. Every failure,
-  a throttled attempt included, is the one `Generic`. (There is no `redeem`
-  without the address.)
+  (`session::client_ip`): it is throttled per account and network, per
+  network, and under the account's overall ceiling with the code limiters (see
+  above), so failures from other networks never stop the right code from the
+  user's own; only without any peer address is `None` right (all attempts
+  without an address share one key per account). Every failure, a throttled
+  attempt included, is the one `Generic`. (There is no `redeem` without the
+  address.)
 * `RedeemToken` is the proof of the redeem: `user_id()` and
   `session_version()` (for `guard::login_jar`). It is not `Clone`, is used up
   by `set_password_hash`, lives in memory, and is good for ten minutes
@@ -2343,7 +2374,12 @@ value with the old code and seal it again (a one-time startup step like
   migration are not.
 * **CSRF origin scheme** (VK-13), **SSE re-authorisation** (VK-08) and the
   **per-account sign-in throttle** (VK-03: a stranger's failures can still
-  put a known account in backoff).
+  put a known account in backoff at the password step; one-time sign-in codes
+  no longer can, see "One-time sign-in codes"). A password has little
+  entropy, so it needs an overall bound per account that a stranger can't use
+  to refuse the user, e.g. a familiar-device signal (device cookies). A
+  ceiling that refuses is the same lockout again, and one that never refuses,
+  as for codes, is wrong for passwords.
 * **Product settings pages.** `/settings` (the redirect) stays each
   product's; a product adds its own tabs to `Ui::settings_tabs`. The kit's
   General page has no free-form product markup (only the declared field
