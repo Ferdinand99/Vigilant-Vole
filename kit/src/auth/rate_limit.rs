@@ -183,14 +183,33 @@ pub const PASSKEY_POLICY: Policy = Policy {
     forget_after: Duration::from_secs(60 * 60),
 };
 
-/// Per account for one-time sign-in codes. A code has 160 bits, so a guess
-/// is hopeless and the throttle only bounds the load; it is also a way to keep
-/// somebody from using their code, so it is laxer than [`ACCOUNT_POLICY`] and
-/// caps at five minutes. Like all of these, a backoff and no hard lock.
+/// Per account *and client network* for one-time sign-in codes
+/// ([`SignInLimits::code_source`]). A code has 160 bits, so a guess is
+/// hopeless and the throttle only bounds the load. It is keyed by the
+/// address as well as the name, so that failures from somebody else's
+/// address never hold back the right code from the user's own: a third party
+/// who knows the name can only make their *own* attempts wait. Laxer than
+/// [`ACCOUNT_POLICY`] and capped at five minutes; a backoff and no hard lock.
 pub const CODE_ACCOUNT_POLICY: Policy = Policy {
     free_failures: 10,
     base_delay: Duration::from_secs(2),
     max_delay: Duration::from_secs(5 * 60),
+    forget_after: Duration::from_secs(60 * 60),
+};
+
+/// The overall ceiling per account for one-time sign-in codes, whatever the
+/// address ([`SignInLimits::code_account`]): ten times
+/// [`CODE_ACCOUNT_POLICY`]'s free failures, so it is only reached by many
+/// addresses together. Past it an attempt is not refused outright: the code
+/// is first looked up (one cheap read), a code that is not pending for the
+/// account is refused like any wrong code (and counted, so the ceiling stays
+/// reached while the flood lasts), and only a pending one gets the whole
+/// redeem. So the ceiling sheds the work of a spread-out flood but never
+/// stops the right code.
+pub const CODE_CEILING_POLICY: Policy = Policy {
+    free_failures: 100,
+    base_delay: Duration::from_secs(1),
+    max_delay: Duration::from_secs(60),
     forget_after: Duration::from_secs(60 * 60),
 };
 
@@ -220,10 +239,20 @@ pub struct SignInLimits {
     pub ip: Arc<RateLimiter>,
     /// Keys `ip:<address>`: failed passkey sign-ins, apart from `ip`.
     pub passkey: Arc<RateLimiter>,
-    /// Keys `code:<name>` (one-time sign-in codes, [`CODE_ACCOUNT_POLICY`]):
-    /// apart from `account`, so that guessing codes can't eat the login
-    /// budget of an account, nor the other way round.
+    /// Keys `code:<name>`: the overall ceiling of one-time sign-in code
+    /// attempts per account, from every address together
+    /// ([`CODE_CEILING_POLICY`]). Past it, attempts with a code that is not
+    /// pending are refused after a cheap lookup, like any wrong code; the
+    /// right code still goes through, so nobody can hold an account's code
+    /// back with it. Apart from `account`, so that guessing codes can't eat
+    /// the login budget of an account, nor the other way round.
     pub code_account: Arc<RateLimiter>,
+    /// Keys `code:<name>@<address>` (an IPv6 address by its /64,
+    /// `code:<name>@-` without an address): one-time sign-in code attempts
+    /// per account and client network ([`CODE_ACCOUNT_POLICY`]). This is the
+    /// throttle that refuses: failures from one network make only that
+    /// network wait for that account.
+    pub code_source: Arc<RateLimiter>,
     /// Keys `code:<address>` (an IPv6 address by its /64), apart from `ip`.
     pub code_ip: Arc<RateLimiter>,
     /// Keys `mail-test:<admin id>`: the test email of the General page
@@ -243,7 +272,8 @@ impl SignInLimits {
             account: Arc::new(RateLimiter::new(account)),
             ip: Arc::new(RateLimiter::new(ip)),
             passkey: Arc::new(RateLimiter::new(PASSKEY_POLICY)),
-            code_account: Arc::new(RateLimiter::new(CODE_ACCOUNT_POLICY)),
+            code_account: Arc::new(RateLimiter::new(CODE_CEILING_POLICY)),
+            code_source: Arc::new(RateLimiter::new(CODE_ACCOUNT_POLICY)),
             code_ip: Arc::new(RateLimiter::new(IP_POLICY)),
             mail_test: Arc::new(RateLimiter::new(MAIL_TEST_POLICY)),
         }
