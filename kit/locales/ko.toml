@@ -65,6 +65,9 @@ notifications = "알림"
 users = "사용자"
 integrations = "연동"
 backup = "백업"
+menu_open = "메뉴 열기"
+menu_fold = "메뉴 접기"
+switch_to = "{name}(으)로 전환"
 
 [js]
 dismiss = "닫기"

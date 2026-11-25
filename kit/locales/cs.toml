@@ -65,6 +65,9 @@ notifications = "Oznámení"
 users = "Uživatelé"
 integrations = "Integrace"
 backup = "Záloha"
+menu_open = "Otevřít nabídku"
+menu_fold = "Sbalit nabídku"
+switch_to = "Přepnout na {name}"
 
 [js]
 dismiss = "Zavřít"

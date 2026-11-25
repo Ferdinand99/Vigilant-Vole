@@ -65,6 +65,9 @@ notifications = "Aviseringar"
 users = "Användare"
 integrations = "Integrationer"
 backup = "Säkerhetskopia"
+menu_open = "Öppna menyn"
+menu_fold = "Dölj menyn"
+switch_to = "Byt till {name}"
 
 [js]
 dismiss = "Avfärda"

@@ -2,7 +2,8 @@
 {% import "macros.html" as m %}
 
 {% block content %}
-<div class="settings">
+<div class="settings{% if ctx.has_sidebar() %} settings-flat{% endif %}">
+  {%- if !ctx.has_sidebar() %}
   <aside class="settings-side">
     <p class="settings-heading" aria-hidden="true">{{ tr("nav.settings") }}</p>
     <nav class="settings-nav" aria-label="{{ tr("nav.settings") }}" hx-boost="true" hx-swap="innerHTML transition:true">
@@ -13,6 +14,7 @@
       {%- endfor %}
     </nav>
   </aside>
+  {%- endif %}
   <div class="settings-content" id="settings-content">
     {% block settings_content %}{% endblock %}
   </div>

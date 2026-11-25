@@ -1070,18 +1070,21 @@ fn physical_declarations(css: &str) -> Vec<(usize, String)> {
 
 #[test]
 fn the_stylesheet_has_no_unmarked_physical_left_right_properties() {
-    let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/style.css"))
-        .expect("style.css");
-    let found = physical_declarations(&css);
-    assert!(
-        found.is_empty(),
-        "use logical properties (margin-inline-start, inset-inline-end, text-align: start, …) or add `/* rtl-ok: reason */`:\n{}",
-        found
-            .iter()
-            .map(|(n, l)| format!("  style.css:{n}: {l}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
+    // The design system and the kit's side-menu shell.
+    for file in ["static/style.css", "kit/static/shell.css"] {
+        let css =
+            std::fs::read_to_string(format!("{}/{file}", env!("CARGO_MANIFEST_DIR"))).expect(file);
+        let found = physical_declarations(&css);
+        assert!(
+            found.is_empty(),
+            "use logical properties (margin-inline-start, inset-inline-end, text-align: start, …) or add `/* rtl-ok: reason */`:\n{}",
+            found
+                .iter()
+                .map(|(n, l)| format!("  {file}:{n}: {l}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
 }
 
 #[test]

@@ -8,6 +8,8 @@
 
 use std::sync::OnceLock;
 
+use crate::page::Shell;
+
 /// Everything product specific that the kit uses.
 pub struct KitConfig {
     /// Display name used in texts and API documents ("Vigilant Vole").
@@ -135,18 +137,26 @@ pub struct KitFeatures {
     /// ([`auth::sign_in_codes`](crate::auth::sign_in_codes)). Off, the
     /// routes are 404 and the pages show nothing of it.
     pub sign_in_codes: bool,
+    /// The frame around the signed-in pages: the top bar the kit has always
+    /// had ([`Shell::TopBar`]), or a side menu with an optional switch to a
+    /// sibling area and the account menu at the foot
+    /// ([`Shell::Sidebar`]). The product's own entries come from
+    /// [`Ui`](crate::page::Ui) or from the [`Sidebar`](crate::page::Sidebar).
+    /// Sign-in, setup and public pages are not affected.
+    pub shell: Shell,
 }
 
 impl KitFeatures {
     /// What every product gets unless it says otherwise: tokens and the API
     /// reference on, passwords in the kit's forms, no invitations and no
-    /// sign-in codes.
+    /// sign-in codes, and the top bar.
     pub const DEFAULT: KitFeatures = KitFeatures {
         api_tokens: true,
         api_docs: true,
         credentials: CredentialMode::Plain,
         invites: false,
         sign_in_codes: false,
+        shell: Shell::TopBar,
     };
 }
 
@@ -374,6 +384,32 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
             }
         }
     }
+    if let Shell::Sidebar(side) = config.features.shell {
+        let mut keys: Vec<&str> = Vec::new();
+        if let Some(switcher) = side.switcher {
+            keys.extend([switcher.here, switcher.there]);
+            if switcher.href.is_empty() || switcher.href.contains(char::is_whitespace) {
+                problems.push(format!(
+                    "Switcher::href is not a link ({:?})",
+                    switcher.href
+                ));
+            }
+        }
+        keys.extend(side.sections.iter().filter_map(|s| s.heading));
+        for section in side.sections {
+            for item in section.items {
+                match item {
+                    crate::page::SidebarItem::Nav(nav) => keys.push(nav.label),
+                    crate::page::SidebarItem::Tab(tab) => keys.push(tab.label),
+                }
+            }
+        }
+        for key in keys {
+            if !has(key) {
+                problems.push(format!("the side menu: no English text for {key}"));
+            }
+        }
+    }
     if let Some(general) = config.general {
         for key in catalog::GENERAL_PRODUCT_KEYS {
             if !product.contains_key(*key) {
@@ -424,6 +460,7 @@ mod tests {
         assert!(f.api_tokens && f.api_docs);
         assert_eq!(f.credentials, CredentialMode::Plain);
         assert!(!f.invites && !f.sign_in_codes);
+        assert_eq!(f.shell, Shell::TopBar);
         assert_eq!(KitFeatures::default(), f);
         assert_eq!(*crate::testing::CONFIG.features, f);
     }
@@ -503,6 +540,56 @@ mod tests {
                 .iter()
                 .any(|(n, _)| *n == crate::db::migrate::INVITES.0)
         );
+    }
+
+    #[test]
+    fn the_side_menu_needs_english_texts_and_a_link() {
+        use crate::page::{Sidebar, SidebarItem, SidebarSection, Switcher};
+        static GOOD_SIDE: Sidebar = Sidebar {
+            switcher: Some(&Switcher {
+                here: "nav.general",
+                there: "nav.users",
+                href: "/vault",
+                icon: "box",
+            }),
+            sections: &[SidebarSection {
+                heading: Some("nav.settings"),
+                items: &[SidebarItem::Tab(&crate::page::SettingsTab::SECURITY)],
+            }],
+        };
+        static BAD_SIDE: Sidebar = Sidebar {
+            switcher: Some(&Switcher {
+                here: "nav.no_such_area",
+                there: "nav.users",
+                href: "",
+                icon: "box",
+            }),
+            sections: &[SidebarSection {
+                heading: Some("nav.no_such_heading"),
+                items: &[],
+            }],
+        };
+        static GOOD_FEATURES: KitFeatures = KitFeatures {
+            shell: Shell::Sidebar(&GOOD_SIDE),
+            ..KitFeatures::DEFAULT
+        };
+        static BAD_FEATURES: KitFeatures = KitFeatures {
+            shell: Shell::Sidebar(&BAD_SIDE),
+            ..KitFeatures::DEFAULT
+        };
+        static GOOD: KitConfig = KitConfig {
+            features: &GOOD_FEATURES,
+            ..crate::testing::CONFIG
+        };
+        static BAD: KitConfig = KitConfig {
+            features: &BAD_FEATURES,
+            ..crate::testing::CONFIG
+        };
+        assert_eq!(check(&GOOD), Ok(()));
+        let problems = check(&BAD).unwrap_err();
+        for what in ["nav.no_such_area", "nav.no_such_heading", "not a link"] {
+            assert!(problems.contains(what), "{what}: {problems}");
+        }
     }
 
     #[test]

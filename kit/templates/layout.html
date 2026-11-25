@@ -18,6 +18,10 @@
   <meta name="apple-mobile-web-app-title" content="{{ ctx.site_name }}">
   <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
+  {%- if ctx.has_sidebar() %}
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/shell.js"></script>
+  {%- endif %}
   <script src="/static/theme.js"></script>
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/sse.js" defer></script>
@@ -27,9 +31,65 @@
   {%- endif %}
   {% block head %}{% endblock %}
 </head>
-<body>
+<body{% if ctx.has_sidebar() %} class="has-side"{% endif %}>
   <a class="skip" href="#main">{{ tr("common.skip_to_content") }}</a>
 
+  {% if let Some(side) = ctx.sidebar() -%}
+  {#- The side menu (Shell::Sidebar): a bar with the menu button on phones, the menu (a drawer on phones), then the page. -#}
+  <div class="shell">
+    <header class="side-top">
+      <button class="side-btn" type="button" data-side-open aria-controls="side" aria-expanded="false" aria-label="{{ tr("nav.menu_open") }}">{{ m::icon("menu") }}</button>
+      <a class="brand" href="/">
+        <img src="{{ kit_ui().logo }}" alt="" width="28" height="28">
+        <span>{{ ctx.site_name }}</span>
+      </a>
+    </header>
+    <div class="side-backdrop" aria-hidden="true"></div>
+    <div class="side" id="side">
+      <div class="side-head">
+        <a class="brand" href="/">
+          <img src="{{ kit_ui().logo }}" alt="" width="28" height="28">
+          <span>{{ ctx.site_name }}</span>
+        </a>
+        <button class="side-btn side-collapse" type="button" data-side-collapse aria-controls="side" aria-expanded="true" aria-label="{{ tr("nav.menu_fold") }}" title="{{ tr("nav.menu_fold") }}"><span class="side-panel" aria-hidden="true"></span></button>
+        <button class="side-btn side-close" type="button" data-side-close aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
+      </div>
+      {%- if let Some(sw) = side.switcher %}
+      <a class="side-switch" href="{{ sw.href }}" aria-label="{{ tr1("nav.switch_to", "name", tr(sw.there)) }}" title="{{ tr1("nav.switch_to", "name", tr(sw.there)) }}">
+        {{ m::icon(sw.icon) }}<span class="side-label">{{ tr(sw.here) }}</span>
+        <span class="side-switch-other">{{ m::icon("chevron-up-down") }}<span>{{ tr(sw.there) }}</span></span>
+      </a>
+      {%- endif %}
+      <nav class="side-nav" aria-label="{{ tr("nav.main") }}" hx-boost="true" hx-swap="innerHTML transition:true">
+        {%- for section in side.sections %}
+        <div class="side-section">
+          {%- if let Some(heading) = section.heading %}
+          <h2 class="side-heading" id="side-h{{ loop.index }}">{{ tr(heading) }}</h2>
+          {%- endif %}
+          <ul class="side-list"{% if section.heading.is_some() %} aria-labelledby="side-h{{ loop.index }}"{% endif %}>
+            {%- for item in section.items %}
+            <li><a class="side-link" href="{{ item.href }}" title="{{ tr(item.label) }}"{% if item.current %} aria-current="page"{% endif %}>{{ m::icon(item.icon) }}<span class="side-label">{{ tr(item.label) }}</span></a></li>
+            {%- endfor %}
+          </ul>
+        </div>
+        {%- endfor %}
+      </nav>
+      {%- if let Some(u) = ctx.user %}
+      <div class="side-foot">
+        <button class="side-account" type="button" popovertarget="user-menu" title="{{ tr("nav.account_menu") }}">
+          {{ m::avatar(&u.initials) }}
+          <span class="side-account-text">
+            <span class="side-account-name">{{ u.display_name }}</span>
+            <span class="side-account-meta">{{ u.role.label() }}</span>
+          </span>
+          {{ m::icon("chevron-up-down") }}
+        </button>
+        {% include "partials/account_menu.html" %}
+      </div>
+      {%- endif %}
+    </div>
+    <div class="side-body">
+  {%- else -%}
   <header class="topbar">
     <div class="topbar-inner container">
       <a class="brand" href="/">
@@ -48,42 +108,14 @@
         <button class="user-button" type="button" popovertarget="user-menu" aria-label="{{ tr("nav.account_menu") }}">
           {{ m::avatar(&u.initials) }}
         </button>
-        <div class="menu" id="user-menu" popover>
-          <div class="user-card">
-            {{ m::avatar(&u.initials, "lg") }}
-            <span>
-              <span class="user-card-name">{{ u.display_name }}</span>
-              <span class="user-card-meta">{{ u.username }} · {{ u.role.label() }}</span>
-            </span>
-          </div>
-          <hr class="menu-sep">
-          <a class="menu-item" href="/settings/security">{{ m::icon("shield") }}{{ tr("nav.security") }}</a>
-          {%- if kit_features().api_tokens %}
-          <a class="menu-item" href="/settings/tokens">{{ m::icon("key") }}{{ tr("nav.api_tokens") }}</a>
-          {%- endif %}
-          {%- if kit_features().api_docs %}
-          <a class="menu-item" href="/api-docs">{{ m::icon("code") }}{{ tr("nav.api_docs") }}</a>
-          {%- endif %}
-          <hr class="menu-sep">
-          <p class="menu-label" id="theme-label">{{ tr("nav.appearance") }}</p>
-          <div class="theme-picker">
-            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
-              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto">{{ m::icon("theme-auto") }}<span>{{ tr("nav.theme_auto") }}</span></label>
-              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light">{{ m::icon("sun") }}<span>{{ tr("nav.theme_light") }}</span></label>
-              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark">{{ m::icon("moon") }}<span>{{ tr("nav.theme_dark") }}</span></label>
-            </div>
-          </div>
-          <hr class="menu-sep">
-          <form method="post" action="/logout">
-            <button class="menu-item" type="submit">{{ m::icon("logout") }}{{ tr("nav.log_out") }}</button>
-          </form>
-        </div>
+        {% include "partials/account_menu.html" %}
         {%- else %}
         <a class="btn btn-secondary btn-sm" href="/login">{{ tr("nav.log_in") }}</a>
         {%- endif %}
       </div>
     </div>
   </header>
+  {%- endif %}
 
   <main id="main" class="main container {% block main_class %}{% endblock %}" tabindex="-1">
     {% block content %}{% endblock %}
@@ -95,11 +127,16 @@
   </footer>
   {%- endif %}
 
+  {% if ctx.has_sidebar() -%}
+    </div>
+  </div>
+  {%- else -%}
   <nav class="tabbar" aria-label="{{ tr("nav.main") }}" hx-boost="true" hx-swap="innerHTML transition:true">
     {%- for item in kit_ui().nav %}
     <a class="tabbar-item" href="{{ item.href }}"{% if ctx.nav == item.id %} aria-current="page"{% endif %}>{{ m::icon(item.icon) }}<span>{{ tr(item.short_label) }}</span></a>
     {%- endfor %}
   </nav>
+  {%- endif %}
 
   <div class="toaster" id="toaster" aria-live="polite">
     {%- if let Some(f) = ctx.flash %}

@@ -1244,11 +1244,14 @@ nav.log_in
 nav.log_out
 nav.main
 nav.maintenance
+nav.menu_fold
+nav.menu_open
 nav.notifications
 nav.security
 nav.settings
 nav.status_pages
 nav.status_short
+nav.switch_to
 nav.theme_auto
 nav.theme_dark
 nav.theme_light

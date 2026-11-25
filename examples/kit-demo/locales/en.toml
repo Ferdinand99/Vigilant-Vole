@@ -3,6 +3,8 @@
 [demo]
 welcome = "Welcome to Kit Demo. You have {n} notes."
 notes = "Notes"
+area_notes = "Notes"
+area_admin = "Admin"
 envelopes = "Envelopes"
 projects = "Projects"
 share = "Share"

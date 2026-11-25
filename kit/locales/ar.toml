@@ -65,6 +65,9 @@ notifications = "الإشعارات"
 users = "المستخدمون"
 integrations = "التكاملات"
 backup = "النسخ الاحتياطي"
+menu_open = "فتح القائمة"
+menu_fold = "طي القائمة"
+switch_to = "التبديل إلى {name}"
 
 [js]
 dismiss = "تجاهل"

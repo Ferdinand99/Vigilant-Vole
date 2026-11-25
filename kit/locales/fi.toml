@@ -65,6 +65,9 @@ notifications = "Ilmoitukset"
 users = "Käyttäjät"
 integrations = "Integraatiot"
 backup = "Varmuuskopio"
+menu_open = "Avaa valikko"
+menu_fold = "Tiivistä valikko"
+switch_to = "Vaihda kohteeseen {name}"
 
 [js]
 dismiss = "Ohita"

@@ -65,6 +65,9 @@ notifications = "اطلاع‌رسانی‌ها"
 users = "کاربران"
 integrations = "یکپارچه‌سازی‌ها"
 backup = "پشتیبان"
+menu_open = "باز کردن منو"
+menu_fold = "جمع کردن منو"
+switch_to = "رفتن به {name}"
 
 [js]
 dismiss = "بستن"

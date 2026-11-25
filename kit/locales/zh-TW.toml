@@ -65,6 +65,9 @@ notifications = "通知"
 users = "使用者"
 integrations = "整合"
 backup = "備份"
+menu_open = "開啟選單"
+menu_fold = "收合選單"
+switch_to = "切換到{name}"
 
 [js]
 dismiss = "略過"

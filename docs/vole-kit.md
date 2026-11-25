@@ -173,7 +173,7 @@ No test can forget it.
 | `webhook` | how the webhook provider names what alerts are about: the default body's fields, the body template's placeholders, the URL field's example (`notify::webhook::Wording`; `Wording::NEUTRAL` says `subject` and `duration`) | `subject: "monitor"`, `duration: "downtime"`, `url_example: "https://example.com/hooks/vigilant…"` |
 | `token_scopes` | the product's own API token scopes (see "API token scopes") | `&[]` |
 | `general` | the kit's General page with the product's fields (see "General settings"); `None` for none or the product's own | `None` (its own page) |
-| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials` (`CredentialMode::Plain`, or `External` for a product that signs people in on its own pages: see "External credentials"), `invites` (invitation links: see "Invitation links"), `sign_in_codes` (one-time sign-in codes and the instance's mail settings: see "One-time sign-in codes"). `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
+| `features` | which optional parts the product has (`KitFeatures`): `api_tokens` and `api_docs` (both on by default; off, their routes are 404, the menus do not link them and `require_auth` answers 401 to any `Authorization` token; `docs` is still required), `credentials` (`CredentialMode::Plain`, or `External` for a product that signs people in on its own pages: see "External credentials"), `invites` (invitation links: see "Invitation links"), `sign_in_codes` (one-time sign-in codes and the instance's mail settings: see "One-time sign-in codes"), `shell` (`Shell::TopBar`, or `Shell::Sidebar` for the side-menu look: see "The side-menu shell"). `&KitFeatures::DEFAULT` is the kit as it was | `&KitFeatures::DEFAULT` |
 
 `DocsSpec` holds the routes, the OpenAPI texts, the error example and the
 `curl` placeholders. It also holds the product's Markdown sections and, for
@@ -242,6 +242,54 @@ Markdown names the type, and `curl` sends the example as it is
   (with `KitConfig::general`), `USERS`, `SECURITY` and `TOKENS`. Each tab has
   an access level (`Everyone`, `Editors`, `Admins`);
 * `home_url`, the link in the public pages' "Powered by" footer.
+
+### The side-menu shell
+
+The signed-in pages have two looks. The default, `Shell::TopBar`, is the kit as
+it has always been: a top bar with the main navigation (a tab bar on phones)
+and, on settings pages, the tabs in a column beside the page. A product
+chooses the other, the look of the Hedgerow apps' web vaults, with
+`KitFeatures::shell`:
+
+```rust
+features: &KitFeatures {
+    shell: Shell::Sidebar(&Sidebar::DEFAULT),
+    ..KitFeatures::DEFAULT
+},
+```
+
+`Shell::Sidebar` gives every signed-in page a menu on the left: the product's
+logo and name with a button that folds the menu to a rail (kept in
+`localStorage`), an optional switch to a sibling area, the entries in
+sections, and at the foot the account (name, role) with its menu: Security,
+API tokens, API reference, the theme choice and Log out. On a phone the menu is
+a drawer that a bar at the top opens (focus stays inside while it is open;
+Escape and the backdrop close it). The settings pages lose their tab
+column, since the tabs are entries of the menu. Sign-in, setup and public pages
+keep their layouts, and the page policy is the same as before: the shell adds
+`/static/shell.css` and `/static/shell.js` (files of the kit, served only when the
+shell is on), never an inline style or script. The colours are the kit's
+tokens, so the light and dark themes (and Auto) follow.
+
+`Sidebar` says what the menu holds:
+
+* `switcher: Option<&Switcher>`: a link above the entries with the name of the
+  current area on the left and of the other on the right ("Admin ⇅ Vault").
+  `Switcher { here, there, href, icon }`: `here` and `there` are translation
+  keys of the product's catalog, `href` a path or an address, `icon` one from
+  `icons.svg`. The kit names no area of its own; `None` shows no switch.
+* `sections: &[SidebarSection]`: `SidebarSection { heading: Option<key>, items }`,
+  each item `SidebarItem::Nav(&NavItem)` (current on pages whose `PageCtx::nav`
+  is its id) or `SidebarItem::Tab(&SettingsTab)` (current on pages whose
+  `subnav` is its id; left out for a user who may not see the tab). A section
+  with no entry left for the user is not shown. With `sections: &[]`
+  (`Sidebar::DEFAULT`) the menu is made from `Ui::nav` (without the item with the
+  id `settings`) and, under the heading "Settings", the `Ui::settings_tabs`.
+
+`config::check` (run by `config::install`) refuses a switch or a section whose
+translation key has no English text, or a switch with no link. The shell's
+own words are the kit's `nav.menu_open`, `nav.menu_fold` and `nav.switch_to`
+(26 languages); the product translates its area names and headings.
 
 `Core` is the kit's view of the product's state. A product implements
 `FromRef<AppState> for Core` (and for the cookie `Key`). Kit handlers and

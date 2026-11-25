@@ -65,6 +65,9 @@ notifications = "Értesítések"
 users = "Felhasználók"
 integrations = "Integrációk"
 backup = "Mentés"
+menu_open = "Menü megnyitása"
+menu_fold = "Menü összecsukása"
+switch_to = "Váltás ide: {name}"
 
 [js]
 dismiss = "Elvetés"
