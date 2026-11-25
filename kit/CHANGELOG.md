@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.9.1...vole-kit-v0.10.0) (2026-11-25)
+
+
+### Features
+
+* **kit:** opt-in side-menu shell for the signed-in pages ([#120](https://github.com/Ferdinand99/Vigilant-Vole/issues/120)) ([b5027dd](https://github.com/Ferdinand99/Vigilant-Vole/commit/b5027dd079970de2ae0173492144c110dfdcda26))
+
 ## [0.9.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/vole-kit-v0.9.0...vole-kit-v0.9.1) (2026-11-20)
 
 
