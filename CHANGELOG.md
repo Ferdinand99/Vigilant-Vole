@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.0](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.18.1...v0.19.0) (2026-11-25)
+
+
+### Features
+
+* **kit:** opt-in side-menu shell for the signed-in pages ([#120](https://github.com/Ferdinand99/Vigilant-Vole/issues/120)) ([b5027dd](https://github.com/Ferdinand99/Vigilant-Vole/commit/b5027dd079970de2ae0173492144c110dfdcda26))
+
+
+### Bug Fixes
+
+* **deps:** update cookie and url for RUSTSEC-2026-0594 and RUSTSEC-2026-0592 ([#119](https://github.com/Ferdinand99/Vigilant-Vole/issues/119)) ([e606eb7](https://github.com/Ferdinand99/Vigilant-Vole/commit/e606eb7a7354fc77b992da3b1d70ce69321f8eda))
+* **kit:** stop a stranger from holding back a user's sign-in code ([#114](https://github.com/Ferdinand99/Vigilant-Vole/issues/114)) ([22994c4](https://github.com/Ferdinand99/Vigilant-Vole/commit/22994c454c149faead9e86d1939c1c785f916fe8))
+
 ## [0.18.1](https://github.com/Ferdinand99/Vigilant-Vole/compare/v0.18.0...v0.18.1) (2026-11-19)
 
 
