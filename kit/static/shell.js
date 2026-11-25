@@ -44,6 +44,10 @@
     if (!s) return;
     s.toggleAttribute("data-open", on);
     if (b) b.toggleAttribute("data-open", on);
+    /* Open, the drawer is the whole page for a screen reader and the keyboard:
+       what is behind it is out of reach, so focus cannot leave it. */
+    var behind = d.querySelectorAll(".side-body, .side-top");
+    for (var i = 0; i < behind.length; i++) behind[i].toggleAttribute("inert", on);
     sync();
     if (!focus) return;
     var target = on ? s.querySelector("[data-side-close]") : d.querySelector("[data-side-open]");

@@ -261,7 +261,7 @@
   }
 }
 .side-account:active,
-.side-account[aria-expanded="true"] {
+.side-account:has(+ .menu:popover-open) {
   background: var(--pressed);
 }
 .side-account-text {

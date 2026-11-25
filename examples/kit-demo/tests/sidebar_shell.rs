@@ -87,7 +87,9 @@ async fn the_switch_is_a_labelled_link_the_product_configures() {
     let at = html.find("<a class=\"side-switch\"").expect("the switch");
     let tag = &html[at..at + html[at..].find('>').unwrap()];
     assert!(tag.contains("href=\"/admin\""), "{tag}");
-    assert!(tag.contains("aria-label=\"Switch to Admin\""), "{tag}");
+    // Its name is its visible text (both areas); the tooltip says what it does.
+    assert!(!tag.contains("aria-label"), "{tag}");
+    assert!(tag.contains("title=\"Switch to Admin\""), "{tag}");
     let switch = &html[at..at + html[at..].find("</a>").unwrap()];
     // The current area's name, then the other's.
     let here = switch.find(">Notes<").expect("current area");
@@ -230,8 +232,23 @@ async fn the_menu_follows_the_site_language() {
     let html = app.get("/settings/security").await.body;
     assert!(html.contains("lang=\"nb\""), "the language was set");
     assert!(html.contains("aria-label=\"Åpne menyen\""), "{html}");
-    assert!(html.contains("aria-label=\"Bytt til Admin\""), "{html}");
+    assert!(html.contains("title=\"Bytt til Admin\""), "{html}");
     vole_kit::settings::set_site_language(&app.core, None)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn the_brand_leads_to_the_start_page_the_product_configures() {
+    let mut app = app().await;
+    for path in ["/", "/settings/security"] {
+        let html = app.get(path).await.body;
+        // The bar on phones and the head of the menu.
+        assert_eq!(
+            html.matches("<a class=\"brand\" href=\"/notes\">").count(),
+            2,
+            "{path}"
+        );
+        assert!(!html.contains("<a class=\"brand\" href=\"/\">"), "{path}");
+    }
 }

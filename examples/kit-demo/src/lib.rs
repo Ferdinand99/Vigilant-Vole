@@ -386,6 +386,7 @@ static SIDEBAR: Sidebar = Sidebar {
         href: "/admin",
         icon: "box",
     }),
+    home: "/notes",
     sections: &[
         SidebarSection {
             heading: None,

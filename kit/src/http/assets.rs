@@ -232,4 +232,22 @@ mod tests {
         }
         assert!(!js.contains("style.cssText"));
     }
+
+    /// An open drawer is the whole page for a screen reader and the keyboard:
+    /// the page and the bar behind it are made inert, and made reachable again
+    /// with the same call when it closes.
+    #[test]
+    fn an_open_drawer_makes_the_rest_of_the_page_inert() {
+        let js = text("shell.js");
+        assert!(js.contains(".side-body, .side-top"));
+        assert!(js.contains("toggleAttribute(\"inert\", on)"));
+        // Inert is set in the one place that opens and closes the drawer, before
+        // the focus moves.
+        let set = js.find("function setDrawer").unwrap();
+        let end = js[set..].find("\n  }\n").unwrap() + set;
+        let body = &js[set..end];
+        let inert = body.find("inert").expect("setDrawer sets inert");
+        let focus = body.find(".focus()").expect("setDrawer moves the focus");
+        assert!(inert < focus);
+    }
 }

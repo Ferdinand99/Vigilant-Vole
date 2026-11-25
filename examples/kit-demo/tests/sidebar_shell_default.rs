@@ -38,6 +38,8 @@ async fn no_switch_is_shown_unless_the_product_configures_one() {
     let html = app.get("/").await.body;
     assert!(html.contains("class=\"side\" id=\"side\""));
     assert!(!html.contains("side-switch"));
+    // The brand leads to "/" unless the product says otherwise.
+    assert_eq!(html.matches("<a class=\"brand\" href=\"/\">").count(), 2);
     assert_eq!(side_current(&html), ["/"]);
 }
 

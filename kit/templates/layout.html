@@ -39,7 +39,7 @@
   <div class="shell">
     <header class="side-top">
       <button class="side-btn" type="button" data-side-open aria-controls="side" aria-expanded="false" aria-label="{{ tr("nav.menu_open") }}">{{ m::icon("menu") }}</button>
-      <a class="brand" href="/">
+      <a class="brand" href="{{ side.home }}">
         <img src="{{ kit_ui().logo }}" alt="" width="28" height="28">
         <span>{{ ctx.site_name }}</span>
       </a>
@@ -47,7 +47,7 @@
     <div class="side-backdrop" aria-hidden="true"></div>
     <div class="side" id="side">
       <div class="side-head">
-        <a class="brand" href="/">
+        <a class="brand" href="{{ side.home }}">
           <img src="{{ kit_ui().logo }}" alt="" width="28" height="28">
           <span>{{ ctx.site_name }}</span>
         </a>
@@ -55,7 +55,7 @@
         <button class="side-btn side-close" type="button" data-side-close aria-label="{{ tr("common.close") }}">{{ m::icon("x") }}</button>
       </div>
       {%- if let Some(sw) = side.switcher %}
-      <a class="side-switch" href="{{ sw.href }}" aria-label="{{ tr1("nav.switch_to", "name", tr(sw.there)) }}" title="{{ tr1("nav.switch_to", "name", tr(sw.there)) }}">
+      <a class="side-switch" href="{{ sw.href }}" title="{{ tr1("nav.switch_to", "name", tr(sw.there)) }}">
         {{ m::icon(sw.icon) }}<span class="side-label">{{ tr(sw.here) }}</span>
         <span class="side-switch-other">{{ m::icon("chevron-up-down") }}<span>{{ tr(sw.there) }}</span></span>
       </a>

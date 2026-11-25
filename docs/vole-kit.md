@@ -267,8 +267,10 @@ a drawer that a bar at the top opens (focus stays inside while it is open;
 Escape and the backdrop close it). The settings pages lose their tab
 column, since the tabs are entries of the menu. Sign-in, setup and public pages
 keep their layouts, and the page policy is the same as before: the shell adds
-`/static/shell.css` and `/static/shell.js` (files of the kit, served only when the
-shell is on), never an inline style or script. The colours are the kit's
+`/static/shell.css` and `/static/shell.js` (files of the kit, linked only by
+pages that use the shell, but served by the kit for every product, so a product
+may not have static files of those names of its own), never an inline style or
+script. The colours are the kit's
 tokens, so the light and dark themes (and Auto) follow.
 
 `Sidebar` says what the menu holds:
@@ -276,8 +278,14 @@ tokens, so the light and dark themes (and Auto) follow.
 * `switcher: Option<&Switcher>`: a link above the entries with the name of the
   current area on the left and of the other on the right ("Admin ⇅ Vault").
   `Switcher { here, there, href, icon }`: `here` and `there` are translation
-  keys of the product's catalog, `href` a path or an address, `icon` one from
-  `icons.svg`. The kit names no area of its own; `None` shows no switch.
+  keys of the product's catalog, `href` a path of the product (`/vault`) or an
+  `http(s)` address, `icon` one from `icons.svg`. The kit names no area of its
+  own; `None` shows no switch. The link's name is the two names it shows; its
+  tooltip says "Switch to {other area}".
+* `home`: where the mark and name at the top of the menu lead (a path of the
+  product or an `http(s)` address; `"/"` in `Sidebar::DEFAULT`). A product
+  whose admin pages share the menu points it at the admin start page, so the
+  logo does not leave the area.
 * `sections: &[SidebarSection]`: `SidebarSection { heading: Option<key>, items }`,
   each item `SidebarItem::Nav(&NavItem)` (current on pages whose `PageCtx::nav`
   is its id) or `SidebarItem::Tab(&SettingsTab)` (current on pages whose
@@ -286,8 +294,16 @@ tokens, so the light and dark themes (and Auto) follow.
   (`Sidebar::DEFAULT`) the menu is made from `Ui::nav` (without the item with the
   id `settings`) and, under the heading "Settings", the `Ui::settings_tabs`.
 
+**Who sees what.** Only `SidebarItem::Tab` entries have a role gate (their
+`TabAccess`). `SidebarItem::Nav` and the `Switcher` are shown to every signed-in
+user, so an entry meant for admins only must be a `SidebarItem::Tab` with
+`TabAccess::Admins` (and the page must still check the role: the menu hides, it
+does not protect).
+
 `config::check` (run by `config::install`) refuses a switch or a section whose
-translation key has no English text, or a switch with no link. The shell's
+translation key has no English text, and a switch or `home` that is not a path
+of the product (a leading `/`, not `//`) or an `http(s)` address, so a
+`javascript:` or relative link cannot get in. The shell's
 own words are the kit's `nav.menu_open`, `nav.menu_fold` and `nav.switch_to`
 (26 languages); the product translates its area names and headings.
 

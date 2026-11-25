@@ -96,6 +96,10 @@ pub struct Sidebar {
     /// replaces) and, under the heading `nav.settings`, the settings tabs the
     /// user may see ([`Ui::settings_tabs`]).
     pub sections: &'static [SidebarSection],
+    /// Where the product's mark and name in the menu and in the bar on phones
+    /// lead: the first page of this area (`"/"`, or the admin pages' own start
+    /// page when the product's areas share the menu).
+    pub home: &'static str,
 }
 
 impl Sidebar {
@@ -104,6 +108,7 @@ impl Sidebar {
     pub const DEFAULT: Sidebar = Sidebar {
         switcher: None,
         sections: &[],
+        home: "/",
     };
 }
 
@@ -146,6 +151,7 @@ pub enum SidebarItem {
 /// user sees, with the current one marked.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SidebarView {
+    pub home: &'static str,
     pub switcher: Option<&'static Switcher>,
     pub sections: Vec<SectionView>,
 }
@@ -393,6 +399,7 @@ impl PageCtx {
             }
         }
         Some(SidebarView {
+            home: side.home,
             switcher: side.switcher,
             sections,
         })
@@ -567,6 +574,7 @@ mod tests {
             href: "/other",
             icon: "box",
         }),
+        home: "/own",
         sections: &[
             SidebarSection {
                 heading: None,
@@ -611,6 +619,7 @@ mod tests {
         let page = ctx("settings", "security", Some(Role::Admin));
         let view = page.sidebar_in(&DEFAULT_SIDE).unwrap();
         assert_eq!(view.switcher, None);
+        assert_eq!(view.home, "/");
         // The navigation without "settings", then one section of tabs.
         assert_eq!(view.sections.len(), 2);
         assert_eq!(view.sections[0].heading, None);
@@ -665,6 +674,7 @@ mod tests {
             .sidebar_in(&OWN_SIDE)
             .unwrap();
         assert_eq!(admin.switcher.map(|s| s.href), Some("/other"));
+        assert_eq!(admin.home, "/own");
         assert_eq!(admin.sections.len(), 3);
         assert_eq!(admin.sections[0].items[0].href, "/");
         assert!(admin.sections[0].items[0].current);
