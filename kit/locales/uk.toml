@@ -65,6 +65,9 @@ notifications = "Сповіщення"
 users = "Користувачі"
 integrations = "Інтеграції"
 backup = "Резервні копії"
+menu_open = "Відкрити меню"
+menu_fold = "Згорнути меню"
+switch_to = "Перейти до «{name}»"
 
 [js]
 dismiss = "Закрити"

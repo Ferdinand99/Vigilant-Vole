@@ -1,0 +1,32 @@
+{#- The account menu (a popover): who is signed in, Security, API tokens, API docs, the theme and Log out.
+    Opened by a button with popovertarget="user-menu". Expects `u: UserView` and the `m` macro import. -#}
+<div class="menu" id="user-menu" popover>
+          <div class="user-card">
+            {{ m::avatar(&u.initials, "lg") }}
+            <span>
+              <span class="user-card-name">{{ u.display_name }}</span>
+              <span class="user-card-meta">{{ u.username }} · {{ u.role.label() }}</span>
+            </span>
+          </div>
+          <hr class="menu-sep">
+          <a class="menu-item" href="/settings/security">{{ m::icon("shield") }}{{ tr("nav.security") }}</a>
+          {%- if kit_features().api_tokens %}
+          <a class="menu-item" href="/settings/tokens">{{ m::icon("key") }}{{ tr("nav.api_tokens") }}</a>
+          {%- endif %}
+          {%- if kit_features().api_docs %}
+          <a class="menu-item" href="/api-docs">{{ m::icon("code") }}{{ tr("nav.api_docs") }}</a>
+          {%- endif %}
+          <hr class="menu-sep">
+          <p class="menu-label" id="theme-label">{{ tr("nav.appearance") }}</p>
+          <div class="theme-picker">
+            <div class="segmented segmented-block" role="radiogroup" aria-labelledby="theme-label">
+              <label><input type="radio" name="vv-theme" value="auto" data-theme-set="auto">{{ m::icon("theme-auto") }}<span>{{ tr("nav.theme_auto") }}</span></label>
+              <label><input type="radio" name="vv-theme" value="light" data-theme-set="light">{{ m::icon("sun") }}<span>{{ tr("nav.theme_light") }}</span></label>
+              <label><input type="radio" name="vv-theme" value="dark" data-theme-set="dark">{{ m::icon("moon") }}<span>{{ tr("nav.theme_dark") }}</span></label>
+            </div>
+          </div>
+          <hr class="menu-sep">
+          <form method="post" action="/logout">
+            <button class="menu-item" type="submit">{{ m::icon("logout") }}{{ tr("nav.log_out") }}</button>
+          </form>
+        </div>

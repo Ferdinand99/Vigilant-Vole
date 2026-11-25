@@ -65,6 +65,9 @@ notifications = "Bildirimler"
 users = "Kullanıcılar"
 integrations = "Entegrasyonlar"
 backup = "Yedekleme"
+menu_open = "Menüyü aç"
+menu_fold = "Menüyü daralt"
+switch_to = "{name} bölümüne geç"
 
 [js]
 dismiss = "Kapat"

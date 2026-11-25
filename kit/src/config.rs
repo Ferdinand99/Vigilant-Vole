@@ -8,6 +8,8 @@
 
 use std::sync::OnceLock;
 
+use crate::page::Shell;
+
 /// Everything product specific that the kit uses.
 pub struct KitConfig {
     /// Display name used in texts and API documents ("Vigilant Vole").
@@ -135,18 +137,26 @@ pub struct KitFeatures {
     /// ([`auth::sign_in_codes`](crate::auth::sign_in_codes)). Off, the
     /// routes are 404 and the pages show nothing of it.
     pub sign_in_codes: bool,
+    /// The frame around the signed-in pages: the top bar the kit has always
+    /// had ([`Shell::TopBar`]), or a side menu with an optional switch to a
+    /// sibling area and the account menu at the foot
+    /// ([`Shell::Sidebar`]). The product's own entries come from
+    /// [`Ui`](crate::page::Ui) or from the [`Sidebar`](crate::page::Sidebar).
+    /// Sign-in, setup and public pages are not affected.
+    pub shell: Shell,
 }
 
 impl KitFeatures {
     /// What every product gets unless it says otherwise: tokens and the API
     /// reference on, passwords in the kit's forms, no invitations and no
-    /// sign-in codes.
+    /// sign-in codes, and the top bar.
     pub const DEFAULT: KitFeatures = KitFeatures {
         api_tokens: true,
         api_docs: true,
         credentials: CredentialMode::Plain,
         invites: false,
         sign_in_codes: false,
+        shell: Shell::TopBar,
     };
 }
 
@@ -374,6 +384,38 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
             }
         }
     }
+    if let Shell::Sidebar(side) = config.features.shell {
+        let mut keys: Vec<&str> = Vec::new();
+        if let Some(switcher) = side.switcher {
+            keys.extend([switcher.here, switcher.there]);
+            if !is_safe_link(switcher.href) {
+                problems.push(format!(
+                    "Switcher::href is not a link of the product or an http(s) address ({:?})",
+                    switcher.href
+                ));
+            }
+        }
+        if !is_safe_link(side.home) {
+            problems.push(format!(
+                "Sidebar::home is not a link of the product or an http(s) address ({:?})",
+                side.home
+            ));
+        }
+        keys.extend(side.sections.iter().filter_map(|s| s.heading));
+        for section in side.sections {
+            for item in section.items {
+                match item {
+                    crate::page::SidebarItem::Nav(nav) => keys.push(nav.label),
+                    crate::page::SidebarItem::Tab(tab) => keys.push(tab.label),
+                }
+            }
+        }
+        for key in keys {
+            if !has(key) {
+                problems.push(format!("the side menu: no English text for {key}"));
+            }
+        }
+    }
     if let Some(general) = config.general {
         for key in catalog::GENERAL_PRODUCT_KEYS {
             if !product.contains_key(*key) {
@@ -387,6 +429,25 @@ pub fn check(config: &KitConfig) -> Result<(), String> {
     } else {
         Err(problems.join("; "))
     }
+}
+
+/// Whether `href` may be the target of a link the kit writes from the
+/// configuration: a path of the product (`/vault`, not `//host`) or an
+/// `http(s)` address, with no space, quote or control character. Anything
+/// else (`javascript:`, `data:`, a relative path) is a mistake or worse.
+fn is_safe_link(href: &str) -> bool {
+    let clean = !href.is_empty()
+        && !href.chars().any(|c| {
+            c.is_whitespace() || c.is_control() || matches!(c, '"' | '\\' | '<' | '>' | '\'')
+        });
+    clean
+        && (href.starts_with('/') && !href.starts_with("//")
+            || href
+                .strip_prefix("http://")
+                .is_some_and(|rest| !rest.is_empty())
+            || href
+                .strip_prefix("https://")
+                .is_some_and(|rest| !rest.is_empty()))
 }
 
 /// The product's configuration.
@@ -424,6 +485,7 @@ mod tests {
         assert!(f.api_tokens && f.api_docs);
         assert_eq!(f.credentials, CredentialMode::Plain);
         assert!(!f.invites && !f.sign_in_codes);
+        assert_eq!(f.shell, Shell::TopBar);
         assert_eq!(KitFeatures::default(), f);
         assert_eq!(*crate::testing::CONFIG.features, f);
     }
@@ -503,6 +565,92 @@ mod tests {
                 .iter()
                 .any(|(n, _)| *n == crate::db::migrate::INVITES.0)
         );
+    }
+
+    #[test]
+    fn the_side_menu_needs_english_texts_and_a_link() {
+        use crate::page::{Sidebar, SidebarItem, SidebarSection, Switcher};
+        static GOOD_SIDE: Sidebar = Sidebar {
+            switcher: Some(&Switcher {
+                here: "nav.general",
+                there: "nav.users",
+                href: "/vault",
+                icon: "box",
+            }),
+            home: "/vault",
+            sections: &[SidebarSection {
+                heading: Some("nav.settings"),
+                items: &[SidebarItem::Tab(&crate::page::SettingsTab::SECURITY)],
+            }],
+        };
+        static BAD_SIDE: Sidebar = Sidebar {
+            switcher: Some(&Switcher {
+                here: "nav.no_such_area",
+                there: "nav.users",
+                href: "",
+                icon: "box",
+            }),
+            home: "javascript:alert(1)",
+            sections: &[SidebarSection {
+                heading: Some("nav.no_such_heading"),
+                items: &[],
+            }],
+        };
+        static GOOD_FEATURES: KitFeatures = KitFeatures {
+            shell: Shell::Sidebar(&GOOD_SIDE),
+            ..KitFeatures::DEFAULT
+        };
+        static BAD_FEATURES: KitFeatures = KitFeatures {
+            shell: Shell::Sidebar(&BAD_SIDE),
+            ..KitFeatures::DEFAULT
+        };
+        static GOOD: KitConfig = KitConfig {
+            features: &GOOD_FEATURES,
+            ..crate::testing::CONFIG
+        };
+        static BAD: KitConfig = KitConfig {
+            features: &BAD_FEATURES,
+            ..crate::testing::CONFIG
+        };
+        assert_eq!(check(&GOOD), Ok(()));
+        let problems = check(&BAD).unwrap_err();
+        for what in [
+            "nav.no_such_area",
+            "nav.no_such_heading",
+            "Switcher::href is not a link",
+            "Sidebar::home is not a link",
+        ] {
+            assert!(problems.contains(what), "{what}: {problems}");
+        }
+    }
+
+    #[test]
+    fn only_paths_of_the_product_and_http_addresses_are_links() {
+        for good in [
+            "/",
+            "/admin",
+            "/vault/x?a=1",
+            "https://example.com/a",
+            "http://10.0.0.1:3000/",
+        ] {
+            assert!(is_safe_link(good), "{good}");
+        }
+        for bad in [
+            "",
+            "javascript:alert(1)",
+            "JAVASCRIPT:alert(1)",
+            "data:text/html,x",
+            "vault",
+            "//evil.example/x",
+            "/a b",
+            "/a\"onclick=\"x",
+            "/a\\b",
+            " /x",
+            "ftp://example.com",
+            "https://",
+        ] {
+            assert!(!is_safe_link(bad), "{bad:?}");
+        }
     }
 
     #[test]

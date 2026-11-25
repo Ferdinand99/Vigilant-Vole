@@ -65,6 +65,9 @@ notifications = "Notifikationer"
 users = "Brugere"
 integrations = "Integrationer"
 backup = "Backup"
+menu_open = "Åbn menuen"
+menu_fold = "Skjul menuen"
+switch_to = "Skift til {name}"
 
 [js]
 dismiss = "Afvis"

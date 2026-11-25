@@ -87,6 +87,20 @@ with `crate::api::flash(jar, "success", "Monitor saved")` before a redirect.
   Maintenance / Settings, account menu with Security, API tokens, API docs,
   Appearance Auto/Light/Dark, Log out), a bottom tab bar on phones, the toaster
   (renders `ctx.flash`), the request progress bar and a skip link.
+- **Side-menu shell (opt-in).** A product that sets
+  `KitFeatures::shell = Shell::Sidebar(..)` gets the Hedgerow look instead of the
+  top bar: `body.has-side > .shell` holds `.side-top` (phones: menu button and
+  brand), `.side-backdrop`, `.side#side` (`.side-head` with brand, fold and
+  close buttons; an optional `.side-switch` link; `nav.side-nav` with
+  `.side-section` > `.side-heading` + `ul.side-list` > `a.side-link`; `.side-foot`
+  with `.side-account` and the account `.menu` popover) and `.side-body` (the
+  `<main>` and `.app-foot`). The entries come from `Sidebar`/`Ui`, never from the
+  template, and the settings pages drop their tab column (`.settings-flat`).
+  Everything is in `kit/static/shell.css` and `shell.js`, which use only the
+  tokens of `style.css` (so both themes follow), logical properties (RTL) and no
+  inline style or script. The folded rail is `html[data-side="collapsed"]`; the
+  drawer is `.side[data-open]` below 720px. Pages need no change: the same
+  layouts, blocks and macros work in both shells. See `docs/vole-kit.md`.
 - Signed-in pages end with `.app-foot`, the product and version in small
   muted text (the version links to its release notes when
   `KitConfig::releases_url` is set). It takes over `.main`'s bottom spacing

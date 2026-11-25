@@ -55,7 +55,9 @@ use vole_kit::notify::alert::Alert;
 use vole_kit::notify::form::{FieldView, ProviderGroup, field_views, provider_groups};
 use vole_kit::notify::schema::{self, ProviderSchema};
 use vole_kit::notify::webhook::Wording;
-use vole_kit::page::{NavItem, PageCtx, SettingsTab, Ui};
+use vole_kit::page::{
+    NavItem, PageCtx, SettingsTab, Shell, Sidebar, SidebarItem, SidebarSection, Switcher, Ui,
+};
 use vole_kit::settings::{FieldKind, GeneralSettings, SettingField, SettingsSection};
 use vole_kit::state::Core;
 
@@ -362,6 +364,60 @@ pub static KIT_NO_API: KitConfig = KitConfig {
     features: &KitFeatures {
         api_tokens: false,
         api_docs: false,
+        ..KitFeatures::DEFAULT
+    },
+    ..KIT
+};
+
+static HOME: NavItem = NavItem {
+    id: "home",
+    href: "/",
+    label: "demo.notes",
+    short_label: "demo.notes",
+    icon: "pulse",
+};
+
+/// The side-menu shell with a switch to a second area and the product's own
+/// sections (`tests/sidebar_shell.rs`).
+static SIDEBAR: Sidebar = Sidebar {
+    switcher: Some(&Switcher {
+        here: "demo.area_notes",
+        there: "demo.area_admin",
+        href: "/admin",
+        icon: "box",
+    }),
+    home: "/notes",
+    sections: &[
+        SidebarSection {
+            heading: None,
+            items: &[SidebarItem::Nav(&HOME)],
+        },
+        SidebarSection {
+            heading: Some("nav.settings"),
+            items: &[
+                SidebarItem::Tab(&SettingsTab::GENERAL),
+                SidebarItem::Tab(&SettingsTab::USERS),
+                SidebarItem::Tab(&SettingsTab::SECURITY),
+                SidebarItem::Tab(&SettingsTab::TOKENS),
+            ],
+        },
+    ],
+};
+
+/// The demo with the side-menu shell (`tests/sidebar_shell.rs`).
+pub static KIT_SIDEBAR: KitConfig = KitConfig {
+    features: &KitFeatures {
+        shell: Shell::Sidebar(&SIDEBAR),
+        ..KitFeatures::DEFAULT
+    },
+    ..KIT
+};
+
+/// The demo with the side-menu shell made from the navigation and the
+/// settings tabs, with no switch (`tests/sidebar_shell_default.rs`).
+pub static KIT_SIDEBAR_DEFAULT: KitConfig = KitConfig {
+    features: &KitFeatures {
+        shell: Shell::Sidebar(&Sidebar::DEFAULT),
         ..KitFeatures::DEFAULT
     },
     ..KIT

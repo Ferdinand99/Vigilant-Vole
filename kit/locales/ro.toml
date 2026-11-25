@@ -65,6 +65,9 @@ notifications = "Notificări"
 users = "Utilizatori"
 integrations = "Integrări"
 backup = "Copii de rezervă"
+menu_open = "Deschide meniul"
+menu_fold = "Restrânge meniul"
+switch_to = "Comută la {name}"
 
 [js]
 dismiss = "Ascunde"

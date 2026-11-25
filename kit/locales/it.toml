@@ -65,6 +65,9 @@ notifications = "Notifiche"
 users = "Utenti"
 integrations = "Integrazioni"
 backup = "Backup"
+menu_open = "Apri il menu"
+menu_fold = "Comprimi il menu"
+switch_to = "Passa a {name}"
 
 [js]
 dismiss = "Ignora"

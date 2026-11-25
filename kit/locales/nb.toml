@@ -65,6 +65,9 @@ notifications = "Varslinger"
 users = "Brukere"
 integrations = "Integrasjoner"
 backup = "Sikkerhetskopi"
+menu_open = "Åpne menyen"
+menu_fold = "Skjul menyen"
+switch_to = "Bytt til {name}"
 
 [js]
 dismiss = "Lukk"

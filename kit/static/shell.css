@@ -1,0 +1,451 @@
+/* ==========================================================================
+   vole-kit side-menu shell (opt-in: KitFeatures::shell = Shell::Sidebar)
+   Loaded after style.css and only by pages that use the side menu, so a
+   product on the top bar serves no byte of it. Every colour, size and
+   duration is a token of style.css; the tokens and the look are the ones of
+   the Hedgerow web vault, so the apps read as one family.
+   Docs: docs/design-system.md ("Side-menu shell")
+
+   1. Frame
+   2. The menu: head, switch, entries, foot
+   3. Rail (folded menu, wide screens)
+   4. Phones: top bar and drawer
+   5. Preferences
+   ========================================================================== */
+
+:root {
+  --side-w: 264px;
+  --side-w-rail: 64px;
+  --brand-text: light-dark(#6656e8, #a99fff); /* brand-coloured text on a brand tint (the current entry) */
+}
+
+/* 1. Frame --------------------------------------------------------------- */
+.has-side .shell {
+  display: flex;
+  align-items: stretch;
+  min-height: 100dvh;
+}
+.has-side .side-body {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+}
+/* The settings pages in the side menu: the tabs are entries of the menu, so
+   the page is just its content. */
+.settings-flat {
+  display: block;
+}
+/* The menu is the chrome: no bar above the page on a wide screen, so an
+   anchor needs no room kept for one. */
+@media (min-width: 721px) {
+  html:has(.side) {
+    scroll-padding-top: var(--sp-4);
+  }
+}
+
+/* 2. The menu ------------------------------------------------------------ */
+.side {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--sp-1);
+  width: var(--side-w);
+  height: 100dvh;
+  padding: var(--sp-5) var(--sp-3) var(--sp-3);
+  padding-inline-start: max(var(--sp-3), var(--safe-left));
+  border-inline-end: 1px solid var(--line);
+  background: var(--card);
+  view-transition-name: side;
+}
+.side-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px var(--sp-2) var(--sp-3);
+}
+.side-head .brand {
+  margin-inline-end: auto;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+.side-btn {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--dur-ui) ease;
+}
+.side-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+.side-btn:active {
+  background: var(--pressed);
+}
+@media (hover: hover) and (pointer: fine) {
+  .side-btn:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+}
+/* Folding the menu (a wide screen) and closing the drawer (a phone). */
+.side-panel {
+  --panel: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='4.5' width='17' height='15' rx='3'/%3E%3Cpath d='M9.5 4.5v15'/%3E%3C/svg%3E");
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: var(--panel) center / contain no-repeat;
+  mask: var(--panel) center / contain no-repeat;
+}
+[dir="rtl"] .side-panel {
+  transform: scaleX(-1);
+}
+.side-close {
+  display: none;
+}
+
+.side-nav {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.side-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.side-heading {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-3) var(--sp-1);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+.side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-weight: 500;
+  letter-spacing: -0.006em;
+  text-decoration: none;
+  transition: background-color var(--dur-ui) ease;
+}
+.side-link .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+.side-link:focus-visible,
+.side-switch:focus-visible,
+.side-account:focus-visible {
+  outline-offset: -2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .side-link:hover {
+    background: var(--hover);
+  }
+}
+.side-link[aria-current="page"] {
+  background: var(--brand-fill);
+  font-weight: 600;
+}
+.side-link[aria-current="page"] .icon {
+  color: var(--brand-text);
+}
+.side-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The switch between two areas of the product (Admin ⇅ Vault). */
+.side-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--sp-2);
+  padding: 10px var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--card-raised);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--dur-ui) ease;
+}
+.side-switch > .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--brand);
+}
+.side-switch-other {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-weight: 500;
+}
+.side-switch-other .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .side-switch:hover {
+    background: var(--hover);
+  }
+}
+
+/* The account at the foot; its menu is the kit's .menu popover. */
+.side-foot {
+  flex: none;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+.side-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px var(--sp-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .side-account:hover {
+    background: var(--hover);
+  }
+}
+.side-account:active,
+.side-account:has(+ .menu:popover-open) {
+  background: var(--pressed);
+}
+.side-account-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.side-account-name,
+.side-account-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-account-name {
+  font-weight: 600;
+}
+.side-account-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.side-account > .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+/* 3. Rail: the menu folded to its pictures (wide screens) ---------------- */
+@media (min-width: 721px) {
+  html[data-side="collapsed"] .side {
+    width: var(--side-w-rail);
+    padding-inline: var(--sp-2);
+  }
+  html[data-side="collapsed"] .side-head {
+    flex-direction: column;
+    padding-inline: 0;
+  }
+  html[data-side="collapsed"] .side-head .brand {
+    margin-inline-end: 0;
+  }
+  html[data-side="collapsed"] .side-head .brand span,
+  html[data-side="collapsed"] .side-label,
+  html[data-side="collapsed"] .side-switch-other span,
+  html[data-side="collapsed"] .side-heading,
+  html[data-side="collapsed"] .side-account-text,
+  html[data-side="collapsed"] .side-account > .icon {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  html[data-side="collapsed"] .side-link,
+  html[data-side="collapsed"] .side-switch,
+  html[data-side="collapsed"] .side-account {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  html[data-side="collapsed"] .side-switch-other {
+    margin-inline-start: 0;
+  }
+  html[data-side="collapsed"] .side-switch > .icon:first-child {
+    display: none;
+  }
+  html[data-side="collapsed"] .side-section + .side-section {
+    margin-top: var(--sp-2);
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* 4. Phones: a bar with the menu button, the menu as a drawer ------------ */
+.side-top,
+.side-backdrop {
+  display: none;
+}
+@media (max-width: 720px) {
+  html {
+    scroll-padding-top: calc(var(--topbar-h) + 16px);
+  }
+  .side-top {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-nav);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: var(--topbar-h);
+    padding-top: var(--safe-top);
+    padding-left: max(var(--sp-3), var(--safe-left)); /* rtl-ok: safe-area insets are physical */
+    padding-right: max(var(--sp-3), var(--safe-right)); /* rtl-ok: safe-area insets are physical */
+    border-bottom: 1px solid var(--line);
+    background: var(--bar);
+    -webkit-backdrop-filter: var(--blur-bar);
+    backdrop-filter: var(--blur-bar);
+    view-transition-name: side-top;
+  }
+  .side-top .side-btn {
+    color: var(--text);
+  }
+  .has-side .shell {
+    display: block;
+  }
+  /* Closed, the drawer is not there: out of the tab order and out of the way. */
+  .side {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: var(--z-popover);
+    display: none;
+    width: min(20rem, calc(100vw - 3rem));
+    padding-top: calc(var(--safe-top) + var(--sp-4));
+    padding-bottom: calc(var(--safe-bottom) + var(--sp-3));
+    box-shadow: var(--shadow-pop);
+    view-transition-name: none;
+  }
+  .side[data-open] {
+    display: flex;
+    animation: side-in var(--dur-ui) var(--ease-out);
+  }
+  .side-backdrop[data-open] {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-popover) - 1);
+    display: block;
+    background: var(--scrim);
+  }
+  .side-collapse {
+    display: none;
+  }
+  .side-close {
+    display: inline-grid;
+  }
+  .side-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .side-link {
+    min-height: 44px;
+  }
+  /* No tab bar: the page needs no room kept for one. */
+  .has-side .main {
+    padding-bottom: calc(var(--safe-bottom) + var(--sp-10));
+  }
+  .has-side .main:has(+ .app-foot) {
+    padding-bottom: var(--sp-8);
+  }
+  .has-side .app-foot {
+    padding-bottom: calc(var(--safe-bottom) + var(--sp-6));
+  }
+}
+@keyframes side-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-12px * var(--dir)));
+  }
+}
+
+/* 5. Preferences --------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .side[data-open] {
+    animation: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .side-top {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--bg);
+  }
+}
+@media (forced-colors: active) {
+  .side,
+  .side-switch {
+    border: 1px solid CanvasText;
+  }
+  .side-link[aria-current="page"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

@@ -65,6 +65,9 @@ notifications = "התראות"
 users = "משתמשים"
 integrations = "שילובים"
 backup = "גיבוי"
+menu_open = "פתיחת התפריט"
+menu_fold = "כיווץ התפריט"
+switch_to = "מעבר אל {name}"
 
 [js]
 dismiss = "סגירה"
